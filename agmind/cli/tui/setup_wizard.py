@@ -184,12 +184,15 @@ class AgmindSetupApp(App[SetupState | None]):
         self,
         detected: DetectedHardware | None = None,
         initial_state: SetupState | None = None,
+        auto_deploy: bool = False,
     ) -> None:
         super().__init__()
         self.detected = detected or detect_hardware()
         self.state = initial_state or SetupState()
         self.result_state: SetupState | None = None
         self.preview_text: str = ""
+        self.auto_deploy = auto_deploy
+        """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -361,12 +364,46 @@ class AgmindSetupApp(App[SetupState | None]):
             return
 
         self.result_state = state
-        # Exit TUI — typer command снаружи покажет finals + next-steps box
-        self.exit(state)
+
+        # Phase J.1.5: при auto_deploy=True — push DeployProgressScreen с
+        # live прогрессом. Иначе — exit (back to shell с next-steps box).
+        if self.auto_deploy:
+            from agmind.cli.tui.deploy_screen import DeployProgressScreen
+            user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
+
+            def _after_deploy(result: object) -> None:
+                # DeployProgressScreen returns DeployResult; attach к state
+                if result is not None:
+                    state.__dict__["_deploy_result"] = result
+                self.exit(state)
+
+            self.push_screen(
+                DeployProgressScreen(
+                    profiles=state.profiles,
+                    domain=state.domain,
+                    install_dir=user_stack_dir,
+                ),
+                callback=_after_deploy,
+            )
+        else:
+            # Exit TUI — typer command снаружи покажет finals + next-steps box
+            self.exit(state)
 
 
-def run_setup_wizard(initial_state: SetupState | None = None) -> SetupState | None:
-    """Launch wizard, return collected state or None если cancelled."""
+def run_setup_wizard(
+    initial_state: SetupState | None = None,
+    auto_deploy: bool = False,
+) -> SetupState | None:
+    """Launch wizard, return collected state or None если cancelled.
+
+    Если auto_deploy=True — Apply внутри wizard pushes DeployProgressScreen с
+    live прогрессом docker compose up + healthcheck wait. Без auto_deploy
+    Apply просто сохраняет config и exit'ит.
+    """
     detected = detect_hardware()
-    app = AgmindSetupApp(detected=detected, initial_state=initial_state)
+    app = AgmindSetupApp(
+        detected=detected,
+        initial_state=initial_state,
+        auto_deploy=auto_deploy,
+    )
     return app.run()

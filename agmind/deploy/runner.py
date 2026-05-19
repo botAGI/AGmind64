@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
 from agmind.log import logger
 from agmind.services.renderer import render_to_string
+
+# Progress callback: (step_id, message) — used by TUI DeployProgressScreen
+# step_id one of: 'render', 'diff', 'snapshot', 'compose_up', 'healthcheck',
+#                'wait_healthy', 'success', 'rollback', 'error'
+ProgressCallback = Callable[[str, str], None]
 
 log = logger(__name__)
 
@@ -106,6 +112,7 @@ def deploy(
     no_prompt: bool = False,
     healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
     snapshot_reason: str = "",
+    progress: "ProgressCallback | None" = None,
 ) -> DeployResult:
     """Main deploy orchestrator.
 
@@ -123,7 +130,15 @@ def deploy(
     install_dir.mkdir(parents=True, exist_ok=True)
     compose_file = install_dir / "docker-compose.yml"
 
+    def _emit(step: str, msg: str) -> None:
+        if progress is not None:
+            try:
+                progress(step, msg)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("progress callback raised: %s (ignored)", exc)
+
     # 1. Render new compose
+    _emit("render", f"rendering compose for profiles={profiles}, domain={domain}")
     log.info("rendering compose for profiles=%s, domain=%s", profiles, domain)
     try:
         new_compose = render_to_string(
@@ -132,17 +147,22 @@ def deploy(
             domain=domain,
         )
     except Exception as exc:
+        _emit("error", f"render failed: {exc}")
         return DeployResult(success=False, message=f"render failed: {exc}")
 
     # 2. Compute diff vs current
+    _emit("diff", "computing diff vs current deployment")
     diff = compute_diff_from_files(compose_file, new_compose)
 
     if not diff.has_changes:
+        _emit("success", "no changes — current matches rendered")
         return DeployResult(
             success=True,
             diff=diff,
             message="no changes — current deployment matches rendered",
         )
+
+    _emit("diff", f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}")
 
     if not apply:
         # Dry run mode — return diff for caller to display
@@ -155,6 +175,7 @@ def deploy(
     # 3. Snapshot текущее состояние (только если что-то deployed)
     snapshot: Snapshot | None = None
     if compose_file.exists():
+        _emit("snapshot", "saving snapshot of current state")
         snap_mgr = SnapshotManager()
         snapshot = snap_mgr.save(
             compose_text=compose_file.read_text(encoding="utf-8"),
@@ -165,22 +186,26 @@ def deploy(
             env_file=install_dir / ".env" if (install_dir / ".env").exists() else None,
         )
         log.info("snapshot created: %s", snapshot.id)
+        _emit("snapshot", f"snapshot saved: {snapshot.id}")
 
     # 4. Write new compose
     compose_file.write_text(new_compose, encoding="utf-8")
     log.info("wrote new compose to %s", compose_file)
+    _emit("render", f"wrote {compose_file}")
 
     # 5. docker compose up -d --remove-orphans
+    _emit("compose_up", "running: docker compose up -d --remove-orphans")
     log.info("running docker compose up -d --remove-orphans")
     rc, stdout, stderr = _run_compose(
         ["up", "-d", "--remove-orphans", "--quiet-pull"],
         cwd=install_dir,
     )
     if rc != 0:
-        # Apply failed — rollback
         log.error("docker compose up failed (rc=%d): %s", rc, stderr)
+        _emit("error", f"docker compose up failed: {stderr[-200:]}")
         rolled_back = False
         if snapshot is not None:
+            _emit("rollback", "rolling back to snapshot")
             rolled_back = _rollback_to_snapshot(snapshot, install_dir)
         return DeployResult(
             success=False,
@@ -191,14 +216,16 @@ def deploy(
         )
 
     # 6. Wait for healthy
+    _emit("wait_healthy", f"waiting for healthy state (timeout={healthcheck_timeout}s)")
     log.info("waiting for healthy state (timeout=%ds)...", healthcheck_timeout)
     healthy, unhealthy = _wait_healthy(install_dir, healthcheck_timeout)
 
     if not healthy:
-        # Healthcheck timeout — rollback
         log.error("healthcheck timeout — unhealthy: %s", unhealthy)
+        _emit("error", f"healthcheck timeout; unhealthy: {unhealthy}")
         rolled_back = False
         if snapshot is not None:
+            _emit("rollback", "rolling back to snapshot")
             rolled_back = _rollback_to_snapshot(snapshot, install_dir)
         return DeployResult(
             success=False,
@@ -208,6 +235,7 @@ def deploy(
             rollback_performed=rolled_back,
         )
 
+    _emit("success", f"deployed {diff.total_changes} change(s) — all healthy")
     return DeployResult(
         success=True,
         diff=diff,

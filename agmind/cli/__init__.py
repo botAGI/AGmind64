@@ -269,7 +269,9 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             except Exception as exc:  # noqa: BLE001
                 typer.echo(f"WARNING: failed to load state from {from_state}: {exc}")
 
-        result = run_setup_wizard(initial_state=initial)
+        # auto_deploy=True если флаг --deploy: Apply внутри TUI запускает
+        # DeployProgressScreen с live прогрессом (вместо shell post-exit deploy).
+        result = run_setup_wizard(initial_state=initial, auto_deploy=deploy)
         if result is None:
             typer.echo("Setup cancelled.")
             raise typer.Exit(code=1)
@@ -323,20 +325,19 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         console.print(panel)
 
+        # Если deploy=True — DeployProgressScreen уже отработал в TUI.
+        # Result содержит deploy_result attribute через __dict__.
         if deploy:
-            console.print("\n[bold yellow]→ Running deploy now (--deploy flag) ...[/bold yellow]\n")
-            from agmind.cli.deploy_cmd import cmd_deploy
-
-            rc = cmd_deploy(
-                profiles=result.profiles,
-                install_dir=user_stack_dir,
-                domain=result.domain,
-                apply=True,
-                no_prompt=True,
-                healthcheck_timeout=300,
-                verbose=False,
+            deploy_result = getattr(result, "_deploy_result", None)
+            if deploy_result is None:
+                console.print("[yellow]Deploy result not captured.[/yellow]")
+                raise typer.Exit(code=1)
+            console.print(
+                f"\n[bold {'green' if deploy_result.success else 'red'}]"
+                f"{'✓' if deploy_result.success else '✗'} {deploy_result.message}"
+                f"[/bold {'green' if deploy_result.success else 'red'}]"
             )
-            raise typer.Exit(code=rc)
+            raise typer.Exit(code=0 if deploy_result.success else 1)
 
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(
