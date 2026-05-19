@@ -15,17 +15,43 @@ from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
 
-# Smooth gradient stops через HSL-like color rotation.
-# Bright AMD-themed palette: red → orange → magenta → purple → cyan → green-amd.
-GRADIENT_COLORS: tuple[str, ...] = (
-    "#FF0033",  # AMD red
-    "#FF3D00",  # vivid orange
-    "#FF1493",  # deep pink
-    "#9D00FF",  # electric purple
-    "#5B00FF",  # indigo
-    "#00B7FF",  # cyan (Vulkan vibes)
-    "#00E5C0",  # teal
-    "#7CFC00",  # AMD green
+# Tech/cyber palette — AMD red core + cyan highlights (Vulkan vibes).
+# Monochromatic-ish, не rainbow. Brand-appropriate для AMD Strix Halo.
+# Можно override через AGMIND_LOGO_THEME env var (red|cyan|matrix|amd).
+import os as _os
+
+_PALETTES: dict[str, tuple[str, ...]] = {
+    # Default: AMD branded red-orange-white burst
+    "amd": (
+        "#FFFFFF",  # bright highlight
+        "#FFD700",  # gold accent
+        "#FF6600",  # AMD orange
+        "#FF0033",  # AMD red
+        "#CC0022",
+        "#8B0000",  # dark red base
+        "#CC0022",
+        "#FF0033",
+    ),
+    # Pure AMD red sweep
+    "red": (
+        "#FF0033", "#E50028", "#CC001F", "#B30019",
+        "#990013", "#B30019", "#CC001F", "#E50028",
+    ),
+    # Cyber/Vulkan cyan
+    "cyan": (
+        "#00FFE5", "#00E5FF", "#00C8FF", "#00ABFF",
+        "#0080FF", "#00ABFF", "#00C8FF", "#00E5FF",
+    ),
+    # Matrix green (для шуточек)
+    "matrix": (
+        "#00FF41", "#00CC33", "#009922", "#006611",
+        "#003300", "#006611", "#009922", "#00CC33",
+    ),
+}
+
+GRADIENT_COLORS: tuple[str, ...] = _PALETTES.get(
+    _os.environ.get("AGMIND_LOGO_THEME", "amd"),
+    _PALETTES["amd"],
 )
 
 
@@ -107,11 +133,10 @@ class AnimatedLogo(Widget):
         rendered = _render_gradient(self.ascii_art.rstrip("\n"), self.offset)
         if self.subtitle:
             rendered.append("\n")
-            # Subtitle — единый pulsating color
-            sub_color = GRADIENT_COLORS[self.offset % len(GRADIENT_COLORS)]
+            # Subtitle — static technical look (dim white) — без animation
             rendered.append(
                 self.subtitle.center(50),
-                style=f"italic {sub_color}",
+                style="dim italic #888888",
             )
         return rendered
 
@@ -129,6 +154,6 @@ def print_static_logo(text: str = "AGMIND", subtitle: str = "x86 Strix Halo") ->
         rich_text.append("\n")
         rich_text.append(
             subtitle.center(50),
-            style=f"italic {GRADIENT_COLORS[3]}",
+            style="dim italic #888888",
         )
     console.print(rich_text)
