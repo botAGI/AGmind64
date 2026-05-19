@@ -105,6 +105,107 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=result.returncode)
 
+    # ---- deploy subcommand group (Phase L.B) ----
+    deploy_app = typer.Typer(
+        name="deploy",
+        help="Idempotent deploy с automatic snapshot + healthcheck + rollback",
+        no_args_is_help=False,
+        invoke_without_command=True,
+    )
+    app.add_typer(deploy_app)
+
+    @deploy_app.callback(invoke_without_command=True)
+    def deploy_cmd(
+        ctx: typer.Context,
+        profile: str = typer.Option(
+            "core,observability",
+            "--profile",
+            "-p",
+            help="Comma-separated profiles to deploy",
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Install directory (default: /opt/agmind)",
+        ),
+        domain: str | None = typer.Option(
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
+            help="Override agmind.dev placeholder",
+        ),
+        apply: bool = typer.Option(
+            False,
+            "--apply",
+            help="Actually apply changes (default: dry-run / diff only)",
+        ),
+        no_prompt: bool = typer.Option(
+            False,
+            "--no-prompt",
+            help="Skip interactive confirmation (CI mode)",
+        ),
+        healthcheck_timeout: int = typer.Option(
+            300,
+            "--healthcheck-timeout",
+            help="Seconds to wait for healthy state",
+        ),
+        verbose: bool = typer.Option(
+            False,
+            "--verbose",
+            "-v",
+            help="Show full unified diff",
+        ),
+    ) -> None:
+        """Deploy (default: dry-run). Use --apply to commit changes."""
+        if ctx.invoked_subcommand is not None:
+            return
+        from agmind.cli.deploy_cmd import cmd_deploy
+
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_deploy(
+            profiles=profiles,
+            install_dir=install_dir,
+            domain=domain,
+            apply=apply,
+            no_prompt=no_prompt,
+            healthcheck_timeout=healthcheck_timeout,
+            verbose=verbose,
+        )
+        raise typer.Exit(code=rc)
+
+    # ---- rollback (top-level command) ----
+    @app.command()
+    def rollback(
+        snapshot_id: str | None = typer.Argument(
+            None,
+            help="Snapshot ID (omit for latest)",
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Install directory",
+        ),
+    ) -> None:
+        """Restore deployment from snapshot."""
+        from agmind.cli.deploy_cmd import cmd_rollback
+
+        raise typer.Exit(code=cmd_rollback(snapshot_id, install_dir))
+
+    # ---- snapshots list (top-level) ----
+    snapshots_app = typer.Typer(
+        name="snapshots",
+        help="Manage deployment snapshots",
+        no_args_is_help=True,
+    )
+    app.add_typer(snapshots_app)
+
+    @snapshots_app.command("list")
+    def snapshots_list() -> None:
+        """List available snapshots (newest first)."""
+        from agmind.cli.deploy_cmd import cmd_snapshots_list
+
+        raise typer.Exit(code=cmd_snapshots_list())
+
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(
         name="service",

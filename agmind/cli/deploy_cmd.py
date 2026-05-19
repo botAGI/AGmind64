@@ -93,3 +93,71 @@ def cmd_restart(service: str | None = None) -> int:
 def cmd_pull() -> int:
     """Pre-fetch latest images (semver pinned per services.yaml)."""
     return _run_compose("pull")
+
+
+# ---- Phase L.B: idempotent deploy + snapshot/rollback ----
+
+def cmd_deploy(
+    profiles: list[str],
+    install_dir: Path,
+    domain: str | None,
+    apply: bool,
+    no_prompt: bool,
+    healthcheck_timeout: int,
+    verbose: bool = False,
+) -> int:
+    """Idempotent deploy (Phase L.B): dry-run by default, --apply to commit.
+
+    Под капотом: snapshot → render → diff → docker compose up --remove-orphans
+    → healthcheck wait → rollback at failure. См. agmind/deploy/.
+    """
+    from agmind.deploy import deploy as do_deploy, format_diff
+
+    result = do_deploy(
+        profiles=profiles,
+        install_dir=install_dir,
+        domain=domain,
+        apply=apply,
+        no_prompt=no_prompt,
+        healthcheck_timeout=healthcheck_timeout,
+    )
+
+    if result.diff is not None:
+        sys.stdout.write(format_diff(result.diff, verbose=verbose))
+
+    if result.snapshot is not None:
+        sys.stdout.write(f"📸 snapshot: {result.snapshot.id} ({result.snapshot.path})\n")
+
+    icon = "✓" if result.success else "✗"
+    sys.stdout.write(f"\n{icon} {result.message}\n")
+
+    if result.rollback_performed:
+        sys.stdout.write("↩️  rolled back to snapshot\n")
+
+    return 0 if result.success else 1
+
+
+def cmd_rollback(snapshot_id: str | None, install_dir: Path) -> int:
+    """Restore deployment from snapshot (Phase L.B)."""
+    from agmind.deploy import rollback as do_rollback
+
+    result = do_rollback(snapshot_id=snapshot_id, install_dir=install_dir)
+    icon = "✓" if result.success else "✗"
+    sys.stdout.write(f"{icon} {result.message}\n")
+    return 0 if result.success else 1
+
+
+def cmd_snapshots_list() -> int:
+    """List all available deployment snapshots (Phase L.B)."""
+    from agmind.deploy import SnapshotManager
+
+    snaps = SnapshotManager().list()
+    if not snaps:
+        print("No snapshots found.")
+        return 0
+
+    print(f"{'ID':<22} {'PROFILE':<25} REASON")
+    print("-" * 80)
+    for s in snaps:
+        print(f"{s.id:<22} {s.profile:<25} {s.reason}")
+    return 0
