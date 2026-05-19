@@ -142,24 +142,102 @@ def detect_hardware() -> DetectedHardware:
     )
 
 
-# ---- Available profiles + backends (для UI choices) ----
+# ---- Profile + backend discovery (Phase J.1.7: dynamic, не hardcode) ----
 
-PROFILES_AVAILABLE = [
-    ("core", "Core inference (llama-server + qdrant + traefik)"),
-    ("rag", "RAG stack (Dify + Postgres + Redis + Docling)"),
-    ("ragflow", "RAGFlow (Elasticsearch + MySQL + MinIO)"),
-    ("ui", "Open WebUI chat frontend"),
-    ("observability", "Prometheus + Grafana + Loki + Alertmanager"),
-    ("security", "Authelia auth gateway + fail2ban"),
-]
+# Human-friendly descriptions для known profiles. Если profile not в этом dict —
+# generates description "<N services>". Можно расширять без правки TUI.
+_PROFILE_DESCRIPTIONS: dict[str, str] = {
+    "core": "Core inference (llama + qdrant + traefik)",
+    "rag": "RAG stack (Dify + Postgres + Redis + Docling)",
+    "ragflow": "RAGFlow (Elasticsearch + MySQL + MinIO)",
+    "ui": "Open WebUI chat frontend",
+    "observability": "Prometheus + Grafana + Loki + Alertmanager",
+    "security": "Authelia + fail2ban",
+    "core-caddy": "Core с Caddy вместо Traefik",
+    "core-nginx": "Core с Nginx (без публичного домена)",
+    "rag-weaviate": "RAG с Weaviate вместо Qdrant",
+    "rag-milvus": "RAG с Milvus вместо Qdrant",
+    "full": "Все профили вместе",
+}
 
-# Textual Select tuples format: (prompt, value)
-BACKENDS_AVAILABLE = [
-    ("Auto-detect (recommended)", "auto"),
-    ("Vulkan (RADV) — primary for Strix Halo", "vulkan"),
-    ("ROCm — for batch embed / PP-bound workloads", "rocm"),
-    ("CPU only — fallback", "cpu"),
-]
+_BACKEND_DESCRIPTIONS: dict[str, str] = {
+    "auto": "Auto-detect (recommended)",
+    "vulkan": "Vulkan (RADV) — primary для Strix Halo",
+    "rocm": "ROCm — для batch embed / PP-bound workloads",
+    "cpu": "CPU only — fallback",
+    "npu": "NPU (placeholder)",
+}
+
+
+def get_available_profiles() -> list[tuple[str, str]]:
+    """Discover profiles из templates/services/*.yaml (32 service descriptors).
+
+    Returns: list of (profile_name, "human description [N services]")
+    Sorted: core* first, rag* second, others после.
+    """
+    try:
+        from agmind.services.renderer import load_descriptors
+    except ImportError:
+        return [("core", "Core (fallback hardcoded)")]
+
+    from collections import defaultdict
+
+    descriptors = load_descriptors()
+    profile_services: dict[str, list[str]] = defaultdict(list)
+    for d in descriptors.values():
+        for prof in d.profiles:
+            profile_services[prof].append(d.name)
+
+    # Sort: core* → rag* → ragflow → ui → observability → security → остальные
+    def _sort_key(name: str) -> tuple[int, str]:
+        if name.startswith("core"):
+            return (0, name)
+        if name.startswith("rag") and not name.startswith("ragflow"):
+            return (1, name)
+        if name == "ragflow":
+            return (2, name)
+        if name == "ui":
+            return (3, name)
+        if name == "observability":
+            return (4, name)
+        if name == "security":
+            return (5, name)
+        return (6, name)
+
+    out: list[tuple[str, str]] = []
+    for prof in sorted(profile_services, key=_sort_key):
+        services = profile_services[prof]
+        desc = _PROFILE_DESCRIPTIONS.get(prof, f"custom profile")
+        out.append((prof, f"{desc} [{len(services)} services]"))
+    return out
+
+
+def get_available_backends() -> list[tuple[str, str]]:
+    """Discover backends через setuptools entry_points (Phase H'.E plugin system).
+
+    Returns: list of (prompt, value) для Textual Select.
+    Always includes 'auto' first.
+    """
+    try:
+        from agmind.compute._registry import discover_backend_names
+        names = discover_backend_names()
+    except Exception:
+        # Graceful degrade — fallback на 4 встроенных
+        names = ["cpu", "vulkan", "rocm", "npu"]
+
+    out: list[tuple[str, str]] = [(_BACKEND_DESCRIPTIONS["auto"], "auto")]
+    for name in names:
+        if name == "auto":
+            continue
+        desc = _BACKEND_DESCRIPTIONS.get(name, name)
+        out.append((desc, name))
+    return out
+
+
+# Backwards-compat module constants — re-evaluated on import.
+# В тестах и при настройке monkey-patch'ятся через прямые function calls.
+PROFILES_AVAILABLE: list[tuple[str, str]] = []  # populated lazy
+BACKENDS_AVAILABLE: list[tuple[str, str]] = []  # populated lazy
 
 
 # ============================================================
@@ -193,6 +271,11 @@ class AgmindSetupApp(App[SetupState | None]):
         self.preview_text: str = ""
         self.auto_deploy = auto_deploy
         """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
+        # Discover profiles + backends dynamically (Phase J.1.7).
+        # Profiles читаются из templates/services/*.yaml (32 файла).
+        # Backends — через setuptools entry_points group "agmind.backends".
+        self.profiles_available = get_available_profiles()
+        self.backends_available = get_available_backends()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -227,18 +310,21 @@ class AgmindSetupApp(App[SetupState | None]):
 
             yield Label("Backend", classes="section")
             yield Select(
-                BACKENDS_AVAILABLE,
+                self.backends_available,
                 id="backend-select",
                 value=self.state.backend,
                 allow_blank=False,
             )
 
-            yield Label("Profiles (выбери что разворачивать)", classes="section")
+            yield Label(
+                f"Profiles (auto-detected из {len(self.profiles_available)} доступных)",
+                classes="section",
+            )
             with Container(id="profile-checkboxes"):
-                for name, descr in PROFILES_AVAILABLE:
+                for name, descr in self.profiles_available:
                     yield Checkbox(
                         f"{name:<15} — {descr}",
-                        id=f"profile-{name}",
+                        id=f"profile-{self._slug(name)}",
                         value=(name in self.state.profiles),
                     )
 
@@ -265,6 +351,11 @@ class AgmindSetupApp(App[SetupState | None]):
             f"Kernel:  {platform.release()}"
         )
 
+    @staticmethod
+    def _slug(name: str) -> str:
+        """Convert profile name (может содержать дефисы типа core-caddy) → CSS-safe id."""
+        return name.replace("-", "_")
+
     def _collect_state(self) -> SetupState:
         """Gather inputs from widgets into SetupState."""
         domain = self.query_one("#domain-input", Input).value.strip()
@@ -273,8 +364,8 @@ class AgmindSetupApp(App[SetupState | None]):
         backend = str(backend_select.value) if backend_select.value is not None else "auto"
 
         profiles: list[str] = []
-        for name, _ in PROFILES_AVAILABLE:
-            cb = self.query_one(f"#profile-{name}", Checkbox)
+        for name, _ in self.profiles_available:
+            cb = self.query_one(f"#profile-{self._slug(name)}", Checkbox)
             if cb.value:
                 profiles.append(name)
 
