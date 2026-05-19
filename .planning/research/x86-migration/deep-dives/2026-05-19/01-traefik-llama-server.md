@@ -1,6 +1,8 @@
 # Traefik v3 как замена nginx для AGmindx86 (Strix Halo + llama.cpp)
 
-Целевая версия: **Traefik 3.7.1** (релиз 11 мая 2026, исправляет CVE-2026-44774). Образ: `traefik:v3.7.1`. Образ llama.cpp: `ghcr.io/ggml-org/llama.cpp:server-vulkan` (используй явный тэг билда, `:server-vulkan` без даты не пиннится — рекомендую тэг по номеру билда, например `:server-vulkan-bXXXX`, который ggml-org публикует на каждый release).
+Целевая версия: **Traefik 3.7.1** (latest stable на май 2026). Образ: `traefik:v3.7.1`.
+
+> ⚠️ Fact-check 2026-05-19: ранняя версия этого отчёта упоминала "CVE-2026-44774" — это **hallucination** sub-agent'а, такого CVE не существует. Удалено. Версия Traefik 3.7.1 verified в R12-versions-x86-may2026.md. Образ llama.cpp: `ghcr.io/ggml-org/llama.cpp:server-vulkan` (используй явный тэг билда, `:server-vulkan` без даты не пиннится — рекомендую тэг по номеру билда, например `:server-vulkan-bXXXX`, который ggml-org публикует на каждый release).
 
 ---
 

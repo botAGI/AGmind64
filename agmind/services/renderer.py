@@ -34,8 +34,11 @@ from agmind.schemas import ServiceDescriptor
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SERVICES_DIR = REPO_ROOT / "templates" / "services"
 
-# Compose v3.9 — latest stable supported by docker compose v2.30+
-COMPOSE_VERSION = "3.9"
+# Compose-spec без `version:` field — современный формат (2026).
+# Docker Compose v2.0+ deprecated top-level `version:` (https://docs.docker.com/compose/compose-file/04-version-and-name/).
+# Старый v3.9 был оставлен изначально, но docker compose выдаёт WARN.
+# Set None чтобы НЕ писать `version:` в output (compose сам подхватит latest spec).
+COMPOSE_VERSION: str | None = None
 
 # Logging defaults для предотвращения накопления GB логов
 # (deep-dive 04 §10, deep-dive 03 §9)
@@ -252,8 +255,7 @@ def render_compose(
         d.name: descriptor_to_compose_service(d, traefik_enabled)
         for d in sorted(descriptors, key=lambda x: x.name)
     }
-    return {
-        "version": COMPOSE_VERSION,
+    compose: dict[str, Any] = {
         "services": services_block,
         "networks": {
             "default": {
@@ -262,6 +264,10 @@ def render_compose(
             }
         },
     }
+    if COMPOSE_VERSION is not None:
+        # Legacy compatibility — современный compose не требует version
+        compose = {"version": COMPOSE_VERSION, **compose}
+    return compose
 
 
 def to_yaml(compose: dict[str, Any]) -> str:

@@ -15,7 +15,7 @@ Phase G дала basic observability profile (Prometheus + Grafana + Loki + Allo
 4. **`/metrics` для llama.cpp бедны** (deep-dive 03 §1): нет TTFT histograms, имена с двоеточием, router mode сломан (issue ggml-org#19811).
 5. **GPU exporter для gfx1151 не существует** (deep-dive 03 §4, R13): официальные `amd_smi_exporter` и `device-metrics-exporter` — datacenter-only.
 6. **Готового Grafana dashboard под Strix Halo нет** — никто не сделал.
-7. **`alertmanager-bot` deprecated** (архив 2022) — нативный `telegram_configs` Alertmanager 0.24+ нужно использовать.
+7. **`alertmanager-bot` deprecated** (архив 2022) — нативный `telegram_configs` Alertmanager 0.24+ нужно использовать (мы pin'им конкретно v0.32.1 в `templates/services/alertmanager.yaml` — forward-compatible).
 
 ## Рассмотренные варианты
 

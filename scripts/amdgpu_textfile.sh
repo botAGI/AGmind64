@@ -36,15 +36,15 @@ read_val() {
     echo "# TYPE amdgpu_power_average_watts gauge"
     echo "# HELP amdgpu_sclk_hz GPU shader/core clock"
     echo "# TYPE amdgpu_sclk_hz gauge"
-    echo "# HELP amdgpu_mclk_hz Memory clock"
-    echo "# TYPE amdgpu_mclk_hz gauge"
     echo "# HELP amdgpu_gpu_busy_percent GPU busy time in last sampling"
     echo "# TYPE amdgpu_gpu_busy_percent gauge"
-    echo "# HELP amdgpu_vram_used_bytes VRAM used"
+    echo "# HELP amdgpu_vram_used_bytes VRAM used (small UMA FB on Strix Halo)"
     echo "# TYPE amdgpu_vram_used_bytes gauge"
     echo "# HELP amdgpu_vram_total_bytes VRAM total"
     echo "# TYPE amdgpu_vram_total_bytes gauge"
-    echo "# HELP amdgpu_gtt_used_bytes GTT (system RAM for GPU) used"
+    echo "# HELP amdgpu_vis_vram_used_bytes Visible VRAM used (CPU-mappable subset)"
+    echo "# TYPE amdgpu_vis_vram_used_bytes gauge"
+    echo "# HELP amdgpu_gtt_used_bytes GTT used (unified memory pages — main storage on APU)"
     echo "# TYPE amdgpu_gtt_used_bytes gauge"
     echo "# HELP amdgpu_gtt_total_bytes GTT total"
     echo "# TYPE amdgpu_gtt_total_bytes gauge"
@@ -74,26 +74,29 @@ read_val() {
                 echo "amdgpu_power_average_watts{card=\"${card}\"} ${power_w}"
             fi
 
-            # Clocks: freq1/freq2 в Hz (kernel)
+            # Clocks: freq1 в Hz (kernel hwmon).
+            # На Strix Halo (gfx1151) unified memory → нет отдельного freq2 (mclk).
+            # Verified on real hardware 2026-05-19 — only freq1_input exists.
             sclk=$(read_val "${hwmon}/freq1_input")
             [[ -n "${sclk}" ]] && echo "amdgpu_sclk_hz{card=\"${card}\"} ${sclk}"
-
-            mclk=$(read_val "${hwmon}/freq2_input")
-            [[ -n "${mclk}" ]] && echo "amdgpu_mclk_hz{card=\"${card}\"} ${mclk}"
         done
 
         # GPU busy: gpu_busy_percent (0-100)
         busy=$(read_val "${device}/gpu_busy_percent")
         [[ -n "${busy}" ]] && echo "amdgpu_gpu_busy_percent{card=\"${card}\"} ${busy}"
 
-        # VRAM used/total (bytes)
+        # VRAM used/total (bytes) — на Strix Halo это маленький UMA Frame Buffer (~512 MB).
         vram_used=$(read_val "${device}/mem_info_vram_used")
         [[ -n "${vram_used}" ]] && echo "amdgpu_vram_used_bytes{card=\"${card}\"} ${vram_used}"
 
         vram_total=$(read_val "${device}/mem_info_vram_total")
         [[ -n "${vram_total}" ]] && echo "amdgpu_vram_total_bytes{card=\"${card}\"} ${vram_total}"
 
-        # GTT used/total (unified memory pages for GPU — критично для Strix Halo)
+        # Visible VRAM (CPU-mappable subset) — verified exists on gfx1151
+        vis_vram_used=$(read_val "${device}/mem_info_vis_vram_used")
+        [[ -n "${vis_vram_used}" ]] && echo "amdgpu_vis_vram_used_bytes{card=\"${card}\"} ${vis_vram_used}"
+
+        # GTT used/total (unified memory pages для GPU — основной storage на Strix Halo)
         gtt_used=$(read_val "${device}/mem_info_gtt_used")
         [[ -n "${gtt_used}" ]] && echo "amdgpu_gtt_used_bytes{card=\"${card}\"} ${gtt_used}"
 

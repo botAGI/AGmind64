@@ -2,11 +2,16 @@
 # Override per-host через host_vars/<host>.yml.
 
 # ---- Platform requirements ----
+# Verified 2026-05-19 (docs/SETUP_ROCM_STRIX_HALO.md):
+# - ROCm 7.1.1 — first official gfx1151 support; recommend ≥7.2.0
+# - linux-firmware 20251125 регрессия на gfx1151, fixed в 20260110
+# - kernel: 6.18.4+ или Ubuntu HWE 6.17.0-19+
 agmind_kernel_min: "6.18.4"
 agmind_kernel_hwe_min: "6.17.0-19"
 agmind_mesa_min: "25.2.8"
 agmind_mesa_recommended: "26.0.0"
 agmind_rocm_min: "7.2.0"
+agmind_rocm_recommended: "7.2.3"  # latest stable per AMD repo на 2026-04-30
 agmind_firmware_min: "20260110"
 
 # ---- Strix Halo specifics ----

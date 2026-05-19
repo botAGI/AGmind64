@@ -5,6 +5,7 @@
 #
 # Базовый образ: ROCm 7.2-runtime (не 7.0-complete — крашится gfx1151,
 # не 7.2-complete — 20-30 GB для prod runtime ≤10 GB).
+# Latest stable: 7.2.3 (2026-04-30). См. docs/SETUP_ROCM_STRIX_HALO.md.
 # Pinned digest заполнить при первом успешном CI прогоне:
 #   docker buildx imagetools inspect rocm/dev-ubuntu-24.04:7.2-runtime --raw | jq .config.digest
 #
@@ -51,6 +52,9 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 # PyTorch ROCm: ОБЯЗАТЕЛЬНО AMD nightly index для gfx1151. Stock
 # pytorch.org wheels на gfx1151 дают 'HIP error: invalid device function'.
+# URL verified HTTP 200 на 2026-05-19 (last-modified тот же день — actively maintained).
+# Альтернатива: v2-staging/gfx1151/ (bleeding-edge, но cap 64GB memory).
+# ⚠️ Nightly URL может стать недоступным — если build fails, попробовать stable rocm/pytorch.
 RUN pip install --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ --pre \
         torch torchaudio torchvision
 
