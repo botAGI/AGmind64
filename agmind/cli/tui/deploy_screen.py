@@ -256,3 +256,7 @@ class DeployProgressScreen(Screen[DeployResult]):
     def action_dismiss_if_done(self) -> None:
         if self.result is not None:
             self.dismiss(self.result)
+
+
+# Re-export для тестов / clear public API
+__all__ = ["DeployProgressScreen"]

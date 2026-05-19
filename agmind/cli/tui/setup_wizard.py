@@ -364,18 +364,35 @@ class AgmindSetupApp(App[SetupState | None]):
             return
 
         self.result_state = state
+        user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
 
-        # Phase J.1.5: при auto_deploy=True — push DeployProgressScreen с
-        # live прогрессом. Иначе — exit (back to shell с next-steps box).
+        # Phase J.1.6: всё в одном TUI app. Apply → (deploy progress?) → SummaryScreen → quit.
         if self.auto_deploy:
             from agmind.cli.tui.deploy_screen import DeployProgressScreen
-            user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
+            from agmind.cli.tui.summary_screen import SummaryScreen
 
-            def _after_deploy(result: object) -> None:
-                # DeployProgressScreen returns DeployResult; attach к state
-                if result is not None:
-                    state.__dict__["_deploy_result"] = result
-                self.exit(state)
+            def _after_deploy(deploy_result: object) -> None:
+                # Attach result к state для typer post-exit
+                if deploy_result is not None:
+                    state.__dict__["_deploy_result"] = deploy_result
+                # Push SummaryScreen (success или failure) внутри TUI
+                from agmind.deploy.runner import DeployResult as _DR
+                mode = "deploy_success" if (
+                    isinstance(deploy_result, _DR) and deploy_result.success
+                ) else "deploy_failure"
+                self.push_screen(
+                    SummaryScreen(
+                        mode=mode,
+                        domain=state.domain,
+                        profiles=state.profiles,
+                        backend=state.backend,
+                        model_tier=state.model_tier,
+                        state_path=STATE_PATH,
+                        token_path=TOKEN_PATH,
+                        install_dir=user_stack_dir,
+                        deploy_result=deploy_result if isinstance(deploy_result, _DR) else None,
+                    )
+                )
 
             self.push_screen(
                 DeployProgressScreen(
@@ -386,8 +403,22 @@ class AgmindSetupApp(App[SetupState | None]):
                 callback=_after_deploy,
             )
         else:
-            # Exit TUI — typer command снаружи покажет finals + next-steps box
-            self.exit(state)
+            # Manual deploy mode — push SummaryScreen с next-steps инструкциями.
+            # User читает internal TUI summary → нажимает Close → exit.
+            from agmind.cli.tui.summary_screen import SummaryScreen
+
+            self.push_screen(
+                SummaryScreen(
+                    mode="next_steps",
+                    domain=state.domain,
+                    profiles=state.profiles,
+                    backend=state.backend,
+                    model_tier=state.model_tier,
+                    state_path=STATE_PATH,
+                    token_path=TOKEN_PATH,
+                    install_dir=user_stack_dir,
+                )
+            )
 
 
 def run_setup_wizard(

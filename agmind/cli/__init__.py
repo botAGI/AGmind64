@@ -256,11 +256,8 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         deploy запускается отдельной командой (показывается в финальном box).
         Используй `--deploy` чтобы сразу применить после wizard.
         """
-        from rich.console import Console
-        from rich.panel import Panel
-
         from agmind.cli.tui import run_setup_wizard
-        from agmind.cli.tui.setup_wizard import STATE_PATH, TOKEN_PATH, SetupState
+        from agmind.cli.tui.setup_wizard import STATE_PATH, SetupState
 
         initial: SetupState | None = None
         if from_state is not None and from_state.exists():
@@ -276,68 +273,21 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             typer.echo("Setup cancelled.")
             raise typer.Exit(code=1)
 
-        # User-writable stack dir (no sudo) — для quick test mode.
-        # Production deploy идёт в /opt/agmind/ через Ansible.
-        user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
-
-        # Big visual summary с next-steps (видно в shell после TUI exit)
-        console = Console()
-        profiles_csv = ",".join(result.profiles)
-        deploy_cmd = (
-            f"agmind deploy --apply \\\n"
-            f"  --domain {result.domain} \\\n"
-            f"  --profile {profiles_csv} \\\n"
-            f"  --install-dir {user_stack_dir} \\\n"
-            f"  --no-prompt"
-        )
-        ansible_cmd = (
-            f"sudo ansible-playbook ansible/install.yml --extra-vars \\\n"
-            f"  'agmind_domain={result.domain} "
-            f"agmind_cf_api_token=$(cat {TOKEN_PATH}) "
-            f"agmind_profiles=[{profiles_csv}]'"
-        )
-        panel = Panel.fit(
-            f"""[bold green]✓ Wizard saved your config[/bold green]
-
-[cyan]State:[/cyan]     {STATE_PATH}
-[cyan]Token:[/cyan]     {TOKEN_PATH} ([dim]chmod 600[/dim])
-[cyan]Domain:[/cyan]    [bold]{result.domain}[/bold]
-[cyan]Profiles:[/cyan]  {profiles_csv}
-[cyan]Backend:[/cyan]   {result.backend}
-[cyan]Tier:[/cyan]      {result.model_tier}
-
-[yellow]━━━━━━ Next steps ━━━━━━[/yellow]
-
-[bold]Option A[/bold] — quick test (только Docker, без system services):
-
-  [white]{deploy_cmd}[/white]
-
-[bold]Option B[/bold] — full deploy через Ansible (systemd + firewall + secrets dir):
-
-  [white]{ansible_cmd}[/white]
-
-[dim]Apply ≠ deploy.  Wizard это конфигуратор; deploy запускается явно
-чтобы ты видел что разворачивается. Используй --deploy флаг для auto.[/dim]
-""",
-            title="AGmindx86 — Setup Complete",
-            border_style="green",
-            padding=(1, 2),
-        )
-        console.print(panel)
-
-        # Если deploy=True — DeployProgressScreen уже отработал в TUI.
-        # Result содержит deploy_result attribute через __dict__.
-        if deploy:
-            deploy_result = getattr(result, "_deploy_result", None)
-            if deploy_result is None:
-                console.print("[yellow]Deploy result not captured.[/yellow]")
-                raise typer.Exit(code=1)
-            console.print(
-                f"\n[bold {'green' if deploy_result.success else 'red'}]"
-                f"{'✓' if deploy_result.success else '✗'} {deploy_result.message}"
-                f"[/bold {'green' if deploy_result.success else 'red'}]"
+        # Phase J.1.6: всё показывается внутри TUI (SummaryScreen). Здесь —
+        # минимальный shell echo + exit code на основе deploy_result если был.
+        # User уже видел full summary в TUI.
+        deploy_result = getattr(result, "_deploy_result", None)
+        if deploy_result is not None:
+            # Auto-deploy mode — exit code reflects result
+            typer.echo(
+                f"\n{'✓' if deploy_result.success else '✗'} {deploy_result.message}"
             )
             raise typer.Exit(code=0 if deploy_result.success else 1)
+        # Wizard-only mode — user уже видел next-steps в TUI SummaryScreen
+        typer.echo(
+            f"\n✓ Config saved to {STATE_PATH}. "
+            f"Use `agmind setup --deploy` to apply, или см. инструкции в TUI summary."
+        )
 
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(
