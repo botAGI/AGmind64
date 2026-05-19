@@ -1,3 +1,0 @@
-# AGMind Backup Cron Schedule
-# Installed by install.sh — do not edit manually
-__BACKUP_SCHEDULE__ /opt/agmind/scripts/backup.sh >> /var/log/agmind-backup.log 2>&1

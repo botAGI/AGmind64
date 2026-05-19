@@ -1,1 +1,0 @@
-../lib/detect.sh
