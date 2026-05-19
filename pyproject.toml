@@ -116,3 +116,5 @@ markers = [
   "integration: requires real hardware",
 ]
 addopts = "-ra --strict-markers"
+# Phase J: pytest-asyncio для TUI tests (Textual Pilot async API)
+asyncio_mode = "auto"

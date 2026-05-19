@@ -236,6 +236,40 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         sys.stdout.write(format_gc_report(reports))
 
+    # ---- setup TUI wizard (Phase J) ----
+    @app.command()
+    def setup(
+        from_state: Path | None = typer.Option(
+            None,
+            "--from-state",
+            help="Load saved state from JSON (non-interactive mode)",
+        ),
+    ) -> None:
+        """Interactive setup wizard (TUI) вместо CLI flags.
+
+        Запрашивает domain, CF API token, profiles, backend в красивом меню.
+        Сохраняет config в /var/lib/agmind/setup-state.json (без секретов).
+        """
+        from agmind.cli.tui import run_setup_wizard
+        from agmind.cli.tui.setup_wizard import SetupState
+
+        initial: SetupState | None = None
+        if from_state is not None and from_state.exists():
+            try:
+                initial = SetupState.from_json(from_state)
+            except Exception as exc:  # noqa: BLE001
+                typer.echo(f"WARNING: failed to load state from {from_state}: {exc}")
+
+        result = run_setup_wizard(initial_state=initial)
+        if result is None:
+            typer.echo("Setup cancelled.")
+            raise typer.Exit(code=1)
+        typer.echo(f"\n✓ Setup complete. State saved to /var/lib/agmind/setup-state.json")
+        typer.echo(f"  Domain:   {result.domain}")
+        typer.echo(f"  Profiles: {', '.join(result.profiles)}")
+        typer.echo(f"  Backend:  {result.backend}")
+        typer.echo(f"  Tier:     {result.model_tier}")
+
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(
         name="service",

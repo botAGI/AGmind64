@@ -1,0 +1,79 @@
+/* Phase J: Textual CSS для AGmindSetupApp. */
+
+Screen {
+    background: $surface;
+}
+
+#title {
+    color: $accent;
+    text-style: bold;
+    padding: 1 2;
+    text-align: center;
+}
+
+#detected-box {
+    border: solid $accent;
+    margin: 1 2;
+    padding: 1 2;
+    height: auto;
+}
+
+#detected-box .label {
+    color: $text-muted;
+}
+
+#detected-box .value {
+    color: $success;
+    text-style: bold;
+}
+
+#form-container {
+    margin: 1 2;
+    padding: 1 2;
+    border: solid $primary;
+    height: auto;
+}
+
+Label.section {
+    text-style: bold underline;
+    margin-top: 1;
+    color: $accent;
+}
+
+Input {
+    margin: 0 0 1 0;
+}
+
+Select {
+    margin: 0 0 1 0;
+}
+
+#profile-checkboxes Checkbox {
+    margin: 0 1;
+}
+
+#button-row {
+    align: center middle;
+    margin: 1 0;
+    height: 3;
+}
+
+#button-row Button {
+    margin: 0 1;
+}
+
+#preview-box {
+    border: solid $warning;
+    padding: 1 2;
+    margin: 1 2;
+    height: 20;
+    overflow: auto;
+}
+
+#status-msg {
+    margin: 1 2;
+    color: $text-muted;
+}
+
+#status-msg.success { color: $success; text-style: bold; }
+#status-msg.error { color: $error; text-style: bold; }
