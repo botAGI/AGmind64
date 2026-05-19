@@ -2,7 +2,8 @@
 # AGmind base image — общий x86-64 слой для CPU / Vulkan / ROCm backends.
 # Pinned digest должен быть populated при первом полном CI прогоне:
 #   docker buildx imagetools inspect ubuntu:24.04 --raw | jq .config.digest
-FROM --platform=linux/amd64 ubuntu:24.04@sha256:REPLACE_WITH_DIGEST AS base
+# Pinned digest verified 2026-05-19 via `docker manifest inspect ubuntu:24.04`
+FROM --platform=linux/amd64 ubuntu:24.04@sha256:cdb5fd928fced577cfecf12c8966e830fcdf42ee481fb0b91904eeddc2fe5eff AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \

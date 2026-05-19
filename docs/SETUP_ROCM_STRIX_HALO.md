@@ -57,17 +57,23 @@ dpkg -l linux-firmware  # убедиться что версия > 20260110
 sudo reboot
 ```
 
-## Verify (после reboot)
+## Verify (после reboot ИЛИ setfacl workaround)
 
 ```bash
-# Expected output (real Strix Halo, ROCm 7.2.3):
+# Если только что закончил install и не делал reboot —
+# render group membership не активна в текущей login session.
+# Workaround без reboot:
+sudo setfacl -m u:$USER:rw /dev/kfd
+sudo setfacl -m u:$USER:rw /dev/dri/renderD128
+
+# Expected output (real Strix Halo, ROCm 7.2.3 — verified 2026-05-19):
 rocminfo | grep -E "gfx1151|Agent|ROCk"
 #   ROCk module version 6.16.13 is loaded
-#   Agent 2: gfx1151 (GPU)
+#   Agent 1: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (CPU)
+#   Agent 2: gfx1151 (GPU) ← вот это main target
 #     Name: gfx1151
 #     ISAs: amdgcn-amd-amdhsa--gfx1151, amdgcn-amd-amdhsa--gfx11-generic
-#     Compute Unit: 40
-#     Max Clock 2900 MHz
+#   Agent 3: RyzenAI-npu5 (NPU bonus, не используем пока)
 
 # rocm-smi работает (VRAM 0% expected — APU не имеет dedicated VRAM)
 rocm-smi
@@ -76,6 +82,40 @@ rocm-smi
 # Сломан на gfx1151 (ROCm/ROCm#6035, открыт 15 Mar 2026, статус: triage без фикса).
 # Все метрики возвращают N/A кроме EDGE temp.
 # AGmindx86 использует scripts/amdgpu_textfile.sh вместо amd-smi (R13).
+```
+
+## Real install log (2026-05-19, our Strix Halo):
+
+```bash
+# 1. wget + dpkg прошли OK
+wget https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/noble/amdgpu-install_7.2.3.70203-1_all.deb
+sudo apt install -y ./amdgpu-install_7.2.3.70203-1_all.deb && sudo apt update
+
+# 2. amdgpu-install --usecase=rocm выдал conflict с Ubuntu stock rocminfo 5.7
+# Fix: forcefully upgrade rocminfo из AMD repo
+sudo apt install -y --allow-downgrades rocminfo=1.0.0.70203-90~24.04
+
+# 3. PATH setup — rocminfo ставится в /opt/rocm-7.2.3/bin/, НЕ в /usr/local/bin
+# Делаем persistent через /etc/profile.d + symlinks:
+sudo tee /etc/profile.d/rocm.sh > /dev/null <<EOF
+export PATH=\$PATH:/opt/rocm-7.2.3/bin
+export LD_LIBRARY_PATH=/opt/rocm-7.2.3/lib:/opt/rocm-7.2.3/lib64:\${LD_LIBRARY_PATH:-}
+export ROCM_PATH=/opt/rocm-7.2.3
+export HIP_PATH=/opt/rocm-7.2.3
+EOF
+sudo chmod +x /etc/profile.d/rocm.sh
+
+echo "/opt/rocm-7.2.3/lib" | sudo tee /etc/ld.so.conf.d/rocm.conf
+echo "/opt/rocm-7.2.3/lib64" | sudo tee -a /etc/ld.so.conf.d/rocm.conf
+sudo ldconfig
+
+sudo ln -sf /opt/rocm-7.2.3/bin/rocminfo /usr/local/bin/rocminfo
+sudo ln -sf /opt/rocm-7.2.3/bin/rocm-smi /usr/local/bin/rocm-smi
+
+# 4. После usermod -aG render,video — для immediate access без reboot:
+sudo setfacl -m u:$USER:rw /dev/kfd /dev/dri/renderD128
+
+# Result: pytest tests/compute/test_contract.py -k rocm → PASSED
 ```
 
 ## Verify в AGmind

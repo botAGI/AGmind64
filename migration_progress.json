@@ -318,17 +318,11 @@
     {
       "id": "DEF-ROCM-VERSION-GFX1151",
       "found_at": "2026-05-19T17:30:00Z",
+      "resolved_at": "2026-05-19T19:00:00Z",
+      "status": "resolved",
       "found_during": "Phase H' post-install verify",
-      "description": "Ubuntu 24.04 default ROCm 5.7.1 НЕ поддерживает gfx1151 (Strix Halo). Минимум — ROCm 7.1.1, рекомендованный stable — 7.2.3 (релиз 2026-04-30, verified в репо AMD).",
-      "fix_proposal": "См. полный гайд `docs/SETUP_ROCM_STRIX_HALO.md`. Краткая последовательность (URLs verified HTTP 200): `wget https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/noble/amdgpu-install_7.2.3.70203-1_all.deb && sudo apt install ./amdgpu-install_7.2.3.70203-1_all.deb && sudo apt update && sudo apt install -y linux-headers-$(uname -r) amdgpu-dkms rocm linux-firmware && sudo reboot`. После reboot: `rocminfo | grep gfx1151`.",
-      "severity": "medium",
-      "blocks": "ROCmBackend functional tests (Vulkan primary path работает — main fallback)",
-      "research_sources": [
-        "repo.radeon.com/amdgpu-install/7.2.3/ubuntu/noble/amdgpu-install_7.2.3.70203-1_all.deb (curl -I → HTTP 200)",
-        "ROCm/ROCm#6035 (amd-smi на gfx1151 still broken — наш R13 textfile collector это компенсирует)",
-        "rocm.docs.amd.com/en/latest/how-to/system-optimization/strixhalo.html",
-        "tinycomputers.io ROCm 7.0→7.2 upgrade guide"
-      ]
+      "resolution": "ROCm 7.2.3 installed на real Strix Halo. rocminfo показывает Agent 2: gfx1151 + ISAs amdgcn-amd-amdhsa--gfx1151. test_rocm_backend_available_if_rocminfo_gfx1151 PASSED. См. docs/SETUP_ROCM_STRIX_HALO.md::Real install log.",
+      "notes": "amdgpu-install --usecase=rocm выдал conflict с Ubuntu stock rocminfo 5.7. Fix: --allow-downgrades rocminfo=1.0.0.70203-90~24.04. PATH установлен через /etc/profile.d/rocm.sh + ldconfig + symlinks. Setfacl /dev/kfd /dev/dri/renderD128 для immediate access без reboot (render group membership активируется при relogin)."
     }
   ],
   "new_r_recons": [
