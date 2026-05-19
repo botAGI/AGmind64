@@ -244,14 +244,23 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             "--from-state",
             help="Load saved state from JSON (non-interactive mode)",
         ),
+        deploy: bool = typer.Option(
+            False,
+            "--deploy",
+            help="Сразу запустить `agmind deploy --apply` после wizard exit",
+        ),
     ) -> None:
-        """Interactive setup wizard (TUI) вместо CLI flags.
+        """Interactive setup wizard (TUI). Wizard собирает config + token.
 
-        Запрашивает domain, CF API token, profiles, backend в красивом меню.
-        Сохраняет config в /var/lib/agmind/setup-state.json (без секретов).
+        После Apply config сохраняется в ~/.local/share/agmind/. Реальный
+        deploy запускается отдельной командой (показывается в финальном box).
+        Используй `--deploy` чтобы сразу применить после wizard.
         """
+        from rich.console import Console
+        from rich.panel import Panel
+
         from agmind.cli.tui import run_setup_wizard
-        from agmind.cli.tui.setup_wizard import SetupState
+        from agmind.cli.tui.setup_wizard import STATE_PATH, TOKEN_PATH, SetupState
 
         initial: SetupState | None = None
         if from_state is not None and from_state.exists():
@@ -264,11 +273,70 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         if result is None:
             typer.echo("Setup cancelled.")
             raise typer.Exit(code=1)
-        typer.echo(f"\n✓ Setup complete. State saved to /var/lib/agmind/setup-state.json")
-        typer.echo(f"  Domain:   {result.domain}")
-        typer.echo(f"  Profiles: {', '.join(result.profiles)}")
-        typer.echo(f"  Backend:  {result.backend}")
-        typer.echo(f"  Tier:     {result.model_tier}")
+
+        # User-writable stack dir (no sudo) — для quick test mode.
+        # Production deploy идёт в /opt/agmind/ через Ansible.
+        user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
+
+        # Big visual summary с next-steps (видно в shell после TUI exit)
+        console = Console()
+        profiles_csv = ",".join(result.profiles)
+        deploy_cmd = (
+            f"agmind deploy --apply \\\n"
+            f"  --domain {result.domain} \\\n"
+            f"  --profile {profiles_csv} \\\n"
+            f"  --install-dir {user_stack_dir} \\\n"
+            f"  --no-prompt"
+        )
+        ansible_cmd = (
+            f"sudo ansible-playbook ansible/install.yml --extra-vars \\\n"
+            f"  'agmind_domain={result.domain} "
+            f"agmind_cf_api_token=$(cat {TOKEN_PATH}) "
+            f"agmind_profiles=[{profiles_csv}]'"
+        )
+        panel = Panel.fit(
+            f"""[bold green]✓ Wizard saved your config[/bold green]
+
+[cyan]State:[/cyan]     {STATE_PATH}
+[cyan]Token:[/cyan]     {TOKEN_PATH} ([dim]chmod 600[/dim])
+[cyan]Domain:[/cyan]    [bold]{result.domain}[/bold]
+[cyan]Profiles:[/cyan]  {profiles_csv}
+[cyan]Backend:[/cyan]   {result.backend}
+[cyan]Tier:[/cyan]      {result.model_tier}
+
+[yellow]━━━━━━ Next steps ━━━━━━[/yellow]
+
+[bold]Option A[/bold] — quick test (только Docker, без system services):
+
+  [white]{deploy_cmd}[/white]
+
+[bold]Option B[/bold] — full deploy через Ansible (systemd + firewall + secrets dir):
+
+  [white]{ansible_cmd}[/white]
+
+[dim]Apply ≠ deploy.  Wizard это конфигуратор; deploy запускается явно
+чтобы ты видел что разворачивается. Используй --deploy флаг для auto.[/dim]
+""",
+            title="AGmindx86 — Setup Complete",
+            border_style="green",
+            padding=(1, 2),
+        )
+        console.print(panel)
+
+        if deploy:
+            console.print("\n[bold yellow]→ Running deploy now (--deploy flag) ...[/bold yellow]\n")
+            from agmind.cli.deploy_cmd import cmd_deploy
+
+            rc = cmd_deploy(
+                profiles=result.profiles,
+                install_dir=user_stack_dir,
+                domain=result.domain,
+                apply=True,
+                no_prompt=True,
+                healthcheck_timeout=300,
+                verbose=False,
+            )
+            raise typer.Exit(code=rc)
 
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(

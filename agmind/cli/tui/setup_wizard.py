@@ -35,7 +35,11 @@ from agmind.log import logger
 
 log = logger(__name__)
 
-STATE_PATH = Path("/var/lib/agmind/setup-state.json")
+# User-writable locations (no sudo нужен для setup wizard).
+# Ansible playbook потом копирует token в /var/lib/agmind/secrets/cf_dns_api_token.
+_USER_DATA_DIR = Path.home() / ".local" / "share" / "agmind"
+STATE_PATH = _USER_DATA_DIR / "setup-state.json"
+TOKEN_PATH = _USER_DATA_DIR / "cf_dns_api_token"
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 
 
@@ -340,21 +344,24 @@ class AgmindSetupApp(App[SetupState | None]):
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 
-        # Save state (excluded cf_api_token)
+        # Save state (excluded cf_api_token) к ~/.local/share/agmind/
         try:
             state.to_json(STATE_PATH)
         except OSError as exc:
-            self._set_status(f"⚠️  не смог записать state file: {exc}", kind="error")
-            # not blocking — продолжаем
+            self._set_status(f"⚠️ couldn't save state: {exc}", kind="error")
+            return
+
+        # Save CF token в отдельный файл с chmod 600
+        try:
+            TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            TOKEN_PATH.write_text(state.cf_api_token, encoding="utf-8")
+            TOKEN_PATH.chmod(0o600)
+        except OSError as exc:
+            self._set_status(f"⚠️ couldn't save token: {exc}", kind="error")
+            return
 
         self.result_state = state
-        self._set_status(
-            f"✓ Готово. Запусти: ansible-playbook ansible/install.yml "
-            f"--extra-vars 'agmind_domain={state.domain} "
-            f"agmind_cf_api_token=<token> "
-            f"agmind_profiles=[{','.join(state.profiles)}]'",
-            kind="success",
-        )
+        # Exit TUI — typer command снаружи покажет finals + next-steps box
         self.exit(state)
 
 
