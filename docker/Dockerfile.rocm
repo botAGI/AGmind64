@@ -3,11 +3,14 @@
 # Для GDN-моделей, long-context pp, concurrent batch ≥16, M2 tool calling.
 # См. AGMIND_MIGRATION_SPEC.md §1.2.2.
 #
-# Базовый образ: ROCm 7.2-runtime (не 7.0-complete — крашится gfx1151,
-# не 7.2-complete — 20-30 GB для prod runtime ≤10 GB).
-# Latest stable: 7.2.3 (2026-04-30). См. docs/SETUP_ROCM_STRIX_HALO.md.
-# Pinned digest заполнить при первом успешном CI прогоне:
-#   docker buildx imagetools inspect rocm/dev-ubuntu-24.04:7.2-runtime --raw | jq .config.digest
+# Базовый образ: ROCm 7.2.3-complete (build stage — нужен HIP SDK + LLVM).
+# 6.89 GB, содержит rocm-hip-sdk + rocblas + hipblas + headers + cmake.
+# Verified 2026-05-19 через Docker Hub registry-1 manifest API.
+# Tag schema AMD: MAJOR.MINOR.PATCH[-complete]. Не существует `:X.Y-runtime`
+# (community guides upstream используют RPM/Fedora base — см. kyuz0 toolboxes).
+#
+# Alternative runtime tag (1.13 GB, без LLVM):
+#   rocm/dev-ubuntu-24.04:7.2.3@sha256:8ab378c7264c7e15496f548392c518a6b2feeb322d6233364c6c2ebc8e7ffb42
 #
 # Запуск:
 #   docker run --rm \
@@ -18,7 +21,7 @@
 #     -e AGMIND_BACKEND=rocm \
 #     agmind-rocm:latest
 # (rootless Docker не работает с ROCm на cgroups v2 — ROCm/#2860.)
-FROM --platform=linux/amd64 rocm/dev-ubuntu-24.04:7.2-runtime@sha256:REPLACE_WITH_DIGEST
+FROM --platform=linux/amd64 rocm/dev-ubuntu-24.04:7.2.3-complete@sha256:ec1b59bf75ec1122e7a091c0be82301ba12458b038499ef96a5c115876bd78d2
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -66,6 +69,7 @@ ENV CMAKE_ARGS="-DGGML_HIP=ON \
                 -DGGML_HIP_NO_VMM=ON \
                 -DGGML_HIP_ROCWMMA_FATTN=ON \
                 -DGGML_HIP_MMQ_MFMA=ON \
+                -DLLAMA_HIP_UMA=ON \
                 -DGGML_NATIVE=OFF \
                 -DCMAKE_BUILD_TYPE=Release" \
     FORCE_CMAKE=1 \
