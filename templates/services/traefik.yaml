@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: traefik
+image: traefik:v3.7.1
+tier: edge
+purpose: Reverse proxy + TLS termination + middleware chains (ADR-0006)
+owner: agmind-core
+profiles:
+- core
+- full
+ports:
+- 80:80
+- 443:443
+- 127.0.0.1:9100:9100
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+- /var/lib/agmind/traefik/dynamic:/etc/traefik/dynamic:ro
+- /var/lib/agmind/traefik/letsencrypt:/letsencrypt
+env:
+  CF_DNS_API_TOKEN_FILE: /run/secrets/cf_dns_api_token
+command:
+- --providers.docker=true
+- --providers.docker.exposedbydefault=false
+- --providers.file.directory=/etc/traefik/dynamic
+- --providers.file.watch=true
+- --entrypoints.web.address=:80
+- --entrypoints.web.http.redirections.entrypoint.to=websecure
+- --entrypoints.web.http.redirections.entrypoint.scheme=https
+- --entrypoints.websecure.address=:443
+- --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
+- --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=600s
+- --entrypoints.websecure.transport.respondingTimeouts.idleTimeout=600s
+- --entrypoints.metrics.address=:9100
+- --metrics.prometheus=true
+- --metrics.prometheus.entryPoint=metrics
+- --certificatesresolvers.le.acme.email=ops@agmind.dev
+- --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+- --certificatesresolvers.le.acme.dnschallenge=true
+- --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+- --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=30
+- --log.level=INFO
+- --accesslog=true
+resources:
+  cpus: 1.0
+  mem_limit: 512m
+health:
+  test:
+  - CMD
+  - traefik
+  - healthcheck
+  - --ping
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 15s
+observability:
+  prometheus_scrape: true
+  metrics_port: 9100

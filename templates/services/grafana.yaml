@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: grafana
+image: grafana/grafana:13.0.1+security-01
+digest: 0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a
+tier: ops
+purpose: Metrics + logs visualization — Grafana 13 (2026-05-12)
+profiles:
+- observability
+ports:
+- 127.0.0.1:3002:3000
+volumes:
+- /etc/agmind/grafana:/etc/grafana/provisioning:ro
+- /var/lib/agmind/grafana:/var/lib/grafana
+env:
+  GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+  GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+depends_on:
+- prometheus
+- loki
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+routing:
+  host: grafana.agmind.dev
+  healthcheck_path: /api/health
+observability:
+  prometheus_scrape: true

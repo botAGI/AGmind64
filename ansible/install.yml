@@ -1,0 +1,115 @@
+---
+# AGmind main install playbook.
+# Заменяет старый install.sh из legacy AGmind (1700+ LOC bash).
+#
+# Usage (interactive):
+#   ansible-playbook install.yml
+#     # запросит публичный домен + Cloudflare API token
+#
+# Non-interactive (CI / automation):
+#   ansible-playbook install.yml --extra-vars "agmind_domain=mycompany.com agmind_cf_api_token=$CF_TOKEN"
+#
+# Selective tags:
+#   ansible-playbook install.yml -t bootstrap              # только bootstrap
+#   ansible-playbook install.yml -t services               # только services
+#   ansible-playbook install.yml --check                   # dry run
+
+- name: AGmind preflight — verify Strix Halo readiness
+  hosts: agmind_nodes
+  become: true
+  gather_facts: true
+  tags: [bootstrap, preflight]
+  vars_prompt:
+    - name: agmind_domain
+      prompt: |
+        Публичный домен для Traefik TLS (e.g. agmind.example.com).
+        НЕ оставляй пустым — Traefik не выдаст серт на placeholder.
+        См. docs/SETUP_CLOUDFLARE_DOMAIN.md.
+      private: false
+
+    - name: agmind_cf_api_token
+      prompt: |
+        Cloudflare API token (Zone:DNS:Edit scope).
+        Создать: https://dash.cloudflare.com/profile/api-tokens
+      private: true
+  pre_tasks:
+    - name: Validate domain format
+      ansible.builtin.assert:
+        that:
+          - agmind_domain is defined
+          - agmind_domain | length > 3
+          - "'.' in agmind_domain"
+          - agmind_domain != 'agmind.dev'
+        fail_msg: "agmind_domain '{{ agmind_domain }}' invalid — нужен реальный public domain (содержит '.', не дефолтный placeholder)."
+
+    - name: Validate CF API token presence
+      ansible.builtin.assert:
+        that:
+          - agmind_cf_api_token is defined
+          - agmind_cf_api_token | length >= 20
+        fail_msg: "Cloudflare API token не задан / слишком короткий (<20 chars). Создай токен на https://dash.cloudflare.com/profile/api-tokens"
+      no_log: true
+  roles:
+    - role: preflight
+
+- name: AGmind bootstrap — apt packages, kernel, groups
+  hosts: agmind_nodes
+  become: true
+  tags: [bootstrap]
+  roles:
+    - role: bootstrap
+
+- name: AGmind Strix Halo tuning — BIOS hints, GRUB, AMDVLK cleanup
+  hosts: agmind_nodes
+  become: true
+  tags: [bootstrap, strix-halo]
+  roles:
+    - role: strix_halo
+      when: ansible_facts.processor | join(' ') is search('Ryzen AI Max', ignorecase=true)
+            or (ansible_facts.devices is defined
+                and ansible_facts.lspci | default('') is search('1002:1586'))
+
+- name: AGmind compute layer — Docker + agmind python package
+  hosts: agmind_nodes
+  become: true
+  tags: [bootstrap, agmind-core]
+  roles:
+    - role: docker
+    - role: agmind_python
+
+- name: AGmind LLM models — download GGUFs per tier
+  hosts: agmind_master
+  become: true
+  tags: [models]
+  roles:
+    - role: models
+
+- name: AGmind services — render compose + bring up profile
+  hosts: agmind_master
+  become: true
+  tags: [services]
+  roles:
+    - role: services
+
+- name: AGmind monitoring — Prometheus + Grafana + Loki + Alloy
+  hosts: agmind_master
+  become: true
+  tags: [observability]
+  roles:
+    - role: observability
+      when: "'observability' in agmind_profiles"
+
+- name: AGmind security hardening — UFW, fail2ban, Authelia (опц.)
+  hosts: agmind_nodes
+  become: true
+  tags: [security]
+  roles:
+    - role: security
+      when: "'security' in agmind_profiles"
+
+- name: AGmind post-install smoke + handoff
+  hosts: agmind_master
+  become: false
+  tags: [verify]
+  roles:
+    - role: smoke_test

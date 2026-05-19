@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: cadvisor
+image: gcr.io/cadvisor/cadvisor:v0.57.0
+tier: ops
+purpose: Per-container metrics (R12 — metric rename in v0.55→v0.57)
+profiles:
+- observability
+ports:
+- 127.0.0.1:8083:8080
+volumes:
+- /:/rootfs:ro
+- /var/run:/var/run:rw
+- /sys:/sys:ro
+- /var/lib/docker/:/var/lib/docker:ro
+resources:
+  cpus: 1.0
+  mem_limit: 512m
+observability:
+  prometheus_scrape: true

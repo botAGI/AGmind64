@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: llama-rerank
+image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
+tier: inference
+purpose: Reranker (bge-reranker-v2-m3) via llama-server pooling=rank
+profiles:
+- core
+ports:
+- 127.0.0.1:8082:8080
+volumes:
+- /var/lib/agmind/models:/models:ro
+env:
+  AMD_VULKAN_ICD: RADV
+devices:
+- /dev/dri
+group_add:
+- video
+- render
+resources:
+  cpus: 4.0
+  mem_limit: 8g
+routing:
+  host: rerank.agmind.dev
+  middleware_chain: chain-llm
+observability:
+  prometheus_scrape: true

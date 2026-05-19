@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: weaviate
+image: semitechnologies/weaviate:1.37.4
+digest: fcd0d4dfe70ed38feb2c12df58f991f3437bdf34ac022d978a48844c3ac86ea0
+tier: storage
+purpose: Alternative vector store — 2026-05-14
+profiles:
+- rag-weaviate
+ports:
+- 127.0.0.1:8090:8080
+volumes:
+- /var/lib/agmind/weaviate:/var/lib/weaviate
+env:
+  DEFAULT_VECTORIZER_MODULE: none
+  AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+  PERSISTENCE_DATA_PATH: /var/lib/weaviate
+resources:
+  cpus: 4.0
+  mem_limit: 8g

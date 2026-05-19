@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: node-exporter
+image: prom/node-exporter:v1.11.1
+digest: e9cff4fc67b1818f8c97adb115b9f12c9a54b533de86765d4a0effc01b357205
+tier: ops
+purpose: Host metrics (CPU/disk/memory/network)
+profiles:
+- observability
+volumes:
+- /:/host:ro,rslave
+resources:
+  cpus: 0.5
+  mem_limit: 256m
+observability:
+  prometheus_scrape: true

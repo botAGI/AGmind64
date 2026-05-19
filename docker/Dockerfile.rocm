@@ -1,0 +1,86 @@
+# syntax=docker/dockerfile:1.7
+# AGmind ROCm/HIP backend — SECONDARY на AMD Strix Halo (gfx1151).
+# Для GDN-моделей, long-context pp, concurrent batch ≥16, M2 tool calling.
+# См. AGMIND_MIGRATION_SPEC.md §1.2.2.
+#
+# Базовый образ: ROCm 7.2-runtime (не 7.0-complete — крашится gfx1151,
+# не 7.2-complete — 20-30 GB для prod runtime ≤10 GB).
+# Pinned digest заполнить при первом успешном CI прогоне:
+#   docker buildx imagetools inspect rocm/dev-ubuntu-24.04:7.2-runtime --raw | jq .config.digest
+#
+# Запуск:
+#   docker run --rm \
+#     --device=/dev/kfd --device=/dev/dri \
+#     --group-add video --group-add render \
+#     --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
+#     --ipc=host --shm-size=16G \
+#     -e AGMIND_BACKEND=rocm \
+#     agmind-rocm:latest
+# (rootless Docker не работает с ROCm на cgroups v2 — ROCm/#2860.)
+FROM --platform=linux/amd64 rocm/dev-ubuntu-24.04:7.2-runtime@sha256:REPLACE_WITH_DIGEST
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTORCH_ROCM_ARCH=gfx1151 \
+    PYTORCH_ALLOC_CONF=expandable_segments:True \
+    TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1 \
+    ROCBLAS_USE_HIPBLASLT=1 \
+    HSA_ENABLE_SDMA=0 \
+    HIP_PLATFORM=amd \
+    MIOPEN_LOG_LEVEL=3 \
+    HIP_VISIBLE_DEVICES=0 \
+    ROCR_VISIBLE_DEVICES=0
+
+# ВАЖНО: HSA_OVERRIDE_GFX_VERSION=11.5.1 НЕ ставится — с AMD nightly
+# gfx1151 wheels (используются ниже) override вызывает subtle bugs на
+# attention/conv kernels (см. R1-pytorch-rocm-docker.md).
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-venv python3-dev \
+        build-essential cmake ninja-build pkg-config git \
+        libnuma1 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip wheel setuptools
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# PyTorch ROCm: ОБЯЗАТЕЛЬНО AMD nightly index для gfx1151. Stock
+# pytorch.org wheels на gfx1151 дают 'HIP error: invalid device function'.
+RUN pip install --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ --pre \
+        torch torchaudio torchvision
+
+# llama-cpp-python с GGML_HIP (gfx1151-specific build).
+# См. R3-llama-cpp-vulkan-hip.md — все CMAKE_ARGS обязательны.
+ENV CMAKE_ARGS="-DGGML_HIP=ON \
+                -DAMDGPU_TARGETS=gfx1151 \
+                -DGPU_TARGETS=gfx1151 \
+                -DGGML_HIP_NO_VMM=ON \
+                -DGGML_HIP_ROCWMMA_FATTN=ON \
+                -DGGML_HIP_MMQ_MFMA=ON \
+                -DGGML_NATIVE=OFF \
+                -DCMAKE_BUILD_TYPE=Release" \
+    FORCE_CMAKE=1 \
+    HIPCXX=/opt/rocm/llvm/bin/clang \
+    HIP_PATH=/opt/rocm
+RUN pip install --no-binary llama-cpp-python "llama-cpp-python>=0.3.23"
+
+# onnxruntime CPU only (onnxruntime-rocm 1.22.x НЕ gfx1151-ready).
+RUN pip install onnxruntime numpy scipy
+
+WORKDIR /opt/agmind
+COPY . /opt/agmind
+RUN pip install -e ".[rocm]"
+
+ENV AGMIND_BACKEND=rocm \
+    AGMIND_ENGINE=llama_cpp
+
+HEALTHCHECK --interval=60s --timeout=15s --start-period=30s --retries=3 \
+    CMD python3 -c "from agmind.compute import get_backend; b = get_backend(); assert b.name == 'rocm'" \
+    || exit 1
+
+ENTRYPOINT ["python3", "-m", "agmind"]

@@ -1,0 +1,71 @@
+# Global defaults applied to all hosts.
+# Override per-host через host_vars/<host>.yml.
+
+# ---- Platform requirements ----
+agmind_kernel_min: "6.18.4"
+agmind_kernel_hwe_min: "6.17.0-19"
+agmind_mesa_min: "25.2.8"
+agmind_mesa_recommended: "26.0.0"
+agmind_rocm_min: "7.2.0"
+agmind_firmware_min: "20260110"
+
+# ---- Strix Halo specifics ----
+agmind_strix_halo:
+  # GRUB cmdline params — 94% of system RAM as GTT pool (per R10)
+  ttm_pages_limit_pct: 0.94
+  amd_iommu_off: true
+  # Vulkan ICD enforcement (Spec §1.2.1)
+  vulkan_icd: RADV
+  radv_icd_path: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+  # AMDVLK files to purge (discontinued AMD 2025-09-15)
+  amdvlk_purge_paths:
+    - /etc/vulkan/icd.d/amd_icd64.json
+    - /etc/vulkan/icd.d/amd_icd32.json
+    - /etc/vulkan/implicit_layer.d/amd_icd64.json
+    - /etc/vulkan/implicit_layer.d/amd_icd32.json
+
+# ---- Docker config ----
+agmind_docker:
+  data_root: /var/lib/docker
+  default_runtime: runc
+  shm_size: 16G
+
+# ---- Per-deployment vars (Phase H'.E follow-up) ----
+# Заполняется через vars_prompt в install.yml, либо --extra-vars для CI.
+# Не задавайте здесь значения по умолчанию — playbook требует явный ввод.
+# agmind_domain: "REQUIRED — публичный домен для Traefik TLS"
+# agmind_cf_api_token: "REQUIRED — CF API token для DNS-01"
+
+# ---- Services registry (Phase H'.B: split files) ----
+# Каждый сервис — отдельный YAML в templates/services/*.yaml через ServiceDescriptor.
+# Старый монолитный services.yaml удалён в Phase H'.E. См. ADR-0005/0006/0008.
+agmind_services_dir: "{{ playbook_dir }}/../templates/services"
+
+# ---- Compose profile selection (Phase H'.B: 5 tiers + alt-profiles) ----
+agmind_profiles:
+  - core                       # llama-llm + llama-embed + llama-rerank + qdrant + traefik
+  - observability              # prometheus + grafana + loki + alloy + alertmanager + exporters
+agmind_profile_default: core
+
+# ---- Network ----
+agmind_lan_only: true
+agmind_mdns_enabled: true
+agmind_mdns_domain: agmind.local
+
+# ---- Secrets policy ----
+agmind_secrets_dir: /var/lib/agmind/secrets
+agmind_credentials_filename: credentials.txt
+agmind_credentials_mode: "0600"
+
+# ---- Reverse proxy (Phase H'.C: Traefik default) ----
+agmind_proxy: traefik  # traefik (default, ADR-0006) | nginx (core-nginx profile) | caddy (core-caddy profile)
+agmind_proxy_http_port: 80
+agmind_proxy_https_port: 443
+
+# ---- LLM models ----
+agmind_models_dir: /var/lib/agmind/models
+agmind_models_tier: auto  # auto | S | M | L | XL | XXL
+agmind_models:
+  embed_default: bge-m3-Q8_0.gguf
+  rerank_default: bge-reranker-v2-m3-Q8_0.gguf
+  # llm_default — выбирается по tier

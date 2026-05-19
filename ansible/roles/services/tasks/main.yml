@@ -1,0 +1,92 @@
+---
+# Render docker-compose.yml через `agmind render compose` (Phase H'.C, ADR-0006).
+# Заменён прежний Jinja2 шаблон typed-Python рендерером на ServiceDescriptor catalog.
+
+# ---- Secret materialization (Phase H'.E follow-up) ----
+- name: Ensure AGmind secrets directory exists
+  ansible.builtin.file:
+    path: /var/lib/agmind/secrets
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Save Cloudflare API token to secret file
+  ansible.builtin.copy:
+    content: "{{ agmind_cf_api_token }}"
+    dest: /var/lib/agmind/secrets/cf_dns_api_token
+    owner: root
+    group: docker
+    mode: "0640"  # readable by docker daemon для secret mount
+  when: agmind_cf_api_token is defined and agmind_cf_api_token | length > 0
+  no_log: true   # ВАЖНО: токен НЕ должен попасть в Ansible stdout / logs
+
+- name: Ensure templates/services exists в install dir
+  ansible.builtin.file:
+    path: "{{ agmind_install_dir }}/templates/services"
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+
+- name: Sync service descriptors (templates/services/*.yaml)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../templates/services/"
+    dest: "{{ agmind_install_dir }}/templates/services/"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
+  notify: recreate compose
+
+- name: Sync service JSON Schema (templates/schemas/service.json)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../templates/schemas/service.json"
+    dest: "{{ agmind_install_dir }}/templates/schemas/service.json"
+    mode: "0644"
+
+- name: Sync Traefik dynamic config (middlewares + transport)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../templates/traefik/dynamic/"
+    dest: "/var/lib/agmind/traefik/dynamic/"
+    mode: "0644"
+  when: agmind_proxy | default('traefik') == 'traefik'
+  notify: recreate compose
+
+- name: Render docker-compose.yml через agmind render compose
+  ansible.builtin.command:
+    cmd: >-
+      {{ agmind_venv }}/bin/agmind render compose
+      --profile {{ agmind_profiles | join(',') }}
+      --domain {{ agmind_domain }}
+      --output {{ agmind_install_dir }}/docker-compose.yml
+  args:
+    chdir: "{{ agmind_install_dir }}"
+  changed_when: true
+  notify: recreate compose
+
+- name: Render .env с secrets (chmod 600)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ agmind_install_dir }}/.env"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0600"
+
+- name: Validate compose config (docker compose --quiet)
+  ansible.builtin.command:
+    cmd: docker compose -f {{ agmind_install_dir }}/docker-compose.yml config --quiet
+  changed_when: false
+  check_mode: false
+
+- name: Pull images
+  ansible.builtin.command:
+    cmd: docker compose -f {{ agmind_install_dir }}/docker-compose.yml pull
+  changed_when: false
+  register: compose_pull
+  failed_when: compose_pull.rc != 0
+
+- name: Bring up services
+  community.docker.docker_compose_v2:
+    project_src: "{{ agmind_install_dir }}"
+    state: present
+    pull: missing

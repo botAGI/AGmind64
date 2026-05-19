@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.7
+# AGmind Vulkan backend — PRIMARY на AMD Strix Halo (gfx1151).
+# См. AGMIND_MIGRATION_SPEC.md §1.2.1 (Vulkan RADV mandatory).
+#
+# Запуск:
+#   docker run --rm \
+#     --device=/dev/dri --group-add video --group-add render \
+#     --security-opt seccomp=unconfined \
+#     -e AGMIND_BACKEND=vulkan \
+#     agmind-vulkan:latest
+ARG BASE_IMAGE=agmind-base:latest
+FROM ${BASE_IMAGE}
+
+# Vulkan runtime + Mesa userspace (RADV) + GL stack для loader + build tools.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        mesa-vulkan-drivers libvulkan1 vulkan-tools \
+        glslc shaderc spirv-tools glslang-tools libvulkan-dev \
+        spirv-headers \
+        libglvnd0 libgl1 libegl1 libegl-mesa0 libglx0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Mesa 26+ через kisak fresh PPA — critical MoE perf fixes (R2 recon).
+RUN add-apt-repository -y ppa:kisak/kisak-mesa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        mesa-vulkan-drivers libvulkan1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# КРИТИЧНО: вычистить AMDVLK ICD/implicit layer (discontinued 2025-09-15,
+# имеет 2 GiB cap который ломает LLM ≥30B dense, см. R2-vulkan-radv-vs-amdvlk.md).
+RUN rm -f \
+        /etc/vulkan/icd.d/amd_icd64.json \
+        /etc/vulkan/icd.d/amd_icd32.json \
+        /etc/vulkan/implicit_layer.d/amd_icd64.json \
+        /etc/vulkan/implicit_layer.d/amd_icd32.json
+
+# Принудительно RADV для всего что запускается в контейнере.
+ENV AMD_VULKAN_ICD=RADV \
+    VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json \
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json \
+    GGML_VK_VISIBLE_DEVICES=0
+
+# PyTorch CPU-only (Vulkan inference — через llama-cpp-python, не torch)
+RUN pip install \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch
+
+# llama-cpp-python с GGML_VULKAN
+ENV CMAKE_ARGS="-DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release" \
+    FORCE_CMAKE=1
+RUN pip install --no-binary llama-cpp-python "llama-cpp-python>=0.3.23"
+
+RUN pip install onnxruntime numpy scipy
+
+COPY . /opt/agmind
+RUN pip install -e ".[vulkan]"
+
+ENV AGMIND_BACKEND=vulkan \
+    AGMIND_ENGINE=llama_cpp
+
+HEALTHCHECK --interval=60s --timeout=15s --start-period=20s --retries=3 \
+    CMD python3 -c "from agmind.compute import get_backend; b = get_backend(); assert b.name == 'vulkan'" \
+    || exit 1
+
+ENTRYPOINT ["python3", "-m", "agmind"]

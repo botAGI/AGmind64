@@ -1,0 +1,21 @@
+# Traefik dynamic config: TLS options (Phase H'.C, ADR-0006).
+#
+# `no-http2` критично для llama-server SSE streaming:
+# EventSource spec требует HTTP/1.1, Traefik по умолчанию включает HTTP/2 на
+# TLS routers — это silently ломает SSE клиентов.
+# См. deep-dive 01 §1 (главный pain point).
+
+tls:
+  options:
+    # Default options: modern TLS, HTTP/2 enabled
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+
+    # Для SSE endpoints — форсируем HTTP/1.1
+    # Применяется через label: traefik.http.routers.X.tls.options=no-http2@file
+    no-http2:
+      minVersion: VersionTLS12
+      sniStrict: true
+      alpnProtocols:
+        - http/1.1

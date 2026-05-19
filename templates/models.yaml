@@ -1,0 +1,310 @@
+# AGmind GGUF model inventory — pinned per tier для Strix Halo (gfx1151).
+# См. agmind/models.py (runtime API), R-llm-models.md (recon),
+# AGMIND_MIGRATION_SPEC.md §1.2.6 (selection rules).
+#
+# Правила:
+#   - НИКАКОГО :latest — pin конкретный quant + filename
+#   - hf_repo:filename должны существовать; verification field обязателен
+#   - sha256 опциональный (HF auto-computes); если есть — добавлять
+#   - tier S/M/L/XL/XXL соответствует §1.4 (S=16GB RAM, M=32GB, L=64GB,
+#     XL=128GB, XXL=128GB+)
+#
+# Verification:
+#   verified-strix     — real bench на gfx1151 (kyuz0/visorcraft/slb350/0xSero/hogeheer499)
+#   verified-llamacpp  — architecture supported в llama.cpp
+#   inferred           — extrapolated from comparable model
+#   unverified         — no Strix data yet
+
+schema_version: 1
+last_updated: "2026-05-19"
+
+llama_cpp_requirements:
+  min_build: b8765          # GDN Vulkan shader + Wave32 FA + graphics queue
+  recommended_build: b9049  # последний verified (hogeheer499 May 2026)
+  min_python_pkg: "0.3.23"  # PyPI 2026-05-11
+  shaderc_pin: "2025.1"     # 2025.2 breaks build (#15344)
+
+llm_tiers:
+  S:
+    description: "16 GB RAM / ~8 GiB GTT — 7-9B models"
+    primary:
+      name: qwen3.5-9b
+      hf_repo: unsloth/Qwen3.5-9B-GGUF
+      filename: Qwen3.5-9B-UD-Q4_K_XL.gguf
+      quant: UD-Q4_K_XL
+      size_gb: 5.97
+      gtt_gb_estimate: 7.5
+      ctx_native: 262144
+      ctx_max: 1010000
+      languages_supported: 201
+      license: apache-2.0
+      verification: inferred
+      backend_preferred: vulkan
+      server_flags: ["-fa", "1", "--no-mmap", "-ub", "2048"]
+    fallback:
+      name: llama2-7b-q4-smoke
+      hf_repo: TheBloke/Llama-2-7B-GGUF
+      filename: llama-2-7b.Q4_K_M.gguf
+      quant: Q4_K_M
+      size_gb: 3.80
+      verification: verified-strix
+      strix_tg: 47.3
+      strix_pp: 1074
+      role: smoke-test-only
+
+  M:
+    description: "32 GB RAM / ~16 GiB GTT — 13-14B dense или 25-27B MoE Q3-Q4"
+    primary:
+      name: gemma-4-26b-a4b-it
+      hf_repo: unsloth/gemma-4-26B-A4B-it-GGUF
+      filename: gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+      quant: UD-Q4_K_M
+      size_gb: 16.9
+      gtt_gb_estimate: 19
+      ctx_native: 262144
+      languages_supported: 140
+      license: apache-2.0
+      verification: verified-strix
+      strix_tg: 52.9
+      strix_pp: 1196
+      backend_preferred: vulkan
+      params_total_b: 25.2
+      params_active_b: 3.8
+      vision_integrated: true
+      vision_token_budgets: [70, 140, 280, 560, 1120]
+    fallback:
+      name: qwen3.6-27b-dense
+      hf_repo: unsloth/Qwen3.6-27B-GGUF
+      filename: Qwen3.6-27B-UD-Q3_K_XL.gguf
+      quant: UD-Q3_K_XL
+      size_gb: 14.5
+      ctx_native: 262144
+      license: apache-2.0
+      verification: verified-strix
+      strix_tg: 12.0
+      strix_pp: 322
+      mtp_capable: true
+      mtp_tg: 29.79
+
+  L:
+    description: "64 GB RAM / ~32 GiB GTT — 27-35B Q4 dense, 30-35B MoE Q4"
+    primary:
+      name: qwen3.6-35b-a3b-moe
+      hf_repo: unsloth/Qwen3.6-35B-A3B-GGUF
+      filename: Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf
+      quant: UD-Q4_K_XL
+      size_gb: 22.4
+      gtt_gb_estimate: 26
+      ctx_native: 262144
+      ctx_max: 1010000
+      license: apache-2.0
+      verification: verified-strix
+      strix_tg: 60
+      strix_pp: 1029
+      backend_preferred: vulkan
+      params_total_b: 35
+      params_active_b: 3
+      architecture: gdn-hybrid
+      requires_llamacpp_build: "b8765"   # GDN Vulkan shader
+    strix_optimized:
+      name: qwen3.6-35b-a3b-strix-dynamic
+      hf_repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      filename: Qwen3.6-35B-A3B-DYNAMIC.gguf
+      quant: DYNAMIC
+      size_gb: 19
+      strix_tg: 64.0
+      strix_pp: 1100
+      verification: verified-strix
+      bench_flags: ["-ngl", "99", "-fa", "1", "-ctk", "q8_0", "-ctv", "q8_0", "-ub", "2048", "-b", "2048"]
+    fallback_coding:
+      name: qwen3-coder-30b-a3b
+      hf_repo: unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF
+      filename: Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf
+      quant: UD-Q4_K_XL
+      size_gb: 17.6
+      verification: verified-strix
+      strix_tg: 96.8   # b9049, hogeheer499
+      strix_pp: 1321
+
+  XL:
+    description: "128 GB RAM / ~96 GiB GTT — 70B dense, 120B MoE"
+    primary:
+      name: gpt-oss-120b
+      hf_repo: unsloth/gpt-oss-120b-GGUF
+      filename: gpt-oss-120b-MXFP4_MOE.gguf
+      quant: MXFP4_MOE
+      size_gb: 62.8
+      gtt_gb_estimate: 68
+      license: apache-2.0
+      verification: verified-strix
+      strix_tg: 48.95   # R3 blog.yifei.sg
+      strix_pp: 339
+      backend_preferred: vulkan
+      params_total_b: 117
+      params_active_b: 5.1
+      mxfp4_native_moe: true
+    fallback_coding:
+      name: qwen3-coder-next-80b-a3b
+      hf_repo: unsloth/Qwen3-Coder-Next-GGUF
+      filename: Qwen3-Coder-Next-UD-Q4_K_XL.gguf
+      quant: UD-Q4_K_XL
+      size_gb: 49.6
+      ctx_native: 262144
+      license: apache-2.0
+      verification: verified-strix
+      strix_tg: 42.7   # visorcraft Q4_K_M
+      strix_pp: 531
+      architecture: gdn-hybrid
+      requires_llamacpp_build: "b8765"
+
+  XXL:
+    description: "128 GB+ RAM / ~110 GiB GTT — 120B+ MoE, Q3"
+    primary:
+      name: minimax-m2.5
+      hf_repo: unsloth/MiniMax-M2.5-GGUF
+      fallback_repo: ubergarm/MiniMax-M2.5-GGUF
+      filename: MiniMax-M2.5-Q3_K_M.gguf
+      quant: Q3_K_M
+      size_gb: 101.76
+      gtt_gb_estimate: 108
+      verification: verified-strix
+      strix_tg: 32.8   # visorcraft
+      strix_pp: 156
+      params_total_b: 228.7
+    note: "Qwen3-235B-A22B Q3 = 17.2 t/s (kyuz0, deprecated by 30B-A3B)"
+
+embedding:
+  primary:
+    name: bge-m3
+    hf_repo: gpustack/bge-m3-GGUF
+    fallback_repo: bbvch-ai/bge-m3-GGUF
+    third_choice: ggml-org/bge-m3-Q8_0-GGUF
+    filename: bge-m3-Q8_0.gguf
+    quant: Q8_0
+    size_gb: 0.635
+    dim: 1024
+    max_ctx: 8192
+    languages_supported: "100+"
+    license: mit
+    verification: verified-strix   # R5
+    server_flags: ["--embeddings", "--pooling", "cls"]
+    port: 8081
+  ab_candidate:
+    name: qwen3-embedding-0.6b
+    hf_repo: Qwen/Qwen3-Embedding-0.6B-GGUF
+    filename: Qwen3-Embedding-0.6B-Q8_0.gguf
+    quant: Q8_0
+    size_gb: 0.639
+    dim_range_mrl: [32, 1024]
+    max_ctx: 32768
+    languages_supported: "100+"
+    license: apache-2.0
+    verification: verified-llamacpp
+    server_flags: ["--embeddings", "--pooling", "last", "-ub", "8192"]
+
+reranker:
+  primary:
+    name: bge-reranker-v2-m3
+    hf_repo: gpustack/bge-reranker-v2-m3-GGUF
+    fallback_repo: klnstpr/bge-reranker-v2-m3-Q8_0-GGUF
+    filename: bge-reranker-v2-m3-Q8_0.gguf
+    quant: Q8_0
+    size_gb: 0.635
+    max_ctx: 8192
+    languages_supported: "100+"
+    license: mit
+    verification: verified-strix
+    server_flags: ["--reranking"]
+    port: 8082
+  ab_candidate:
+    name: qwen3-reranker-0.6b
+    hf_repo: ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF
+    filename: Qwen3-Reranker-0.6B-Q8_0.gguf
+    quant: Q8_0
+    size_gb: 0.639
+    max_ctx: 32768
+    languages_supported: "100+"
+    license: apache-2.0
+    verification: verified-llamacpp
+    known_issues:
+      - "issue #20085: --embedding + --reranking may return zeros"
+      - "verify cls.output.weight mapping in convert_hf_to_gguf.py"
+
+vlm:
+  light:
+    name: qwen2.5-vl-3b
+    hf_repo: Mungert/Qwen2.5-VL-3B-Instruct-GGUF
+    model_filename: Qwen2.5-VL-3B-Instruct-Q8_0.gguf
+    mmproj_filename: Qwen2.5-VL-3B-Instruct-mmproj-f16.gguf
+    quant: Q8_0
+    size_gb: 3.2
+    mmproj_size_gb: 0.6
+    verification: verified-llamacpp
+    cli: llama-mtmd-cli
+    known_issues:
+      - "Vulkan mmproj degraded for specific images (#20081)"
+  quality:
+    name: qwen2.5-vl-7b
+    hf_repo: Mungert/Qwen2.5-VL-7B-Instruct-GGUF
+    model_filename: Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
+    mmproj_filename: Qwen2.5-VL-7B-Instruct-mmproj-f16.gguf
+    quant: Q4_K_M
+    size_gb: 4.7
+    mmproj_size_gb: 0.6
+    verification: verified-llamacpp
+  bundled_with_llm:
+    name: gemma-4-26b-a4b-it-integrated
+    hf_repo: unsloth/gemma-4-26B-A4B-it-GGUF
+    note: "integrated vision encoder — no separate mmproj needed"
+    vision_token_budgets: [70, 140, 280, 560, 1120]
+
+antipatterns:
+  - id: GDN_OLD_BUILD
+    description: "Qwen3.5/3.6 A3B на llama.cpp < b8765 fallback CPU → 11.87 t/s"
+    source: "llama.cpp#20354 (closed Mar 2026)"
+    severity: critical
+  - id: MXFP4_DENSE
+    description: "Unsloth удалил MXFP4 из dense Q2/3/4_K_XL — остался только MXFP4_MOE"
+    source: "unsloth docs"
+    severity: high
+  - id: DENSE_70B_PLUS
+    description: "Llama 3.1 70B = 5.1 t/s, Mistral Medium 3.5 128B = 3.0 t/s — unfit"
+    source: "kyuz0, slb350"
+    severity: high
+  - id: MINICPM_V_4_GGUF
+    description: "vision pipeline broken — images ignored"
+    source: "OpenBMB/MiniCPM-V#957"
+    severity: high
+    action: skip
+  - id: OLLAMA_VENDORED
+    description: "Ollama vendored llama.cpp -56% — use standalone llama-cpp-python"
+    source: "ollama#15601"
+    severity: high
+  - id: AMDVLK_ICD
+    description: "AMDVLK 2 GiB cap ломает ≥30B dense — use RADV only"
+    source: "R2-vulkan-radv-vs-amdvlk.md"
+    severity: critical
+  - id: VULKAN_MMPROJ_DEGRADED
+    description: "Vulkan mmproj может выдавать поврежденные features на specific images"
+    source: "llama.cpp#20081"
+    severity: medium
+  - id: JINA_V3_NO_GGUF
+    description: "jina-embeddings-v3 — нет GGUF conversion (use v4 если нужно)"
+    source: "llama.cpp#9585"
+    severity: low
+  - id: VULKAN_DEVICELOST
+    description: "DeviceLost crash на больших ubatch/ctx — pin -ub 2048 -b 2048"
+    source: "llama.cpp#20515"
+    severity: medium
+  - id: HIP_GT_6GB_HANG
+    description: "HIP models >6 GB hang — нужен -dio flag в llama-server или mmap=False"
+    source: "R3-llama-cpp-vulkan-hip.md"
+    severity: high
+  - id: ROCWMMA_LONG_CTX
+    description: "rocWMMA на long ctx (ROCm 7.0.2+) медленнее standard HIP"
+    source: "R3"
+    severity: low
+  - id: SHADERC_2025_2
+    description: "shaderc v2025.2 ломает Vulkan compile — pin 2025.1"
+    source: "llama.cpp#15344"
+    severity: high

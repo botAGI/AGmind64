@@ -1,0 +1,17 @@
+{
+  "cli.doctor.title": "AGmind doctor",
+  "cli.doctor.ok": "ok",
+  "cli.doctor.warn": "warn",
+  "cli.doctor.fail": "fail",
+  "cli.doctor.skip": "skip",
+
+  "cli.status.available": "Доступные backend'ы",
+  "cli.status.selected": "Выбран",
+  "cli.status.device": "Устройство",
+  "cli.status.memory": "Память",
+  "cli.status.capabilities": "Capabilities",
+
+  "errors.no_backend": "На хосте нет доступного compute backend.",
+  "errors.invalid_engine": "Engine {engine!r} не поддерживается backend'ом {backend!r}.",
+  "errors.amdvlk_present": "Обнаружен AMDVLK — он может перехватывать RADV."
+}

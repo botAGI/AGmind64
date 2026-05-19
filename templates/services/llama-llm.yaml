@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: llama-llm
+image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
+tier: inference
+purpose: LLM token generation via llama-server (Vulkan RADV primary)
+profiles:
+- core
+ports:
+- 127.0.0.1:8080:8080
+volumes:
+- /var/lib/agmind/models:/models:ro
+env:
+  AMD_VULKAN_ICD: RADV
+  VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+  GGML_VK_VISIBLE_DEVICES: '0'
+devices:
+- /dev/dri
+group_add:
+- video
+- render
+security_opt:
+- seccomp=unconfined
+resources:
+  cpus: 8.0
+  mem_limit: 64g
+health:
+  test:
+  - CMD
+  - curl
+  - -f
+  - http://localhost:8080/health
+routing:
+  host: llama.agmind.dev
+  middleware_chain: chain-llm
+  sse: true
+observability:
+  prometheus_scrape: true

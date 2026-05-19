@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dify-plugin-daemon
+image: langgenius/dify-plugin-daemon:0.6.1-local
+digest: fa7ad45e1b2a777cd243b902609abecb4fd924adcd13d21ef4258b5090a09be5
+tier: app
+purpose: Dify plugin runtime — 2026-04
+profiles:
+- rag
+env:
+  DB_HOST: postgres
+  REDIS_HOST: redis
+depends_on:
+- postgres
+- redis
+resources:
+  cpus: 2.0
+  mem_limit: 2g

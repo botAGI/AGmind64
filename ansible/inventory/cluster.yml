@@ -1,0 +1,56 @@
+# AGmind multi-node cluster inventory (example).
+#
+# Usage:
+#   ansible-playbook -i inventory/cluster.yml install.yml
+#
+# Topology: 1 master + N workers. Master runs full stack (Dify, Qdrant,
+# llama-llm, monitoring). Workers run only llama-llm (additional GPU
+# capacity, sharded inference).
+#
+# Network requirements:
+#   - LAN connectivity между all nodes
+#   - SSH access from control node к workers (key-based)
+#   - mDNS/avahi works (для *.local discovery), либо static DNS
+#   - Firewall allows 8080-8082 (llama-server) between master + workers
+
+all:
+  vars:
+    agmind_install_dir: /opt/agmind
+    agmind_data_dir: /var/lib/agmind
+    agmind_config_dir: /etc/agmind
+    agmind_user: agmind
+    agmind_group: agmind
+    agmind_lan_only: true
+    agmind_mdns_enabled: true
+
+  children:
+    agmind_master:
+      hosts:
+        agmind-master:
+          ansible_host: 192.168.1.10
+          agmind_role: master
+          agmind_profiles:
+            - core
+            - rag
+            - observability
+          # Master координирует cluster
+          agmind_cluster_role: coordinator
+
+    agmind_workers:
+      hosts:
+        # Worker nodes — run llama-llm only, share inference capacity
+        agmind-worker-01:
+          ansible_host: 192.168.1.11
+          agmind_role: worker
+          agmind_profiles:
+            - core
+          agmind_cluster_role: worker
+          # Worker advertises себя через mDNS:
+          # `agmind-worker-01.local:8080` discoverable from master.
+          agmind_worker_endpoint: "http://agmind-worker-01.local:8080"
+        # Add more workers:
+        # agmind-worker-02:
+        #   ansible_host: 192.168.1.12
+        #   agmind_role: worker
+        #   agmind_profiles: [core]
+        #   agmind_worker_endpoint: "http://agmind-worker-02.local:8080"

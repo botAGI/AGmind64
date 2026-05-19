@@ -1,0 +1,95 @@
+// AGmind Grafana Alloy config (Phase H'.D, ADR-0007).
+//
+// Заменяет Promtail. Авто-собирает container logs через docker discovery,
+// фильтрует по label `loki.scrape=true` (автоматически выставлено renderer'ом
+// из ServiceDescriptor.observability.loki_scrape — default true).
+//
+// Propagated labels: service / tier / owner / container — для filtering в Loki.
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ---- Docker discovery ----
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // Whitelist: только containers с loki.scrape=true
+  rule {
+    source_labels = ["__meta_docker_container_label_loki_scrape"]
+    regex         = "true"
+    action        = "keep"
+  }
+
+  // Container name (без leading slash)
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.+)"
+    target_label  = "container"
+  }
+
+  // AGmind metadata → Loki labels
+  rule {
+    source_labels = ["__meta_docker_container_label_agmind_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_agmind_tier"]
+    target_label  = "tier"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_agmind_owner"]
+    target_label  = "owner"
+  }
+}
+
+// ---- Loki source: tail Docker logs ----
+
+loki.source.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.containers.output
+  refresh_interval = "5s"
+  forward_to       = [loki.process.parse_json.receiver]
+  labels = {
+    stack = "agmind",
+    job   = "docker",
+  }
+}
+
+// ---- JSON parsing для structlog output (Phase H'.D) ----
+// agmind/log.py пишет JSON если AGMIND_LOG_JSON=true. Парсим level/event/trace_id
+// в Loki structured metadata (Loki v3+, без cardinality explosion).
+
+loki.process "parse_json" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.json {
+    expressions = {
+      level    = "level",
+      event    = "event",
+      trace_id = "trace_id",
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      level    = "",
+      trace_id = "",
+    }
+  }
+}
+
+// ---- Write to local Loki ----
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

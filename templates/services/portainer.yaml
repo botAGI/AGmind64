@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: portainer
+image: portainer/portainer-ce:2.41.1
+digest: 4ac99847049fc6790562517a5cde2aeceb5ebbdf9c1ec5d3e20863399520685d
+tier: ops
+purpose: Container management UI — 2026-05-11
+profiles:
+- observability
+ports:
+- 127.0.0.1:9443:9443
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+- /var/lib/agmind/portainer:/data
+resources:
+  cpus: 1.0
+  mem_limit: 512m
+routing:
+  host: portainer.agmind.dev
+  healthcheck_path: /

@@ -1,0 +1,73 @@
+# System / host / GPU alerts (Phase H'.D, R13).
+#
+# AMD Strix Halo gfx1151 metrics приходят через `amdgpu_textfile` collector
+# (scripts/amdgpu_textfile.sh) — node-exporter textfile reader, потому что
+# нет официального exporter для gfx1151 (см. deep-dive 03 §4, R-recon R13).
+
+groups:
+  - name: system_alerts
+    rules:
+      - alert: HostOomKilled
+        expr: increase(node_vmstat_oom_kill[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "OOM killer activated on {{ $labels.instance }}"
+          description: "Процесс был убит. Проверь docker logs за последние 5 минут."
+
+      - alert: ContainerRestartLoop
+        expr: rate(container_start_time_seconds[10m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} restarting frequently"
+          description: "Перезапуск чаще раза в 10 минут — упоминание в логах."
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space below 10% on {{ $labels.instance }}"
+          description: "Запусти `agmind gc --aggressive` для очистки docker artifacts + models."
+
+      - alert: HighMemoryPressure
+        expr: |
+          (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.92
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory >92% on {{ $labels.instance }}"
+
+      # GPU alerts (gfx1151 через textfile collector, R13)
+      - alert: AmdGpuTempHigh
+        expr: amdgpu_temp_edge_celsius > 85
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AMD GPU {{ $labels.card }} temperature critical: {{ $value }}°C"
+          description: "Throttling вот-вот начнётся. Проверь cooling и снижай нагрузку."
+
+      - alert: AmdGttUsageHigh
+        expr: amdgpu_gtt_used_bytes / amdgpu_gtt_total_bytes > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GTT pages >90% used on {{ $labels.card }}"
+          description: "Strix Halo unified memory under pressure — снижай model size или ctx-size."
+
+      - alert: AmdGpuClockStuck
+        # gfx1151 имеет известную проблему zaстревания на 900MHz (см. deep-dive 06 §5)
+        expr: amdgpu_sclk_hz < 1e9 and on(card) amdgpu_gpu_busy_percent > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AMD GPU clock stuck at {{ $value | humanize }}Hz under load"
+          description: "Strix Halo стало запинать в low-power state. Restart amdgpu module."

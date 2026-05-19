@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dify-worker
+image: langgenius/dify-api:1.14.2
+digest: 062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
+tier: app
+purpose: Dify celery worker
+profiles:
+- rag
+env:
+  MODE: worker
+  LOG_LEVEL: INFO
+  DB_HOST: postgres
+  REDIS_HOST: redis
+depends_on:
+- postgres
+- redis
+resources:
+  cpus: 4.0
+  mem_limit: 4g

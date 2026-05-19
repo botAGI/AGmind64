@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: openwebui
+image: ghcr.io/open-webui/open-webui:v0.9.5
+digest: ef3eaeb6235dd86d8ae7425e6af38272b0cea27896c0d5ae8c5cf23f886de76a
+tier: app
+purpose: Optional chat UI на OpenAI-compat llama-server — 2026-05-10
+profiles:
+- ui
+ports:
+- 127.0.0.1:3001:8080
+volumes:
+- /var/lib/agmind/openwebui:/app/backend/data
+env:
+  OPENAI_API_BASE_URL: http://llama-llm:8080/v1
+  ENABLE_OPENAI_API: 'true'
+  WEBUI_AUTH: 'true'
+  ENABLE_RAG_HYBRID_SEARCH: 'true'
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+routing:
+  host: chat.agmind.dev
+  middleware_chain: chain-llm
+  sse: true

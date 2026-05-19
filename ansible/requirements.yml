@@ -1,0 +1,11 @@
+---
+# Ansible Galaxy collections required by AGmind playbooks.
+# Install: ansible-galaxy collection install -r requirements.yml
+
+collections:
+  - name: community.docker
+    version: ">=4.0.0"
+  - name: community.general
+    version: ">=9.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"

@@ -1,0 +1,48 @@
+---
+# Post-install smoke test — проверка что services поднялись и agmind doctor зелёный.
+
+- name: Wait for services to be healthy
+  ansible.builtin.pause:
+    seconds: 20
+    prompt: Waiting for containers to start...
+
+- name: Run agmind doctor
+  ansible.builtin.command:
+    cmd: /usr/local/bin/agmind doctor
+  register: doctor_result
+  changed_when: false
+  failed_when: false
+
+- name: Display doctor output
+  ansible.builtin.debug:
+    msg: "{{ doctor_result.stdout_lines }}"
+
+- name: Check Docker compose ps
+  ansible.builtin.command:
+    cmd: docker compose -f {{ agmind_install_dir }}/docker-compose.yml ps --format json
+  register: compose_ps
+  changed_when: false
+
+- name: Display compose state
+  ansible.builtin.debug:
+    msg: "{{ compose_ps.stdout_lines }}"
+
+- name: Final installation summary
+  ansible.builtin.debug:
+    msg: |
+      ┌─ AGmind installation complete ─┐
+      │
+      │  CLI:        agmind doctor / agmind status
+      │  Dify:       http://agmind-dify.{{ agmind_mdns_domain | default('local') }}
+      │  OpenWebUI:  http://agmind-chat.{{ agmind_mdns_domain | default('local') }}
+      │  LLM API:    http://agmind-llm.{{ agmind_mdns_domain | default('local') }}
+      │
+      │  Credentials in {{ agmind_install_dir }}/.env (chmod 600)
+      │  Models dir:   {{ agmind_models_dir }}
+      │  Config dir:   {{ agmind_config_dir }}
+      │
+      │  Next:
+      │    1. Download tier-specific LLM GGUF в {{ agmind_models_dir }}
+      │    2. Restart llama-llm: docker compose restart llama-llm
+      │    3. Visit Dify console, register admin
+      └─

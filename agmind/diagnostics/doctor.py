@@ -1,0 +1,379 @@
+"""`agmind doctor` — preflight + health diagnostics.
+
+Не делает изменений системы — read-only check. Возвращает list нарушений
++ optional auto-fix suggestions.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from agmind.compute.detect import detect_host
+from agmind.log import logger
+
+log = logger(__name__)
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    """Single preflight check result."""
+
+    name: str
+    """Short identifier: "kernel-version" / "vulkan-installed" etc."""
+
+    status: str
+    """"ok" | "warn" | "fail" | "skip"."""
+
+    message: str
+    """Human-readable message."""
+
+    fix_hint: str = ""
+    """Optional one-liner suggestion (commands, links to HARDWARE.md)."""
+
+
+@dataclass
+class DoctorReport:
+    """Композиция всех preflight результатов."""
+
+    checks: list[CheckResult] = field(default_factory=list)
+
+    @property
+    def has_failures(self) -> bool:
+        return any(c.status == "fail" for c in self.checks)
+
+    @property
+    def has_warnings(self) -> bool:
+        return any(c.status == "warn" for c in self.checks)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "summary": {
+                "total": len(self.checks),
+                "ok": sum(1 for c in self.checks if c.status == "ok"),
+                "warn": sum(1 for c in self.checks if c.status == "warn"),
+                "fail": sum(1 for c in self.checks if c.status == "fail"),
+                "skip": sum(1 for c in self.checks if c.status == "skip"),
+            },
+            "checks": [
+                {
+                    "name": c.name,
+                    "status": c.status,
+                    "message": c.message,
+                    "fix_hint": c.fix_hint,
+                }
+                for c in self.checks
+            ],
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2, ensure_ascii=False)
+
+
+def _check_kernel() -> CheckResult:
+    host = detect_host()
+    try:
+        major, minor, patch = host.kernel_version.split("-", 1)[0].split(".")[:3]
+        kv = (int(major), int(minor), int(patch))
+    except (ValueError, IndexError):
+        return CheckResult(
+            name="kernel-version",
+            status="warn",
+            message=f"Cannot parse kernel version: {host.kernel_version}",
+        )
+    if kv >= (6, 18, 4):
+        return CheckResult(
+            name="kernel-version",
+            status="ok",
+            message=f"Kernel {host.kernel_version} ≥ 6.18.4 mainline",
+        )
+    if kv >= (6, 17, 0):
+        return CheckResult(
+            name="kernel-version",
+            status="warn",
+            message=(
+                f"Kernel {host.kernel_version} below 6.18.4 mainline. "
+                "OK if это Ubuntu HWE 6.17.0-19+; иначе ROCm может видеть "
+                "только ~15.5 GiB VRAM (ROCm/issues/5444)."
+            ),
+            fix_hint=(
+                "sudo apt install --install-recommends linux-generic-hwe-24.04"
+            ),
+        )
+    return CheckResult(
+        name="kernel-version",
+        status="fail",
+        message=(
+            f"Kernel {host.kernel_version} too old. "
+            "Strix Halo gfx1151 requires ≥6.17.0 (HWE) или 6.18.4 (mainline)."
+        ),
+        fix_hint=(
+            "sudo apt install --install-recommends linux-generic-hwe-24.04 && reboot"
+        ),
+    )
+
+
+def _check_strix_halo_gpu() -> CheckResult:
+    host = detect_host()
+    if host.gpu is None:
+        return CheckResult(
+            name="gpu-detected",
+            status="warn",
+            message="No AMD GPU detected (CPU fallback only)",
+        )
+    if not host.gpu.is_strix_halo:
+        return CheckResult(
+            name="gpu-detected",
+            status="warn",
+            message=f"GPU detected but not Strix Halo: {host.gpu.name}",
+        )
+    return CheckResult(
+        name="gpu-detected",
+        status="ok",
+        message=f"{host.gpu.name} (PCI 0x{host.gpu.pci_id:04x})",
+    )
+
+
+def _check_gtt_pool() -> CheckResult:
+    host = detect_host()
+    if host.gpu is None or not host.gpu.is_strix_halo:
+        return CheckResult(
+            name="gtt-pool",
+            status="skip",
+            message="Not on Strix Halo",
+        )
+    gib = host.gpu.gtt_total_bytes / 1024**3
+    ram_gib = host.system_ram_bytes / 1024**3
+    if gib >= ram_gib * 0.7:
+        return CheckResult(
+            name="gtt-pool",
+            status="ok",
+            message=f"GTT pool {gib:.1f} GiB on {ram_gib:.0f} GiB RAM",
+        )
+    pages = int(host.system_ram_bytes * 0.94 / 4096)
+    return CheckResult(
+        name="gtt-pool",
+        status="warn",
+        message=(
+            f"GTT pool only {gib:.1f} GiB on {ram_gib:.0f} GiB RAM "
+            f"— sub-optimal."
+        ),
+        fix_hint=(
+            f"Add to GRUB cmdline: ttm.pages_limit={pages} "
+            "ttm.page_pool_size=" + str(pages) +
+            " — см. docs/HARDWARE.md."
+        ),
+    )
+
+
+def _check_bios_uma() -> CheckResult:
+    host = detect_host()
+    if host.gpu is None or not host.gpu.is_strix_halo:
+        return CheckResult(
+            name="bios-uma",
+            status="skip",
+            message="Not on Strix Halo",
+        )
+    gib = host.gpu.bios_uma_bytes / 1024**3
+    if gib <= 2.0:
+        return CheckResult(
+            name="bios-uma",
+            status="ok",
+            message=f"BIOS UMA frame buffer = {gib:.2f} GiB (optimal)",
+        )
+    return CheckResult(
+        name="bios-uma",
+        status="warn",
+        message=(
+            f"BIOS UMA frame buffer = {gib:.1f} GiB. "
+            "On Linux set to 512 MB minimum (см. docs/HARDWARE.md)."
+        ),
+        fix_hint="Reboot to BIOS → AMD CBS → GFX Configuration → UMA Frame Buffer Size = Auto/512 MB",
+    )
+
+
+def _check_amdvlk_absent() -> CheckResult:
+    host = detect_host()
+    leaked = host.vulkan.amdvlk_files_present
+    if not leaked:
+        return CheckResult(
+            name="amdvlk-absent",
+            status="ok",
+            message="No AMDVLK ICD files detected (RADV only)",
+        )
+    return CheckResult(
+        name="amdvlk-absent",
+        status="fail",
+        message=(
+            "AMDVLK ICD files detected — they silently override RADV "
+            "and have a 2 GiB allocation cap that breaks LLM ≥30B."
+        ),
+        fix_hint="sudo rm -f " + " ".join(leaked),
+    )
+
+
+def _check_vulkan_tooling() -> CheckResult:
+    if not shutil.which("vulkaninfo"):
+        return CheckResult(
+            name="vulkan-tooling",
+            status="warn",
+            message="vulkaninfo not installed — Vulkan backend disabled",
+            fix_hint="sudo apt install vulkan-tools mesa-vulkan-drivers libvulkan1",
+        )
+    host = detect_host()
+    vk = host.vulkan
+    if not vk.available:
+        return CheckResult(
+            name="vulkan-tooling",
+            status="warn",
+            message="vulkaninfo present but did not return device info",
+        )
+    if vk.driver_name != "radv":
+        return CheckResult(
+            name="vulkan-tooling",
+            status="fail",
+            message=f"Active Vulkan driver is {vk.driver_name!r}, expected 'radv'",
+            fix_hint="См. docs/HARDWARE.md § «Vulkan driver»",
+        )
+    if vk.mesa_version is None or vk.mesa_version < (25, 2, 8):
+        ver = ".".join(map(str, vk.mesa_version)) if vk.mesa_version else "unknown"
+        return CheckResult(
+            name="vulkan-tooling",
+            status="warn",
+            message=f"Mesa {ver} below recommended 25.2.8",
+            fix_hint="sudo add-apt-repository ppa:kisak/kisak-mesa && sudo apt upgrade",
+        )
+    return CheckResult(
+        name="vulkan-tooling",
+        status="ok",
+        message=f"Vulkan RADV + Mesa {'.'.join(map(str, vk.mesa_version))}",
+    )
+
+
+def _check_rocm_tooling() -> CheckResult:
+    if not shutil.which("rocminfo"):
+        return CheckResult(
+            name="rocm-tooling",
+            status="warn",
+            message="rocminfo not installed — ROCm backend disabled (Vulkan still usable)",
+            fix_hint="См. docs/HARDWARE.md § «ROCm install»",
+        )
+    host = detect_host()
+    if "gfx1151" not in host.rocm.gfx_targets and "gfx11-generic" not in host.rocm.gfx_targets:
+        return CheckResult(
+            name="rocm-tooling",
+            status="warn",
+            message=(
+                f"rocminfo found but no gfx1151 target: {host.rocm.gfx_targets}. "
+                "Need ROCm ≥ 7.2 with gfx1151 support."
+            ),
+            fix_hint="ROCm 7.2.x install — см. docs/HARDWARE.md",
+        )
+    return CheckResult(
+        name="rocm-tooling",
+        status="ok",
+        message=f"ROCm with gfx targets: {list(host.rocm.gfx_targets)}",
+    )
+
+
+def _check_user_groups() -> CheckResult:
+    """User должен быть в render + video для /dev/kfd, /dev/dri access."""
+    import grp
+    import pwd
+
+    try:
+        user = pwd.getpwuid(__import__("os").getuid()).pw_name
+    except KeyError:
+        return CheckResult(
+            name="user-groups",
+            status="skip",
+            message="Cannot resolve current user",
+        )
+
+    user_groups = {g.gr_name for g in grp.getgrall() if user in g.gr_mem}
+    user_groups.add(grp.getgrgid(pwd.getpwuid(__import__("os").getuid()).pw_gid).gr_name)
+    missing = {"render", "video"} - user_groups
+    if not missing:
+        return CheckResult(
+            name="user-groups",
+            status="ok",
+            message=f"User {user!r} in render + video",
+        )
+    return CheckResult(
+        name="user-groups",
+        status="warn",
+        message=f"User {user!r} not in: {sorted(missing)}",
+        fix_hint=f"sudo usermod -aG video,render {user} && newgrp render",
+    )
+
+
+def _check_devices() -> CheckResult:
+    """/dev/kfd + /dev/dri/renderD128 должны существовать."""
+    devices = ["/dev/dri"]
+    if shutil.which("rocminfo"):
+        devices.append("/dev/kfd")
+    missing = [d for d in devices if not Path(d).exists()]
+    if not missing:
+        return CheckResult(
+            name="devices",
+            status="ok",
+            message=f"Devices present: {devices}",
+        )
+    return CheckResult(
+        name="devices",
+        status="fail",
+        message=f"Missing devices: {missing}",
+        fix_hint="Install amdgpu-dkms; reboot if just installed",
+    )
+
+
+_CHECKS = (
+    _check_strix_halo_gpu,
+    _check_kernel,
+    _check_bios_uma,
+    _check_gtt_pool,
+    _check_devices,
+    _check_user_groups,
+    _check_amdvlk_absent,
+    _check_vulkan_tooling,
+    _check_rocm_tooling,
+)
+
+
+def run_preflight() -> DoctorReport:
+    """Run all preflight checks. Returns aggregated report."""
+    report = DoctorReport()
+    for check_fn in _CHECKS:
+        try:
+            result = check_fn()
+        except Exception as exc:  # noqa: BLE001
+            result = CheckResult(
+                name=check_fn.__name__.lstrip("_check_"),
+                status="fail",
+                message=f"Check raised: {exc!r}",
+            )
+        report.checks.append(result)
+    return report
+
+
+def doctor_report(*, as_json: bool = False) -> str:
+    """Human-readable или JSON отчёт."""
+    report = run_preflight()
+    if as_json:
+        return report.to_json()
+
+    lines: list[str] = []
+    icons = {"ok": "✓", "warn": "⚠", "fail": "✗", "skip": "·"}
+    for c in report.checks:
+        icon = icons.get(c.status, "?")
+        lines.append(f"  {icon} {c.name:24s} {c.message}")
+        if c.fix_hint and c.status in ("warn", "fail"):
+            lines.append(f"      → {c.fix_hint}")
+
+    summary = report.to_dict()["summary"]
+    lines.insert(0, "")
+    lines.insert(0, f"AGmind doctor — {summary['ok']} ok / {summary['warn']} warn / {summary['fail']} fail / {summary['skip']} skip")
+    return "\n".join(lines)

@@ -1,0 +1,12 @@
+---
+- name: recreate compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ agmind_install_dir }}"
+    state: present
+    recreate: always
+
+- name: reload nginx
+  community.docker.docker_container_exec:
+    container: nginx
+    command: nginx -s reload
+  failed_when: false

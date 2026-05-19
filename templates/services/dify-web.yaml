@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dify-web
+image: langgenius/dify-web:1.14.2
+digest: db73434e185ac778f31f4cc1adcce0dbe84b41a95ea5af58216acf095eed5f67
+tier: app
+purpose: Dify frontend Next.js
+profiles:
+- rag
+ports:
+- 127.0.0.1:3000:3000
+env:
+  CONSOLE_API_URL: ''
+  APP_API_URL: ''
+depends_on:
+- dify-api
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+routing:
+  host: dify.agmind.dev
+  middleware_chain: chain-llm
+  sse: true

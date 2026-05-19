@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+# AGmind base image — общий x86-64 слой для CPU / Vulkan / ROCm backends.
+# Pinned digest должен быть populated при первом полном CI прогоне:
+#   docker buildx imagetools inspect ubuntu:24.04 --raw | jq .config.digest
+FROM --platform=linux/amd64 ubuntu:24.04@sha256:REPLACE_WITH_DIGEST AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Базовые build deps + python venv. AVX-512 / Zen 5 — через -march=x86-64-v3
+# baseline (опт-ин znver5 для пользователей собирающих локально).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git build-essential \
+        python3 python3-pip python3-venv python3-dev \
+        pkg-config cmake ninja-build \
+        libopenblas-dev libomp-dev libnuma1 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CFLAGS="-O2 -march=x86-64-v3 -mtune=generic" \
+    CXXFLAGS="-O2 -march=x86-64-v3 -mtune=generic"
+
+WORKDIR /opt/agmind
+
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip setuptools wheel
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# Healthcheck (overridden в специализированных образах)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+    CMD python3 -c "import agmind; print(agmind.__version__)" || exit 1

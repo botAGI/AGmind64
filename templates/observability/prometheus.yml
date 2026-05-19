@@ -1,0 +1,67 @@
+# AGmind Prometheus config (Phase H'.D, ADR-0007).
+#
+# Auto-discovery через docker_sd_configs: сервис попадает в targets если
+# имеет label `prometheus.scrape=true` (whitelist via relabel_configs).
+# Эти labels автоматически генерируются `agmind render compose` из
+# ServiceDescriptor.observability.prometheus_scrape (см. ADR-0006).
+#
+# Никакого ручного добавления scrape jobs — добавь поле в descriptor
+# и сервис подхватится за 15 секунд.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: agmind
+    site: home
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Docker service discovery — auto-discover из labels
+  - job_name: docker-auto
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      # Whitelist: только containers с prometheus.scrape=true
+      - source_labels: [__meta_docker_container_label_prometheus_scrape]
+        regex: "true"
+        action: keep
+
+      # Override port: prometheus.port label → __address__
+      - source_labels:
+          - __address__
+          - __meta_docker_container_label_prometheus_port
+        regex: "([^:]+)(?::\\d+)?;(\\d+)"
+        target_label: __address__
+        replacement: "$1:$2"
+
+      # Override metrics path
+      - source_labels: [__meta_docker_container_label_prometheus_path]
+        regex: "(.+)"
+        target_label: __metrics_path__
+
+      # Propagate AGmind metadata as Prometheus labels (для PromQL grouping)
+      - source_labels: [__meta_docker_container_label_agmind_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_agmind_tier]
+        target_label: tier
+      - source_labels: [__meta_docker_container_label_agmind_owner]
+        target_label: owner
+
+      # Container name → instance (стандартное соглашение)
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.+)"
+        target_label: instance

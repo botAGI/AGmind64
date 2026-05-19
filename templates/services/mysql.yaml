@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: mysql
+image: mysql:8.0.46-oraclelinux9
+digest: 7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+tier: storage
+purpose: RAGFlow metadata (locked to MySQL 8.0.x) — 2026-05-05
+profiles:
+- ragflow
+volumes:
+- /var/lib/agmind/mysql:/var/lib/mysql
+env:
+  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  MYSQL_DATABASE: ragflow
+resources:
+  cpus: 4.0
+  mem_limit: 4g

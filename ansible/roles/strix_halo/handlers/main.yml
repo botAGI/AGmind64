@@ -1,0 +1,19 @@
+---
+- name: warn AMDVLK purged
+  ansible.builtin.debug:
+    msg: |
+      AMDVLK ICD/implicit layer files removed.
+      RADV теперь единственный Vulkan ICD (correct per R2).
+
+- name: regenerate grub
+  ansible.builtin.command: update-grub
+  notify: reboot required
+
+- name: reboot required
+  ansible.builtin.debug:
+    msg: |
+      GRUB cmdline updated. Reboot to apply ttm.pages_limit changes:
+        sudo reboot
+      After reboot, verify:
+        cat /sys/class/drm/card*/device/mem_info_gtt_total
+        # Should be ~94% of RAM ({{ (ansible_memtotal_mb / 1024 * 0.94) | int }} GiB approx).

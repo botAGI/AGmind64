@@ -1,0 +1,40 @@
+---
+# Prometheus + Grafana + Loki + Alloy provisioning.
+
+- name: Create observability config dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+  loop:
+    - "{{ agmind_config_dir }}/prometheus"
+    - "{{ agmind_config_dir }}/grafana/provisioning/datasources"
+    - "{{ agmind_config_dir }}/grafana/provisioning/dashboards"
+    - "{{ agmind_config_dir }}/loki"
+    - "{{ agmind_config_dir }}/alloy"
+
+- name: Render prometheus.yml
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ agmind_config_dir }}/prometheus/prometheus.yml"
+    mode: "0644"
+
+- name: Render grafana datasources
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: "{{ agmind_config_dir }}/grafana/provisioning/datasources/agmind.yml"
+    mode: "0644"
+
+- name: Render loki config
+  ansible.builtin.template:
+    src: loki-config.yml.j2
+    dest: "{{ agmind_config_dir }}/loki/config.yml"
+    mode: "0644"
+
+- name: Render alloy config (Promtail replacement, R0)
+  ansible.builtin.template:
+    src: alloy-config.alloy.j2
+    dest: "{{ agmind_config_dir }}/alloy/config.alloy"
+    mode: "0644"

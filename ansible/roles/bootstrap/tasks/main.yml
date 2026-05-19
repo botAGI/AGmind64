@@ -1,0 +1,112 @@
+---
+# Bootstrap host: apt packages, user/groups, base directories.
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - jq
+      - git
+      - ca-certificates
+      - software-properties-common
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-yaml
+      - apt-transport-https
+      - gnupg
+      - lsb-release
+      - net-tools
+      - lsof
+      - lspci
+    state: present
+
+- name: Install Vulkan tooling (per R2/R3)
+  ansible.builtin.apt:
+    name:
+      - mesa-vulkan-drivers
+      - libvulkan1
+      - vulkan-tools
+      - libglvnd0
+      - libgl1
+      - libegl1
+      - libegl-mesa0
+    state: present
+
+- name: Install ROCm tooling (опционально, если включён ROCm backend)
+  ansible.builtin.debug:
+    msg: |
+      ROCm install требует amdgpu-install — этот шаг скриптуется в
+      ansible/roles/rocm/ (будет добавлен в M2). Сейчас пропускается.
+      Если нужен ROCm backend сейчас — установить вручную:
+        wget https://repo.radeon.com/amdgpu-install/...
+        sudo apt install ./amdgpu-install_*.deb
+        sudo amdgpu-install --usecase=rocm,hiplibsdk --no-dkms
+      См. docs/HARDWARE.md § ROCm install.
+
+- name: Create agmind user
+  ansible.builtin.user:
+    name: "{{ agmind_user }}"
+    system: true
+    home: "{{ agmind_install_dir }}"
+    shell: /usr/sbin/nologin
+    groups:
+      - docker
+      - render
+      - video
+    state: present
+  failed_when: false  # render/video group may not exist yet
+
+- name: Add primary host user to render+video groups
+  ansible.builtin.user:
+    name: "{{ ansible_user_id }}"
+    groups:
+      - render
+      - video
+    append: true
+  when: ansible_user_id is defined and ansible_user_id != "root"
+
+- name: Create AGmind directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+  loop:
+    - "{{ agmind_install_dir }}"
+    - "{{ agmind_data_dir }}"
+    - "{{ agmind_config_dir }}"
+    - "{{ agmind_data_dir }}/models"
+    - "{{ agmind_data_dir }}/qdrant"
+    - "{{ agmind_data_dir }}/postgres"
+    - "{{ agmind_data_dir }}/redis"
+    - "{{ agmind_config_dir }}/nginx"
+    - "{{ agmind_config_dir }}/prometheus"
+    - "{{ agmind_config_dir }}/grafana"
+    - "{{ agmind_config_dir }}/loki"
+    - "{{ agmind_config_dir }}/alloy"
+
+- name: Set restrictive perms on agmind config dir
+  ansible.builtin.file:
+    path: "{{ agmind_config_dir }}"
+    state: directory
+    mode: "0750"
+
+- name: Configure sysctl for ML workloads (per R10)
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-agmind.conf
+    reload: true
+  loop:
+    - { name: "vm.swappiness", value: "10" }
+    - { name: "vm.overcommit_memory", value: "1" }
+    - { name: "vm.max_map_count", value: "1048576" }

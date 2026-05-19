@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.7
+# AGmind CPU backend — fallback для x86_64 без AMD GPU.
+ARG BASE_IMAGE=agmind-base:latest
+FROM ${BASE_IMAGE}
+
+# PyTorch CPU-only + llama-cpp-python CPU build + onnxruntime CPU
+RUN pip install \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch torchvision torchaudio \
+    && pip install \
+        onnxruntime \
+        "llama-cpp-python>=0.3.23" \
+        numpy scipy
+
+COPY . /opt/agmind
+RUN pip install -e ".[cpu]"
+
+ENV AGMIND_BACKEND=cpu
+
+ENTRYPOINT ["python3", "-m", "agmind"]

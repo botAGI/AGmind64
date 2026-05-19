@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: prometheus
+image: prom/prometheus:v3.5.3
+digest: ddc2493835a1509976d5e4e0c94199c4f843ce1f42dd6bcfc8231ba734a93ff7
+tier: ops
+purpose: Metrics collection — Prometheus 3.x (PromQL v2→v3 breaking — R12)
+profiles:
+- observability
+ports:
+- 127.0.0.1:9090:9090
+volumes:
+- /etc/agmind/prometheus:/etc/prometheus:ro
+- /var/lib/agmind/prometheus:/prometheus
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+observability:
+  prometheus_scrape: true

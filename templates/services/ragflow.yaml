@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: ragflow
+image: infiniflow/ragflow:v0.25.4
+digest: d48b1810cbadcc2b8510b172b1ff705d7b57c64694be61e79c1dd372e4b30b7c
+tier: app
+purpose: RAGFlow deep parsing (M2 alternative to Dify+Docling) — 2026-05-14
+profiles:
+- ragflow
+ports:
+- 127.0.0.1:9380:9380
+env:
+  DEVICE: cpu
+  MINERU_BACKEND: vlm-http-client
+  VLM_ENDPOINT: http://llama-llm:8080/v1
+depends_on:
+- mysql
+- elasticsearch
+- minio
+- redis
+resources:
+  cpus: 8.0
+  mem_limit: 16g
+routing:
+  host: rag.agmind.dev
+  middleware_chain: chain-llm
+  sse: true

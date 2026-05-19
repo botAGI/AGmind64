@@ -1,0 +1,76 @@
+# Traefik dynamic config: middleware chains (Phase H'.C, ADR-0006).
+#
+# Три tier-based chains применяются к router'ам через label:
+#   traefik.http.routers.<name>.middlewares=<chain-name>@file
+#
+# - chain-llm:      rate-limit + security-headers + Authelia, БЕЗ buffering (для SSE)
+# - chain-internal: Authelia + security-headers (Grafana/Prometheus UI)
+# - chain-public:   rate-limit + security-headers (без auth)
+#
+# См. deep-dive 01 §4 и 04-service-onboarding §2.
+
+http:
+  middlewares:
+    # Base ratelimit: 10 req/min per source IP
+    default-ratelimit:
+      rateLimit:
+        average: 10
+        period: 1m
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # Tighter limit для LLM (дороже compute)
+    llm-ratelimit:
+      rateLimit:
+        average: 30
+        period: 1m
+        burst: 5
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    default-security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: strict-origin-when-cross-origin
+
+    # Authelia forwardAuth — пропуск к /api/authz/forward-auth
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        trustForwardHeader: true
+        authResponseHeaders:
+          - Remote-User
+          - Remote-Groups
+          - Remote-Email
+          - Remote-Name
+
+    # ---- Composite chains (используются routerами) ----
+
+    # SSE-safe: для llama-server / dify / openwebui которые стримят tokens.
+    # ВАЖНО: НЕ включаем buffering — он склеит chunks.
+    chain-llm:
+      chain:
+        middlewares:
+          - llm-ratelimit
+          - default-security-headers
+          - authelia
+
+    # Internal services (Grafana, Prometheus UI, Portainer) — нужен auth.
+    chain-internal:
+      chain:
+        middlewares:
+          - default-security-headers
+          - authelia
+
+    # Публичные endpoints (если когда-нибудь будут) — auth не нужен.
+    chain-public:
+      chain:
+        middlewares:
+          - default-ratelimit
+          - default-security-headers

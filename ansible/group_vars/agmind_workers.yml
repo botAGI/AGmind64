@@ -1,0 +1,23 @@
+# Worker-specific defaults — applied только к hosts в group `agmind_workers`.
+
+# Minimal profile — workers только inference, без RAG/observability.
+agmind_profiles:
+  - core
+
+# Worker не нуждается в Dify/Postgres/Qdrant (живут на master).
+# Override services через group_vars если нужно.
+
+# Worker может использовать дугой LLM tier (e.g. распределённая sharded).
+# Default — наследует с master но можно override.
+agmind_models_tier: auto
+
+# Worker не запускает monitoring backend (только exporters).
+# Master scrapes worker exporters через known endpoints.
+agmind_observability_role: agent  # vs 'server' для master
+
+# Worker advertises себя через mDNS:
+# avahi publishes `agmind-worker-XX.local` → master discovers.
+agmind_mdns_advertise: true
+
+# Inference port (overrideable per-worker):
+agmind_inference_port: 8080

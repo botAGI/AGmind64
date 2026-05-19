@@ -1,0 +1,64 @@
+# llama.cpp recording rules + alerts (Phase H'.D, R14).
+#
+# llama-server metrics (см. deep-dive 03 §1):
+# - llamacpp:prompt_tokens_total / llamacpp:tokens_predicted_total — counters
+# - llamacpp:requests_processing / requests_deferred — gauge (queue depth)
+# - llamacpp:kv_cache_usage_ratio — gauge (0..1)
+#
+# Имена с двоеточием — особенность llama.cpp (issue ggml-org#19811).
+
+groups:
+  - name: llama_aggregations
+    interval: 30s
+    rules:
+      - record: agmind:llama_decode_tps:rate5m
+        expr: rate(llamacpp:tokens_predicted_total[5m])
+
+      - record: agmind:llama_prompt_tps:rate5m
+        expr: rate(llamacpp:prompt_tokens_total[5m])
+
+      - record: agmind:llama_avg_decode_ms:rate5m
+        expr: |
+          1000 * rate(llamacpp:tokens_predicted_seconds_total[5m])
+          / clamp_min(rate(llamacpp:tokens_predicted_total[5m]), 1)
+
+      - record: agmind:llama_kv_usage:max5m
+        expr: max_over_time(llamacpp:kv_cache_usage_ratio[5m])
+
+  - name: llama_alerts
+    rules:
+      - alert: LlamaServerDown
+        expr: up{service=~"llama-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "llama-server {{ $labels.instance }} is down"
+          description: "Service {{ $labels.service }} unreachable for 2+ minutes."
+
+      - alert: LlamaKvCacheNearFull
+        expr: llamacpp:kv_cache_usage_ratio > 0.95
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KV cache near full on {{ $labels.instance }}"
+          description: "Context may overflow. Consider --ctx-size bump or eviction."
+
+      - alert: LlamaQueueBuildup
+        expr: llamacpp:requests_deferred > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} has {{ $value }} deferred requests"
+          description: "Backlog growing — either spawn more parallel slots or scale."
+
+      - alert: LlamaThroughputDropped
+        expr: agmind:llama_decode_tps:rate5m < 5 and on(instance) agmind:llama_decode_tps:rate5m offset 1h > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Decode TPS на {{ $labels.instance }} упал в 4+ раза"
+          description: "Текущий {{ $value | humanize }} t/s; час назад был >20 t/s."

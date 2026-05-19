@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: loki
+image: grafana/loki:3.7.2
+digest: 191d4fdfb7264f16989f0a57f320872620a5a7c2ceeec6229212c4190ec49b86
+tier: ops
+purpose: Log aggregation — Loki 3.7 (2026-05-13, new tenancy schema)
+profiles:
+- observability
+ports:
+- 127.0.0.1:3100:3100
+volumes:
+- /etc/agmind/loki:/etc/loki:ro
+- /var/lib/agmind/loki:/loki
+resources:
+  cpus: 2.0
+  mem_limit: 2g

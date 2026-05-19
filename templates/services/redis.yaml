@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: redis
+image: redis:8.4.3-alpine
+digest: 52e68c6542d1b658a207ba63e7545963ec7cde6c7efc8948108edfa7e339ff73
+tier: storage
+purpose: Dify task queue + plugin cache — Redis 8 (2026-05-09)
+profiles:
+- rag
+volumes:
+- /var/lib/agmind/redis:/data
+env:
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+health:
+  test:
+  - CMD
+  - redis-cli
+  - ping
+  interval: 10s

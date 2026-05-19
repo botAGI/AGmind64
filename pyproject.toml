@@ -1,0 +1,118 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agmind"
+version = "0.1.0.dev0"
+description = "Private LLM/RAG platform for AMD Strix Halo and generic x86_64"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "AGmind core" }]
+keywords = ["llm", "rag", "rocm", "vulkan", "strix-halo", "amd"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+  "numpy>=2.0",
+  "typer>=0.12",
+  "rich>=13.7",
+  "questionary>=2.0",
+  "platformdirs>=4.2",
+  "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+cpu = [
+  "torch",
+  "onnxruntime",
+  "llama-cpp-python",
+  "scipy",
+]
+vulkan = [
+  "llama-cpp-python",  # build with CMAKE_ARGS=-DGGML_VULKAN=ON
+  "scipy",
+]
+rocm = [
+  "torch",             # install from rocm index-url
+  "onnxruntime",
+  "llama-cpp-python",  # build with CMAKE_ARGS=-DGGML_HIP=ON
+  "scipy",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "pytest-benchmark>=4.0",
+  "ruff>=0.7",
+  "mypy>=1.10",
+  "pre-commit>=4.0",
+  "types-PyYAML",
+]
+
+[project.scripts]
+agmind = "agmind.cli:app"
+
+# Phase H'.E: setuptools entry_points для compute backends.
+# Third-party плагины делают `pip install agmind-intel-backend` и регистрируют
+# свой класс под группой `agmind.backends` — core не нужно править.
+# См. ADR-0008.
+[project.entry-points."agmind.backends"]
+cpu = "agmind.compute.backends.cpu:CPUBackend"
+vulkan = "agmind.compute.backends.vulkan:VulkanBackend"
+rocm = "agmind.compute.backends.rocm:ROCmBackend"
+npu = "agmind.compute.backends.npu_stub:NPUStubBackend"
+
+[project.urls]
+Documentation = "https://github.com/botAGI/AGmindx86"
+Repository = "https://github.com/botAGI/AGmindx86"
+"Migration Spec" = "https://github.com/botAGI/AGmindx86/blob/main/AGMIND_MIGRATION_SPEC.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agmind*"]
+exclude = ["legacy*", "tests*", "scripts*", "docs*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]
+ignore = ["PLR0913"]  # too-many-arguments
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004"]  # magic value in tests is fine
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+exclude = ["legacy/", "tests/fixtures/"]
+
+[[tool.mypy.overrides]]
+module = ["llama_cpp.*", "onnxruntime.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+markers = [
+  "backend_cpu: tests requiring CPU backend",
+  "backend_vulkan: tests requiring Vulkan backend (gfx1151)",
+  "backend_rocm: tests requiring ROCm backend (gfx1151)",
+  "backend_any: tests backend-agnostic",
+  "slow: tests > 1s",
+  "integration: requires real hardware",
+]
+addopts = "-ra --strict-markers"

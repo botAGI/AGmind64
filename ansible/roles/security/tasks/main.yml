@@ -1,0 +1,62 @@
+---
+# Host-level security: UFW (LAN-only firewall) + fail2ban + опц. Authelia.
+
+- name: Install UFW + fail2ban
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+    state: present
+
+- name: Configure UFW defaults (deny incoming, allow outgoing)
+  community.general.ufw:
+    state: enabled
+    direction: incoming
+    policy: deny
+
+- name: UFW allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: UFW allow SSH (rate-limited)
+  community.general.ufw:
+    rule: limit
+    port: ssh
+    proto: tcp
+
+- name: UFW allow HTTP/HTTPS (LAN only)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    src: 192.168.0.0/16
+  loop:
+    - "{{ agmind_proxy_http_port }}"
+    - "{{ agmind_proxy_https_port }}"
+
+- name: UFW allow mDNS multicast
+  community.general.ufw:
+    rule: allow
+    port: "5353"
+    proto: udp
+    src: 224.0.0.251
+
+- name: Enable fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Configure fail2ban sshd jail
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.d/agmind-sshd.conf
+    content: |
+      [sshd]
+      enabled = true
+      port = ssh
+      maxretry = 5
+      findtime = 600
+      bantime = 3600
+    mode: "0644"
+  notify: restart fail2ban

@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: llama-embed
+image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
+tier: inference
+purpose: Embedding inference (bge-m3 Q8_0) via llama-server pooling=cls
+profiles:
+- core
+ports:
+- 127.0.0.1:8081:8080
+volumes:
+- /var/lib/agmind/models:/models:ro
+env:
+  AMD_VULKAN_ICD: RADV
+  VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+devices:
+- /dev/dri
+group_add:
+- video
+- render
+resources:
+  cpus: 4.0
+  mem_limit: 8g
+routing:
+  host: embed.agmind.dev
+  middleware_chain: chain-llm
+observability:
+  prometheus_scrape: true

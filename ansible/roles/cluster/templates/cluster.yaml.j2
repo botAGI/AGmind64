@@ -1,0 +1,22 @@
+# AGmind cluster config — сгенерировано Ansible.
+# Path: {{ agmind_config_dir }}/cluster.yaml
+# Read by: agmind.cluster.load_cluster_config()
+
+cluster:
+  role: master
+  master_endpoint: "http://{{ ansible_default_ipv4.address }}:8080"
+  workers:
+{% for endpoint in agmind_worker_endpoints | default([]) %}
+    - url: {{ endpoint }}
+{% endfor %}
+  discovery:
+    mdns_enabled: {{ agmind_mdns_enabled | default(true) | string | lower }}
+    mdns_domain: {{ agmind_mdns_domain | default('local') }}
+    static_endpoints: {{ agmind_worker_endpoints | default([]) | length }}
+
+  routing:
+    # round-robin | least-loaded | sticky-session
+    strategy: round-robin
+    health_check_interval_s: 30
+    health_check_timeout_s: 5
+    fallback_to_local: true

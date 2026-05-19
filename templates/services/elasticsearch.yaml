@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: elasticsearch
+image: elasticsearch:9.4.1
+digest: 12aec8d2b01e0447c61303fc04a66dfbb7bfbb6a1332faf32707c3a2b54787d8
+tier: storage
+purpose: RAGFlow chunk index — 2026-05-12
+profiles:
+- ragflow
+volumes:
+- /var/lib/agmind/elasticsearch:/usr/share/elasticsearch/data
+env:
+  discovery.type: single-node
+  xpack.security.enabled: 'false'
+  ES_JAVA_OPTS: -Xms4g -Xmx4g
+resources:
+  cpus: 4.0
+  mem_limit: 8g

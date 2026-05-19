@@ -1,0 +1,331 @@
+{
+  "$defs": {
+    "HealthCheck": {
+      "additionalProperties": false,
+      "description": "Docker healthcheck definition (compose v3 format).\n\nИспользуется тремя потребителями (deep-dive 04 §5):\n- Docker compose: для restart logic\n- Traefik: для исключения unhealthy из роутинга\n- Prometheus blackbox: для алертинга",
+      "properties": {
+        "test": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Test",
+          "type": "array"
+        },
+        "interval": {
+          "default": "30s",
+          "title": "Interval",
+          "type": "string"
+        },
+        "timeout": {
+          "default": "5s",
+          "title": "Timeout",
+          "type": "string"
+        },
+        "retries": {
+          "default": 3,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Retries",
+          "type": "integer"
+        },
+        "start_period": {
+          "default": "10s",
+          "title": "Start Period",
+          "type": "string"
+        }
+      },
+      "required": [
+        "test"
+      ],
+      "title": "HealthCheck",
+      "type": "object"
+    },
+    "ObservabilityConfig": {
+      "additionalProperties": false,
+      "description": "Auto-discovery hints для observability stack.\n\nИдея: один лейбл в compose → Prometheus/Loki сам подхватывает.\nСм. deep-dive 04 §3-§4 и deep-dive 03 §7.",
+      "properties": {
+        "prometheus_scrape": {
+          "default": false,
+          "title": "Prometheus Scrape",
+          "type": "boolean"
+        },
+        "metrics_path": {
+          "default": "/metrics",
+          "title": "Metrics Path",
+          "type": "string"
+        },
+        "metrics_port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metrics Port"
+        },
+        "loki_scrape": {
+          "default": true,
+          "title": "Loki Scrape",
+          "type": "boolean"
+        },
+        "grafana_dashboard": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grafana Dashboard"
+        }
+      },
+      "title": "ObservabilityConfig",
+      "type": "object"
+    },
+    "ResourceLimits": {
+      "additionalProperties": false,
+      "description": "CPU/memory limits для Docker.",
+      "properties": {
+        "cpus": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 64,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpus"
+        },
+        "mem_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mem Limit"
+        }
+      },
+      "title": "ResourceLimits",
+      "type": "object"
+    },
+    "RoutingConfig": {
+      "additionalProperties": false,
+      "description": "Traefik routing метаданные.\n\nЕсли None — сервис не публикуется через Traefik (internal-only).",
+      "properties": {
+        "host": {
+          "minLength": 3,
+          "title": "Host",
+          "type": "string"
+        },
+        "middleware_chain": {
+          "default": "chain-internal",
+          "enum": [
+            "chain-llm",
+            "chain-internal",
+            "chain-public"
+          ],
+          "title": "Middleware Chain",
+          "type": "string"
+        },
+        "sse": {
+          "default": false,
+          "title": "Sse",
+          "type": "boolean"
+        },
+        "healthcheck_path": {
+          "default": "/health",
+          "title": "Healthcheck Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "title": "RoutingConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Single source of truth для одного сервиса (Phase H' artifact).\n\nПарсится из `templates/services/<name>.yaml`, рендерится в Docker Compose\n+ Traefik labels + Prometheus scrape + Loki labels автоматически.\n\nПример минимального файла:\n\n    # yaml-language-server: $schema=../schemas/service.json\n    name: qdrant\n    image: qdrant/qdrant:v1.18.0\n    tier: storage\n    purpose: Vector store\n    ports:\n      - \"127.0.0.1:6333:6333\"",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "image": {
+      "title": "Image",
+      "type": "string"
+    },
+    "digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Digest"
+    },
+    "tier": {
+      "enum": [
+        "edge",
+        "inference",
+        "app",
+        "storage",
+        "ops"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "purpose": {
+      "default": "",
+      "title": "Purpose",
+      "type": "string"
+    },
+    "owner": {
+      "default": "agmind-core",
+      "title": "Owner",
+      "type": "string"
+    },
+    "profiles": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Profiles",
+      "type": "array"
+    },
+    "ports": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ports",
+      "type": "array"
+    },
+    "volumes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Volumes",
+      "type": "array"
+    },
+    "env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Env",
+      "type": "object"
+    },
+    "extra_args": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Extra Args",
+      "type": "array"
+    },
+    "command": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Command"
+    },
+    "devices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Devices",
+      "type": "array"
+    },
+    "group_add": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Group Add",
+      "type": "array"
+    },
+    "security_opt": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Security Opt",
+      "type": "array"
+    },
+    "cap_add": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cap Add",
+      "type": "array"
+    },
+    "depends_on": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Depends On",
+      "type": "array"
+    },
+    "resources": {
+      "$ref": "#/$defs/ResourceLimits"
+    },
+    "health": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HealthCheck"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "routing": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoutingConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityConfig"
+    }
+  },
+  "required": [
+    "name",
+    "image",
+    "tier"
+  ],
+  "title": "AGmind Service Descriptor",
+  "type": "object",
+  "$id": "https://github.com/botAGI/AGmindx86/schemas/service.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

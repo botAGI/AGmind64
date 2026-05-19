@@ -1,0 +1,93 @@
+---
+# Preflight checks — fail-fast если host не подходит.
+# Заменяет lib/doctor.sh + lib/detect.sh из legacy AGmind.
+
+- name: Verify x86_64 architecture
+  ansible.builtin.fail:
+    msg: |
+      AGmind targets x86_64. This host architecture is {{ ansible_architecture }}.
+      For legacy ARM platform — см. legacy/gb10/install.sh.  # audit: allow legacy reference
+  when: ansible_architecture not in ["x86_64", "amd64"]
+
+- name: Verify Ubuntu 24.04 (other distros — experimental)
+  ansible.builtin.debug:
+    msg: |
+      Detected {{ ansible_distribution }} {{ ansible_distribution_version }}.
+      Tested baseline: Ubuntu 24.04 noble. Other distros may work but не tested.
+  when: not (ansible_distribution == "Ubuntu" and ansible_distribution_version == "24.04")
+
+- name: Check kernel version
+  ansible.builtin.shell:
+    cmd: uname -r
+  register: kernel_check
+  changed_when: false
+  check_mode: false
+
+- name: Warn about old kernel
+  ansible.builtin.debug:
+    msg: |
+      Kernel {{ kernel_check.stdout }} is below recommended {{ agmind_kernel_min }}
+      mainline / {{ agmind_kernel_hwe_min }} HWE. ROCm may see only ~15.5 GiB
+      VRAM (ROCm/issues/5444). Install HWE:
+        sudo apt install --install-recommends linux-generic-hwe-24.04
+  when: >
+    (kernel_check.stdout | regex_replace('^(\d+\.\d+\.\d+).*', '\1') is version('6.17.0', '<'))
+
+- name: Detect AMD Strix Halo iGPU (gfx1151)
+  ansible.builtin.shell: |
+    set -o pipefail
+    for card in /sys/class/drm/card[0-9]*; do
+      [ -f "$card/device/vendor" ] || continue
+      vendor=$(cat "$card/device/vendor")
+      device=$(cat "$card/device/device")
+      if [ "$vendor" = "0x1002" ] && ([ "$device" = "0x1586" ] || [ "$device" = "0x150e" ]); then
+        echo "$card"
+        exit 0
+      fi
+    done
+    exit 1
+  args:
+    executable: /bin/bash
+  register: strix_card
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Display GPU detection result
+  ansible.builtin.debug:
+    msg: |
+      Strix Halo detected at {{ strix_card.stdout }}.
+      Vulkan/ROCm backends могут быть установлены.
+  when: strix_card.rc == 0
+
+- name: Warn if no Strix Halo
+  ansible.builtin.debug:
+    msg: |
+      No AMD Strix Halo iGPU detected. AGmind будет работать в CPU-only mode.
+      Available backends: cpu. См. docs/HARDWARE.md.
+  when: strix_card.rc != 0
+
+- name: Check /dev/dri exists
+  ansible.builtin.stat:
+    path: /dev/dri
+  register: dri_stat
+
+- name: Warn if /dev/dri missing
+  ansible.builtin.fail:
+    msg: |
+      /dev/dri missing — amdgpu kernel module не загружен?
+      Try: sudo modprobe amdgpu; reboot if just installed.
+  when: not dri_stat.stat.exists and strix_card.rc == 0
+
+- name: Check disk space на data dir
+  ansible.builtin.shell: df -BG --output=avail "{{ agmind_data_dir | dirname }}" | tail -n1 | sed 's/G//'
+  register: disk_avail
+  changed_when: false
+  check_mode: false
+
+- name: Require >= 100 GB free on data dir
+  ansible.builtin.fail:
+    msg: |
+      Disk free на {{ agmind_data_dir | dirname }}: {{ disk_avail.stdout }} GB.
+      AGmind требует минимум 100 GB (модели + qdrant + dify storage).
+  when: (disk_avail.stdout | trim | int) < 100

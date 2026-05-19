@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: postgres
+image: postgres:17.10-alpine3.22
+digest: b02d9b5bcf608c2719da32cdabee274a33841202487fd5dc9b065b63f886753f
+tier: storage
+purpose: Dify metadata + plugin state — PG 17 LTS (2026-05-16)
+profiles:
+- rag
+volumes:
+- /var/lib/agmind/postgres:/var/lib/postgresql/data
+env:
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: dify
+  POSTGRES_USER: dify
+  PGDATA: /var/lib/postgresql/data/pgdata
+resources:
+  cpus: 4.0
+  mem_limit: 4g
+health:
+  test:
+  - CMD-SHELL
+  - pg_isready -U dify -d dify
+  interval: 10s
+  retries: 5

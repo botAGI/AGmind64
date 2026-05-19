@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dify-api
+image: langgenius/dify-api:1.14.2
+digest: 062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
+tier: app
+purpose: Dify backend API
+profiles:
+- rag
+ports:
+- 127.0.0.1:5001:5001
+volumes:
+- /var/lib/agmind/dify/storage:/app/api/storage
+env:
+  MODE: api
+  LOG_LEVEL: INFO
+  DB_HOST: postgres
+  DB_PORT: '5432'
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  VECTOR_STORE: qdrant
+  QDRANT_URL: http://qdrant:6333
+depends_on:
+- postgres
+- redis
+- qdrant
+resources:
+  cpus: 4.0
+  mem_limit: 4g

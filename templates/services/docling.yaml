@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: docling
+image: quay.io/docling-project/docling-serve-cpu:v1.18.0
+digest: fa1b087efcad34fe10f9f7dc3ce7e9913849a2836c9572c68e1d59074bd3228d
+tier: app
+purpose: Document parsing CPU-only (per R7); RapidOcr regression fixed
+profiles:
+- rag
+ports:
+- 127.0.0.1:5002:5001
+volumes:
+- /var/lib/agmind/docling-cache:/root/.cache
+env:
+  DOCLING_SERVE_ALLOW_CUSTOM_OCR_CONFIG: 'true'
+resources:
+  cpus: 12.0
+  mem_limit: 16g

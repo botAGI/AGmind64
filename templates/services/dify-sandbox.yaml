@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dify-sandbox
+image: langgenius/dify-sandbox:0.2.15
+digest: 750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
+tier: app
+purpose: Dify code execution sandbox
+profiles:
+- rag
+resources:
+  cpus: 2.0
+  mem_limit: 1g

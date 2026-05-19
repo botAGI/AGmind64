@@ -1,0 +1,17 @@
+{
+  "cli.doctor.title": "AGmind doctor",
+  "cli.doctor.ok": "ok",
+  "cli.doctor.warn": "warn",
+  "cli.doctor.fail": "fail",
+  "cli.doctor.skip": "skip",
+
+  "cli.status.available": "Available backends",
+  "cli.status.selected": "Selected",
+  "cli.status.device": "Device",
+  "cli.status.memory": "Memory",
+  "cli.status.capabilities": "Capabilities",
+
+  "errors.no_backend": "No compute backend available on this host.",
+  "errors.invalid_engine": "Engine {engine!r} is not supported on backend {backend!r}.",
+  "errors.amdvlk_present": "AMDVLK detected — RADV may be silently overridden."
+}

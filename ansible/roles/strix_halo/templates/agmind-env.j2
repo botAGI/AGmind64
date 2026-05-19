@@ -1,0 +1,33 @@
+# AGmind Strix Halo environment defaults.
+# Сгенерировано Ansible — не редактируйте напрямую.
+# Override через group_vars / host_vars / AGMIND_* env vars.
+
+# ---- Vulkan ----
+AMD_VULKAN_ICD={{ agmind_strix_halo.vulkan_icd }}
+VK_DRIVER_FILES={{ agmind_strix_halo.radv_icd_path }}
+VK_ICD_FILENAMES={{ agmind_strix_halo.radv_icd_path }}
+GGML_VK_VISIBLE_DEVICES=0
+
+# ---- ROCm/HIP runtime ----
+PYTORCH_ROCM_ARCH=gfx1151
+PYTORCH_ALLOC_CONF=expandable_segments:True
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+ROCBLAS_USE_HIPBLASLT=1
+HSA_ENABLE_SDMA=0
+HIP_PLATFORM=amd
+MIOPEN_LOG_LEVEL=3
+HIP_VISIBLE_DEVICES=0
+ROCR_VISIBLE_DEVICES=0
+# HSA_OVERRIDE_GFX_VERSION НЕ устанавливается с AMD nightly wheels.
+
+# ---- AGmind backend selection ----
+AGMIND_BACKEND=auto
+AGMIND_ENGINE=auto
+AGMIND_BACKEND_PROFILE=mixed
+AGMIND_LOG_LEVEL=INFO
+
+# ---- Paths ----
+AGMIND_CONFIG_DIR={{ agmind_config_dir }}
+AGMIND_DATA_DIR={{ agmind_data_dir }}
+AGMIND_MODELS_DIR={{ agmind_models_dir }}
+AGMIND_CREDENTIALS_PATH={{ agmind_install_dir }}/{{ agmind_credentials_filename }}

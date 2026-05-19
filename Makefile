@@ -1,76 +1,84 @@
-# Makefile — AGmind task runner
-# All targets are thin wrappers over existing scripts/tests (no new logic).
-# GNU Make 4.3 / aarch64 (DGX OS). Run `make help` for the list.
+.PHONY: help audit smoke lint format test docker-base docker-cpu docker-vulkan docker-rocm \
+        dod-A dod-B dod-C dod-D dod-E dod-F dod-G clean
 
-SHELL := /bin/bash
+help:
+	@echo "AGmind dev targets:"
+	@echo "  audit          — run audit_forbidden.py (fail on findings)"
+	@echo "  lint           — ruff + mypy"
+	@echo "  format         — ruff format"
+	@echo "  test           — pytest with coverage"
+	@echo "  smoke          — load default backend and print device info"
+	@echo "  docker-base    — build base x86-64 image"
+	@echo "  docker-{cpu,vulkan,rocm}  — build backend images"
+	@echo "  dod-X          — run Definition of Done check for phase X (A-G)"
 
-.PHONY: help lint test test-unit test-integration compose-config \
-        manifest-check image-check release-check \
-        registry-codegen registry-verify \
-        golden-test golden-update golden-update-all \
-        landmines-check landmines-sync \
-        adr-index adr-index-check
+# --- Quality gates ---
 
-help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | \
-	  awk 'BEGIN{FS=":.*##"}{printf "  \033[36m%-18s\033[0m %s\n",$$1,$$2}'
+audit:
+	python3 scripts/audit_forbidden.py --fail
 
-lint: ## shellcheck -S warning lib/*.sh scripts/*.sh install.sh (repo Definition of Done gate)
-	shellcheck -S warning lib/*.sh scripts/*.sh install.sh
+lint:
+	ruff check .
+	mypy agmind/
 
-test: ## Run full local regression suite (tests/run_all.sh)
-	bash tests/run_all.sh
+format:
+	ruff format .
+	ruff check --fix .
 
-test-unit: ## Run only unit tests (tests/unit/test_*.sh)
-	@rc=0; for t in tests/unit/test_*.sh; do \
-	  echo "==> $$t"; bash "$$t" || { c=$$?; [[ $$c -eq 77 ]] && echo "  SKIP" || { echo "  FAIL($$c)"; rc=1; }; }; \
-	done; exit $$rc
+test:
+	pytest -q --cov=agmind
 
-test-integration: ## Run only integration tests (tests/integration/test_*.sh)
-	@rc=0; for t in tests/integration/test_*.sh; do \
-	  echo "==> $$t"; bash "$$t" || { c=$$?; [[ $$c -eq 77 ]] && echo "  SKIP" || { echo "  FAIL($$c)"; rc=1; }; }; \
-	done; exit $$rc
+smoke:
+	python3 -c "from agmind.compute import get_backend; print(get_backend().device_info())"
 
-compose-config: ## Validate docker-compose YAML schema
-	docker compose -f templates/docker-compose.yml config -q
+# --- Docker ---
 
-manifest-check: ## Verify every image:tag has an arm64 manifest (repo Definition of Done gate)
-	bash tests/compose/test_image_tags_exist.sh templates/docker-compose.yml
+docker-base:
+	docker build -f docker/Dockerfile.base -t agmind-base:dev .
 
-image-check: manifest-check ## Alias for manifest-check
+docker-cpu: docker-base
+	docker build -f docker/Dockerfile.cpu --build-arg BASE_IMAGE=agmind-base:dev -t agmind-cpu:dev .
 
-release-check: ## Check VERSION/RELEASE/release-manifest.json consistency
-	python3 scripts/check-manifest-versions.py
+docker-vulkan: docker-base
+	docker build -f docker/Dockerfile.vulkan --build-arg BASE_IMAGE=agmind-base:dev -t agmind-vulkan:dev .
 
-registry-codegen: ## Regenerate lib/_registry.indexed.sh from templates/services/registry.yaml
-	bash scripts/codegen/registry-to-indexed.sh
+docker-rocm:
+	docker build -f docker/Dockerfile.rocm -t agmind-rocm:dev .
 
-registry-verify: ## CI gate — run codegen, fail if generated artifact has drift
-	bash tests/integration/test_registry_codegen_drift.sh
+# --- Phase DoD checks (executable success criteria) ---
 
-golden-test: ## Run all 5 golden scenarios (hermetic — no docker daemon needed)
-	bash tests/golden/run.sh --all
+dod-A:
+	@echo "Phase A DoD:"
+	@test -f docs/MIGRATION_PLAN.md || { echo "  ❌ MIGRATION_PLAN.md missing"; exit 1; }
+	@test -f .planning/research/x86-migration/baseline-audit.json || { echo "  ❌ baseline-audit.json missing"; exit 1; }
+	@test -f scripts/audit_forbidden.py || { echo "  ❌ audit_forbidden.py missing"; exit 1; }
+	@echo "  ✅ all artefacts present (human approval still required)"
 
-golden-update: ## Interactive golden snapshot update for one scenario (usage: make golden-update SCENARIO=<name>)
-	@if [[ -z "$$SCENARIO" ]]; then \
-	  echo "Usage: make golden-update SCENARIO=<name>"; \
-	  echo "Available scenarios: $$(awk -F'\t' 'NR>0 && $$1!="" && !/^#/ {print $$1}' tests/golden/scenarios.list | tr '\n' ' ')"; \
-	  exit 2; \
-	fi; \
-	AGMIND_GOLDEN_ACCEPT=$${AGMIND_GOLDEN_ACCEPT:-1} bash tests/golden/run.sh --update "$$SCENARIO"; \
-	python3 scripts/golden-diff-summary.py tests/golden/.last-update.diff || true
+dod-B: audit
+	@echo "Phase B DoD: audit clean outside legacy/ — done."
 
-golden-update-all: ## Bulk update all golden scenarios (requires AGMIND_GOLDEN_ACCEPT=1)
-	AGMIND_GOLDEN_ACCEPT=1 bash tests/golden/run.sh --update --update-all
+dod-C: dod-B lint
+	pytest -m backend_cpu -q
+	pytest -m backend_any -q
+	$(MAKE) smoke
 
-landmines-check: ## Run landmine enforcer against tests/golden/expected/
-	bash tests/unit/test_golden_no_known_landmines.sh
+dod-D: dod-C
+	pytest -m "backend_vulkan or backend_rocm" -q
+	@test -f docs/BENCHMARKS.md || { echo "  ❌ BENCHMARKS.md baseline missing"; exit 1; }
 
-landmines-sync: ## Regenerate tests/lint/LANDMINES.tsv from LANDMINES.md
-	bash scripts/landmines-sync.sh
+dod-E: dod-D
+	pytest -q
 
-adr-index: ## Regenerate docs/adr/INDEX.md table between sentinel markers
-	python3 scripts/generate-adr-index.py
+dod-F: dod-E docker-base docker-cpu docker-vulkan docker-rocm
+	@echo "Phase F DoD: all 4 docker images built locally."
 
-adr-index-check: ## CI gate — fail if docs/adr/INDEX.md is out of sync with ADR frontmatter
-	python3 scripts/generate-adr-index.py --check
+dod-G: dod-F
+	@test -s docs/BENCHMARKS.md || { echo "  ❌ BENCHMARKS.md empty"; exit 1; }
+	@grep -q "tg.*pp" docs/BENCHMARKS.md || { echo "  ❌ no tg/pp numbers in BENCHMARKS"; exit 1; }
+	@echo "Phase G DoD: benchmarks + docs final."
+
+# --- Cleanup ---
+
+clean:
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov dist build *.egg-info
+	find . -type d -name __pycache__ -exec rm -rf {} +

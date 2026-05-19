@@ -1,0 +1,38 @@
+---
+# Cluster setup — выполняется только на agmind_master.
+# Discovery workers через Ansible inventory, opening firewall к ним.
+
+- name: Build worker endpoints list
+  ansible.builtin.set_fact:
+    agmind_worker_endpoints: >-
+      {{
+        groups['agmind_workers']
+        | default([])
+        | map('extract', hostvars)
+        | selectattr('agmind_worker_endpoint', 'defined')
+        | map(attribute='agmind_worker_endpoint')
+        | list
+      }}
+
+- name: Display discovered workers
+  ansible.builtin.debug:
+    msg: |
+      Cluster workers discovered: {{ agmind_worker_endpoints | length }}
+      Endpoints: {{ agmind_worker_endpoints }}
+
+- name: Render cluster.yaml config
+  ansible.builtin.template:
+    src: cluster.yaml.j2
+    dest: "{{ agmind_config_dir }}/cluster.yaml"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
+
+- name: Allow inbound 8080-8082 from worker IPs
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    port: "{{ item.1 }}"
+    src: "{{ item.0 }}"
+  loop: "{{ groups['agmind_workers'] | map('extract', hostvars, 'ansible_host') | list | product(['8080', '8081', '8082']) | list }}"
+  when: groups['agmind_workers'] | default([]) | length > 0

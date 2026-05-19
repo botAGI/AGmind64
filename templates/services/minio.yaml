@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: minio
+image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772
+digest: cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd
+tier: storage
+purpose: S3-compatible storage (RAGFlow files). AGPL3 — review if closed-source.
+profiles:
+- ragflow
+ports:
+- 127.0.0.1:9000:9000
+- 127.0.0.1:9001:9001
+volumes:
+- /var/lib/agmind/minio:/data
+env:
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+resources:
+  cpus: 2.0
+  mem_limit: 2g

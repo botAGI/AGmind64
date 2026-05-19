@@ -1,0 +1,17 @@
+# Grafana dashboards provisioning (Phase H'.D, ADR-0007).
+# Указывает где Grafana ищет JSON dashboards. Сами JSON файлы — в Phase H'.D
+# fork art-vish/llamacpp-llm-observer + кастомные для gfx1151.
+
+apiVersion: 1
+
+providers:
+  - name: agmind-dashboards
+    orgId: 1
+    folder: AGmind
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

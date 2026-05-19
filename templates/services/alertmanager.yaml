@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: alertmanager
+image: prom/alertmanager:v0.32.1
+digest: 51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+tier: ops
+purpose: Alert routing для Prometheus
+profiles:
+- observability
+ports:
+- 127.0.0.1:9093:9093
+volumes:
+- /etc/agmind/alertmanager:/etc/alertmanager:ro
+resources:
+  cpus: 1.0
+  mem_limit: 512m
+observability:
+  prometheus_scrape: true

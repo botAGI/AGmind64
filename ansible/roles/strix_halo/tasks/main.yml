@@ -1,0 +1,64 @@
+---
+# Strix Halo specific tuning: AMDVLK cleanup, GRUB cmdline для GTT pool.
+# Per R2 (Vulkan/RADV mandatory) + R10 (BIOS UMA + ttm.pages_limit).
+
+- name: Detect AMDVLK ICD files (R2 — discontinued AMD 2025-09-15)
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: amdvlk_files
+  loop: "{{ agmind_strix_halo.amdvlk_purge_paths }}"
+
+- name: Purge AMDVLK ICD files (имеют 2 GiB cap, ломает LLM ≥30B)
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    state: absent
+  loop: "{{ amdvlk_files.results }}"
+  when: item.stat.exists
+  notify: warn AMDVLK purged
+
+- name: Read current GRUB cmdline
+  ansible.builtin.slurp:
+    src: /etc/default/grub
+  register: grub_current
+  no_log: true
+
+- name: Compute recommended ttm.pages_limit (94% RAM)
+  ansible.builtin.set_fact:
+    agmind_ttm_pages_limit: "{{ ((ansible_memtotal_mb * 1024 * 1024 * agmind_strix_halo.ttm_pages_limit_pct) / 4096) | int }}"
+
+- name: Ensure GRUB cmdline contains agmind defaults
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=off ttm.pages_limit={{ agmind_ttm_pages_limit }} ttm.page_pool_size={{ agmind_ttm_pages_limit }} zswap.enabled=0"'
+  notify: regenerate grub
+
+- name: Verify Mesa version (R2 — min 25.2.8)
+  ansible.builtin.shell: |
+    set -o pipefail
+    glxinfo 2>/dev/null | grep -oE 'Mesa [0-9]+\.[0-9]+\.[0-9]+' | head -1 | awk '{print $2}'
+  args:
+    executable: /bin/bash
+  register: mesa_ver
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Warn if Mesa below {{ agmind_mesa_min }}
+  ansible.builtin.debug:
+    msg: |
+      Mesa {{ mesa_ver.stdout | default('not-detected') }} below {{ agmind_mesa_min }}.
+      Recommended {{ agmind_mesa_recommended }}+ через kisak PPA:
+        sudo add-apt-repository ppa:kisak/kisak-mesa
+        sudo apt upgrade
+  when:
+    - mesa_ver.stdout | default('') | length > 0
+    - mesa_ver.stdout is version(agmind_mesa_min, '<')
+
+- name: Render AGmind env file (Strix Halo defaults)
+  ansible.builtin.template:
+    src: agmind-env.j2
+    dest: "{{ agmind_config_dir }}/strix-halo.env"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"

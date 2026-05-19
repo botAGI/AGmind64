@@ -1,0 +1,113 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run forbidden-pattern audit
+        run: python3 scripts/audit_forbidden.py --fail --json audit-report.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report
+          path: audit-report.json
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy agmind/
+
+  test-cpu:
+    runs-on: ubuntu-24.04
+    needs: [audit, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[cpu,dev]"
+      - run: pytest -q --cov=agmind -m "backend_any or backend_cpu"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-cpu
+          path: .coverage
+
+  docker-build:
+    runs-on: ubuntu-24.04
+    needs: [audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [cpu, vulkan, rocm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build base
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          platforms: linux/amd64
+          tags: agmind-base:ci
+          load: true
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,scope=base,mode=max
+
+      - name: Build ${{ matrix.backend }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.backend }}
+          platforms: linux/amd64
+          build-args: BASE_IMAGE=agmind-base:ci
+          tags: agmind-${{ matrix.backend }}:ci
+          cache-from: type=gha,scope=${{ matrix.backend }}
+          cache-to: type=gha,scope=${{ matrix.backend }},mode=max
+
+  # Опционально-запускаемый job для real Strix Halo hardware (self-hosted runner).
+  # Требует label `strix-halo` на self-hosted runner с подключённой gfx1151.
+  test-strix-halo:
+    runs-on: [self-hosted, linux, x64, strix-halo]
+    if: github.event_name == 'workflow_dispatch'
+    needs: [audit, lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [vulkan, rocm]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke benchmark on ${{ matrix.backend }}
+        env:
+          AGMIND_BACKEND: ${{ matrix.backend }}
+        run: |
+          docker run --rm \
+            --device /dev/dri \
+            $( [ "${{ matrix.backend }}" = "rocm" ] && echo "--device /dev/kfd --group-add video --group-add render --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --ipc=host --shm-size=16G" ) \
+            -e AGMIND_BACKEND \
+            agmind-${{ matrix.backend }}:ci \
+            pytest -q -m "backend_${{ matrix.backend }} or backend_any"

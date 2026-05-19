@@ -1,0 +1,78 @@
+---
+# Docker install + daemon config.
+
+- name: Check Docker installed
+  ansible.builtin.command: docker --version
+  register: docker_version
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+- name: Install Docker (Debian/Ubuntu)
+  when: docker_version.rc != 0
+  block:
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker apt repo
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install docker packages (pinned latest stable)
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+- name: Configure docker daemon.json
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "data-root": "{{ agmind_docker.data_root }}",
+        "default-runtime": "{{ agmind_docker.default_runtime }}",
+        "default-shm-size": "{{ agmind_docker.shm_size }}",
+        "storage-driver": "overlay2",
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "100m",
+          "max-file": "3"
+        },
+        "dns": ["1.1.1.1", "8.8.8.8"]
+      }
+    mode: "0644"
+  notify: restart docker
+
+- name: Enable & start docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Verify Docker can access AMD GPU
+  ansible.builtin.command:
+    cmd: docker run --rm --device=/dev/dri ubuntu:24.04 ls /dev/dri
+  register: docker_dri
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Warn if Docker can't see /dev/dri
+  ansible.builtin.debug:
+    msg: |
+      Docker can't see /dev/dri в контейнере. Это может означать:
+      1. amdgpu module не загружен
+      2. /dev/dri имеет неправильные permissions
+      3. docker daemon отсутствует rootful access
+      Try: sudo modprobe amdgpu && sudo usermod -aG render,video $USER
+  when: docker_dri.rc != 0

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: authelia
+image: authelia/authelia:4.39.6
+tier: edge
+purpose: Optional 2FA / SSO
+profiles:
+- security
+ports:
+- 127.0.0.1:9091:9091
+volumes:
+- /etc/agmind/authelia:/config:ro
+depends_on:
+- redis
+resources:
+  cpus: 1.0
+  mem_limit: 512m

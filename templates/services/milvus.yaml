@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: milvus
+image: milvusdb/milvus:v2.6.17
+digest: 37ce939f2afdb6df217c33765c8468c963e42ac76433bf5a6be073d63d78caab
+tier: storage
+purpose: Billion-scale vector store (opt-in profile) — 2026-05-16
+profiles:
+- rag-milvus
+ports:
+- 127.0.0.1:19530:19530
+volumes:
+- /var/lib/agmind/milvus:/var/lib/milvus
+resources:
+  cpus: 8.0
+  mem_limit: 16g

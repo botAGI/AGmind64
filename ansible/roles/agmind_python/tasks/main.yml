@@ -1,0 +1,54 @@
+---
+# Install agmind Python package в /opt/agmind/venv + CLI entrypoint.
+
+- name: Create agmind venv
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ agmind_install_dir }}/venv
+    creates: "{{ agmind_install_dir }}/venv/bin/python"
+  become_user: "{{ agmind_user }}"
+
+- name: Upgrade pip in venv
+  ansible.builtin.pip:
+    name:
+      - pip
+      - setuptools
+      - wheel
+    state: latest  # noqa package-latest — pip self-upgrade ok
+    virtualenv: "{{ agmind_install_dir }}/venv"
+  become_user: "{{ agmind_user }}"
+
+- name: Install agmind package (editable, dev extras)
+  ansible.builtin.pip:
+    name:
+      - "file://{{ playbook_dir }}/../[dev]"
+    virtualenv: "{{ agmind_install_dir }}/venv"
+    state: present
+    editable: true
+  become_user: "{{ agmind_user }}"
+
+- name: Create /usr/local/bin/agmind wrapper
+  ansible.builtin.copy:
+    dest: /usr/local/bin/agmind
+    content: |
+      #!/bin/sh
+      # AGmind CLI wrapper — pinned venv invocation.
+      exec {{ agmind_install_dir }}/venv/bin/python -m agmind "$@"
+    mode: "0755"
+
+- name: Symlink audit_forbidden.py for CI / pre-commit
+  ansible.builtin.file:
+    src: "{{ playbook_dir }}/../scripts/audit_forbidden.py"
+    dest: "{{ agmind_install_dir }}/audit_forbidden.py"
+    state: link
+    force: true
+
+- name: Smoke test agmind import
+  ansible.builtin.command:
+    cmd: "{{ agmind_install_dir }}/venv/bin/python -c 'import agmind; print(agmind.__version__)'"
+  register: agmind_smoke
+  changed_when: false
+  check_mode: false
+
+- name: Display agmind version
+  ansible.builtin.debug:
+    msg: "agmind installed: {{ agmind_smoke.stdout }}"
