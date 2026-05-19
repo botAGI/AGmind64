@@ -206,6 +206,36 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
 
         raise typer.Exit(code=cmd_snapshots_list())
 
+    # ---- gc (Phase L.C) ----
+    @app.command()
+    def gc(
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Show what would be removed (don't delete)"
+        ),
+        aggressive: bool = typer.Option(
+            False, "--aggressive",
+            help="Remove ALL unused volumes (default: только labeled agmind.gc=auto)",
+        ),
+        older_than_hours: int = typer.Option(
+            72, "--older-than-hours",
+            help="Image age cutoff в часах (default: 72)",
+        ),
+        include_models: bool = typer.Option(
+            False, "--include-models",
+            help="Также удалить GGUF/safetensors не упомянутые в descriptors",
+        ),
+    ) -> None:
+        """Garbage collection: containers + images + volumes + networks (+ models opt-in)."""
+        from agmind.deploy import format_gc_report, gc_all
+
+        reports = gc_all(
+            aggressive=aggressive,
+            older_than_hours=older_than_hours,
+            dry_run=dry_run,
+            include_models=include_models,
+        )
+        sys.stdout.write(format_gc_report(reports))
+
     # ---- service subcommand group (Phase H'.E) ----
     service_app = typer.Typer(
         name="service",
