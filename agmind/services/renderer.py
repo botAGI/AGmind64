@@ -86,6 +86,48 @@ def filter_by_profile(
     }
 
 
+def filter_by_services(
+    descriptors: dict[str, ServiceDescriptor],
+    services: list[str],
+) -> dict[str, ServiceDescriptor]:
+    """Keep only explicit named services (Phase J.1.8: per-service selection)."""
+    wanted = set(services)
+    return {name: d for name, d in descriptors.items() if name in wanted}
+
+
+def select_services(
+    descriptors: dict[str, ServiceDescriptor],
+    profiles: list[str] | None = None,
+    services: list[str] | None = None,
+) -> dict[str, ServiceDescriptor]:
+    """Combined selection: explicit `services` list takes precedence over `profiles`.
+
+    Usage:
+        select_services(d, services=["traefik", "llama-llm", "qdrant"])
+        select_services(d, profiles=["core", "observability"])
+    """
+    if services is not None:
+        return filter_by_services(descriptors, services)
+    return filter_by_profile(descriptors, profiles or [])
+
+
+def check_missing_dependencies(
+    selected: dict[str, ServiceDescriptor],
+    all_descriptors: dict[str, ServiceDescriptor],
+) -> dict[str, list[str]]:
+    """Return {service_name: [missing_dep_names]} — depends_on которые не выбраны.
+
+    Используется TUI чтобы warn user'а если он выбрал dify-api без postgres.
+    """
+    selected_names = set(selected.keys())
+    missing: dict[str, list[str]] = {}
+    for name, d in selected.items():
+        gaps = [dep for dep in d.depends_on if dep not in selected_names]
+        if gaps:
+            missing[name] = gaps
+    return missing
+
+
 def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
     """Generate Traefik docker provider labels from ServiceDescriptor.routing.
 
@@ -293,25 +335,27 @@ def to_yaml(compose: dict[str, Any]) -> str:
 
 
 def render_to_string(
-    profiles: list[str],
+    profiles: list[str] | None = None,
     services_dir: Path = DEFAULT_SERVICES_DIR,
     traefik_enabled: bool = True,
     domain: str | None = None,
+    services: list[str] | None = None,
 ) -> str:
     """End-to-end: load + filter + render + serialize. Возвращает финальный YAML.
 
     Args:
-        profiles: list profile names to include
+        profiles: list profile names to include (high-level filter)
+        services: explicit service names (per-service selection, takes precedence)
         services_dir: где искать service descriptors
         traefik_enabled: добавлять Traefik routing labels из routing config
         domain: если задан — sed-replace `agmind.dev` placeholder на этот домен
-            (для multi-user setup: каждый юзер вводит свой `agmind_domain` в Ansible
-            vars_prompt, без правки источника). См. ADR-0006 + SETUP_CLOUDFLARE_DOMAIN.md.
     """
     descriptors = load_descriptors(services_dir)
-    selected = filter_by_profile(descriptors, profiles)
+    selected = select_services(descriptors, profiles=profiles, services=services)
     if not selected:
-        raise ValueError(f"No services match profiles {profiles}")
+        raise ValueError(
+            f"No services match: profiles={profiles}, services={services}"
+        )
     compose = render_compose(list(selected.values()), traefik_enabled=traefik_enabled)
     rendered = to_yaml(compose)
     if domain and domain != "agmind.dev":

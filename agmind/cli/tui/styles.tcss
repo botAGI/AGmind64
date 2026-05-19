@@ -52,6 +52,23 @@ Select {
     margin: 0 1;
 }
 
+#service-checkboxes {
+    height: auto;
+    padding: 0 1;
+}
+
+#service-checkboxes Checkbox {
+    margin: 0 1;
+    height: 1;
+}
+
+Label.tier-section {
+    text-style: bold;
+    color: $accent;
+    margin: 1 0 0 0;
+    padding: 0 1;
+}
+
 #button-row {
     align: center middle;
     margin: 1 0;

@@ -43,13 +43,26 @@ TOKEN_PATH = _USER_DATA_DIR / "cf_dns_api_token"
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 
 
+# Smart defaults — минимальный production set (Phase J.1.8):
+# 11 services: traefik (edge) + llama-* (inference) + qdrant (storage) + 6 ops.
+_DEFAULT_SERVICES = {
+    "traefik",
+    "llama-llm", "llama-embed", "llama-rerank",
+    "qdrant",
+    "prometheus", "grafana", "loki", "alloy", "alertmanager", "node-exporter",
+}
+
+
 @dataclass
 class SetupState:
     """Все собранные ответы wizard'а."""
 
     domain: str = ""
     cf_api_token: str = ""
-    profiles: list[str] = field(default_factory=lambda: ["core", "observability"])
+    profiles: list[str] = field(default_factory=list)
+    """Legacy bulk filter (для backward compat). Phase J.1.8 предпочитает services."""
+    services: list[str] = field(default_factory=lambda: sorted(_DEFAULT_SERVICES))
+    """Phase J.1.8: per-service selection — explicit list of service names."""
     backend: str = "auto"
     model_tier: str = "auto"
     install_dir: str = str(DEFAULT_INSTALL_DIR)
@@ -169,6 +182,53 @@ _BACKEND_DESCRIPTIONS: dict[str, str] = {
 }
 
 
+# Phase J.1.8: per-service discovery (replaces profile-based selection в UI).
+
+_TIER_LABELS: dict[str, str] = {
+    "edge": "🌐 Edge & Routing",
+    "inference": "🧠 Inference (LLM)",
+    "app": "📦 Apps",
+    "storage": "💾 Storage",
+    "ops": "📊 Operations",
+}
+
+# Visual tier order top-down в UI
+_TIER_ORDER = ["edge", "inference", "app", "storage", "ops"]
+
+
+def get_services_by_tier() -> dict[str, list[tuple[str, str]]]:
+    """Discover все services из templates/services/*.yaml grouped by tier.
+
+    Returns: {tier_name: [(service_name, "purpose"), ...]}
+    Sort: tier order matches _TIER_ORDER, services внутри отсортированы по имени.
+    """
+    try:
+        from agmind.services.renderer import load_descriptors
+    except ImportError:
+        return {}
+
+    from collections import defaultdict
+
+    descriptors = load_descriptors()
+    by_tier: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for name in sorted(descriptors):
+        d = descriptors[name]
+        # Краткое описание: tier + первая строка purpose
+        purpose = (d.purpose or "").split(".")[0].strip()[:60]
+        by_tier[d.tier].append((d.name, purpose or d.image))
+
+    # Order by _TIER_ORDER
+    ordered: dict[str, list[tuple[str, str]]] = {}
+    for tier in _TIER_ORDER:
+        if tier in by_tier:
+            ordered[tier] = by_tier[tier]
+    # Add любые unknown tiers в конец
+    for tier in by_tier:
+        if tier not in ordered:
+            ordered[tier] = by_tier[tier]
+    return ordered
+
+
 def get_available_profiles() -> list[tuple[str, str]]:
     """Discover profiles из templates/services/*.yaml (32 service descriptors).
 
@@ -271,11 +331,11 @@ class AgmindSetupApp(App[SetupState | None]):
         self.preview_text: str = ""
         self.auto_deploy = auto_deploy
         """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
-        # Discover profiles + backends dynamically (Phase J.1.7).
-        # Profiles читаются из templates/services/*.yaml (32 файла).
-        # Backends — через setuptools entry_points group "agmind.backends".
+        # Discover profiles + backends + services-by-tier dynamically.
         self.profiles_available = get_available_profiles()
         self.backends_available = get_available_backends()
+        # Phase J.1.8: per-service selection grouped by tier
+        self.services_by_tier = get_services_by_tier()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -316,17 +376,31 @@ class AgmindSetupApp(App[SetupState | None]):
                 allow_blank=False,
             )
 
+            # Phase J.1.8: per-service selection grouped by tier.
+            # User видит каждый сервис отдельно с checkbox, smart defaults включены.
+            total = sum(len(svcs) for svcs in self.services_by_tier.values())
             yield Label(
-                f"Profiles (auto-detected из {len(self.profiles_available)} доступных)",
+                f"Services (per-service выбор, {total} доступно)",
                 classes="section",
             )
-            with Container(id="profile-checkboxes"):
-                for name, descr in self.profiles_available:
-                    yield Checkbox(
-                        f"{name:<15} — {descr}",
-                        id=f"profile-{self._slug(name)}",
-                        value=(name in self.state.profiles),
+            yield Static(
+                "💡 Smart defaults включают minimal production set "
+                "(traefik + llama-* + qdrant + observability).",
+                classes="hint",
+            )
+            with Container(id="service-checkboxes"):
+                for tier, services in self.services_by_tier.items():
+                    tier_label = _TIER_LABELS.get(tier, tier)
+                    yield Label(
+                        f"\n{tier_label} ({len(services)})",
+                        classes="tier-section",
                     )
+                    for name, purpose in services:
+                        yield Checkbox(
+                            f"{name:<25} {purpose}",
+                            id=f"svc-{self._slug(name)}",
+                            value=(name in self.state.services),
+                        )
 
         with Horizontal(id="button-row"):
             yield Button("Preview", id="preview-btn", variant="primary")
@@ -363,16 +437,19 @@ class AgmindSetupApp(App[SetupState | None]):
         backend_select = self.query_one("#backend-select", Select)
         backend = str(backend_select.value) if backend_select.value is not None else "auto"
 
-        profiles: list[str] = []
-        for name, _ in self.profiles_available:
-            cb = self.query_one(f"#profile-{self._slug(name)}", Checkbox)
-            if cb.value:
-                profiles.append(name)
+        # Phase J.1.8: collect per-service selection
+        services: list[str] = []
+        for tier_services in self.services_by_tier.values():
+            for name, _ in tier_services:
+                cb = self.query_one(f"#svc-{self._slug(name)}", Checkbox)
+                if cb.value:
+                    services.append(name)
 
         return SetupState(
             domain=domain,
             cf_api_token=cf_token,
-            profiles=profiles,
+            services=services,
+            profiles=[],  # cleared — services field теперь primary
             backend=backend,
             model_tier=self.detected.recommended_tier,
             install_dir=self.state.install_dir,
@@ -385,11 +462,27 @@ class AgmindSetupApp(App[SetupState | None]):
             errors.append("domain должен содержать '.' (e.g. lab.yourcompany.com)")
         if len(state.cf_api_token) < 20:
             errors.append("CF API token < 20 chars — неверный")
-        if not state.profiles:
-            errors.append("Выбери хотя бы один profile")
+        if not state.services and not state.profiles:
+            errors.append("Выбери хотя бы один service")
         if not self.detected.docker_present:
             errors.append("Docker не установлен — apt install docker.io")
         return errors
+
+    def _check_dependencies(self, state: SetupState) -> dict[str, list[str]]:
+        """Warn если выбраны services с unfulfilled depends_on."""
+        if not state.services:
+            return {}
+        try:
+            from agmind.services.renderer import (
+                check_missing_dependencies,
+                load_descriptors,
+                select_services,
+            )
+            all_d = load_descriptors()
+            selected = select_services(all_d, services=state.services)
+            return check_missing_dependencies(selected, all_d)
+        except Exception:
+            return {}
 
     def _set_status(self, msg: str, kind: str = "") -> None:
         widget = self.query_one("#status-msg", Static)
@@ -414,7 +507,7 @@ class AgmindSetupApp(App[SetupState | None]):
         try:
             from agmind.services.renderer import render_to_string
             preview = render_to_string(
-                profiles=state.profiles,
+                services=state.services,
                 domain=state.domain,
                 traefik_enabled=True,
             )
@@ -422,13 +515,23 @@ class AgmindSetupApp(App[SetupState | None]):
             self._set_status(f"❌ render failed: {exc}", kind="error")
             return
 
+        # Check for missing dependencies — warn, не блокируй
+        missing_deps = self._check_dependencies(state)
+        dep_warn = ""
+        if missing_deps:
+            details = "; ".join(
+                f"{name} нуждается в {','.join(deps)}"
+                for name, deps in list(missing_deps.items())[:3]
+            )
+            dep_warn = f" ⚠️ Missing deps: {details}"
+
         lines = preview.splitlines()
         self.preview_text = preview
         self._set_status(
             f"✓ Compose rendered ({len(lines)} lines). "
-            f"Profiles: {','.join(state.profiles)}. "
-            f"Backend: {state.backend}. Domain: {state.domain}",
-            kind="success",
+            f"Services: {len(state.services)}. "
+            f"Backend: {state.backend}. Domain: {state.domain}.{dep_warn}",
+            kind="success" if not missing_deps else "error",
         )
 
     def action_submit(self) -> None:

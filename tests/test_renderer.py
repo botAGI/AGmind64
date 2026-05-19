@@ -262,7 +262,7 @@ def test_render_to_string_produces_valid_yaml() -> None:
 
 
 def test_render_to_string_empty_profile_raises() -> None:
-    with pytest.raises(ValueError, match="No services match profiles"):
+    with pytest.raises(ValueError, match="No services match"):
         render_to_string(["nonexistent-profile-xyz"])
 
 
