@@ -1,13 +1,19 @@
+# Phase L.A: pre-commit hooks (CI gate parity).
+# Run: `pre-commit install` (one-time) + `pre-commit run --all-files`
+# CI runs `pre-commit run --all-files` в .github/workflows/ci.yml job `pre-commit`.
+
 repos:
+  # ---- AGmind audit (project-specific, forbids legacy patterns) ----
   - repo: local
     hooks:
       - id: agmind-audit-forbidden
-        name: AGmind — запрет на non-x86 / CUDA хардкоды
+        name: AGmind audit (forbid CUDA/non-x86 hardcodes)  # audit: allow rule-self-reference
         entry: python3 scripts/audit_forbidden.py --fail
         language: system
         pass_filenames: false
         always_run: true
 
+  # ---- Python: ruff (lint + format) ----
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.0
     hooks:
@@ -15,24 +21,95 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # ---- Python: mypy strict (Phase L.A) ----
+  # Local hook потому что mypy mirror отстаёт; используем pinned version из dev deps.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy --strict (agmind/)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && .venv/bin/mypy agmind/ --no-error-summary 2>&1 | head -20'
+        language: system
+        pass_filenames: false
+        files: ^agmind/.*\.py$
+
+  # ---- Generic file hygiene ----
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # Service descriptors имеют свой schema check ниже, не общий
+        exclude: ^templates/services/.*\.yaml$
       - id: check-toml
       - id: check-added-large-files
         args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: detect-private-key   # Phase L.A: предотвращает commit RSA/DSA/EC/OpenSSH keys
 
-  # Phase H'.B: валидация service descriptors против Pydantic-generated JSON Schema.
-  # См. ADR-0005, templates/schemas/service.json (regenerate: scripts/export_schemas.py).
+  # ---- Service descriptors: JSON Schema validation (Phase H'.B) ----
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.30.0
     hooks:
       - id: check-jsonschema
-        name: Validate templates/services/*.yaml against ServiceDescriptor schema
+        name: Validate templates/services/*.yaml against ServiceDescriptor
         files: ^templates/services/.*\.yaml$
         args:
           - --schemafile
           - templates/schemas/service.json
+
+  # ---- Secrets scanning (Phase L.A) ----
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.0
+    hooks:
+      - id: gitleaks
+        name: Scan for secrets (gitleaks)
+
+  # ---- Dockerfile linting (Phase L.A) ----
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.13.0-beta
+    hooks:
+      - id: hadolint-docker
+        name: Lint Dockerfiles (hadolint)
+        files: ^docker/Dockerfile\.
+
+  # ---- Shell script linting (Phase L.A) ----
+  # Pure-shell check для нашего minimum bash (scripts/amdgpu_textfile.sh + container entrypoints).
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        name: shellcheck (bash scripts)
+        files: \.sh$
+
+  # ---- Ansible linting (Phase L.A) ----
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.0.0
+    hooks:
+      - id: ansible-lint
+        name: ansible-lint (playbooks + roles)
+        files: ^ansible/.*\.(ya?ml)$
+        # Skip некоторых rule что не релевантны (jinja whitespace, no-changed-when для idempotent tasks)
+        args:
+          - --offline
+          - --skip-list=yaml,jinja[spacing]
+
+  # ---- Conventional commits enforcement (Phase L.A) ----
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - --strict
+          - feat
+          - fix
+          - chore
+          - docs
+          - refactor
+          - test
+          - perf
+          - style
+          - ci
+          - build
+          - revert

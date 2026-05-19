@@ -1,0 +1,93 @@
+# Phase L.A: release-drafter config — группировка PR'ов по conventional commits.
+
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+
+categories:
+  - title: "✨ Features"
+    labels:
+      - "feat"
+      - "feature"
+    collapse-after: 5
+  - title: "🐛 Bug Fixes"
+    labels:
+      - "fix"
+      - "bugfix"
+  - title: "♻️ Refactoring"
+    labels:
+      - "refactor"
+  - title: "📝 Documentation"
+    labels:
+      - "docs"
+  - title: "🧪 Tests"
+    labels:
+      - "test"
+  - title: "🔧 Maintenance"
+    labels:
+      - "chore"
+      - "build"
+      - "ci"
+  - title: "🚀 Performance"
+    labels:
+      - "perf"
+
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+change-title-escapes: '\<*_&'
+
+# Determine semver bump from labels
+version-resolver:
+  major:
+    labels:
+      - "major"
+      - "breaking"
+  minor:
+    labels:
+      - "minor"
+      - "feat"
+      - "feature"
+  patch:
+    labels:
+      - "patch"
+      - "fix"
+      - "bugfix"
+      - "chore"
+  default: patch
+
+# Auto-label PRs based on conventional commit prefix
+autolabeler:
+  - label: "feat"
+    title:
+      - "/^feat(\\(.+\\))?:/"
+  - label: "fix"
+    title:
+      - "/^fix(\\(.+\\))?:/"
+  - label: "chore"
+    title:
+      - "/^chore(\\(.+\\))?:/"
+  - label: "docs"
+    title:
+      - "/^docs(\\(.+\\))?:/"
+  - label: "refactor"
+    title:
+      - "/^refactor(\\(.+\\))?:/"
+  - label: "test"
+    title:
+      - "/^test(\\(.+\\))?:/"
+  - label: "perf"
+    title:
+      - "/^perf(\\(.+\\))?:/"
+  - label: "ci"
+    title:
+      - "/^ci(\\(.+\\))?:/"
+  - label: "build"
+    title:
+      - "/^build(\\(.+\\))?:/"
+
+template: |
+  ## Что нового в этом релизе
+
+  $CHANGES
+
+  ---
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

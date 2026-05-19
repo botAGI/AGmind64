@@ -2,15 +2,38 @@ name: ci
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Cancel in-flight runs for same PR/branch (save Actions minutes)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # ---- Static checks via pre-commit hooks (single gate для всего consistency) ----
+  pre-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install uv (Phase L.A — для editable install)
+        run: pip install uv
+      - name: Install agmind + dev deps
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - uses: pre-commit/action@v3.0.1
+
+  # ---- Forbidden-pattern audit ----
   audit:
     runs-on: ubuntu-24.04
     steps:
@@ -26,36 +49,55 @@ jobs:
           name: audit-report
           path: audit-report.json
 
-  lint:
+  # ---- Schema validation (Phase H'.B) — отдельная job для visibility ----
+  schema-validate:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: mypy agmind/
+      - name: Install check-jsonschema
+        run: pip install check-jsonschema
+      - name: Validate all service descriptors
+        run: |
+          check-jsonschema \
+            --schemafile templates/schemas/service.json \
+            templates/services/*.yaml
 
+  # ---- Python lint + type + test (CPU backend on Linux runner) ----
   test-cpu:
     runs-on: ubuntu-24.04
-    needs: [audit, lint]
+    needs: [audit, schema-validate]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[cpu,dev]"
-      - run: pytest -q --cov=agmind -m "backend_any or backend_cpu"
+      - name: Install uv
+        run: pip install uv
+      - name: Install agmind + cpu + dev
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e ".[cpu,dev]"
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check . && .venv/bin/ruff format --check .
+      - name: Type check (mypy)
+        run: .venv/bin/mypy agmind/
+      - name: Tests + coverage
+        run: |
+          .venv/bin/pytest -q \
+            --cov=agmind --cov-branch \
+            --cov-report=xml --cov-report=term \
+            -m "backend_any or backend_cpu"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-cpu
-          path: .coverage
+          path: coverage.xml
 
+  # ---- Docker matrix build ----
   docker-build:
     runs-on: ubuntu-24.04
     needs: [audit]
@@ -67,7 +109,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build base
+      - name: Build base image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -89,12 +131,39 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.backend }}
           cache-to: type=gha,scope=${{ matrix.backend }},mode=max
 
-  # Опционально-запускаемый job для real Strix Halo hardware (self-hosted runner).
-  # Требует label `strix-halo` на self-hosted runner с подключённой gfx1151.
+  # ---- Compose validation (Phase L.A) ----
+  compose-validate:
+    runs-on: ubuntu-24.04
+    needs: [schema-validate]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agmind
+        run: |
+          pip install uv
+          uv venv .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Render compose для разных profiles
+        run: |
+          for profile in core "core,rag" "core,observability" full; do
+            echo "=== Rendering --profile $profile ==="
+            .venv/bin/agmind render compose --profile "$profile" --domain ci.example.com \
+              --output /tmp/compose-$profile.yml
+          done
+      - name: Validate rendered compose через docker compose config
+        run: |
+          for f in /tmp/compose-*.yml; do
+            echo "=== Validating $f ==="
+            docker compose -f "$f" config --quiet
+          done
+
+  # ---- Optional: real Strix Halo hardware (self-hosted runner) ----
   test-strix-halo:
     runs-on: [self-hosted, linux, x64, strix-halo]
     if: github.event_name == 'workflow_dispatch'
-    needs: [audit, lint]
+    needs: [audit, test-cpu]
     strategy:
       fail-fast: false
       matrix:
