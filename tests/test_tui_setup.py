@@ -71,16 +71,18 @@ def test_validate_rejects_empty_domain() -> None:
     assert any("domain" in e.lower() for e in errors)
 
 
-def test_validate_rejects_placeholder_domain() -> None:
+def test_validate_accepts_real_owned_domain() -> None:
+    """User может реально владеть `agmind.dev` — не reject."""
     detected = DetectedHardware(
         ram_gb=128, gpu_name="x", is_strix_halo=True,
         vulkan_present=True, rocm_present=True, docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
+    # agmind.dev — это реальный домен пользователя
     state = SetupState(domain="agmind.dev", cf_api_token="x" * 30, profiles=["core"])
     errors = app._validate(state)
-    assert any("placeholder" in e for e in errors)
+    assert errors == []  # NO placeholder rejection
 
 
 def test_validate_rejects_short_token() -> None:

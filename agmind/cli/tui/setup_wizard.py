@@ -198,9 +198,14 @@ class AgmindSetupApp(App[SetupState | None]):
             yield Static(self._detected_text(), id="detected-text")
 
         with VerticalScroll(id="form-container"):
-            yield Label("Domain (для Traefik TLS)", classes="section")
+            yield Label("Domain для Traefik TLS", classes="section")
+            yield Static(
+                "💡 Совет: используй subdomain (e.g. lab.yourdomain.com),\n"
+                "    чтобы не конфликтовать с существующими сайтами на apex.",
+                classes="hint",
+            )
             yield Input(
-                placeholder="agmind.example.com",
+                placeholder="lab.yourdomain.com",
                 id="domain-input",
                 value=self.state.domain,
             )
@@ -279,9 +284,7 @@ class AgmindSetupApp(App[SetupState | None]):
         """Returns list of error messages (empty = valid)."""
         errors: list[str] = []
         if not state.domain or "." not in state.domain:
-            errors.append("domain должен содержать '.' (e.g. agmind.example.com)")
-        if state.domain == "agmind.dev":
-            errors.append("agmind.dev — placeholder! Используй СВОЙ домен.")
+            errors.append("domain должен содержать '.' (e.g. lab.yourcompany.com)")
         if len(state.cf_api_token) < 20:
             errors.append("CF API token < 20 chars — неверный")
         if not state.profiles:
