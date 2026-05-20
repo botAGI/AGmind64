@@ -395,6 +395,102 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- models subcommand group (Phase M3.Q) ----
+    models_app = typer.Typer(
+        name="models",
+        help="Manage GGUF model files в /var/lib/agmind/models/.",
+        no_args_is_help=True,
+    )
+    app.add_typer(models_app)
+
+    @models_app.command("list")
+    def models_list(
+        local: bool = typer.Option(
+            True, "--local/--catalog",
+            help="--local: scan models dir (default). --catalog: legacy registry.",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List local *.gguf files OR legacy registry tiers."""
+        from agmind.cli.models_cmd import cmd_list, cmd_list_local
+
+        if local:
+            raise typer.Exit(code=cmd_list_local(as_json=as_json))
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @models_app.command("info")
+    def models_info(
+        model_id: str | None = typer.Argument(
+            None, help="Curated model id (см. `agmind install --list-models`)",
+        ),
+        file: str | None = typer.Option(
+            None, "--file", help="Inspect local file by name (in models dir or absolute path)",
+        ),
+    ) -> None:
+        """Show details для curated model OR local file."""
+        from agmind.cli.models_cmd import cmd_info
+
+        raise typer.Exit(code=cmd_info(model_id=model_id, file=file))
+
+    @models_app.command("pull")
+    def models_pull(
+        model_id: str | None = typer.Argument(
+            None, help="Curated id (e.g. qwen36-a3b-q4km)",
+        ),
+        repo: str | None = typer.Option(
+            None, "--repo", help="HF repo (для custom — combine with --file)",
+        ),
+        file: str | None = typer.Option(
+            None, "--file", help="GGUF filename in HF repo",
+        ),
+        force: bool = typer.Option(
+            False, "--force", help="Re-download даже если уже есть",
+        ),
+    ) -> None:
+        """Download GGUF model from curated catalog или custom HF repo."""
+        from agmind.cli.models_cmd import cmd_pull
+
+        raise typer.Exit(code=cmd_pull(
+            model_id=model_id, repo=repo, file=file, force=force,
+        ))
+
+    @models_app.command("rm")
+    def models_rm(
+        model_id: str | None = typer.Argument(
+            None, help="Curated id (resolves to filename in models dir)",
+        ),
+        file: str | None = typer.Option(
+            None, "--file", help="Remove by filename (resolved against models dir)",
+        ),
+        force: bool = typer.Option(
+            False, "--force",
+            help="Remove даже если referenced в /opt/agmind/.env",
+        ),
+    ) -> None:
+        """Delete model file. Warns если used by running compose."""
+        from agmind.cli.models_cmd import cmd_rm
+
+        raise typer.Exit(code=cmd_rm(model_id=model_id, file=file, force=force))
+
+    @models_app.command("path")
+    def models_path(
+        name: str = typer.Argument(..., help="llm | embed | rerank | vlm"),
+        tier: str | None = typer.Option(None, "--tier", help="S/M/L/XL/XXL"),
+    ) -> None:
+        """Print local path для named model (legacy registry)."""
+        from agmind.cli.models_cmd import cmd_path
+
+        raise typer.Exit(code=cmd_path(name=name, tier=tier))
+
+    @models_app.command("verify")
+    def models_verify(
+        tier: str | None = typer.Option(None, "--tier", help="S/M/L/XL/XXL"),
+    ) -> None:
+        """Verify locally downloaded models (size + existence)."""
+        from agmind.cli.models_cmd import cmd_verify
+
+        raise typer.Exit(code=cmd_verify(tier=tier))
+
     # ---- install command (Phase N) ----
 
     @app.command()
