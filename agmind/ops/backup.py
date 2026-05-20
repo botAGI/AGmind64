@@ -151,7 +151,8 @@ def read_metadata(backup_path: Path) -> dict[str, object]:
         f = tar.extractfile(member)
         if f is None:
             raise ValueError(f"cannot extract {METADATA_FILENAME} from {backup_path}")
-        return json.loads(f.read().decode("utf-8"))
+        payload: dict[str, object] = json.loads(f.read().decode("utf-8"))
+        return payload
 
 
 def restore_backup(
@@ -181,9 +182,12 @@ def restore_backup(
 
     metadata = read_metadata(backup_path)
     extracted: list[str] = []
+    included_labels = metadata.get("included", [])
+    if not isinstance(included_labels, list):
+        included_labels = []
 
     with tarfile.open(backup_path, "r:gz") as tar:
-        for label in metadata.get("included", []):
+        for label in included_labels:
             arcname = _safe_member_name(str(label))
             try:
                 member = tar.getmember(arcname)

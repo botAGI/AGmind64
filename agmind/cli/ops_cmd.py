@@ -104,7 +104,8 @@ def cmd_restore(
         print(f"agmind restore: {exc}", file=sys.stderr)
         return 1
 
-    included = metadata.get("included", [])
+    included_raw = metadata.get("included", [])
+    included = [str(x) for x in included_raw] if isinstance(included_raw, list) else []
     print(f"agmind restore: backup from {metadata.get('created_at', '?')}")
     print(f"  format v{metadata.get('format_version', '?')}")
     print(f"  includes: {', '.join(included) or '<none>'}")

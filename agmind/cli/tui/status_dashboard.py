@@ -147,7 +147,7 @@ class StatusDashboardApp(App[None]):
 
     CSS_PATH: ClassVar[str | None] = "dashboard.tcss"
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("r", "refresh", "Refresh now", show=True),

@@ -317,7 +317,7 @@ class AgmindSetupApp(App[SetupState | None]):
 
     CSS_PATH: ClassVar[str | None] = "styles.tcss"
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("ctrl+s", "submit", "Apply", show=True, priority=True),
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+p", "preview", "Preview diff", show=True),
@@ -561,10 +561,13 @@ class AgmindSetupApp(App[SetupState | None]):
                 if deploy_result is not None:
                     state.__dict__["_deploy_result"] = deploy_result
                 # Push SummaryScreen (success или failure) внутри TUI
+                from typing import Literal
                 from agmind.deploy.runner import DeployResult as _DR
-                mode = "deploy_success" if (
-                    isinstance(deploy_result, _DR) and deploy_result.success
-                ) else "deploy_failure"
+                mode: Literal["next_steps", "deploy_success", "deploy_failure"] = (
+                    "deploy_success"
+                    if isinstance(deploy_result, _DR) and deploy_result.success
+                    else "deploy_failure"
+                )
                 self.push_screen(
                     SummaryScreen(
                         mode=mode,
