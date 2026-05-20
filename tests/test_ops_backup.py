@@ -215,3 +215,152 @@ def test_default_sources_layout() -> None:
     srcs = default_sources()
     labels = {s.label for s in srcs}
     assert {"compose", "env", "descriptors", "setup_state", "schema_state", "snapshots"} <= labels
+
+
+# ---------- L.E.1 / L.E.4 / L.E.5: cmd_restore hints ----------
+
+
+def _make_minimal_backup(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    install, user, system = _make_repo(tmp_path)
+    backup = tmp_path / "b.tar.gz"
+    create_backup(output_path=backup, sources=_custom_sources(install, user, system))
+    return backup, install, user, system
+
+
+def test_restore_warns_when_cf_token_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """L.E.1: restore output должен подсказать восстановить cf_dns_api_token вручную."""
+    from agmind.cli import ops_cmd
+
+    backup, install, user, system = _make_minimal_backup(tmp_path)
+    # Make sure no cf_dns_api_token in user_dir (это уже так _make_repo)
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: [])
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "cf_dns_api_token" in out
+    assert "chmod 600" in out
+
+
+def test_restore_warns_when_models_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """L.E.4: warn если /var/lib/agmind/models пуст после restore."""
+    from agmind.cli import ops_cmd
+
+    backup, install, user, system = _make_minimal_backup(tmp_path)
+    # Empty models dir
+    (system / "models").mkdir(exist_ok=True)
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: [])
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "models" in out
+    assert "empty" in out
+    assert "models pull" in out
+
+
+def test_restore_silent_when_models_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from agmind.cli import ops_cmd
+
+    backup, install, user, system = _make_minimal_backup(tmp_path)
+    models_dir = system / "models"
+    models_dir.mkdir(exist_ok=True)
+    (models_dir / "anymodel.gguf").write_bytes(b"\x00" * 16)
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: [])
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "empty" not in out  # warn не должна сработать
+
+
+def test_restore_warns_on_running_deployment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """L.E.5: detect running compose services и WARN перед restore."""
+    from agmind.cli import ops_cmd
+
+    backup, install, user, system = _make_minimal_backup(tmp_path)
+    monkeypatch.setattr(
+        ops_cmd,
+        "_running_compose_services",
+        lambda _i: ["traefik", "llama-llm"],
+    )
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "running services" in out
+    assert "traefik" in out
+    assert "llama-llm" in out
+    assert "docker compose" in out
+
+
+def test_running_compose_services_no_compose_file(tmp_path: Path) -> None:
+    from agmind.cli.ops_cmd import _running_compose_services
+
+    assert _running_compose_services(tmp_path) == []
+
+
+def test_running_compose_services_no_docker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    assert ops_cmd._running_compose_services(tmp_path) == []
+
+
+def test_running_compose_services_parses_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/docker")
+
+    class FakeProc:
+        stdout = "traefik\nllama-llm\nqdrant\n\n"
+        returncode = 0
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
+    assert ops_cmd._running_compose_services(tmp_path) == ["traefik", "llama-llm", "qdrant"]
