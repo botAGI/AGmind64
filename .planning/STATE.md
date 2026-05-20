@@ -1,19 +1,21 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.2.0-alpha
-milestone_name: "AGmind x86 — Production hardening (M2 in progress)"
-status: m2-in-progress
+milestone: v0.3.0
+milestone_name: "AGmind x86 — UX + ops polish (M3 shipped)"
+status: m3-shipped
 last_updated: "2026-05-20"
-last_activity: "2026-05-20 — Phase L.D + audit fix + J.1.10 + J.2 + L.E + Phase H bench + N + N.G + N.H + O.fix + Phase P shipped"
+last_activity: "2026-05-20 — M3 phases shipped: P.fix + Q + R + S.1 + S.2 + T"
 progress:
   m1_phases: 7   # A-G (migration)
   m1_completed: 7
-  m2_phases_planned: 9   # H-prime + L + J.2 + H + N + O + P + ... (see ROADMAP)
+  m2_phases: 9   # H' L J.2 H N O P
   m2_completed: 9
-  m2_percent: ~70   # core production hardening done; UX polish + multi-node + plugin marketplace pending
+  m3_phases: 6   # P.fix Q R S.1 S.2 T
+  m3_completed: 6
+  m3_percent: 100
 ---
 
-# State: AGmind x86 — Milestone M2 in progress
+# State: AGmind x86 — Milestone M3 shipped
 
 ## Project reference
 
@@ -21,30 +23,29 @@ See `.planning/PROJECT.md`.
 
 **Core value:** Private LLM/RAG platform для AMD Strix Halo + generic
 x86_64, **`agmind install` = one command from clean Ubuntu**, day-2 CLI
-ergonomics, capability-aware service graph.
+ergonomics, capability-aware service graph, multi-step TUI with i18n.
 
-**Current focus:** post-M2-core polish — UX hardening (toast / multi-step
-wizard), version_check filter false positives, `agmind models` + `agmind
-upgrade` CLI, optional i18n + Authelia 2FA hookup.
+**Current focus:** M3 closed (UX + ops polish + version-check signal-to-noise).
+Готово к M4 (cluster + plugin marketplace) или real-hardware E2E test.
 
 ## Current position
 
-- **Milestone:** v0.2.0-alpha (M2 production hardening) — **~70% complete**
-- **Tip commit:** `1e4923e` (Phase P upstream version check) on develop
-- **Tests:** 782 passing, 0 skipped, 0 failed
-- **Audit:** 0 findings on 207 files
+- **Milestone:** v0.3.0 (M3 UX + ops polish) — **shipped**
+- **Tip commit:** `57fd3ab` (M3.T i18n hookup) on develop
+- **Tests:** 843 passing, 0 skipped, 0 failed
+- **Audit:** 0 findings on 212 files
 - **Doctor:** 7 ok / 2 warn / 0 fail on real Strix Halo box
-- **Last activity:** 2026-05-20 — 22 коммитов за день (L.D → Phase P)
+- **Today (2026-05-20):** 29 коммитов от L.D до M3.T (full M2 + M3 в один день)
 
 ## Milestones
 
 | Milestone | Phases | Status |
 |-----------|--------|--------|
 | **M1 v0.1.0-dev — Migration alpha** | A B C D E F G | ✅ shipped 2026-05-19 |
-| **M2 v0.2.0 — Production hardening (in progress)** | H' L J.2 H N O P | ✅ core done; ⏳ UX polish remaining |
-| **M3 v0.3.0 — UX + ops polish (next)** | Q R S T P.fix | 📋 planned (see ROADMAP) |
-| **M4 v0.4.0 — Cluster + plugin marketplace** | U V | 📋 deferred |
-| **M5 v1.0.0 — GA** | — | 📋 TBD |
+| **M2 v0.2.0 — Production hardening** | H' L J.2 H N O P | ✅ shipped 2026-05-20 |
+| **M3 v0.3.0 — UX + ops polish** | P.fix Q R S.1 S.2 T | ✅ shipped 2026-05-20 |
+| **M4 v0.4.0 — Cluster + plugin marketplace** | U V W | 📋 next milestone |
+| **M5 v1.0.0 — GA** | — | 📋 TBD (real-hardware E2E gate) |
 
 ## M2 phase tracker
 
@@ -67,29 +68,31 @@ upgrade` CLI, optional i18n + Authelia 2FA hookup.
 | **P** | **Upstream version check workflow + ADR-0012** | ✅ | `1e4923e` |
 | **Misc fixes** | audit unfreeze + vulkan multi-GPU + un-skip TUI tests + mypy clean + model out of repo | ✅ | `3dda542` `5f4ad67` `38aa5e2` `8a6c621` `a477eb2` |
 
-## M3 v0.3.0 — UX + ops polish (next milestone)
+## M3 v0.3.0 — UX + ops polish (✅ SHIPPED 2026-05-20)
 
-See `ROADMAP.md` for full DoD per phase.
+| Phase | Description | Commit |
+|-------|-------------|--------|
+| **P.fix** | version_check filter: drop variant/RC/SHA tags; add gcr/quay probes; signal/noise 13 ✅ vs prior 6 | `b04a1b5` |
+| **Q** | `agmind models {list,pull,rm,info}` standalone CLI + 19 tests | `59334d3` |
+| **R** | `agmind upgrade --component X --version Y` lifecycle (check/bump/apply/rollback) + holds respect + 15 tests | `6a900cf` |
+| **S.1** | TUI: Toast notifications + DomainValidator / TokenLengthValidator + ProgressBar show_eta + 7 tests | `cef5208` |
+| **S.2** | Multi-step wizard split (Domain → Model → Services → Confirm), opt-in via AGMIND_WIZARD_MULTISTEP=1 + 9 tests | `7cd1293` |
+| **T** | i18n EN/RU hookup в multi-step screens + agmind install --lang flag + 5 tests | `57fd3ab` |
 
-| Phase | Description | Effort | Priority |
-|-------|-------------|-------:|----------|
-| **P.fix** | version_check filter: drop variant/RC/SHA tags; add gcr/quay probes | 1h | 🔴 высокий (weekly report сейчас шумный) |
-| **Q** | `agmind models {list,pull,rm}` standalone CLI | 2h | 🟡 medium |
-| **R** | `agmind upgrade --component X` (bump pin + redeploy) | 2h | 🟡 medium |
-| **S.1** | TUI: Toast notifications + inline Input validation (red border) | 2h | 🟢 UX polish |
-| **S.2** | TUI: multi-step wizard split (Domain → Model → Services → Confirm) | 4h | 🟢 UX polish |
-| **T** | i18n hookup в wizard (EN/RU select) | 1.5h | 🔵 low (если non-RU users) |
+**M3 outcome:** 843 passed (от 782), 13 ADRs, 17 R-recons, 33 services,
+6 new TUI tests passed (validators), 4 multi-step screens, 47 wizard
+i18n keys EN/RU.
 
-**Total M3:** ~12.5h. Можно split на 2-3 sessions.
+## M4 v0.4.0 — Cluster + plugin marketplace (NEXT)
 
-## M4 v0.4.0 — Cluster + plugin marketplace (deferred)
-
-| Phase | Description |
-|-------|-------------|
-| U | Phase M cluster — multi-node Ansible inventory + dual-host deploy |
-| V | `agmind plugin install/list` marketplace (witmeng/ragflow-api style) |
-| (optional) | mDNS endpoints advertising (legacy *.local — на отдельных нодах) |
-| (optional) | `agmind chat` REPL: integrate с running deploy через /v1/chat/completions |
+| Phase | Description | Effort |
+|-------|-------------|-------:|
+| U | Phase M cluster — multi-node Ansible inventory + dual-host deploy | ~12h |
+| V | `agmind plugin install/list` marketplace | ~12h |
+| W | Authelia 2FA toggle в wizard (currently service есть, не активирован) | ~3h |
+| (opt) | mDNS endpoints advertising для *.local (legacy parity) | ~2h |
+| (opt) | Grafana dashboard provision (M3 deferred — JSON dashboards для llama/system/services) | ~4h |
+| (opt) | `agmind chat` REPL hook'ается в running deploy /v1/chat/completions | ~2h |
 
 ## Architecture snapshot (post-Phase P)
 
