@@ -125,9 +125,30 @@ unified) via llama.cpp Vulkan:
 
 ### Strix Halo (this repo) — measured
 
-| Run | Quant   | Build | Backend | Flags                       | pp512  | tg128  | Date       |
-|-----|---------|-------|---------|-----------------------------|--------|--------|------------|
-| H.1 | Q4_K_M  | b9049 | Vulkan  | -fa -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 --no-mmap -ngl 999 | TBD | TBD | 2026-05-20 |
+Hardware: Framework Desktop, AMD Ryzen AI Max+ 395 (Strix Halo, gfx1151,
+Radeon 8060S RADV), 125 GiB unified LPDDR5X, Ubuntu 26.04, kernel 6.17.0-29,
+Mesa 25.2.8 (RADV), `agmind doctor` 7 ok / 2 warn / 0 fail.
+
+Build: `ghcr.io/ggml-org/llama.cpp:full-vulkan-b9049` (build 2496f9c14).
+GPU init: `Found 1 Vulkan devices: Radeon 8060S Graphics (RADV STRIX_HALO)
+(radv) | uma: 1 | fp16: 1 | bf16: 0 | warp size: 64 | shared memory: 65536
+| int dot: 1 | matrix cores: KHR_coopmat`.
+
+| Run | Quant   | Build | Backend | Flags                                                     | pp512 (t/s)         | tg128 (t/s)       | Date       |
+|-----|---------|-------|---------|-----------------------------------------------------------|---------------------|-------------------|------------|
+| H.1 | Q4_K_M  | b9049 | Vulkan  | `-fa 1 -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 -mmp 0 -ngl 999` | **1023.57 ± 16.97** | **73.47 ± 0.14** | 2026-05-20 |
+
+Comparison row vs baselines:
+
+| Source           | Engine + quant         | pp512 | tg128 | Δ vs us (tg) |
+|------------------|------------------------|-------|-------|--------------|
+| **Us (H.1)**     | llama.cpp Vulkan Q4_K_M | 1024  | **73.5** | —             |
+| 0xSero community | llama.cpp Vulkan Q4_K_M | 1021  | 70.2 | **+4.6 %**    |
+| DGX Spark (habr) | vLLM cu130 FP8 native   | n/a   | 51-52.5 | **+41 %**     |
+| DGX Spark (DFlash fork) | vLLM-fork FP8 + DFlash | n/a   | 69.7 avg | **+5.5 %**    |
+
+**Phase H DoD: passed.** Migration с GB10/Spark на Strix Halo/Vulkan
+сохраняет (и превышает) baseline performance на той же модели.
 
 Reproduce — standalone (no agmind deploy required):
 
@@ -140,12 +161,17 @@ docker run --rm \
   -e AMD_VULKAN_ICD=RADV \
   -e GGML_VK_VISIBLE_DEVICES=0 \
   --entrypoint /app/llama-bench \
-  ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049 \
+  ghcr.io/ggml-org/llama.cpp:full-vulkan-b9049 \
   -m /models/Qwen3.6-35B-A3B-Q4_K_M.gguf \
   -p 512 -n 128 -r 5 \
   -fa 1 -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 \
   --no-mmap -ngl 999
 ```
+
+Note: используется `full-vulkan-b9049` (не `server-vulkan-b9049`) — у
+`server-vulkan` образа только `llama-server`, без `llama-bench`. Pre-prod
+deploy через AGmind compose template продолжает использовать
+`server-vulkan-b9049` (template `templates/services/llama-llm.yaml`).
 
 ### Architecture-comparison takeaways
 
