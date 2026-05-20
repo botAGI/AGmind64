@@ -1,0 +1,28 @@
+/* Phase J.2: dashboard CSS — full-height table, compact header line. */
+
+Screen {
+    background: $surface;
+}
+
+#dashboard-summary {
+    padding: 0 1;
+    margin: 0;
+    height: 1;
+    color: $accent;
+    background: $boost;
+}
+
+#services-table {
+    height: 1fr;
+    margin: 0;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+    color: $accent;
+    background: $boost;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary 30%;
+}

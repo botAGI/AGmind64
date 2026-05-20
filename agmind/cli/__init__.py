@@ -61,8 +61,25 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @app.command()
     def status(
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        tui: bool = typer.Option(
+            False, "--tui", help="Launch live deployment dashboard (Phase J.2)"
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Deployment dir (only for --tui)",
+        ),
+        refresh: float = typer.Option(
+            5.0, "--refresh", help="Refresh interval seconds (only for --tui)"
+        ),
     ) -> None:
-        """Show selected backend + device info."""
+        """Show selected backend + device info, или live dashboard с --tui."""
+        if tui:
+            from agmind.cli.tui.status_dashboard import run_dashboard
+
+            run_dashboard(install_dir=install_dir, refresh_interval=refresh)
+            return
+
         from agmind.compute import get_backend, list_available_backends
 
         backend = get_backend()
