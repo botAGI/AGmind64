@@ -193,12 +193,69 @@ def detect_gpu() -> GPUInfo | None:
 
 
 def _parse_vulkan_summary(text: str) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for line in text.splitlines():
-        m = re.match(r"\s*(\w+)\s*=\s*(.+?)\s*$", line)
+    """Parse `vulkaninfo --summary` Devices section.
+
+    Возвращает поля предпочитаемого GPU. На Strix Halo `vulkaninfo` показывает
+    минимум два device'а — реальный AMD RADV (GPU0, deviceType=INTEGRATED_GPU)
+    и software fallback llvmpipe (GPU1, deviceType=CPU). Старая версия читала
+    все строки в один dict, и driverName=llvmpipe (последний) перекрывал radv.
+
+    Стратегия выбора:
+      1. INTEGRATED_GPU или DISCRETE_GPU предпочтительнее CPU/OTHER.
+      2. Среди равных — radv предпочтительнее всех других AMD driver'ов
+         (см. R2-vulkan-radv-vs-amdvlk recon).
+      3. Иначе — первый device по порядку.
+    """
+    # Split на блоки по `GPUn:` заголовкам.
+    devices: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    in_devices_section = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.startswith("Devices:"):
+            in_devices_section = True
+            continue
+        if not in_devices_section:
+            continue
+        if re.match(r"^GPU\d+:\s*$", line):
+            if current is not None:
+                devices.append(current)
+            current = {}
+            continue
+        if current is None:
+            continue
+        m = re.match(r"\s+(\w+)\s*=\s*(.+?)\s*$", line)
         if m:
-            fields[m.group(1)] = m.group(2)
-    return fields
+            current[m.group(1)] = m.group(2)
+    if current is not None:
+        devices.append(current)
+
+    if not devices:
+        return {}
+
+    def _device_priority(dev: dict[str, str]) -> tuple[int, int]:
+        dtype = dev.get("deviceType", "")
+        # Higher = better. Hardware > CPU/llvmpipe.
+        if "DISCRETE_GPU" in dtype:
+            type_score = 3
+        elif "INTEGRATED_GPU" in dtype:
+            type_score = 2
+        elif "VIRTUAL_GPU" in dtype:
+            type_score = 1
+        else:
+            type_score = 0  # CPU / OTHER / llvmpipe
+        # Driver preference: radv > amdvlk > others.
+        drv = dev.get("driverName", "")
+        if drv == "radv":
+            drv_score = 2
+        elif drv == "amdvlk":
+            drv_score = 1
+        else:
+            drv_score = 0
+        return (type_score, drv_score)
+
+    devices.sort(key=_device_priority, reverse=True)
+    return devices[0]
 
 
 def detect_vulkan() -> VulkanInfo:

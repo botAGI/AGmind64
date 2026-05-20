@@ -287,7 +287,9 @@
         "tests/test_audit_script.py::test_audit_detects_nvidia_hw_names"
       ],
       "fix_proposal": "Переписать fixture-tests чтобы передавать explicit path arg в audit, минуя EXCLUDED_PATHS. Не блокирует — audit сам работает (мы это видим на main репо).",
-      "severity": "low"
+      "severity": "low",
+      "resolved_at": "2026-05-20T14:30:00Z",
+      "resolution": "Два независимых бага в scripts/audit_forbidden.py: (1) regex cuda_python имел `(?<![A-Za-z_])` lookbehind на всей группе, что блокировало match для `.cuda()` / `.to('cuda')` после идентификатора (e.g. `tensor.cuda()`) — split на method-call alternatives (без lookbehind) + import/device alternatives (с lookbehind). (2) EXCLUDED_PATHS резолвились relative-to-scan-root, поэтому `tmp_path/README.md` тоже opt-out'ился — теперь резолвятся relative-to-REPO_ROOT. Все 13 audit-тестов зелёные."
     },
     {
       "id": "DEF-PYTEST9-CAPLOG",
@@ -323,6 +325,17 @@
       "found_during": "Phase H' post-install verify",
       "resolution": "ROCm 7.2.3 installed на real Strix Halo. rocminfo показывает Agent 2: gfx1151 + ISAs amdgcn-amd-amdhsa--gfx1151. test_rocm_backend_available_if_rocminfo_gfx1151 PASSED. См. docs/SETUP_ROCM_STRIX_HALO.md::Real install log.",
       "notes": "amdgpu-install --usecase=rocm выдал conflict с Ubuntu stock rocminfo 5.7. Fix: --allow-downgrades rocminfo=1.0.0.70203-90~24.04. PATH установлен через /etc/profile.d/rocm.sh + ldconfig + symlinks. Setfacl /dev/kfd /dev/dri/renderD128 для immediate access без reboot (render group membership активируется при relogin)."
+    },
+    {
+      "id": "DEF-VULKAN-MULTI-GPU-PARSE",
+      "found_at": "2026-05-20T14:00:00Z",
+      "resolved_at": "2026-05-20T14:45:00Z",
+      "status": "resolved",
+      "found_during": "Phase L.D follow-up — user noticed doctor reporting `vulkan-tooling=llvmpipe` while RADV actually works",
+      "description": "agmind/compute/detect.py::_parse_vulkan_summary читал ВСЕ строки `vulkaninfo --summary` в один dict. На Strix Halo вывод содержит два GPU: GPU0 (RADV INTEGRATED_GPU) + GPU1 (llvmpipe CPU software fallback). Последний driverName= перекрывал первый, и doctor видел llvmpipe как 'active vulkan driver'.",
+      "resolution": "Переписан parser: split на блоки по 'GPUn:' заголовкам, сортировка с приоритетом deviceType (DISCRETE > INTEGRATED > VIRTUAL > CPU/OTHER) + driverName (radv > amdvlk > others). Возвращает поля предпочтительного GPU. Doctor теперь показывает 'Vulkan RADV + Mesa 25.2.8' (7 ok / 2 warn / 0 fail).",
+      "test_failures": [],
+      "severity": "high"
     }
   ],
   "new_r_recons": [

@@ -99,14 +99,19 @@ RULES: list[tuple[str, str, re.Pattern]] = [
     (
         "cuda_python",
         "CUDA в Python-импортах и атрибутах",
+        # Method-call patterns (typed-identifier.cuda() / .to('cuda')) и
+        # `torch.cuda.foo` идут БЕЗ lookbehind — слева от точки всегда стоит
+        # идентификатор (буква), который старый lookbehind ошибочно блокировал.
+        # Import / `device=` строки сохраняют lookbehind чтобы не ловить
+        # `from mypycuda` etc.
         re.compile(
-            r"(?<![A-Za-z_])("
-            r"import\s+(?:pycuda|cupy|tensorrt|onnxruntime_gpu)|"  # audit: allow rule-self-reference
-            r"from\s+(?:pycuda|cupy|tensorrt)\b|"  # audit: allow rule-self-reference
-            r"torch\.cuda\.|"  # audit: allow rule-self-reference
-            r"\.cuda\(\)|"  # audit: allow rule-self-reference
-            r"\.to\(['\"]cuda(?::\d+)?['\"]\)|"  # audit: allow rule-self-reference
-            r"device\s*=\s*['\"]cuda(?::\d+)?['\"]"  # audit: allow rule-self-reference
+            r"\.cuda\(\)"  # audit: allow rule-self-reference
+            r"|\.to\(['\"]cuda(?::\d+)?['\"]\)"  # audit: allow rule-self-reference
+            r"|torch\.cuda\."  # audit: allow rule-self-reference
+            r"|(?<![A-Za-z_])("
+            r"import\s+(?:pycuda|cupy|tensorrt|onnxruntime_gpu)"  # audit: allow rule-self-reference
+            r"|from\s+(?:pycuda|cupy|tensorrt)\b"  # audit: allow rule-self-reference
+            r"|device\s*=\s*['\"]cuda(?::\d+)?['\"]"  # audit: allow rule-self-reference
             r")"
         ),
     ),
@@ -179,6 +184,9 @@ def is_text_file(p: Path) -> bool:
     return p.suffix.lower() in TEXT_SUFFIXES
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 def iter_files(root: Path) -> Iterable[Path]:
     for p in root.rglob("*"):
         if not p.is_file():
@@ -187,14 +195,17 @@ def iter_files(root: Path) -> Iterable[Path]:
             continue
         if not is_text_file(p):
             continue
-        # Relative path для проверки EXCLUDED_PATHS / PREFIXES
+        # EXCLUDED_PATHS / EXCLUDED_PREFIXES — это конкретные репо-файлы
+        # ("README.md", "docs/MIGRATION_PLAN.md", ...). Резолвим относительно
+        # REPO_ROOT, а не scan_root — иначе при сканировании произвольной
+        # subdir любой файл `README.md` внутри неё ошибочно opt-out'нется.
         try:
-            rel = p.relative_to(root).as_posix()
+            rel_repo = p.resolve().relative_to(_REPO_ROOT).as_posix()
         except ValueError:
-            rel = str(p)
-        if rel in EXCLUDED_PATHS:
+            rel_repo = ""  # вне репо (например, tmp_path в тестах) — opt-out не применяем
+        if rel_repo and rel_repo in EXCLUDED_PATHS:
             continue
-        if any(rel.startswith(prefix) for prefix in EXCLUDED_PREFIXES):
+        if rel_repo and any(rel_repo.startswith(prefix) for prefix in EXCLUDED_PREFIXES):
             continue
         yield p
 
