@@ -15,6 +15,7 @@ audit_forbidden.py — поиск платформо-зависимых хард
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
 import sys
@@ -27,6 +28,15 @@ EXCLUDED_DIRS = {
     "legacy", "dist", "build", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", "site-packages",
 }
+
+# DEF-AUDIT-GITIGNORE: generated artifacts которые .gitignore исключает,
+# но audit видит и шумит false-findings. Используем fnmatch glob — name-part
+# match (не full path). Пример: any dir named "agmind.egg-info" → skip.
+EXCLUDED_DIR_PATTERNS = (
+    "*.egg-info",
+    "*.dist-info",
+    ".tox",
+)
 
 # Meta-файлы которые опт-аутятся целиком — они описывают запреты как
 # rules / decision context / inventory. Расширение Part 1.3 спеки
@@ -187,11 +197,17 @@ def is_text_file(p: Path) -> bool:
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _excluded_part(part: str) -> bool:
+    if part in EXCLUDED_DIRS:
+        return True
+    return any(fnmatch.fnmatch(part, pat) for pat in EXCLUDED_DIR_PATTERNS)
+
+
 def iter_files(root: Path) -> Iterable[Path]:
     for p in root.rglob("*"):
         if not p.is_file():
             continue
-        if any(part in EXCLUDED_DIRS for part in p.parts):
+        if any(_excluded_part(part) for part in p.parts):
             continue
         if not is_text_file(p):
             continue
