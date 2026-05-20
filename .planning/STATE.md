@@ -1,144 +1,175 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.1.0-dev
-milestone_name: "AGmind x86 — Migration alpha"
-status: ready-for-hardware-validation
-last_updated: "2026-05-19"
-last_activity: "2026-05-19 — Cleanup + Direction #1-4 shipped"
+milestone: v0.2.0-alpha
+milestone_name: "AGmind x86 — Production hardening (M2 in progress)"
+status: m2-in-progress
+last_updated: "2026-05-20"
+last_activity: "2026-05-20 — Phase L.D + audit fix + J.1.10 + J.2 + L.E + Phase H bench + N + N.G + N.H + O.fix + Phase P shipped"
 progress:
-  total_phases: 7   # A-G
-  completed_phases: 7
-  partial_phases: 0
-  percent: 100
+  m1_phases: 7   # A-G (migration)
+  m1_completed: 7
+  m2_phases_planned: 9   # H-prime + L + J.2 + H + N + O + P + ... (see ROADMAP)
+  m2_completed: 9
+  m2_percent: ~70   # core production hardening done; UX polish + multi-node + plugin marketplace pending
 ---
 
-# State: AGmind x86 v0.1.0-dev — Migration complete (alpha)
+# State: AGmind x86 — Milestone M2 in progress
 
 ## Project reference
 
 See `.planning/PROJECT.md`.
 
 **Core value:** Private LLM/RAG platform для AMD Strix Halo + generic
-x86_64, single command install, day-2 CLI ergonomics.
+x86_64, **`agmind install` = one command from clean Ubuntu**, day-2 CLI
+ergonomics, capability-aware service graph.
 
-**Current focus:** alpha → beta path — real hardware validation, GSD
-codebase update, ADR finalization, production gaps (backup/upgrade/dashboards).
+**Current focus:** post-M2-core polish — UX hardening (toast / multi-step
+wizard), version_check filter false positives, `agmind models` + `agmind
+upgrade` CLI, optional i18n + Authelia 2FA hookup.
 
 ## Current position
 
-- **Phase:** post-G (migration complete, pre-release polish)
-- **Plan:** awaiting next session direction
-- **Status:** Ready for hardware validation OR next development sprint
-- **Last activity:** 2026-05-19 — cleanup + 4 directions shipped (real LLMHandle, CLI, cluster, docs)
+- **Milestone:** v0.2.0-alpha (M2 production hardening) — **~70% complete**
+- **Tip commit:** `1e4923e` (Phase P upstream version check) on develop
+- **Tests:** 782 passing, 0 skipped, 0 failed
+- **Audit:** 0 findings on 207 files
+- **Doctor:** 7 ok / 2 warn / 0 fail on real Strix Halo box
+- **Last activity:** 2026-05-20 — 22 коммитов за день (L.D → Phase P)
 
-## Milestone roadmap
+## Milestones
 
-See `.planning/ROADMAP.md`.
+| Milestone | Phases | Status |
+|-----------|--------|--------|
+| **M1 v0.1.0-dev — Migration alpha** | A B C D E F G | ✅ shipped 2026-05-19 |
+| **M2 v0.2.0 — Production hardening (in progress)** | H' L J.2 H N O P | ✅ core done; ⏳ UX polish remaining |
+| **M3 v0.3.0 — UX + ops polish (next)** | Q R S T P.fix | 📋 planned (see ROADMAP) |
+| **M4 v0.4.0 — Cluster + plugin marketplace** | U V | 📋 deferred |
+| **M5 v1.0.0 — GA** | — | 📋 TBD |
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| A | Inventory & Plan | ✅ done |
-| B | Legacy quarantine (physical) | ✅ done (через cleanup + legacy/ удалено) |
-| C | Compute abstraction skeleton | ✅ done |
-| D | Vulkan + ROCm backends | ✅ done (skeleton — needs hardware test) |
-| E | CLI + diagnostics + secrets + config + i18n + cluster | ✅ done |
-| F | Dockerfile + CI + pre-commit | ✅ done (CI workflow не triggered) |
-| G | Docs + release | ✅ done (но не tagged) |
+## M2 phase tracker
 
-## v0.1.0-dev scope coverage
+| Phase | Description | Status | Commit |
+|-------|-------------|--------|--------|
+| H' | Foundation refactor (A-E: ServiceDescriptor + split + renderer + observability + plugins) | ✅ | (earlier session) |
+| L.A | pre-commit + GH Actions matrix + release-drafter | ✅ | (earlier session) |
+| L.B | `agmind deploy` idempotent + snapshot + healthcheck + rollback | ✅ | (earlier session) |
+| L.C | `agmind gc` (containers/images/volumes/networks/models) | ✅ | (earlier session) |
+| **L.D** | **State schema migration system + ADR-0009** | ✅ | `7560b11` |
+| **L.E** | **`agmind logs/shell/backup/restore` + R14 gaps doc** | ✅ | `2d5de65` + `7e95fed` |
+| **J.1.10** | **Compact TUI wizard ([✓] checkboxes, 2-col grid)** | ✅ | `1b7dfe9` |
+| **J.2** | **`agmind status --tui` live dashboard** | ✅ | `accb2be` |
+| **H** | **Phase H — real Strix Halo bench (Qwen3.6 73 t/s)** | ✅ | `c6421f1` |
+| **N** | **`agmind install` end-to-end installer + ADR-0010** | ✅ | `bd453af` |
+| **N.G** | **TUI model selector + ctx/kv settings + ADR amend** | ✅ | `1da001c` |
+| **N.H** | **TUI threads/parallel + smart model detect+reuse** | ✅ | `da225c3` |
+| **O** | **Service capability graph (provides/conflicts/consumes) + ADR-0011** | ✅ | `b260c20` |
+| **O.fix** | **Drop выдуманные conflicts + verified bindings + ragflow v0.25.5** | ✅ | `99322d3` |
+| **P** | **Upstream version check workflow + ADR-0012** | ✅ | `1e4923e` |
+| **Misc fixes** | audit unfreeze + vulkan multi-GPU + un-skip TUI tests + mypy clean + model out of repo | ✅ | `3dda542` `5f4ad67` `38aa5e2` `8a6c621` `a477eb2` |
 
-119 REQ-IDs across 11 categories — **73 shipped, 9 partial, 37 deferred**.
+## M3 v0.3.0 — UX + ops polish (next milestone)
 
-| Category | Shipped | Partial | Deferred |
-|----------|--------:|--------:|---------:|
-| COMPUTE | 12 | 1 | 1 |
-| LLM ops | 7 | 1 | 3 |
-| MODELS | 10 | 0 | 3 |
-| SVC | 6 | 1 | 0 |
-| CLUSTER | 7 | 1 | 4 |
-| CLI | 8 | 0 | 6 |
-| ANS | 9 | 0 | 2 |
-| DOC | 9 | 1 | 4 |
-| TEST | 11 | 0 | 4 |
-| SEC | 7 | 2 | 4 |
-| OBS | 5 | 1 | 5 |
-| BACKUP | 1 | 0 | 5 |
-| PERF | 1 | 0 | 4 |
+See `ROADMAP.md` for full DoD per phase.
 
-## Architecture snapshot
+| Phase | Description | Effort | Priority |
+|-------|-------------|-------:|----------|
+| **P.fix** | version_check filter: drop variant/RC/SHA tags; add gcr/quay probes | 1h | 🔴 высокий (weekly report сейчас шумный) |
+| **Q** | `agmind models {list,pull,rm}` standalone CLI | 2h | 🟡 medium |
+| **R** | `agmind upgrade --component X` (bump pin + redeploy) | 2h | 🟡 medium |
+| **S.1** | TUI: Toast notifications + inline Input validation (red border) | 2h | 🟢 UX polish |
+| **S.2** | TUI: multi-step wizard split (Domain → Model → Services → Confirm) | 4h | 🟢 UX polish |
+| **T** | i18n hookup в wizard (EN/RU select) | 1.5h | 🔵 low (если non-RU users) |
 
-Layer 1 — **Ansible** (orchestration):
-- 11 roles, 2 inventories (single + cluster), 31 files, ~1241 LOC YAML
+**Total M3:** ~12.5h. Можно split на 2-3 sessions.
 
-Layer 2 — **Python `agmind/`** (runtime):
-- 39 modules, ~4000 LOC
-- compute (18 files): base, detect, config, registry, 4 backends, clients, 3 engines + http_helper + llama_server_handle
-- cli (5 files): typer app + models/deploy/chat/embed subcommand modules
-- cluster (3 files): peer + router + __init__
-- services (2 files): registry
-- diagnostics, i18n, config, secrets, log, _env, models, __main__
+## M4 v0.4.0 — Cluster + plugin marketplace (deferred)
 
-Layer 3 — **Declarative catalogs** (`templates/`):
-- services.yaml (32 services, pinned)
-- models.yaml (5 tiers + embed/rerank/VLM, 12 antipatterns)
-- 8 Jinja2 templates (compose/nginx/grafana/etc через Ansible)
+| Phase | Description |
+|-------|-------------|
+| U | Phase M cluster — multi-node Ansible inventory + dual-host deploy |
+| V | `agmind plugin install/list` marketplace (witmeng/ragflow-api style) |
+| (optional) | mDNS endpoints advertising (legacy *.local — на отдельных нодах) |
+| (optional) | `agmind chat` REPL: integrate с running deploy через /v1/chat/completions |
 
-## Outstanding work (gaps)
+## Architecture snapshot (post-Phase P)
 
-### Critical for first real deploy
-1. Hardware validation (vulkaninfo install + llama.cpp build + model download + real chat smoke)
-2. Git init + initial commit (legacy .git/ от AGmind висит)
-3. pytest run (306 functions never run — pip install pytest needed)
-4. Docker images: replace `REPLACE_WITH_DIGEST` placeholders + first build
-5. Ansible playbook --check dry-run on target
+Layer 1 — **Ansible** (orchestration): 11 roles + install.yml playbook.
 
-### Production-readiness
-6. migration_progress.json sync с реальным state (phase A → G done)
-7. ADR 0001/0002 → "accepted"; add 0003 (memory budgeting) + 0004 (engine selection)
-8. Spec changelog подробный (D1-D4 + cleanup)
-9. backup/restore/upgrade CLI (BACKUP-02..04, CLI-10..11)
-10. Grafana dashboards + Prometheus alerts (OBS-06..08)
+Layer 2 — **Python `agmind/`** (runtime): 74 modules, ~11.5k LOC.
+- **compute/** (18 files): backend abstraction + 4 backends + 5 engines + 2 clients
+- **cli/** (9 files): 17 typer commands incl. `install` + `migrate` + ops
+- **cli/tui/** (7 files): 5 screens (wizard / deploy / install / dashboard / summary) + logo
+- **deploy/** (5 files): idempotent runner + gc + snapshot + diff
+- **install/** (4 files): orchestrator + 6 steps + curated model catalog
+- **ops/** (3 files): backup tarball + exec wrapper
+- **migrations/** (6 files): runner + state + v001 baseline
+- **services/** (5 files): registry + renderer + capability_bindings + compatibility
+- **schemas/** (2 files): ServiceDescriptor Pydantic v2 + JSON Schema export
+- **diagnostics/** + **cluster/** + **config/** + **i18n/** + **observability/** (~700 LOC)
 
-### Polish
-11. Async support (asyncio для high-concurrency)
-12. HTTP retry/backoff
-13. Models SHA256 verify + progress bar
-14. mTLS / ansible-vault
-15. CONTRIBUTING.md / CHANGELOG.md
+Layer 3 — **Declarative catalogs** (`templates/`): 33 service YAMLs + JSON
+Schema + observability configs + Traefik dynamic + models.yaml + version_holds.yaml.
 
-## Key decisions log
+Layer 4 — **CI/CD** (`.github/workflows/`): ci + release-drafter + **version-check** (Phase P).
+
+## Architectural invariants (still hold)
+
+См. `.planning/codebase/INVARIANTS.md`. Phase O.fix amendment refined:
+- **I.O.1:** `provides`/`consumes` decoupled — provider можно swap, consumer
+  получает env vars через capability_bindings injection.
+- **I.O.2:** `conflicts_with` field оставлен в schema, но в production
+  descriptors **никем не заполнен** (soft warnings only post-O.fix).
+- **I.O.3:** Inside docker network все llama-server ports = 8080
+  (host-side 8080/8081/8082 — это публикация, not internal hostnames).
+
+## Outstanding gaps (gap analysis vs legacy AGmind)
+
+См. session report для подробного gap analysis. Top items:
+
+| Item | x86 status |
+|------|-----------|
+| TUI install wizard | ✅ Phase J + N |
+| Service registry | ✅ Phase H'.B (33 descriptors) |
+| Backup/Restore | ✅ Phase L.E + L.E.1/4/5 safety hints |
+| Snapshots + rollback | ✅ Phase L.B |
+| State migrations | ✅ Phase L.D |
+| Monitoring stack configs | ✅ Phase H'.D |
+| Phase H bench | ✅ 73 t/s Qwen3.6 |
+| Version check | ✅ Phase P (M3.P.fix needed) |
+| `agmind models {list,pull,rm}` | ❌ M3.Q |
+| `agmind upgrade --component X` | ❌ M3.R |
+| Multi-step wizard | ❌ M3.S.2 |
+| Toast / inline validation | ❌ M3.S.1 |
+| i18n in wizard | ❌ M3.T |
+| Authelia 2FA toggle | ❌ M4 |
+| mDNS endpoints | ❌ M4 |
+| Multi-node cluster | ❌ M4.U |
+| Plugin marketplace | ❌ M4.V |
+| Grafana dashboards (provisioned) | ❌ M3 candidate (deferred) |
+
+## Key decisions log (M2 additions)
 
 | Date | Decision | Source |
 |------|----------|--------|
-| 2026-05-18 | Полный rewrite в Python (не Bash retrofit) | User OQ-1 |
-| 2026-05-18 | fresh git init (legacy не наследуется) | User |
-| 2026-05-18 | Vulkan RADV primary, не ROCm | R3 |
-| 2026-05-18 | TEI broken на gfx1151 → llama-server primary embed | R5 |
-| 2026-05-18 | RAGFlow opt-in profile, default lean stack | R11 |
-| 2026-05-18 | docling-serve-cpu вместо cu130 | R7 |
-| 2026-05-19 | GDN Vulkan shader landed (b8765) — antipattern removed | R-llm-models |
-| 2026-05-19 | Ansible orchestration вместо Bash | User suggestion |
-| 2026-05-19 | gpt-oss-120b MXFP4_MOE = XL tier primary | R-llm-models |
-| 2026-05-19 | llama-server HTTP client как production path | D1 |
-| 2026-05-19 | 4 routing strategies для cluster | D3 |
-| 2026-05-19 | legacy/ remove decision — user OK, classifier blocked rm | cleanup |
+| 2026-05-20 | `agmind install` — one-command Python orchestrator, не bash | User feedback, ADR-0010 |
+| 2026-05-20 | Sudo через anonymous pipe + ansible --become-password-file | ADR-0010 |
+| 2026-05-20 | Capability graph: provides/conflicts/consumes — но conflicts soft (warnings only) | ADR-0011 + amendment |
+| 2026-05-20 | RAGflow + Dify coexist (witmeng/ragflow-api plugin) | Phase O.fix research |
+| 2026-05-20 | RAGflow DOC_ENGINE supports только ES/infinity/oceanbase/opensearch/seekdb, NOT milvus | github.com/infiniflow/ragflow/.env verified |
+| 2026-05-20 | llama-server inside docker network = port 8080 (host 8080/8081/8082 — публикация) | post-O.fix research |
+| 2026-05-20 | curated model catalog в TUI + "Custom HF" input | Phase N.G — legacy UX parity |
+| 2026-05-20 | Smart model detect/reuse (default `/var/lib/agmind/models/` + fallback `~/.local/share/agmind/models/`) | Phase N.H user request |
+| 2026-05-20 | Upstream version check weekly cron → single auto-updated issue | Phase P — issue#63 mirror |
 
 ## Reference documents
 
 - `AGMIND_MIGRATION_SPEC.md` — single source of truth
 - `.planning/PROJECT.md` — milestone charter
 - `.planning/REQUIREMENTS.md` — 119 REQ-IDs
-- `.planning/ROADMAP.md` — phase order + M2/M3
+- `.planning/ROADMAP.md` — phase order + M3/M4
 - `.planning/BACKLOG.md` — prioritized gap list
-- `.planning/research/x86-migration/` — 12 recon reports
-- `docs/MIGRATION_PLAN.md` + ADRs
+- `.planning/research/x86-migration/` — 17 recons + 4 baselines + 6 deep dives
+- `.planning/sessions/` — session journals (2 entries, 2026-05-19 + 2026-05-20)
+- `docs/MIGRATION_PLAN.md` + 13 ADRs
 
-## Evolution
-
-After phase G ship — milestone v0.1.0-dev released as alpha. Next:
-- v0.2.0 (beta): production-readiness items (backup/upgrade/dashboards)
-- v0.3.0: real hardware validation + benchmarks
-- v0.4.0: integration tests + E2E
-- v1.0.0 (GA): all REQ-IDs ✅ или explicit defer
-
-**Last updated:** 2026-05-19 (after cleanup + D1-D4 ship).
+**Last updated:** 2026-05-20 — после Phase P + GSD refresh.

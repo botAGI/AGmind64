@@ -1,186 +1,247 @@
 # AGmind codebase index
 
-Scanned 2026-05-19 via Explore agent. **39 Python files (4753 LOC) в
-agmind/, 25 test files, 12 Ansible roles, 2 YAML catalogs.**
+Scanned 2026-05-20 (post-Phase P). Replaces 2026-05-19 baseline. Significant
+growth: install/ + ops/ + migrations/ + observability/ + version_check +
+TUI install screen.
 
-## agmind/ Python tree
+- **Python:** 74 files in `agmind/`, 35 test files in `tests/`
+- **Service templates:** 33 YAML descriptors + JSON Schema
+- **ADRs:** 13 (Phase O capability graph + Phase P version check added)
+- **Ansible roles:** 11
+- **R-recons:** 17 + 4 baselines + 6 deep dives
+- **Workflows:** 3 (ci + release-drafter + **version-check** — Phase P)
+- **Tests:** 782 passing, 0 skipped (post-Phase P)
+
+## agmind/ — Python tree
 
 ### Root (6 files)
 
-| File | Purpose | Key exports | Lines |
-|------|---------|-------------|------:|
-| `agmind/__init__.py` | Package API & version | `__version__` | 10 |
-| `agmind/__main__.py` | CLI entry (`python -m agmind`) | `app()` | 9 |
-| `agmind/log.py` | Logging utilities | `setup()`, `logger()` | 42 |
-| `agmind/_env.py` | .env parser без python-dotenv | `parse_env_text/file()`, `env_get()`, `shell_quote()` | 77 |
-| `agmind/secrets.py` | Credentials chmod 600 | `write_creds()`, `read_creds()`, `mask_value()` | 110 |
-| `agmind/models.py` | Tier-based GGUF resolver | `load_models_registry()`, `detect_tier()`, `resolve_llm/embed/reranker/vlm()` | 319 |
+| File | Lines | Purpose |
+|------|------:|---------|
+| `__init__.py` | 10 | Package version |
+| `__main__.py` | 9 | CLI entry (`python -m agmind`) |
+| `log.py` | 140 | structlog logger (Phase H'.D) |
+| `models.py` | 319 | GGUF tier resolver + registry |
+| `secrets.py` | 110 | Credentials chmod 600 |
+| `_env.py` | 77 | Env parser (без python-dotenv) |
 
-### agmind/compute/ (5 root + backends + clients)
+### cli/ (9 files, 1756 LOC)
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `compute/__init__.py` | Compute backend abstraction API | 27 |
-| `compute/base.py` | ABC: Backend / DeviceInfo / LLMHandle | 235 |
-| `compute/config.py` | ComputeConfig + Profile enum | 101 |
-| `compute/detect.py` | HW detection (sysfs + vulkaninfo + rocminfo) | 376 |
-| `compute/_registry.py` | Backend registry + auto-select | 138 |
+| File | Lines | Purpose |
+|------|------:|---------|
+| `__init__.py` | 683 | Typer app + 17 commands incl. `install` + `migrate` + ops |
+| `models_cmd.py` | 223 | `agmind models {list,pull,info,tier}` |
+| `ops_cmd.py` | 173 | `agmind logs/shell/backup/restore` (L.E) |
+| `deploy_cmd.py` | 163 | `agmind deploy/rollback` (L.B) |
+| `service_cmd.py` | 158 | `agmind service {list,scaffold,validate}` |
+| `migrate_cmd.py` | 120 | `agmind migrate up/down` (L.D) |
+| `chat_cmd.py` | 102 | `agmind chat` REPL |
+| `embed_cmd.py` | 79 | `agmind embed` |
+| `render_cmd.py` | 75 | `agmind render compose` |
 
-### agmind/compute/backends/ (5 files)
+### cli/tui/ (7 files, 1961 LOC)
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `backends/__init__.py` | Module stub | 9 |
-| `backends/cpu.py` | CPU backend (llama-cpp-cpu) | 139 |
-| `backends/vulkan.py` | Vulkan RADV backend | 203 |
-| `backends/rocm.py` | ROCm/HIP backend | 180 |
-| `backends/npu_stub.py` | XDNA 2 NPU stub | 61 |
+| File | Lines | Purpose |
+|------|------:|---------|
+| `setup_wizard.py` | 794 | AgmindSetupApp wizard (J + N.G — model + ctx + threads + parallel) |
+| `deploy_screen.py` | 262 | DeployProgressScreen (J.1.5) |
+| `status_dashboard.py` | 251 | StatusDashboardApp (J.2 — `agmind status --tui`) |
+| `install_screen.py` | 246 | InstallProgressScreen (N — orchestrator UI) |
+| `summary_screen.py` | 233 | SummaryScreen post-deploy |
+| `logo.py` | 163 | AnimatedLogo (pyfiglet + AGMIND_LOGO_DISABLE_ANIMATION) |
+| `__init__.py` | 12 | Module exports |
 
-### agmind/compute/backends/_engines/ (6 files)
+### compute/ (18 files, 2599 LOC)
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `_engines/__init__.py` | Module stub | 11 |
-| `_engines/llama_cpp_cpu.py` | llama-cpp-python (CPU build) | 151 |
-| `_engines/llama_cpp_hip.py` | llama-cpp-python (HIP/ROCm build) | 101 |
-| `_engines/llama_cpp_vulkan.py` | llama-cpp-python (GGML_VULKAN) | 112 |
-| `_engines/llama_server_handle.py` | LLMHandle поверх HTTP REST | 144 |
-| `_engines/http_helper.py` | DRY `try_http_handle/embed/rerank` | 64 |
+5 root + 6 backends + 5 _engines + 2 clients. См. ARCHITECTURE.md для DAG.
 
-### agmind/compute/clients/ (2 files)
+| File | Lines | Notable |
+|------|------:|---------|
+| `detect.py` | 433 | Multi-GPU Vulkan parser (post-fix `3dda542`) |
+| `base.py` | 235 | Backend ABC, LLMHandle |
+| `_registry.py` | 159 | entry_points discovery (ADR-0008) |
+| `config.py` | 101 | Profile reading |
+| `__init__.py` | 27 | Public API |
+| `backends/vulkan.py` | 203 | RADV path |
+| `backends/rocm.py` | 180 | HIP path |
+| `backends/cpu.py` | 139 | Fallback |
+| `backends/npu_stub.py` | 61 | XDNA placeholder |
+| `backends/_engines/llama_cpp_cpu.py` | 151 | llama-cpp-python CPU |
+| `backends/_engines/llama_server_handle.py` | 144 | HTTP client to llama-server |
+| `backends/_engines/llama_cpp_vulkan.py` | 112 | llama-cpp-python Vulkan |
+| `backends/_engines/llama_cpp_hip.py` | 101 | llama-cpp-python HIP |
+| `backends/_engines/http_helper.py` | 64 | Shared HTTP helpers |
+| `clients/llama_server.py` | 451 | LlamaServerClient (chat + embed + rerank) |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `clients/__init__.py` | Public API | 18 |
-| `clients/llama_server.py` | OpenAI-compatible REST client (urllib stdlib, SSE streaming) | 451 |
+### deploy/ (5 files, 1053 LOC) — Phase L.B/C
 
-### agmind/cli/ (5 files)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `runner.py` | 317 | deploy() orchestrator: render→snapshot→up→wait_healthy→rollback |
+| `gc.py` | 328 | `agmind gc` containers/images/volumes/networks/models |
+| `snapshot.py` | 192 | SnapshotManager (retention=10) |
+| `diff.py` | 168 | compute_diff + format_diff |
+| `__init__.py` | 48 | Exports |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `cli/__init__.py` | typer app + subcommand wiring | 118 |
-| `cli/models_cmd.py` | `agmind models {list,download,verify,path}` | 223 |
-| `cli/deploy_cmd.py` | `agmind deploy {up,down,status,ps,logs,restart,pull}` | 95 |
-| `cli/chat_cmd.py` | `agmind chat` interactive REPL | 102 |
-| `cli/embed_cmd.py` | `agmind embed` + `agmind rerank` | 79 |
+### install/ (4 files, 1021 LOC) — Phase N (NEW)
 
-### agmind/cluster/ (3 files)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `orchestrator.py` | 228 | InstallOrchestrator + ProgressEvent + InstallConfig + step sequencer |
+| `steps.py` | 531 | 6 steps: doctor / bootstrap (ansible+sudo) / pull / model / env_write / deploy |
+| `models.py` | 221 | CURATED_MODELS + CTX/KV/THREADS/PARALLEL presets |
+| `__init__.py` | 41 | Exports |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `cluster/__init__.py` | Public API | 26 |
-| `cluster/peer.py` | Peer + PeerHealth + load_cluster_config + probe_peer/all | 151 |
-| `cluster/router.py` | 4 routing strategies (round-robin/least-loaded/sticky/random) | 74 |
+### ops/ (3 files, 355 LOC) — Phase L.E (NEW)
 
-### agmind/services/ (2 files)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `backup.py` | 244 | create_backup / restore_backup tarball + metadata.json |
+| `exec.py` | 111 | docker compose logs + exec (`agmind logs/shell`) |
+| `__init__.py` | 5 | Package marker |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `services/__init__.py` | Public API | 23 |
-| `services/registry.py` | Service catalog + validate_no_latest + YAML fallback parser | 252 |
+### migrations/ (6 files, 214 LOC) — Phase L.D (NEW)
 
-### agmind/diagnostics/ (2 files)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `runner.py` | 132 | MigrationRunner: discover + up + down |
+| `state.py` | 83 | SchemaState (persisted ~/.local/share/agmind/schema.json) |
+| `base.py` | 54 | Migration ABC + MigrationContext |
+| `__init__.py` | 29 | Public API |
+| `versions/v001_initial.py` | 25 | Baseline migration (placeholder) |
+| `versions/__init__.py` | 5 | Discovery marker |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `diagnostics/__init__.py` | API | 10 |
-| `diagnostics/doctor.py` | 9 preflight checks с fix hints | 379 |
+### services/ (5 files, 1231 LOC) — Phase H'.B/C + O (NEW capability + bindings)
 
-### agmind/config/ (2 files)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `renderer.py` | 404 | render_compose + inject_capability_env (Phase O.B) |
+| `registry.py` | 309 | load_descriptors + legacy bridge |
+| `capability_bindings.py` | 155 | BINDINGS table (vector_db / llm_inference / dify_external_kb) |
+| `compatibility.py` | 149 | check_service_compatibility (soft warnings only post O.fix) |
+| `__init__.py` | 23 | Exports |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `config/__init__.py` | API | 10 |
-| `config/env.py` | render_env (placeholder substitution) + write_env (atomic) | 53 |
+### schemas/ (2 files, 377 LOC) — ADR-0005 + Phase O
 
-### agmind/i18n/ (1 file + 2 JSON)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `service.py` | 346 | ServiceDescriptor + provides/consumes/conflicts_with |
+| `__init__.py` | 31 | Exports |
 
-| File | Purpose | Lines |
-|------|---------|------:|
-| `i18n/__init__.py` | `t()` + `detect_lang()` | 70 |
-| `i18n/en.json` | English translations | — |
-| `i18n/ru.json` | Russian translations | — |
+### diagnostics/ (2 files, 389 LOC)
 
-## tests/ (25 files, 306 test functions)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `doctor.py` | 379 | 9 checks (multi-GPU Vulkan after `3dda542`) |
+| `__init__.py` | 10 | Public API |
 
-| File | Coverage |
-|------|----------|
-| `tests/conftest.py` | Pytest fixtures (has_vulkan/has_rocm/has_strix_halo/has_llama_cpp/clean_env) |
-| `tests/test_log.py` | 7 tests — logging setup/level/env |
-| `tests/test_env.py` | 16 tests — .env parsing edge cases |
-| `tests/test_secrets.py` | 19 tests — chmod 600 / mask / validate keys |
-| `tests/test_models.py` | 23 tests — tier resolve / antipatterns |
-| `tests/test_i18n.py` | 12 tests — translation + lang detection |
-| `tests/test_config_env.py` | 10 tests — render_env / write_env |
-| `tests/test_cli.py` | 6 tests — typer app construction |
-| `tests/test_audit_script.py` | 13 tests — audit rules + opt-out behaviour |
-| `tests/test_ansible_layout.py` | 10 tests — Ansible structure validation |
-| `tests/compute/test_detect.py` | 8 tests — detect_host + Strix Halo sysfs |
-| `tests/compute/test_config.py` | 16 tests — Profile / env vars |
-| `tests/compute/test_contract.py` | 19 tests — Backend ABC contract по backend |
-| `tests/compute/test_engines.py` | 22 tests — engine selection / M2 NotImplementedError |
-| `tests/compute/test_llmhandle.py` | 17 tests — ABC fallbacks + LlamaServerHandle |
-| `tests/compute/test_llama_server_client.py` | 31 tests — HTTP client + SSE + sampling |
-| `tests/compute/test_registry.py` | 11 tests — auto-select decision matrix |
-| `tests/cluster/test_router.py` | 17 tests — 4 routing strategies + cluster.yaml |
-| `tests/services/test_registry.py` | 23 tests — service loading / validate_no_latest |
-| `tests/diagnostics/test_doctor.py` | 12 tests — preflight checks |
+### cluster/ (3 files, 251 LOC)
 
-## scripts/ (1 file)
+| File | Lines | Purpose |
+|------|------:|---------|
+| `peer.py` | 151 | Peer + ClusterConfig + probe_peer |
+| `router.py` | 74 | RoutingStrategy + choose_peer |
+| `__init__.py` | 26 | Exports |
+
+### config/ + i18n/ + observability/ (4 files, 149 LOC)
+
+| File | Lines | Status |
+|------|------:|--------|
+| `config/env.py` | 53 | render_env + write_env |
+| `config/__init__.py` | 10 | Exports |
+| `i18n/__init__.py` | 70 | Lang detect + lookup (НЕ подключен в TUI) |
+| `observability/__init__.py` | 16 | OpenTelemetry placeholder |
+
+## tests/ (35 files, ~6500 LOC, 782 tests)
+
+| File | Lines | Coverage |
+|------|------:|----------|
+| `test_ops_backup.py` | 366 | Phase L.E backup/restore |
+| `test_migrations.py` | 346 | Phase L.D schema migrations |
+| `test_service_schema.py` | 311 | Pydantic ServiceDescriptor validation |
+| `test_tui_setup.py` | 308 | Wizard state + Pilot tests (un-skipped via env) |
+| `test_install_orchestrator.py` | 299 | Phase N orchestrator + steps |
+| `test_renderer.py` | 297 | compose rendering + Traefik labels |
+| `test_service_compatibility.py` | 290 | Phase O compatibility (corrected post-fix) |
+| `test_models.py` | 264 | Tier resolver |
+| `test_status_dashboard.py` | 210 | Phase J.2 dashboard |
+| `test_observability_configs.py` | 207 | Prometheus/Loki/Grafana templates |
+| `test_ops_exec.py` | 186 | logs/shell wrapper |
+| `test_deploy.py` | 184 | Phase L.B runner + snapshot |
+| `test_ansible_layout.py` | 158 | Ansible role structure |
+| `test_secrets.py` | 143 | Credentials |
+| `test_install_model_detect.py` | 141 | Phase N.H detect+reuse logic |
+| `test_services_descriptors.py` | 132 | Descriptor loading |
+| `test_gc.py` | 131 | Phase L.C gc |
+| `test_audit_script.py` | 131 | audit_forbidden.py (post-fix) |
+| `test_version_check.py` | 122 | **Phase P** version scanner |
+| `test_log.py` | 114 | structlog |
+| `test_config_env.py` | 108 | .env rendering |
+| `test_env.py` | 101 | env parsing |
+| `test_install_models.py` | 87 | CURATED_MODELS catalog |
+| `test_i18n.py` | 86 | i18n strings |
+| **compute/** | 1187 | 7 files: contract/detect/registry/config/engines/handle/client |
+| **services/test_registry.py** | 226 | services YAML load |
+| **cluster/test_router.py** | 225 | peer routing |
+| **diagnostics/test_doctor.py** | 119 | doctor.run_preflight |
+
+## templates/
+
+- `services/` — **33** descriptors (post-O annotations: provides/consumes)
+- `schemas/service.json` — JSON Schema export (ADR-0005)
+- `version_holds.yaml` — Phase P upstream pin holds
+- `observability/` — prometheus.yml + loki.yml + grafana/provisioning + alloy/config.alloy + alert rules
+- `traefik/` — middlewares + transport
+- `models.yaml` — GGUF tier catalog
+
+## ansible/ — 11 roles
+
+agmind_python · bootstrap · cluster · docker · models · observability · preflight · security · services · smoke_test · strix_halo
+
+Playbook: `install.yml` (Phase N orchestrator вызывает через subprocess).
+
+## docs/adr/ — 13 ADRs
+
+| # | Title |
+|--:|-------|
+| 0 | Template |
+| 1 | Migration to x86 Strix Halo |
+| 2 | Compute backend abstraction |
+| 3 | Memory budgeting Strix Halo |
+| 4 | Engine selection within backend |
+| 5 | ServiceDescriptor schema |
+| 6 | Traefik routing + Python renderer |
+| 7 | Observability stack |
+| 8 | Plugin system + legacy cleanup |
+| 9 | **State migration system** (Phase L.D) |
+| 10 | **End-to-end installer** (Phase N) |
+| 11 | **Service capability graph** (Phase O, with 2026-05-20 amendment) |
+| 12 | **Upstream version check** (Phase P) |
+
+Other docs: QUICKSTART · INSTALL · CLUSTER · HARDWARE · SETUP_ROCM_STRIX_HALO · SETUP_CLOUDFLARE_DOMAIN · TROUBLESHOOTING · **BENCHMARKS** (Phase H result row added) · MIGRATION_PLAN
+
+## scripts/
 
 | File | Purpose |
 |------|---------|
-| `scripts/audit_forbidden.py` | Forbidden-pattern audit (cuda/aarch64/nvcr.io/etc); 7 rules + RULES self-reference opt-out |
+| `audit_forbidden.py` | Forbidden pattern scanner — unfrozen post `3dda542` |
+| `version_check.py` | **Phase P** upstream version scanner + markdown report |
+| `export_schemas.py` | Pydantic → templates/schemas/service.json |
+| `migrate_services_to_descriptors.py` | Legacy → ServiceDescriptor conversion |
+| `amdgpu_textfile.sh` | R13 textfile collector for node-exporter |
 
-## ansible/ (31 files, 11 roles)
+## .planning/research/x86-migration/ — 17 recons + extras
 
-| Role | Tasks |
-|------|-------|
-| `preflight` | x86_64 / kernel / Strix Halo / disk |
-| `bootstrap` | apt + Vulkan tooling + agmind user/group + sysctl |
-| `strix_halo` | AMDVLK purge + GRUB ttm.pages_limit + Mesa warn |
-| `docker` | docker-ce install + daemon.json + GPU access verify |
-| `agmind_python` | venv + pip install -e + CLI wrapper |
-| `models` | Tier autodetect + GGUF download (HF) |
-| `services` | Render compose.yml + nginx + bring up |
-| `observability` | Prometheus + Grafana + Loki + Alloy provision |
-| `security` | UFW + fail2ban + opt Authelia |
-| `smoke_test` | `agmind doctor` + compose ps verify |
-| `cluster` | Render cluster.yaml + firewall к worker IPs |
+R0 autonomous workflow · R1 PyTorch+ROCm docker · R2 Vulkan RADV vs AMDVLK · R3 llama.cpp Vulkan+HIP · R4 vLLM ROCm · R5 TEI embed/rerank · R7 Docling alternatives · R10 Strix Halo BIOS UMA · R11 RAGFlow alternatives · R12 Versions (x86, May 2026) · **R14 backup/restore gaps** (Phase L.E) · **R15 Phase H bench protocol** · **R16 Qwen Strix Halo flags** · R16-bench-vulkan-qwen-b9049.log
 
-## templates/ (2 YAML files)
+Deep dives: 01 Traefik+llama-server · 02 Hydra profiles · 03 Observability pipeline · 04 Service onboarding · 05 Go vs Python · 06 Steal-fest
 
-| File | Schema |
-|------|--------|
-| `templates/services.yaml` | schema_version: 1 — 32 services, 27 digest-pinned |
-| `templates/models.yaml` | schema_version: 1 — 5 LLM tiers + embed + rerank + VLM + 12 antipatterns |
+## .github/workflows/
 
-## docs/ (10 MD + 3 ADR)
+- `ci.yml` — pytest + mypy + audit
+- `release-drafter.yml` — auto release notes
+- **`version-check.yml`** — Phase P weekly cron → issue update
 
-| File | Purpose |
-|------|---------|
-| `docs/MIGRATION_PLAN.md` | Phase A-G план + OQ-1..7 |
-| `docs/HARDWARE.md` | Host setup (BIOS/kernel/sysctl/Mesa/AMDVLK) |
-| `docs/BENCHMARKS.md` | Reference numbers из R3/R-llm-models |
-| `docs/QUICKSTART.md` | 5-min setup |
-| `docs/INSTALL.md` | Detailed walkthrough |
-| `docs/TROUBLESHOOTING.md` | 10-section cookbook |
-| `docs/CLUSTER.md` | Multi-node setup |
-| `docs/adr/0000-template.md` | ADR template |
-| `docs/adr/0001-migration-to-x86-strix-halo.md` | Migration ADR (proposed) |
-| `docs/adr/0002-compute-backend-abstraction.md` | Compute layer ADR (proposed) |
+## Top-level
 
-## .planning/ (10 files)
-
-| File | Purpose |
-|------|---------|
-| `PROJECT.md` | Milestone charter |
-| `REQUIREMENTS.md` | 119 REQ-IDs |
-| `STATE.md` | Current position + key decisions log |
-| `ROADMAP.md` | Phase H-K plan |
-| `BACKLOG.md` | Prioritized P0-P3 tasks |
-| `codebase/INDEX.md` | This file |
-| `codebase/DEPENDENCIES.md` | Import graph |
-| `codebase/ARCHITECTURE.md` | 3-layer overview |
-| `research/x86-migration/R*.md` | 12 deep recon reports |
-| `sessions/2026-05-19-overnight.md` | Migration session log |
+`README.md` · `AGMIND_MIGRATION_SPEC.md` · `CLAUDE.md` · `pyproject.toml` · `Makefile` · `migration_progress.json`

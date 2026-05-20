@@ -1,169 +1,184 @@
-# AGmind x86 — Backlog
+# AGmind x86 — Backlog (post-Phase P, 2026-05-20)
 
-Структурированный backlog задач для next sessions. Сгруппировано по
-**urgency × effort**. См. ROADMAP.md для milestone planning.
+Структурированный backlog для next sessions. Сгруппировано по
+**milestone × priority**. См. `ROADMAP.md` для phase context.
 
 Legend:
-- 🔴 **Critical** — без этого нельзя deploy
+- 🔴 **Critical** — production blocker
 - 🟡 **High** — production-readiness
 - 🟢 **Medium** — UX polish
 - 🔵 **Low** — nice-to-have
 
-## P0 — Critical (Phase H — Hardware validation)
+## Status snapshot (2026-05-20)
 
-| # | Task | Effort | REQ-ID |
-|---|------|:------:|--------|
-| H1 | `sudo apt install vulkan-tools mesa-vulkan-drivers libvulkan1` + verify `vulkaninfo --summary` показывает RADV GFX1151 | 30 min | COMPUTE-03 |
-| H2 | Mesa 26+ через `ppa:kisak/kisak-mesa` + verify `glxinfo` | 30 min | COMPUTE-10 |
-| H3 | GRUB cmdline `ttm.pages_limit=30788044` + reboot + verify `mem_info_gtt_total ~117 GiB` | 30 min | COMPUTE-11 |
-| H4 | `sudo usermod -aG render,video,docker $USER && newgrp render` | 5 min | doctor warnings |
-| H5 | `pip install -e ".[dev]"` + run `pytest -m backend_any` (expect 200+ green) | 1 hour | TEST-01..10 |
-| H6 | Run `agmind doctor` — expect 9/9 ✓ | 5 min | CLI-02 |
-| H7 | Build llama-cpp-python с Vulkan: `CMAKE_ARGS='-DGGML_VULKAN=ON -DGGML_NATIVE=OFF' pip install --no-binary llama-cpp-python 'llama-cpp-python>=0.3.23'` (~10-15 min compile) | 30 min | COMPUTE-03 |
-| H8 | `agmind models download --tier M` (gemma-4-26B-A4B-it ~16.9 GB) | 30 min (bandwidth) | MODELS-09 |
-| H9 | `docker compose pull` для всех 32 services (~200 GB images total) | 1-3 hours | SVC-01 |
-| H10 | Build self-hosted: `docker build -f docker/Dockerfile.{base,cpu,vulkan,rocm}` | 30 min | F1-F4 |
-| H11 | Ansible dry-run: `ansible-playbook install.yml --check` | 30 min | ANS-11 |
-| H12 | Real install: `sudo ansible-playbook install.yml` | 1 hour | ANS-01 |
-| H13 | Smoke chat: `agmind chat` с реальным LLM, verify coherent reply | 15 min | LLM-04 |
-| H14 | Benchmark: `agmind embed "test"` + measure latency | 15 min | LLM-05 |
-| H15 | Update BENCHMARKS.md с реальными numbers | 30 min | DOC-04 |
+- **M1 v0.1.0-dev (Migration alpha):** ✅ SHIPPED
+- **M2 v0.2.0 (Production hardening):** ~70% (H' + L + J.2 + H + N + O + P done)
+- **M3 v0.3.0 (UX + ops polish):** 📋 next sprint
+- **M4 v0.4.0 (Cluster + plugins):** 📋 deferred
 
-**Phase H total estimate:** 7-12 hours зависит от bandwidth для downloads.
+Test baseline: **782 passed, 0 skipped, 0 failed.** Audit: 0 findings.
 
-## P0 — Critical (Phase I — Git baseline)
+---
 
-| # | Task | Effort |
-|---|------|:------:|
-| I1 | User manual: `rm -rf .git/` (classifier blocks мне) | 1 min |
-| I2 | `git init -b main && git config user.{email,name} ...` | 5 min |
-| I3 | `.gitignore` validate + check that legacy/ + AGmind.zip excluded | 5 min |
-| I4 | `git add . && git status` (review staged), `git commit -m "Initial: AGmind x86 v0.1.0-dev"` | 15 min |
-| I5 | Update ADR-0001 status: `proposed` → `accepted` | 10 min |
-| I6 | Update ADR-0002 status: `proposed` → `accepted` | 10 min |
-| I7 | Write ADR-0003 "Memory budgeting on Strix Halo" (на основе R10) | 30 min |
-| I8 | Write ADR-0004 "Engine selection inside backend (M1 llama_cpp only, M2 vllm/infinity)" | 30 min |
-| I9 | AGMIND_MIGRATION_SPEC.md — расширенный changelog (D1-D4 + cleanup entries) | 30 min |
-| I10 | migration_progress.json: phase_status A-G → done, populate completion_dates | 15 min |
-| I11 | `git tag v0.1.0-dev` + commit message | 5 min |
+## M2 — Remaining (rolled into M3)
 
-**Phase I total:** ~3 hours.
+These were originally scoped в M2 но rolled to M3:
 
-## P1 — High (Phase J — Day-2 ops CLI)
+| # | Task | Effort | Priority | Notes |
+|---|------|:------:|----------|-------|
+| M2.K.1 | Grafana dashboards auto-provision (datasources + 3 dashboards: system / llama / services) | 4h | 🟡 | configs готовы (Phase H'.D), JSON dashboards не написаны |
+| M2.K.2 | Prometheus alert rules tuning (CPU/RAM/GPU/disk thresholds) | 2h | 🟡 | skeleton есть, thresholds default |
+| M2.U.1 | Ansible cluster role smoke test (1 host playbook --check) | 2h | 🟡 | playbook есть, не run'нен |
 
-| # | Task | Effort | REQ-ID |
-|---|------|:------:|--------|
-| J1 | `agmind install --profile <X>` — Python wrapper над `ansible-playbook install.yml` | 1 hour | CLI-09 |
-| J2 | `agmind upgrade --check` — read `versions.env`, diff vs running compose | 2 hours | CLI-10 |
-| J3 | `agmind upgrade --apply` — atomic state migrations + tarball backup | 4 hours | CLI-10 |
-| J4 | `agmind upgrade --rollback <schema_version>` | 2 hours | CLI-10 |
-| J5 | `agmind backup create [--name X]` — tar `/var/lib/agmind/{postgres,qdrant,redis}` + `.env` | 2 hours | BACKUP-02 |
-| J6 | `agmind backup list` + verify (manifest.txt + checksums) | 1 hour | BACKUP-03 |
-| J7 | `agmind backup verify --dry-run` | 1 hour | BACKUP-03 |
-| J8 | `agmind backup restore --name X` | 2 hours | BACKUP-04 |
-| J9 | `agmind config validate` (env-placeholders / versions-consistent / compose-schema) | 2 hours | CLI-12 |
-| J10 | `agmind config diff` — show planned vs running | 1 hour | CLI-12 |
-| J11 | `agmind creds show [--show]` (chmod-600-aware, masked-by-default) | 1 hour | CLI-13 |
-| J12 | `agmind creds rotate [--service X]` | 2 hours | CLI-13 |
-| J13 | `agmind state {get,set,migrate}` (state.py API в CLI) | 2 hours | — |
-| J14 | typer shell completion install `agmind --install-completion zsh/bash` | 1 hour | CLI-14 |
-| J15 | Tests для всех новых CLI commands | 2 hours | TEST |
+---
 
-**Phase J total:** ~26 hours.
+## M3 v0.3.0 — UX + ops polish (next sprint)
 
-## P1 — High (Phase K — Observability)
+### M3.P.fix — version_check tag filtering (~1h, 🔴 high)
 
-| # | Task | Effort | REQ-ID |
-|---|------|:------:|--------|
-| K1 | Grafana dashboard JSON: "AGmind LLM performance" (tokens/sec, latency p50/p95/p99) | 3 hours | OBS-06 |
-| K2 | Grafana dashboard JSON: "Strix Halo GPU" (GTT usage, temperature, Mesa shader cache) | 2 hours | OBS-06 |
-| K3 | Grafana dashboard JSON: "Containers overview" (cAdvisor) | 1 hour | OBS-06 |
-| K4 | Grafana dashboard JSON: "Logs explorer" (Loki + Alloy) | 1 hour | OBS-06 |
-| K5 | Grafana dashboard JSON: "Cluster routing" (peers alive, inflight, balance) | 2 hours | OBS-06 |
-| K6 | Prometheus alert rules: high memory (>85% GTT), slow inference (p99 > 5s), peer down | 2 hours | OBS-07 |
-| K7 | Alertmanager Telegram bot integration | 2 hours | OBS-08 |
-| K8 | `agmind/exporter.py` — Python prom_client wrapper, /metrics endpoint | 4 hours | OBS-09 |
-| K9 | GPU metrics: `rocm-smi --showmeminfo all` parsed → Prometheus textfile collector | 2 hours | OBS-10 |
-| K10 | Provision dashboards через Ansible (UID/version-stable JSON) | 1 hour | OBS-06 |
-
-**Phase K total:** ~20 hours.
-
-## P1 — High (Misc production polish)
-
-| # | Task | Effort | REQ-ID |
-|---|------|:------:|--------|
-| M1 | HTTP retry/backoff в LlamaServerClient (urllib3-style) | 2 hours | — |
-| M2 | Connection pool в LlamaServerClient (keep-alive) | 1 hour | — |
-| M3 | Async API (`AsyncLlamaServerClient` через httpx) | 4 hours | — |
-| M4 | Models SHA256 verify (HF предоставляет в /resolve/main/{file}/raw?download=true) | 2 hours | MODELS-11 |
-| M5 | Models download progress bar (tqdm или ASCII) | 1 hour | MODELS-12 |
-| M6 | ansible-vault для secrets вместо `lookup('password', ...)` | 3 hours | ANS-10, SEC-11 |
-| M7 | Trivy scan в CI workflow | 1 hour | SEC-12 |
-| M8 | Tests for `agmind/cli/` (mock typer.CliRunner) | 3 hours | TEST |
-| M9 | Tests for `agmind/cluster/peer.probe_*` с mock LlamaServerClient | 2 hours | TEST |
-| M10 | Multi-GPU device_id selection tested | 2 hours | COMPUTE-13 |
-
-## P2 — Medium (Documentation polish)
-
-| # | Task | Effort | REQ-ID |
-|---|------|:------:|--------|
-| D1 | CONTRIBUTING.md | 1 hour | DOC-12 |
-| D2 | CHANGELOG.md (под v0.1.0-dev released) | 30 min | — |
-| D3 | docs/API.md — public Python API reference | 2 hours | DOC-13 |
-| D4 | docs/UPGRADE.md — version migration guide | 1 hour | — |
-| D5 | docs/SECURITY.md — threat model + best practices | 2 hours | — |
-| D6 | docs/DEVELOPMENT.md — local dev setup без real hardware | 2 hours | — |
-| D7 | asciinema demos: install / chat / models download | 2 hours | DOC-14 |
-| D8 | Architecture diagrams (mermaid) embedded в README | 1 hour | — |
-
-## P3 — Low (Niceties)
+Weekly Phase P report сейчас шумный — много false positives. Fix перед
+next Monday cron run.
 
 | # | Task | Effort |
 |---|------|:------:|
-| N1 | MCP server для agmind ops (AI agent integration) | 8 hours |
-| N2 | Sphinx auto-gen API reference | 4 hours |
-| N3 | mkdocs static site generation | 3 hours |
-| N4 | GitHub Pages deployment | 1 hour |
-| N5 | `agmind doctor --fix` (interactive applying suggestions) | 4 hours |
-| N6 | Plugin system для custom backends (entry_points) | 6 hours |
-| N7 | Web admin UI (FastAPI + htmx) | 16 hours |
-| N8 | Telegram bot для agmind status / chat | 4 hours |
+| P.fix.1 | Variant tag filter regex (`-windowsservercore`, `-arm64`, `-ubuntu`, `-alpine`, `-distroless`) | 15 min |
+| P.fix.2 | RC/dev/nightly drop (`-rc`, `-dev-`, `+security-`, дата-based) | 15 min |
+| P.fix.3 | SHA-only tags filter (40-char hex без semver prefix) | 10 min |
+| P.fix.4 | Quay.io probe (`quay.io/<org>/<image>` через v2 API) | 10 min |
+| P.fix.5 | GCR probe (`gcr.io/<project>/<image>`) | 10 min |
+| P.fix.6 | Re-test live + verify signal-to-noise ratio | 10 min |
 
-## GSD codebase update (immediate next session priority)
+**DoD:** weekly report shows только real bumps; "❌ error" < 5.
 
-`.planning/codebase/` skeleton — нужно создать новый под x86 проект.
-Background agent scan уже запущен. После его возврата:
+### M3.Q — `agmind models {list,pull,rm,info}` (~2h, 🟡 medium)
 
-| # | File | Status |
+Standalone CLI для управления GGUF files (без `agmind install`).
+
+| # | Task | Effort |
 |---|------|:------:|
-| C1 | `.planning/codebase/INDEX.md` (file-by-file table) | ⏳ in-flight via Explore agent |
-| C2 | `.planning/codebase/DEPENDENCIES.md` (import graph) | ⏳ in-flight |
-| C3 | `.planning/codebase/ARCHITECTURE.md` (3-layer overview) | next session |
-| C4 | `.planning/codebase/DATAFLOW.md` (request → backend → engine → model) | next session |
-| C5 | `.planning/codebase/CONCERNS.md` (cross-cutting: security/obs/i18n/secrets) | next session |
-| C6 | `.planning/codebase/PITFALLS.md` (24+ известных gotchas из recons) | next session |
-| C7 | `.planning/codebase/INVARIANTS.md` (no :latest, RADV mandatory, etc) | next session |
-| C8 | `.planning/codebase/EXTENSION_POINTS.md` (где добавлять new engines / services / tiers) | next session |
+| Q.1 | `agmind models list` — local *.gguf + size + last-used | 20 min |
+| Q.2 | `agmind models pull <id>` — выбор из CURATED_MODELS | 30 min |
+| Q.3 | `agmind models pull --repo X --file Y` — custom HF | 20 min |
+| Q.4 | `agmind models rm <id>` — delete + warn если в use | 20 min |
+| Q.5 | `agmind models info <id>` — size + quant + params + ctx | 15 min |
+| Q.6 | Tests (mock HF + filesystem) | 30 min |
 
-## Notes — какие direction'ы я не успел
+**Reuse:** Phase N.H detect/reuse + Phase N.G CURATED_MODELS catalog.
 
-1. **Real hardware validation** — нужно vulkan-tools/ROCm/llama-cpp install
-2. **Git init** — classifier blocks `rm -rf .git`, user сам
-3. **pytest run** — нет pytest installed на dev
-4. **Docker build** — нет docker daemon access (или есть? not tested)
-5. **Ansible playbook real run** — needs `sudo` permissions
+### M3.R — `agmind upgrade --component X` (~2h, 🟡 medium)
 
-## Recommended next session focus
+Bump single image pin + redeploy с rollback safety.
 
-**Option A (rec):** Phase H (hardware validation) + Phase I (git baseline) —
-закрывают critical gaps, делают проект "real" вместо "skeleton".
+| # | Task | Effort |
+|---|------|:------:|
+| R.1 | `agmind upgrade --check` — synonym для version_check | 10 min |
+| R.2 | `agmind upgrade --component X --version Y` — edit YAML + auto-resolve digest | 40 min |
+| R.3 | `agmind upgrade --apply` — re-deploy after bump (reuse Phase L.B runner) | 30 min |
+| R.4 | `agmind upgrade --rollback` — revert + redeploy snapshot | 20 min |
+| R.5 | Respect version_holds.yaml (refuse без --force) | 10 min |
+| R.6 | Tests | 20 min |
 
-**Option B:** Phase J (day-2 ops CLI) — usable production deployment без
-hardware testing.
+### M3.S.1 — TUI feedback polish (~2h, 🟢 UX)
 
-**Option C:** Phase K (observability) — production monitoring + alerting.
+| # | Task | Effort |
+|---|------|:------:|
+| S.1.1 | Replace `#status-msg` Static с `self.notify(...)` Toast | 30 min |
+| S.1.2 | Inline domain Input validator (red border до fix) | 30 min |
+| S.1.3 | Inline CF token validator (length check live) | 20 min |
+| S.1.4 | Modal ConfirmScreen для Apply (destructive guard) | 30 min |
+| S.1.5 | ProgressBar(show_eta=True) в Install screen | 10 min |
 
-**Option D:** GSD codebase maps — для long-term maintainability и
-onboarding новых contributors.
+### M3.S.2 — Multi-step wizard split (~4h, 🟢 UX)
 
-Я бы выбрал **A → I → C (GSD docs) → J → K** в этом порядке.
+| # | Task | Effort |
+|---|------|:------:|
+| S.2.1 | `DomainScreen` extract (domain + CF token + inline validation) | 60 min |
+| S.2.2 | `ModelScreen` extract (curated/custom + ctx/kv/threads/parallel) | 60 min |
+| S.2.3 | `ServicesScreen` extract (per-tier checkboxes) | 30 min |
+| S.2.4 | `ConfirmScreen` (summary + Apply / Back) | 30 min |
+| S.2.5 | Navigation flow + Tab keybinding + back-button-restores-state | 30 min |
+| S.2.6 | Persist partial state ~/.local/share/agmind/setup-state.json | 20 min |
+| S.2.7 | Update tests для new screen flow | 30 min |
+
+### M3.T — i18n hookup (~1.5h, 🔵 low)
+
+| # | Task | Effort |
+|---|------|:------:|
+| T.1 | Auto-detect через LANG env var | 10 min |
+| T.2 | `--lang en/ru` CLI flag | 10 min |
+| T.3 | Wrap all user-facing strings через i18n.get() | 60 min |
+| T.4 | Update en.json + ru.json (cover все wizard strings) | 30 min |
+| T.5 | Test LANG=ru_RU agmind setup → русский UI | 10 min |
+
+**M3 total estimate:** ~12.5h. Можно split на 2-3 sessions.
+
+---
+
+## M4 v0.4.0 — Cluster + plugins (deferred)
+
+### M4.U — Phase M cluster (multi-node)
+
+| # | Task | Effort | Notes |
+|---|------|:------:|-------|
+| U.1 | Ansible cluster inventory parser (2+ hosts) | 4h | role skeleton есть |
+| U.2 | Inter-node WireGuard (AmneziaWG для РФ per user feedback) | 4h | TBD |
+| U.3 | mDNS endpoints advertise per node | 2h | legacy *.local pattern |
+| U.4 | Cluster-aware deploy в Phase L.B runner | 4h | parallel apply per node |
+| U.5 | `agmind status --tui` показывает все nodes | 2h | dashboard cluster mode |
+
+### M4.V — Plugin marketplace
+
+| # | Task | Effort | Notes |
+|---|------|:------:|-------|
+| V.1 | `agmind plugin list` (от agmind.dev/plugins TBD endpoint) | 2h | endpoint TBD |
+| V.2 | `agmind plugin install <id>` (download + verify + register) | 4h | |
+| V.3 | Plugin metadata schema (similar to ServiceDescriptor) | 2h | |
+| V.4 | Sample plugins (e.g. authelia-2fa, gpu-monitor) | 4h | |
+
+### M4.W — Authelia 2FA + Authentication
+
+| # | Task | Effort | Notes |
+|---|------|:------:|-------|
+| W.1 | TUI wizard Authelia toggle (currently service есть но wizard не запрашивает) | 30 min | |
+| W.2 | Auto-provision Authelia config (users.yml + access rules) | 2h | template есть |
+| W.3 | TOTP secret generation + QR code в SummaryScreen | 1h | |
+
+---
+
+## Known defects (DEF-*)
+
+Resolved (M2 session 2026-05-20):
+- ✅ DEF-AUDIT-FIXTURE-TESTS (resolved `3dda542`)
+- ✅ DEF-AUDIT-GITIGNORE (resolved `8a6c621`)
+- ✅ DEF-VULKAN-MULTI-GPU-PARSE (resolved `3dda542`)
+- ✅ DEF-ROCM-VERSION-GFX1151 (resolved earlier session)
+- ✅ DEF-DOCKERFILE-DIGESTS (resolved earlier session)
+
+Open:
+- 🟡 DEF-PYTEST9-CAPLOG — test_logger_emits_to_configured_stream — caplog
+  empty в pytest 9.0.3 (root logger propagation change). Workaround: 1
+  test skipped. Fix: переписать через propagate=True или pin pytest<9.
+
+---
+
+## Long-term wishlist (M5 / GA)
+
+- **PERF** — XDNA 2 NPU support (когда Linux driver появится)
+- **PERF** — Async LLM serving (vLLM ROCm когда gfx1151 supported)
+- **OBS** — OpenTelemetry traces (`agmind/observability/` placeholder есть)
+- **DOCS** — Full user manual + tutorial videos
+- **SEC** — mTLS между services + ansible-vault для secrets
+- **SEC** — RBAC в `agmind` CLI (multi-user host)
+- **CLUSTER** — Auto-failover между nodes если primary падает
+- **MODELS** — Auto-detect best model для hardware (memory budget aware)
+
+---
+
+## Session notes / reminders
+
+- **Tip commit:** `1e4923e` on develop branch
+- **GitHub remote:** botAGI/AGmind64
+- **Daily commits convention:** conventional (`feat:` / `fix:` / `docs:`)
+- **Branch policy:** auto-push to develop, main требует confirmation
+- **Verify before commit:** `pytest -q && python3 scripts/audit_forbidden.py`
+- **PR convention:** 1 PR = 1 phase (per migration spec)

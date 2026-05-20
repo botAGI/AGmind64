@@ -1,4 +1,10 @@
-# AGmind Architecture (3-layer)
+# AGmind Architecture (4-layer, post-Phase P snapshot 2026-05-20)
+
+> **Updated 2026-05-20** after Phase L.D + L.E + N + O + P. Added Layer 4
+> (CI/CD workflows) и расширил Python layer modules. См. ниже Δ-changes
+> блок для diff vs предыдущий snapshot.
+
+
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -35,13 +41,23 @@
                             │
                             ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Layer 2 — RUNTIME (Python, ~4753 LOC)                          │
+│ Layer 2 — RUNTIME (Python, ~11.5k LOC, 74 modules)             │
 │                                                                │
-│  ┌─ agmind.cli ─────── (typer app, 5 modules)                  │
+│  ┌─ agmind.cli ─────── (typer app, 9 modules + 7 TUI)          │
 │  │   doctor / status / version / audit                         │
-│  │   models {list,download,verify,path}                        │
-│  │   deploy {up,down,status,ps,logs,restart,pull}              │
-│  │   chat / embed / rerank                                     │
+│  │   install (Phase N)                                          │
+│  │   migrate {up,down,list} (Phase L.D)                        │
+│  │   logs/shell/backup/restore (Phase L.E)                     │
+│  │   deploy {render,apply,snapshots,rollback,gc} (Phase L.B/C) │
+│  │   models {list,pull,info,tier}                              │
+│  │   service {list,scaffold,validate} (Phase H'.E)             │
+│  │   chat / embed / render compose                             │
+│  │                                                             │
+│  │   tui/ (Phase J/N TUI screens):                             │
+│  │     setup_wizard (J + N.G — model selector + ctx settings)  │
+│  │     install_screen (N — orchestrator UI)                    │
+│  │     status_dashboard (J.2 — live deploy view)               │
+│  │     deploy_screen + summary_screen + logo                   │
 │  └─────────────────────                                        │
 │      │                                                         │
 │      ▼ delegates to                                            │
@@ -76,12 +92,56 @@
 │                                                                │
 │  ┌─ agmind.diagnostics ─ (preflight, 1 file)                   │
 │  │   run_preflight() → DoctorReport (9 checks)                 │
-│  │   doctor_report(as_json) → str                              │
+│  │   multi-GPU Vulkan parse (post-3dda542)                     │
+│  └─────────────────────                                        │
+│                                                                │
+│  ┌─ agmind.deploy ───── (Phase L.B/C, 5 files, 1053 LOC)       │
+│  │   runner.deploy() — render→snapshot→up→wait_healthy→rollback│
+│  │   snapshot.SnapshotManager (retention=10)                   │
+│  │   diff.compute_diff + format_diff                           │
+│  │   gc.gc_all + gc_{containers,images,volumes,networks,models}│
+│  └─────────────────────                                        │
+│                                                                │
+│  ┌─ agmind.install ──── (Phase N, 4 files, 1021 LOC) NEW       │
+│  │   orchestrator.InstallOrchestrator + ProgressEvent          │
+│  │   steps: doctor/bootstrap/pull/model/env_write/deploy       │
+│  │   models.CURATED_MODELS catalog + CTX/KV/THREADS/PARALLEL   │
+│  │     presets                                                 │
+│  │   sudo via anonymous pipe → ansible-playbook                │
+│  └─────────────────────                                        │
+│                                                                │
+│  ┌─ agmind.ops ──────── (Phase L.E, 3 files, 355 LOC) NEW      │
+│  │   backup.create_backup + restore_backup (tarball + meta)    │
+│  │   exec.exec_service (docker compose logs + exec wrapper)    │
+│  └─────────────────────                                        │
+│                                                                │
+│  ┌─ agmind.migrations ─ (Phase L.D, 6 files, 214 LOC) NEW      │
+│  │   MigrationRunner: discover + up + down                     │
+│  │   SchemaState (~/.local/share/agmind/schema.json)           │
+│  │   v001_initial baseline                                     │
+│  └─────────────────────                                        │
+│                                                                │
+│  ┌─ agmind.services ─── (Phase H'.B/C + O, 5 files, 1231 LOC)  │
+│  │   registry.load_descriptors + legacy bridge                 │
+│  │   renderer.render_compose + inject_capability_env (O.B)     │
+│  │   compatibility.check_service_compatibility (soft warnings) │
+│  │   capability_bindings.BINDINGS (vector_db / llm / dify_kb)  │
 │  └─────────────────────                                        │
 │                                                                │
 │  ┌─ Utility modules ────                                       │
-│  │   log, _env, secrets, config.env, i18n                      │
+│  │   log (structlog), _env, secrets, config.env, i18n          │
+│  │   observability (OpenTelemetry placeholder)                 │
 │  └─────────────────────                                        │
+└────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌────────────────────────────────────────────────────────────────┐
+│ Layer 4 — CI/CD (.github/workflows/, NEW for Phase P)           │
+│                                                                │
+│  ci.yml             — pytest + mypy + audit (per push/PR)      │
+│  release-drafter.yml — auto release notes (per merge to main)  │
+│  version-check.yml  — Phase P weekly cron → issue с label      │
+│                       'upstream-update' (mirror legacy #63)    │
 └────────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -110,6 +170,28 @@
 │    ragflow + mysql + elasticsearch + minio                     │
 └────────────────────────────────────────────────────────────────┘
 ```
+
+## Δ-changes vs previous snapshot (2026-05-19)
+
+| Module / artefact | Status |
+|---|---|
+| `agmind/install/` | **NEW** (Phase N) — orchestrator + 6 steps + curated catalog |
+| `agmind/ops/` | **NEW** (Phase L.E) — backup tarball + exec wrapper |
+| `agmind/migrations/` | **NEW** (Phase L.D) — schema migrations runner |
+| `agmind/services/capability_bindings.py` | **NEW** (Phase O) — provider → consumer env table |
+| `agmind/services/compatibility.py` | **NEW** (Phase O) — provides/conflicts checker |
+| `agmind/cli/tui/install_screen.py` | **NEW** (Phase N) — TUI install progress |
+| `agmind/cli/tui/status_dashboard.py` | **NEW** (Phase J.2) — live deploy view |
+| `scripts/version_check.py` | **NEW** (Phase P) — upstream version scanner |
+| `.github/workflows/version-check.yml` | **NEW** (Phase P) — weekly cron → issue |
+| `templates/version_holds.yaml` | **NEW** (Phase P) — HOLD config |
+| `agmind/compute/detect.py` | **modified** — multi-GPU Vulkan parser (`3dda542`) |
+| `scripts/audit_forbidden.py` | **modified** — unfreeze + regex fixes (`3dda542`, `8a6c621`) |
+| `templates/services/*.yaml` | **modified** — annotated с provides/consumes (18 descriptors) |
+| `agmind/schemas/service.py` | **modified** — `provides`/`conflicts_with`/`consumes` fields |
+| `agmind/cli/tui/setup_wizard.py` | **modified** — Phase J.1.10 compact + Phase N.G model selector + Phase N.H threads/parallel |
+| `docs/adr/` | **+4 ADRs** (0009 L.D, 0010 N, 0011 O + amendment, 0012 P) |
+| `.planning/research/x86-migration/` | **+3 recons** (R14 backup gaps, R15 Phase H bench, R16 Qwen flags) |
 
 ## Layer separation invariants
 
