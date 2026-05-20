@@ -391,6 +391,7 @@ class AgmindSetupApp(App[SetupState | None]):
         detected: DetectedHardware | None = None,
         initial_state: SetupState | None = None,
         auto_deploy: bool = False,
+        multi_step: bool | None = None,
     ) -> None:
         super().__init__()
         self.detected = detected or detect_hardware()
@@ -399,13 +400,32 @@ class AgmindSetupApp(App[SetupState | None]):
         self.preview_text: str = ""
         self.auto_deploy = auto_deploy
         """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
+        # Phase M3.S.2: opt-in multi-step wizard via env or kwarg.
+        # Default — legacy single-screen для backward compat.
+        import os as _os_module
+        if multi_step is None:
+            multi_step = _os_module.environ.get("AGMIND_WIZARD_MULTISTEP", "0") == "1"
+        self.multi_step = multi_step
         # Discover profiles + backends + services-by-tier dynamically.
         self.profiles_available = get_available_profiles()
         self.backends_available = get_available_backends()
         # Phase J.1.8: per-service selection grouped by tier
         self.services_by_tier = get_services_by_tier()
 
+    def on_mount(self) -> None:
+        # Phase M3.S.2: multi-step mode pushes DomainScreen вместо single-screen render.
+        if self.multi_step:
+            from agmind.cli.tui.wizard_screens import DomainScreen
+
+            self.push_screen(DomainScreen())
+
     def compose(self) -> ComposeResult:
+        if self.multi_step:
+            # Multi-step: только Header + Footer как root container,
+            # реальные widgets живут в pushed Screens (см. on_mount).
+            yield Header(show_clock=False)
+            yield Footer()
+            return
         yield Header(show_clock=False)
         # Compact gradient logo (Phase J.1.10 — `cybermedium` font: 3 строки
         # вместо 6, без subtitle — он дублировал Header.SUB_TITLE).
