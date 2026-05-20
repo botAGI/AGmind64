@@ -120,3 +120,77 @@ def test_markdown_table_format() -> None:
     assert "| Component |" in md
     assert "### Legend" in md
     assert "### How to bump" in md
+
+
+# ---- M3.P.fix: variant / prerelease / SHA filtering ----
+
+
+def test_variant_filter_windowsservercore() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    assert vc._is_variant_or_prerelease("2.11.3-windowsservercore-ltsc2025")
+    assert vc._is_variant_or_prerelease("v3.7.1-windowsservercore-ltsc2025")
+
+
+def test_variant_filter_arch_suffix() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    assert vc._is_variant_or_prerelease("3.7.2-arm64")  # audit: allow test-string
+    assert vc._is_variant_or_prerelease("v1.18-unprivileged")
+    # MinIO RELEASE.* tag не semver — фильтруется через _VERSION_RE регэкса,
+    # не через _is_variant_or_prerelease.
+    assert not vc._VERSION_RE.match("RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772")
+
+
+def test_variant_filter_os_variants() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    assert vc._is_variant_or_prerelease("13.1.0-25893932881-ubuntu")
+    assert vc._is_variant_or_prerelease("1.31.0-trixie-perl")
+    assert vc._is_variant_or_prerelease("v1.83.0-alpine")
+    assert vc._is_variant_or_prerelease("9.7.0-oraclelinux9")
+
+
+def test_variant_filter_prerelease() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    assert vc._is_variant_or_prerelease("v3.12.0-rc.0-distroless")
+    assert vc._is_variant_or_prerelease("v0.32.1-rc.0")
+    assert vc._is_variant_or_prerelease("1.38.0-dev-fc90344-arm64")  # audit: allow test-string
+
+
+def test_variant_filter_sha_tags() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    # 40-char hex string = SHA tag
+    assert vc._is_variant_or_prerelease("5631afef06ec88f80c28129aec7fd22a30006b14")
+    assert vc._is_variant_or_prerelease("2565637e36448ae343a146281453a04a3a16fba7")
+
+
+def test_variant_filter_plain_semver_passes() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    # Plain semver — should NOT be filtered
+    assert not vc._is_variant_or_prerelease("v0.25.5")
+    assert not vc._is_variant_or_prerelease("1.14.2")
+    assert not vc._is_variant_or_prerelease("v3.5.3")
+    assert not vc._is_variant_or_prerelease("4.39.19")
+
+
+def test_probe_dispatch_quay() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    # No network — just verify dispatch picks Quay handler
+    called = []
+    vc._quay_latest = lambda owner, image: called.append((owner, image)) or "v9.9.9"
+    assert vc.probe_latest("quay.io/minio/minio") == "v9.9.9"
+    assert called[0] == ("minio", "minio")
+
+
+def test_probe_dispatch_gcr() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+    called = []
+    vc._gcr_latest = lambda project, image: called.append((project, image)) or "v0.99.0"
+    assert vc.probe_latest("gcr.io/cadvisor/cadvisor") == "v0.99.0"
+    assert called[0] == ("cadvisor", "cadvisor")

@@ -48,6 +48,74 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 # ---- semver compare ----
 _VERSION_RE = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[.-]([a-zA-Z0-9.-]+))?")
 
+# Platform / arch / OS variants which сделают tag не сопоставимым с "plain" pin.
+# E.g. our pin caddy:2.11.3-alpine vs upstream "latest" 2.11.3-windowsservercore-ltsc2025
+# — это разные variants одной semver version, comparison не имеет смысла.
+_VARIANT_TOKENS = (
+    "windowsservercore", "windows-ltsc", "windows", "nanoserver",
+    "amd64", "arm64", "arm", "armv7", "ppc64le", "s390x",  # audit: allow arch-tokens-for-filter
+    "distroless", "ubuntu", "alpine", "trixie", "debian",
+    "perl", "fpm", "slim", "buster", "bookworm", "bullseye",
+    "scratch", "ubi", "ubi9", "ubi8", "centos", "fedora",
+    "oraclelinux9", "oraclelinux8", "oracle",
+    "unprivileged",
+    "boringcrypto", "busybox", "otel", "builder",
+    "gpu-nvidia", "gpu-amd", "cuda", "rocm", "vulkan",
+    "node", "hadoop", "kafka", "spark",
+)
+
+# Pre-release / build / dev markers — pin не должен апгрейдиться на это.
+_PRERELEASE_TOKENS = (
+    "rc", "alpha", "beta", "pre", "nightly", "dev",
+    "snapshot", "preview", "edge", "canary", "test",
+)
+
+# Tag stripping: SHA-only (40 hex chars), date-only (8 digits), build IDs.
+_SHA_TAG_RE = re.compile(r"^[a-f0-9]{40}$")
+_DATE_TAG_RE = re.compile(r"^\d{8}(-[a-f0-9]+)?$")
+_BUILD_ID_RE = re.compile(r"^b\d+$")
+
+
+# Numeric build suffix: e.g. "13.1.0-25893932881" — long number after version.
+_NUMERIC_BUILD_SUFFIX_RE = re.compile(r"-\d{6,}(?:[-+]|$)")
+
+# Embedded date in tag body: "3.0-20260518-ddd76bcc" — YYYYMMDD anywhere.
+_EMBEDDED_DATE_RE = re.compile(r"\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b")
+
+# Branch-style tag (no semver): e.g. "latest", "master", "main",
+# или '4-27-app-deploy' — tag с alpha слова и dash-separated parts.
+_BRANCH_TAG_RE = re.compile(r"^[a-z]+(-[a-z]+)*$", re.IGNORECASE)
+_BRANCH_NUMERIC_PREFIX_RE = re.compile(r"^\d+-\d+-[a-z]", re.IGNORECASE)
+
+
+def _is_variant_or_prerelease(tag: str) -> bool:
+    """True если tag это OS/arch variant, RC, dev build, SHA, or branch."""
+    low = tag.lower()
+    for tok in _VARIANT_TOKENS:
+        if f"-{tok}" in low or low.endswith(f".{tok}") or low.startswith(f"{tok}-"):
+            return True
+    for tok in _PRERELEASE_TOKENS:
+        if (
+            f"-{tok}" in low or f".{tok}" in low or f"+{tok}" in low
+            or low.endswith(f"-{tok}") or low.endswith(f".{tok}")
+        ):
+            return True
+    if _SHA_TAG_RE.match(low):
+        return True
+    if _DATE_TAG_RE.match(low):
+        return True
+    if _BUILD_ID_RE.match(low):
+        return True
+    if _NUMERIC_BUILD_SUFFIX_RE.search(low):
+        return True
+    if _EMBEDDED_DATE_RE.search(low):
+        return True
+    if _BRANCH_TAG_RE.match(tag) and not tag.startswith("v") and "." not in tag:
+        return True
+    if _BRANCH_NUMERIC_PREFIX_RE.match(tag):
+        return True
+    return False
+
 
 def _parse_semver(s: str) -> tuple[int, int, int, str]:
     m = _VERSION_RE.match(s.strip().lstrip("v"))
@@ -62,10 +130,15 @@ def _parse_semver(s: str) -> tuple[int, int, int, str]:
 
 
 def _compare(current: str, latest: str) -> str:
-    """Returns one of: 'up_to_date' / 'patch' / 'minor' / 'major' / 'unknown'."""
-    c = _parse_semver(current)
-    l = _parse_semver(latest)
-    if c[:4] == l[:4]:
+    """Returns one of: 'up_to_date' / 'patch' / 'minor' / 'major' / 'unknown'.
+
+    Compares только numeric semver tuple (major, minor, patch). Variant
+    suffix (e.g. `-alpine` в pin vs plain `2.11.3` upstream) ignored —
+    user intentionally pinned variant, не нужно flag это как outdated.
+    """
+    c = _parse_semver(current)[:3]
+    l = _parse_semver(latest)[:3]
+    if c == l:
         return "up_to_date"
     if c[0] != l[0]:
         return "major"
@@ -117,13 +190,16 @@ def _docker_hub_latest(image: str) -> str | None:
         image = f"library/{image}"
     try:
         data = _http_get_json(
-            f"https://registry.hub.docker.com/v2/repositories/{image}/tags?page_size=50",
+            f"https://registry.hub.docker.com/v2/repositories/{image}/tags?page_size=100",
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
     tags = [t["name"] for t in data.get("results", [])]
     # Filter only semver-looking tags
-    semver = [t for t in tags if _VERSION_RE.match(t.lstrip("v"))]
+    semver = [
+        t for t in tags
+        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+    ]
     if not semver:
         return None
     # Pick highest by parsed semver
@@ -146,8 +222,57 @@ def _ghcr_latest(owner: str, image: str) -> str | None:
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
     tags = data.get("tags", []) or []
-    # Filter semver-looking
-    semver = [t for t in tags if _VERSION_RE.match(t.lstrip("v"))]
+    # Filter semver-looking + drop variants / RC / SHA-only
+    semver = [
+        t for t in tags
+        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+    ]
+    if not semver:
+        return None
+    semver.sort(key=_parse_semver, reverse=True)
+    return semver[0]
+
+
+def _quay_latest(owner: str, image: str) -> str | None:
+    """Probe quay.io API.
+
+    Endpoint: https://quay.io/api/v1/repository/<owner>/<image>/tag/?limit=100
+    Anonymous read для public repos OK.
+    """
+    try:
+        data = _http_get_json(
+            f"https://quay.io/api/v1/repository/{owner}/{image}/tag/?limit=100&onlyActiveTags=true",
+        )
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return None
+    tags = [t.get("name", "") for t in data.get("tags", []) if isinstance(t, dict)]
+    semver = [
+        t for t in tags
+        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+    ]
+    if not semver:
+        return None
+    semver.sort(key=_parse_semver, reverse=True)
+    return semver[0]
+
+
+def _gcr_latest(project: str, image: str) -> str | None:
+    """Probe gcr.io (Google Container Registry). Anonymous через v2 API.
+
+    Endpoint: https://gcr.io/v2/<project>/<image>/tags/list
+    Без bearer token (some public repos требуют — fail silently).
+    """
+    try:
+        data = _http_get_json(
+            f"https://gcr.io/v2/{project}/{image}/tags/list",
+        )
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return None
+    tags = data.get("tags", []) or []
+    semver = [
+        t for t in tags
+        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+    ]
     if not semver:
         return None
     semver.sort(key=_parse_semver, reverse=True)
@@ -166,18 +291,24 @@ def _github_release_latest(owner: str, repo: str) -> str | None:
 
 
 def probe_latest(image_with_path: str) -> str | None:
-    """Pick registry probe basedon image source."""
+    """Dispatch на правильный registry probe basedon image prefix."""
     if image_with_path.startswith("ghcr.io/"):
-        # ghcr.io/owner/image
         parts = image_with_path[len("ghcr.io/"):].split("/", 1)
         if len(parts) == 2:
             return _ghcr_latest(parts[0], parts[1])
         return None
-    if "/" in image_with_path and not image_with_path.count("/") > 1:
-        return _docker_hub_latest(image_with_path)
-    if "/" not in image_with_path:
-        return _docker_hub_latest(image_with_path)
-    return None
+    if image_with_path.startswith("quay.io/"):
+        parts = image_with_path[len("quay.io/"):].split("/", 1)
+        if len(parts) == 2:
+            return _quay_latest(parts[0], parts[1])
+        return None
+    if image_with_path.startswith("gcr.io/"):
+        parts = image_with_path[len("gcr.io/"):].split("/", 1)
+        if len(parts) == 2:
+            return _gcr_latest(parts[0], parts[1])
+        return None
+    # Docker Hub fallback: 'foo/bar' или 'bar' (library/bar)
+    return _docker_hub_latest(image_with_path)
 
 
 # ---- holds parser ----
