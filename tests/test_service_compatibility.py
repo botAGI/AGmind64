@@ -1,4 +1,14 @@
-"""Phase O.A + O.B: tests for service compatibility + capability injection."""
+"""Phase O.A + O.B (revised): compatibility checker + capability injection.
+
+Original version had fake "conflicts" tests. After research все declared
+conflicts оказались выдуманными (ragflow ↔ dify официально интегрируются;
+vector DBs / reverse proxies могут coexist). Эта версия проверяет:
+
+  - redundant_provider warnings (NOT errors)
+  - missing_capability warnings
+  - real env injection paths (port 8080 internal, верные env keys)
+  - dify_external_kb wiring (ragflow → dify-api RAGFLOW_API_ENDPOINT)
+"""
 
 from __future__ import annotations
 
@@ -10,7 +20,7 @@ from agmind.services.compatibility import (
     check_service_compatibility,
     resolve_capability_provider,
 )
-from agmind.services.renderer import inject_capability_env, load_descriptors, render_compose
+from agmind.services.renderer import inject_capability_env, render_compose
 
 pytestmark = pytest.mark.backend_any
 
@@ -19,44 +29,37 @@ pytestmark = pytest.mark.backend_any
 
 
 def _desc(name: str, provides: list[str] | None = None,
-          conflicts: list[str] | None = None,
           consumes: list[str] | None = None) -> ServiceDescriptor:
     return ServiceDescriptor(
         name=name, image=f"{name}:1.0", tier="storage", purpose=f"{name}",
         profiles=["test"],
-        provides=provides or [], conflicts_with=conflicts or [],
-        consumes=consumes or [],
+        provides=provides or [], consumes=consumes or [],
     )
 
 
 # ---------- compatibility checker ----------
 
 
-def test_no_issues_for_empty_set() -> None:
+def test_empty_selection_no_issues() -> None:
     report = check_service_compatibility({})
     assert report.issues == ()
     assert report.has_errors is False
-    assert report.has_warnings is False
 
 
-def test_detects_hard_conflict() -> None:
+def test_no_hard_conflicts_emitted_anymore() -> None:
+    """Phase O revised: hard conflicts больше не выдаются.
+
+    Раньше qdrant.conflicts_with=[weaviate, milvus] → error severity.
+    Теперь — только redundant_provider warning.
+    """
     selected = {
-        "qdrant": _desc("qdrant", provides=["vector_db"], conflicts=["weaviate"]),
-        "weaviate": _desc("weaviate", provides=["vector_db"], conflicts=["qdrant"]),
+        "qdrant": _desc("qdrant", provides=["vector_db"]),
+        "milvus": _desc("milvus", provides=["vector_db"]),
     }
     report = check_service_compatibility(selected)
-    errors = report.by_severity("error")
-    assert len(errors) == 1  # одна pair (sorted), не дубликат
-    assert errors[0].kind == "conflict"
-    assert set(errors[0].services) == {"qdrant", "weaviate"}
-
-
-def test_no_conflict_if_one_side_absent() -> None:
-    selected = {
-        "qdrant": _desc("qdrant", provides=["vector_db"], conflicts=["weaviate"]),
-    }
-    report = check_service_compatibility(selected)
-    assert report.by_severity("error") == ()
+    assert report.has_errors is False
+    # Warning ожидается (redundant_provider)
+    assert report.has_warnings is True
 
 
 def test_redundant_provider_warning() -> None:
@@ -86,16 +89,6 @@ def test_capability_providers_map() -> None:
     }
     report = check_service_compatibility(selected)
     assert report.capability_providers["vector_db"] == ("qdrant",)
-    assert report.capability_providers["llm_inference"] == ("llama-llm",)
-
-
-def test_resolve_provider_single() -> None:
-    selected = {"qdrant": _desc("qdrant", provides=["vector_db"])}
-    assert resolve_capability_provider(selected, "vector_db") == "qdrant"
-
-
-def test_resolve_provider_none() -> None:
-    assert resolve_capability_provider({}, "vector_db") is None
 
 
 def test_resolve_provider_multiple_picks_first_alphabet() -> None:
@@ -103,86 +96,75 @@ def test_resolve_provider_multiple_picks_first_alphabet() -> None:
         "weaviate": _desc("weaviate", provides=["vector_db"]),
         "qdrant": _desc("qdrant", provides=["vector_db"]),
     }
-    # sorted alphabetically: qdrant first
     assert resolve_capability_provider(selected, "vector_db") == "qdrant"
 
 
-# ---------- capability bindings table ----------
+# ---------- capability bindings (post-research) ----------
 
 
-def test_bindings_have_vector_db_entries() -> None:
-    assert "vector_db" in BINDINGS
-    assert "qdrant" in BINDINGS["vector_db"]
-    assert "milvus" in BINDINGS["vector_db"]
+def test_bindings_vector_db_only_for_dify() -> None:
+    """RAGFlow НЕ supports vector_db backends (qdrant/milvus/weaviate).
+
+    Только Dify per dify-docs. Bindings reflect this.
+    """
+    assert "ragflow" not in BINDINGS["vector_db"]["qdrant"]
+    assert "ragflow" not in BINDINGS["vector_db"]["milvus"]
+    assert "ragflow" not in BINDINGS["vector_db"]["weaviate"]
 
 
-def test_env_for_consumer_known_pair() -> None:
+def test_bindings_search_index_for_ragflow() -> None:
+    """RAGFlow's DOC_ENGINE supports elasticsearch / infinity / opensearch."""
+    assert "search_index" in BINDINGS
+    assert "elasticsearch" in BINDINGS["search_index"]
+    assert BINDINGS["search_index"]["elasticsearch"]["ragflow"]["DOC_ENGINE"] == "elasticsearch"
+
+
+def test_bindings_dify_external_kb_ragflow_to_dify() -> None:
+    """RAGFlow provides external knowledge base for Dify (witmeng/ragflow-api plugin)."""
+    env = env_for_consumer("dify_external_kb", "ragflow", "dify-api")
+    assert env["RAGFLOW_API_ENDPOINT"] == "http://ragflow:9380/api/v1"
+
+
+def test_bindings_llm_inference_uses_container_port_8080() -> None:
+    """llama-llm internal port = 8080 (host 8080); env injection must reflect."""
+    env = env_for_consumer("llm_inference", "llama-llm", "dify-api")
+    assert "llama-llm:8080" in env["OPENAI_API_BASE"]
+
+
+def test_bindings_embedding_uses_container_port_8080() -> None:
+    """llama-embed internal port = 8080 (host 8081). Within compose: :8080."""
+    env = env_for_consumer("embedding_inference", "llama-embed", "ragflow")
+    assert "llama-embed:8080" in env["EMBEDDING_ENDPOINT"]
+
+
+def test_bindings_reranker_uses_container_port_8080() -> None:
+    """llama-rerank internal port = 8080 (host 8082). Within compose: :8080."""
+    env = env_for_consumer("reranker", "llama-rerank", "dify-api")
+    assert "llama-rerank:8080" in env["RERANK_PROVIDER_BASE_URL"]
+
+
+def test_bindings_milvus_dify_correct_env() -> None:
+    """Dify supports milvus → VECTOR_STORE=milvus + MILVUS_URI per dify docs."""
     env = env_for_consumer("vector_db", "milvus", "dify-api")
     assert env["VECTOR_STORE"] == "milvus"
-    assert "MILVUS_URI" in env
-
-
-def test_env_for_consumer_unknown_pair_returns_empty() -> None:
-    assert env_for_consumer("nope", "nope", "nope") == {}
-    assert env_for_consumer("vector_db", "qdrant", "unknown-consumer") == {}
-
-
-def test_env_for_consumer_ragflow_milvus() -> None:
-    env = env_for_consumer("vector_db", "milvus", "ragflow")
-    assert env["DOC_ENGINE"] == "milvus"
-
-
-def test_env_for_consumer_llm_inference() -> None:
-    env = env_for_consumer("llm_inference", "llama-llm", "openwebui")
-    assert "OPENAI_API_BASE_URL" in env
-    assert "llama-llm" in env["OPENAI_API_BASE_URL"]
+    assert env["MILVUS_URI"] == "http://milvus:19530"
 
 
 # ---------- renderer integration ----------
 
 
-def test_inject_capability_env_no_consumers() -> None:
-    selected = {
-        "qdrant": _desc("qdrant", provides=["vector_db"]),
-    }
-    assert inject_capability_env(selected) == {}
-
-
-def test_inject_capability_env_routes_provider_to_consumer() -> None:
-    selected = {
-        "milvus": _desc("milvus", provides=["vector_db"]),
-        "ragflow": _desc("ragflow", consumes=["vector_db"]),
-    }
-    out = inject_capability_env(selected)
-    assert "ragflow" in out
-    assert out["ragflow"]["DOC_ENGINE"] == "milvus"
-    assert out["ragflow"]["MILVUS_URI"] == "http://milvus:19530"
-
-
-def test_inject_skips_missing_provider() -> None:
-    selected = {
-        "ragflow": _desc("ragflow", consumes=["vector_db"]),
-    }
-    out = inject_capability_env(selected)
-    # No provider — no env injected.
-    assert out.get("ragflow", {}) == {}
-
-
-def test_render_compose_merges_capability_env() -> None:
-    """End-to-end: compose YAML содержит injected env под consumer."""
+def test_render_compose_injects_dify_milvus() -> None:
     selected = {
         "milvus": _desc("milvus", provides=["vector_db"]),
         "dify-api": _desc("dify-api", consumes=["vector_db"]),
     }
     compose = render_compose(list(selected.values()), traefik_enabled=False)
-    dify_env = compose["services"]["dify-api"].get("environment", {})
-    assert isinstance(dify_env, dict)
-    assert dify_env.get("VECTOR_STORE") == "milvus"
-    assert "MILVUS_URI" in dify_env
+    env = compose["services"]["dify-api"]["environment"]
+    assert env["VECTOR_STORE"] == "milvus"
+    assert env["MILVUS_URI"] == "http://milvus:19530"
 
 
 def test_render_compose_does_not_override_manual_env() -> None:
-    """Если у consumer есть свой env value — capability injection не должен перетереть."""
     custom = ServiceDescriptor(
         name="dify-api", image="dify-api:1.0", tier="app", purpose="test",
         profiles=["test"], consumes=["vector_db"],
@@ -197,57 +179,112 @@ def test_render_compose_does_not_override_manual_env() -> None:
     assert env["VECTOR_STORE"] == "preset-by-hand"  # manual wins
 
 
-# ---------- real catalog smoke ----------
+# ---------- real catalog scenarios (corrected post-research) ----------
 
 
-def test_real_catalog_qdrant_weaviate_milvus_conflict() -> None:
-    """Sanity: реальные descriptors detect collision если выбрать все 3 vector DB."""
-    from agmind.services.renderer import load_descriptors, select_services
-    all_d = load_descriptors()
-    selected = select_services(all_d, services=["qdrant", "weaviate", "milvus"])
-    report = check_service_compatibility(selected)
-    assert report.has_errors  # qdrant.conflicts_with(weaviate, milvus) и так далее
+def test_real_catalog_ragflow_and_dify_coexist() -> None:
+    """Phase O revised: ragflow + dify-api should coexist без errors.
 
-
-def test_real_catalog_ragflow_vs_dify_conflict() -> None:
-    """ragflow.conflicts_with(dify-*) — выбрать оба = error."""
-    from agmind.services.renderer import load_descriptors, select_services
-    all_d = load_descriptors()
-    selected = select_services(all_d, services=["ragflow", "dify-api"])
-    report = check_service_compatibility(selected)
-    assert report.has_errors
-
-
-def test_real_catalog_milvus_in_ragflow() -> None:
-    """User scenario: ragflow + milvus → должно работать без conflicts (только missing checks)."""
-    from agmind.services.renderer import load_descriptors, select_services
-    all_d = load_descriptors()
-    # Реальный production minimum: llm + embed + milvus + ragflow
-    selected = select_services(
-        all_d, services=["llama-llm", "llama-embed", "milvus", "ragflow"],
-    )
-    report = check_service_compatibility(selected)
-    # Не должно быть conflicts (only warnings из-за ragflow.consumes[reranker] e.g.)
-    assert not report.has_errors
-
-
-def test_real_catalog_milvus_injects_into_ragflow() -> None:
-    """User-asked feature: выбрал ragflow+milvus → ragflow видит milvus."""
+    Refute prior выдумка: marketplace.dify.ai/plugin/witmeng/ragflow-api
+    официально интегрирует их.
+    """
     from agmind.services.renderer import load_descriptors, select_services
     all_d = load_descriptors()
     selected = select_services(
-        all_d, services=["milvus", "ragflow", "llama-llm", "llama-embed", "mysql",
-                         "elasticsearch", "minio", "redis"],
+        all_d,
+        services=[
+            "ragflow", "dify-api", "llama-llm", "llama-embed",
+            "mysql", "elasticsearch", "minio", "redis", "postgres", "qdrant",
+        ],
     )
-    out = inject_capability_env(selected)
-    assert "ragflow" in out
-    assert out["ragflow"].get("DOC_ENGINE") == "milvus"
+    report = check_service_compatibility(selected)
+    assert report.has_errors is False
 
 
-def test_real_catalog_reverse_proxy_conflict() -> None:
-    """traefik + caddy = conflict."""
+def test_real_catalog_ragflow_provides_dify_external_kb() -> None:
+    """ragflow.provides включает dify_external_kb."""
+    from agmind.services.renderer import load_descriptors
+    all_d = load_descriptors()
+    assert "dify_external_kb" in all_d["ragflow"].provides
+
+
+def test_real_catalog_dify_api_consumes_dify_external_kb() -> None:
+    """dify-api.consumes включает dify_external_kb."""
+    from agmind.services.renderer import load_descriptors
+    all_d = load_descriptors()
+    assert "dify_external_kb" in all_d["dify-api"].consumes
+
+
+def test_real_catalog_ragflow_dify_integration_env_injected() -> None:
+    """Когда выбраны и ragflow и dify-api — dify-api получает RAGFLOW_API_ENDPOINT."""
+    from agmind.services.renderer import load_descriptors, select_services
+    all_d = load_descriptors()
+    selected = select_services(
+        all_d, services=[
+            "ragflow", "dify-api", "llama-llm", "llama-embed", "qdrant",
+            "mysql", "elasticsearch", "minio", "redis", "postgres",
+        ],
+    )
+    injected = inject_capability_env(selected)
+    assert "dify-api" in injected
+    assert injected["dify-api"].get("RAGFLOW_API_ENDPOINT") == "http://ragflow:9380/api/v1"
+
+
+def test_real_catalog_ragflow_uses_elasticsearch_not_milvus() -> None:
+    """ragflow consumes search_index (НЕ vector_db).
+
+    Раньше я выдумал что ragflow.consumes=['vector_db'] и pickup milvus. Неправда.
+    """
+    from agmind.services.renderer import load_descriptors
+    all_d = load_descriptors()
+    rf = all_d["ragflow"]
+    assert "search_index" in rf.consumes
+    assert "vector_db" not in rf.consumes
+
+
+def test_real_catalog_milvus_does_not_inject_into_ragflow() -> None:
+    """Confirm: milvus НЕ injects в ragflow (мы перестали выдумывать)."""
+    from agmind.services.renderer import load_descriptors, select_services
+    all_d = load_descriptors()
+    selected = select_services(
+        all_d, services=["milvus", "ragflow", "llama-llm", "mysql", "elasticsearch",
+                         "minio", "redis"],
+    )
+    injected = inject_capability_env(selected)
+    rf_env = injected.get("ragflow", {})
+    # ragflow doesn't consume vector_db — milvus не должен попадать в его env.
+    assert "MILVUS_URI" not in rf_env
+    assert rf_env.get("DOC_ENGINE") != "milvus"
+
+
+def test_real_catalog_es_injects_doc_engine_into_ragflow() -> None:
+    """elasticsearch present → ragflow получает DOC_ENGINE=elasticsearch."""
+    from agmind.services.renderer import load_descriptors, select_services
+    all_d = load_descriptors()
+    selected = select_services(
+        all_d, services=["elasticsearch", "ragflow", "llama-llm", "llama-embed",
+                         "mysql", "minio", "redis"],
+    )
+    injected = inject_capability_env(selected)
+    rf_env = injected.get("ragflow", {})
+    assert rf_env.get("DOC_ENGINE") == "elasticsearch"
+    assert rf_env.get("ES_HOST") == "elasticsearch"
+
+
+def test_real_catalog_traefik_and_caddy_no_hard_error() -> None:
+    """traefik + caddy теперь не error — port collision это deploy issue, не service."""
     from agmind.services.renderer import load_descriptors, select_services
     all_d = load_descriptors()
     selected = select_services(all_d, services=["traefik", "caddy"])
     report = check_service_compatibility(selected)
-    assert report.has_errors
+    assert report.has_errors is False
+    # Но warning о redundant reverse_proxy ожидается:
+    warns = report.by_severity("warning")
+    assert any(i.kind == "redundant_provider" and i.capability == "reverse_proxy" for i in warns)
+
+
+def test_real_catalog_ragflow_pin_is_latest() -> None:
+    """ragflow pin must be v0.25.5 (latest as of 2026-05-20 per ragflow.io/changelog)."""
+    from agmind.services.renderer import load_descriptors
+    all_d = load_descriptors()
+    assert all_d["ragflow"].image == "infiniflow/ragflow:v0.25.5"

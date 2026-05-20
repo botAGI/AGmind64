@@ -25,5 +25,3 @@ consumes:
 - llm_inference
 - embedding_inference
 - vector_db
-conflicts_with:
-- ragflow

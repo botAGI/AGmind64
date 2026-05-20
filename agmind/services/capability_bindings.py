@@ -1,35 +1,33 @@
-"""Phase O.B: capability injection table.
+"""Phase O.B: capability injection table (revised after 2026-05-20 research).
 
-Когда consumer ('dify-api', 'ragflow', 'openwebui') consumes capability
-('vector_db', 'llm_inference', ...), renderer должен подсунуть ему
-правильные env vars указывающие на выбранного provider'а.
+ВНИМАНИЕ: первая версия этого файла содержала выдумки. После research
+обновлено по verified источникам:
 
-Convention:
-    BINDINGS[capability][provider][consumer] = {ENV_VAR: value_template}
+  - Dify env vars: docs.dify.ai/getting-started/install-self-hosted/environments
+    VECTOR_STORE ∈ {qdrant, milvus, weaviate, pgvector, chroma,
+                    opensearch, oracle, ...} (25+ backends).
+  - RAGFlow env vars: github.com/infiniflow/ragflow/blob/main/docker/.env
+    DOC_ENGINE ∈ {elasticsearch, infinity, oceanbase, opensearch, seekdb}.
+    RAGFlow НЕ поддерживает milvus/qdrant/weaviate как DOC_ENGINE — это
+    Dify-only options.
+  - Dify ↔ RAGFlow integration: marketplace.dify.ai/plugin/witmeng/ragflow-api.
+    Plugin require: RAGFLOW_API_ENDPOINT (http://ragflow:9380) + RAGFLOW_API_KEY.
 
-Value template поддерживает Python format() placeholders:
-    {provider} — имя сервиса provider'а (e.g. 'milvus')
-    {provider_host} — то же что provider (compose service hostname == name)
+Внутри docker compose network все llama-server container ports = 8080
+(host-side ports 8080/8081/8082 — это публикация на 127.0.0.1, не
+internal hostnames). Hostname == service name.
 
-Пример:
-    consumer = dify-api
-    capability = vector_db
-    provider = milvus
-    → inject: VECTOR_STORE=milvus, MILVUS_URI=http://milvus:19530
-
-Note: правда мы не претендуем что покрываем все случаи env vars каждого
-сервиса. Это short-list для **vector_db** + **llm_inference** + **embedding**
-которые user явно меняет между qdrant/weaviate/milvus и ragflow/dify.
-Расширять при добавлении новых stack'ов.
+Convention: BINDINGS[capability][provider][consumer] = {ENV_KEY: value_template}.
 """
 
 from __future__ import annotations
 
 CapabilityBindings = dict[str, dict[str, dict[str, dict[str, str]]]]
-"""capability → provider → consumer → {env_key: value_template}."""
 
 
 BINDINGS: CapabilityBindings = {
+    # ---- vector_db: SUPPORTED only by Dify (per Dify env docs) ----
+    # RAGFlow uses search_index capability (ES / opensearch / infinity), не vector_db.
     "vector_db": {
         "qdrant": {
             "dify-api": {
@@ -41,25 +39,16 @@ BINDINGS: CapabilityBindings = {
                 "VECTOR_STORE": "qdrant",
                 "QDRANT_URL": "http://qdrant:6333",
             },
-            "ragflow": {
-                "DOC_ENGINE": "qdrant",
-                "QDRANT_HOST": "qdrant",
-                "QDRANT_PORT": "6333",
-            },
         },
         "weaviate": {
             "dify-api": {
                 "VECTOR_STORE": "weaviate",
                 "WEAVIATE_ENDPOINT": "http://weaviate:8080",
+                "WEAVIATE_API_KEY": "",
             },
             "dify-worker": {
                 "VECTOR_STORE": "weaviate",
                 "WEAVIATE_ENDPOINT": "http://weaviate:8080",
-            },
-            "ragflow": {
-                "DOC_ENGINE": "weaviate",
-                "WEAVIATE_HOST": "weaviate",
-                "WEAVIATE_PORT": "8080",
             },
         },
         "milvus": {
@@ -67,25 +56,29 @@ BINDINGS: CapabilityBindings = {
                 "VECTOR_STORE": "milvus",
                 "MILVUS_URI": "http://milvus:19530",
                 "MILVUS_TOKEN": "",
+                "MILVUS_DATABASE": "default",
             },
             "dify-worker": {
                 "VECTOR_STORE": "milvus",
                 "MILVUS_URI": "http://milvus:19530",
             },
-            "ragflow": {
-                "DOC_ENGINE": "milvus",
-                "MILVUS_URI": "http://milvus:19530",
-            },
         },
+    },
+    # ---- search_index: для RAGFlow (DOC_ENGINE) ----
+    # Не для Dify — у Dify свой vector_store.
+    "search_index": {
         "elasticsearch": {
-            # ragflow's default — vector via ES dense_vector
             "ragflow": {
                 "DOC_ENGINE": "elasticsearch",
                 "ES_HOST": "elasticsearch",
                 "ES_PORT": "9200",
             },
         },
+        # Future: opensearch / infinity / oceanbase / seekdb — add when descriptors exist.
     },
+    # ---- llm_inference: llama-server OpenAI-compatible API ----
+    # Internal container port = 8080 for всех llama-* (host ports разные —
+    # см. templates/services/llama-{llm,embed,rerank}.yaml).
     "llm_inference": {
         "llama-llm": {
             "dify-api": {
@@ -104,24 +97,40 @@ BINDINGS: CapabilityBindings = {
             },
         },
     },
+    # ---- embedding_inference: llama-server embed model ----
     "embedding_inference": {
         "llama-embed": {
             "dify-api": {
-                "EMBEDDING_PROVIDER": "openai_compat",
-                "EMBEDDING_API_BASE": "http://llama-embed:8081/v1",
+                # Dify use 'openai_api_compatible' provider type.
+                "EMBEDDING_PROVIDER_BASE_URL": "http://llama-embed:8080/v1",
+                "EMBEDDING_PROVIDER_API_KEY": "sk-no-key-needed",
             },
             "ragflow": {
-                "EMBEDDING_ENDPOINT": "http://llama-embed:8081/v1",
+                # RAGFlow: configured per-tenant в UI, env shortcut:
+                "EMBEDDING_ENDPOINT": "http://llama-embed:8080/v1",
             },
         },
     },
+    # ---- reranker: llama-server rerank model ----
     "reranker": {
         "llama-rerank": {
             "dify-api": {
-                "RERANK_API_BASE": "http://llama-rerank:8082/v1",
+                "RERANK_PROVIDER_BASE_URL": "http://llama-rerank:8080/v1",
             },
             "ragflow": {
-                "RERANK_ENDPOINT": "http://llama-rerank:8082/v1",
+                "RERANK_ENDPOINT": "http://llama-rerank:8080/v1",
+            },
+        },
+    },
+    # ---- dify_external_kb: RAGFlow → Dify (via marketplace plugin) ----
+    # User configures plugin credentials в Dify UI; env hint для discovery.
+    "dify_external_kb": {
+        "ragflow": {
+            "dify-api": {
+                "RAGFLOW_API_ENDPOINT": "http://ragflow:9380/api/v1",
+                # API key user заполняет вручную через Dify plugin settings.
+                # Placeholder env passes hint в plugin discovery.
+                "RAGFLOW_API_KEY_HINT": "set-in-dify-plugin-settings",
             },
         },
     },
@@ -136,7 +145,7 @@ def env_for_consumer(
     """Return env vars to inject в `consumer` для `provider` of `capability`.
 
     Empty dict если пара не известна — это OK для consumers которые
-    не нуждаются в env injection (или uses sensible defaults from image).
+    не нуждаются в env injection (или используют sensible defaults from image).
     """
     cap_table = BINDINGS.get(capability, {})
     prov_table = cap_table.get(provider, {})

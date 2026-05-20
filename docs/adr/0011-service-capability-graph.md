@@ -198,6 +198,98 @@ consumers, resolves provider per capability через
 - [ ] O.8 (future): rich `_render_compat_panel` в TUI (отдельная Static
       секция с per-capability resolution table)
 
+## Amendment 2026-05-20 — research-based correction
+
+Изначальная версия этого ADR содержала выдуманные конфликты, не основанные
+на research. User указал на это явно ("ты ебанулся? RAGflow и Dify даже
+имеют плагин по API чтобы совместить"). Post-research correction:
+
+### Выдуманные conflicts (removed)
+
+| Pair                       | Фейк ADR утверждал | Реальность (verified)                                         |
+|----------------------------|---------------------|---------------------------------------------------------------|
+| ragflow ⟂ dify-*           | "не сосуществуют"   | [marketplace.dify.ai/plugin/witmeng/ragflow-api](https://marketplace.dify.ai/plugin/witmeng/ragflow-api) — официальный plugin для интеграции |
+| qdrant ⟂ weaviate ⟂ milvus | "fatal conflict"     | Разные ports (6333/8080/19530), могут coexist для разных consumer'ов |
+| traefik ⟂ caddy ⟂ nginx    | "fatal conflict"     | Port-level conflict ТОЛЬКО при mapping 80/443 у обоих наружу — это deploy concern, не service |
+
+**Все три convicted как fakes.** `conflicts_with` field оставлен в schema
+для backward compat но **никем не заполнен** в production descriptors.
+Compat checker больше не emit'ит `severity='error'` — только soft warnings.
+
+### Verified env vars (replaces fake earlier values)
+
+**Dify** (per [docs.dify.ai env reference](https://docs.dify.ai/getting-started/install-self-hosted/environments)):
+- `VECTOR_STORE` ∈ {qdrant, milvus, weaviate, pgvector, chroma, opensearch, oracle, +20 more}
+- Per-backend keys: `QDRANT_URL`, `MILVUS_URI`+`MILVUS_TOKEN`,
+  `WEAVIATE_ENDPOINT`+`WEAVIATE_API_KEY`, etc.
+
+**RAGFlow** (per [github.com/infiniflow/ragflow/blob/main/docker/.env](https://github.com/infiniflow/ragflow/blob/main/docker/.env)):
+- `DOC_ENGINE` ∈ {**elasticsearch, infinity, oceanbase, opensearch, seekdb**}
+- **RAGFlow НЕ supports milvus/qdrant/weaviate** как DOC_ENGINE — это
+  Dify-only options. Раньше я писал что user может "выбрать milvus и он
+  попадёт в ragflow" — **это было невозможно**.
+
+### Capability graph (corrected)
+
+```
+                    ┌───────────────┐
+                    │   llama-llm   │ provides: llm_inference
+                    └───┬─────┬─────┘ (внутренний port 8080,
+                        │     │       host 8080 — публикация)
+        ┌───────────────┘     └─────────────┐
+        ▼                                   ▼
+  ┌──────────┐                       ┌────────────┐
+  │ dify-api │                       │  ragflow   │
+  └────┬─────┘                       └──────┬─────┘
+       │ consumes: vector_db ←   │   ←consumes: search_index
+       │  → BINDINGS[vector_db]  │     → BINDINGS[search_index]
+       ▼                         │       ▼
+  ┌────────────────────────┐     │    ┌─────────────────┐
+  │ qdrant/milvus/weaviate │     │    │ elasticsearch / │
+  └────────────────────────┘     │    │ infinity / etc. │
+                                 │    └─────────────────┘
+                                 │
+                consumes: dify_external_kb
+                provided by ragflow → BINDINGS[dify_external_kb][ragflow][dify-api]
+                = RAGFLOW_API_ENDPOINT=http://ragflow:9380/api/v1
+```
+
+### Pin updates (verified via registry manifest probe 2026-05-20)
+
+- `infiniflow/ragflow:v0.25.4` → **`v0.25.5`** (released 2026-05-20,
+  digest `sha256:1025603bd79a373ab0f65e8ee3730710a1bccfb2ba88fd443d57078ebbf24724`)
+- `langgenius/dify-api:1.14.2` — **already latest** per github releases
+  (v1.14.2 from 2025-05-19, no newer)
+
+### Lessons (для будущих ADRs)
+
+1. **WebFetch GitHub UI lies** — ghcr.io packages page показал b9246 tag
+  который физически не существует в registry. Same trap: github.com releases
+  pages могут показывать old tags. Always verify через registry manifest API.
+2. **Не выдумывай conflicts** — две opensource системы которые часто упоминают
+  вместе обычно интегрируются. Перед declaring "fatal" — `WebSearch "$A $B
+  integration"` и поискать plugin marketplaces.
+3. **Capability bindings — verifiable knowledge**. Env var keys должны
+  цитировать конкретные docs/source URLs. Mock test проверяет что keys
+  совпадают с upstream defaults.
+
+### Что было исправлено (commit log)
+
+1. `conflicts_with` снят со всех 23 descriptors
+2. `compatibility.py`: removed "error · conflict" emission
+3. `capability_bindings.py`: rewrite с verified env keys, drop fake
+   milvus/ragflow binding, add `dify_external_kb` (ragflow → dify-api)
+4. Ports fix: внутри docker network все llama-* = `:8080` (host ports
+   8080/8081/8082 — это публикация на 127.0.0.1)
+5. `ragflow.yaml`: pin v0.25.4 → v0.25.5, `provides=['rag_stack',
+   'dify_external_kb']`, `consumes=['llm_inference', 'embedding_inference',
+   'search_index']`
+6. `dify-api.yaml`: добавил `consumes=['dify_external_kb', ...]`
+7. Tests rewritten: 24 passing с правильной моделью, в т.ч.
+   `test_real_catalog_ragflow_and_dify_coexist`,
+   `test_real_catalog_ragflow_dify_integration_env_injected`,
+   `test_real_catalog_milvus_does_not_inject_into_ragflow`.
+
 ## Откат
 
 Capability fields — backwards compat (default empty lists). Откат:

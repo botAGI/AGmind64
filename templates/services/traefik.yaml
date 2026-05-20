@@ -60,6 +60,3 @@ observability:
 provides:
 - reverse_proxy
 - tls_termination
-conflicts_with:
-- caddy
-- nginx

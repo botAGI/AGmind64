@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: ragflow
-image: infiniflow/ragflow:v0.25.4
-digest: d48b1810cbadcc2b8510b172b1ff705d7b57c64694be61e79c1dd372e4b30b7c
+image: infiniflow/ragflow:v0.25.5
+digest: 1025603bd79a373ab0f65e8ee3730710a1bccfb2ba88fd443d57078ebbf24724
 tier: app
-purpose: RAGFlow deep parsing (M2 alternative to Dify+Docling) — 2026-05-14
+purpose: RAGFlow deep parsing — coexists с Dify (см. marketplace.dify.ai/plugin/witmeng/ragflow-api)
 profiles:
 - ragflow
 ports:
@@ -25,16 +25,20 @@ routing:
   middleware_chain: chain-llm
   sse: true
 
-# Phase O capabilities
+# Phase O capabilities (revised — see ADR-0011 amendment)
+# RAGFlow's vector store options per verified ragflow/docker/.env (2026-05-20):
+#   DOC_ENGINE ∈ {elasticsearch, infinity, oceanbase, opensearch, seekdb}
+# RAGFlow does NOT support milvus/qdrant/weaviate as DOC_ENGINE — these
+# are Dify-only options. Therefore ragflow consumes:
+#   • llm_inference (через VLM_ENDPOINT → llama-llm)
+#   • embedding_inference (через EMBEDDING_ENDPOINT → llama-embed)
+#   • search_index (ES / opensearch / infinity)
+# RAGFlow provides `dify_external_kb` — Dify может подключиться к RAGFlow
+# через witmeng/ragflow-api plugin (RAGFLOW_API_ENDPOINT=http://ragflow:9380).
 provides:
 - rag_stack
+- dify_external_kb
 consumes:
 - llm_inference
 - embedding_inference
-- vector_db
-conflicts_with:
-- dify-api
-- dify-web
-- dify-worker
-- dify-sandbox
-- dify-plugin-daemon
+- search_index

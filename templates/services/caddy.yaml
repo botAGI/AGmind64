@@ -20,6 +20,3 @@ resources:
 provides:
 - reverse_proxy
 - tls_termination
-conflicts_with:
-- traefik
-- nginx

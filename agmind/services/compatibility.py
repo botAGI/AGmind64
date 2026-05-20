@@ -1,13 +1,22 @@
-"""Phase O.A: service compatibility checker.
+"""Phase O.A: service compatibility checker (REVISED 2026-05-20).
 
-Использует ServiceDescriptor.provides + conflicts_with для detection:
-1. Hard conflicts: два сервиса где A.conflicts_with[B] (e.g. ragflow + dify-api)
-2. Redundant providers: несколько сервисов с одинаковой capability
-   (e.g. qdrant + weaviate + milvus = 3 vector_db = redundant)
-3. Missing capabilities: consumer объявляет consumes=['vector_db'] но никто
-   не provides — warning
+Original version had `conflicts_with` field + hard 'error' severity. После
+research user'a (RAGFlow ↔ Dify плагин существует, vector DBs можно поднимать
+несколько одновременно для разных проектов, reverse proxies могут coexist
+если хотя бы один из них не публикуется на 80/443) — выяснилось что почти
+все declared conflicts были выдуманы.
 
-Используется renderer'ом + TUI wizard'ом для live warnings.
+Текущая модель — **только soft warnings**:
+1. `redundant_provider` (warning) — 2+ сервисов с одинаковой capability
+   (e.g. qdrant + milvus в одном compose). Не блокирующая — user может
+   использовать для разных проектов внутри одного стека.
+2. `missing_capability` (warning) — consumer объявляет consumes=['vector_db']
+   но никто не provides — env injection не сработает, но docker compose
+   ещё может стартовать (сервис со стандартными defaults).
+
+Hard `error` severity больше **не выдаётся** — мы перестали выдумывать
+конфликты, оставляя decision за user'ом. Wizard НЕ блокирует Apply на
+основе compat report.
 """
 
 from __future__ import annotations
@@ -60,28 +69,13 @@ def check_service_compatibility(
     Returns CompatReport с issues sorted by severity (errors first).
     """
     issues: list[CompatIssue] = []
-    names = set(selected.keys())
 
-    # ---- 1. Hard conflicts (A.conflicts_with[B] и B оба выбраны) ----
-    seen_pairs: set[tuple[str, str]] = set()
-    for name, d in selected.items():
-        for conflict in d.conflicts_with:
-            if conflict not in names:
-                continue
-            pair = tuple(sorted((name, conflict)))
-            if pair in seen_pairs:
-                continue
-            seen_pairs.add(pair)
-            issues.append(CompatIssue(
-                severity="error",
-                kind="conflict",
-                services=pair,
-                capability=None,
-                message=(
-                    f"'{pair[0]}' и '{pair[1]}' конфликтуют — оба нельзя"
-                    f" одновременно. Оставь один."
-                ),
-            ))
+    # ---- 1. Hard conflicts ----
+    # Removed: original "conflicts_with" model was based on выдуманных предположений
+    # (ragflow ⟂ dify, qdrant ⟂ milvus, traefik ⟂ caddy). After research все эти
+    # сервисы могут coexist. Field оставлен в schema для backward compat / future
+    # реальных кейсов где docker compose буквально не может стартовать — но default
+    # checker этим не пользуется.
 
     # ---- 2. Redundant providers (>1 service for same capability) ----
     providers: dict[str, list[str]] = defaultdict(list)

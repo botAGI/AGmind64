@@ -17,6 +17,3 @@ resources:
 # Phase O capabilities
 provides:
 - vector_db
-conflicts_with:
-- qdrant
-- weaviate

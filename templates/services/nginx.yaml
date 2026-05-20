@@ -28,6 +28,3 @@ health:
 # Phase O capabilities
 provides:
 - reverse_proxy
-conflicts_with:
-- traefik
-- caddy

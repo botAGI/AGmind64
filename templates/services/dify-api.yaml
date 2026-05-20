@@ -27,12 +27,14 @@ resources:
   cpus: 4.0
   mem_limit: 4g
 
-# Phase O capabilities
+# Phase O capabilities (revised post-research, ADR-0011 amendment)
+# Dify coexists с RAGFlow и может consume его как external KB через
+# witmeng/ragflow-api plugin. Capability dify_external_kb опционально
+# подцепляется if ragflow present.
 provides:
 - dify_stack
 consumes:
 - llm_inference
 - embedding_inference
 - vector_db
-conflicts_with:
-- ragflow
+- dify_external_kb
