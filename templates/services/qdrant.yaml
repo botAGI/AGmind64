@@ -23,3 +23,10 @@ health:
   - curl
   - -f
   - http://localhost:6333/healthz
+
+# Phase O capabilities
+provides:
+- vector_db
+conflicts_with:
+- weaviate
+- milvus

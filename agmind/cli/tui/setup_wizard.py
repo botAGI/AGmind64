@@ -560,6 +560,11 @@ class AgmindSetupApp(App[SetupState | None]):
             errors.append("Выбери хотя бы один service")
         if not self.detected.docker_present:
             errors.append("Docker не установлен — apt install docker.io")
+        # Phase O.A: hard conflicts блокируют Apply.
+        compat = self._check_compatibility(state)
+        if compat is not None:
+            for issue in compat.by_severity("error"):
+                errors.append(f"conflict: {issue.message}")
         return errors
 
     def _check_dependencies(self, state: SetupState) -> dict[str, list[str]]:
@@ -577,6 +582,23 @@ class AgmindSetupApp(App[SetupState | None]):
             return check_missing_dependencies(selected, all_d)
         except Exception:
             return {}
+
+    def _check_compatibility(self, state: SetupState):  # type: ignore[no-untyped-def]
+        """Phase O.A: detect conflicts / redundant providers / missing capabilities.
+
+        Returns CompatReport or None если selection пуст.
+        """
+        if not state.services:
+            return None
+        try:
+            from agmind.services.compatibility import check_service_compatibility
+            from agmind.services.renderer import load_descriptors, select_services
+
+            all_d = load_descriptors()
+            selected = select_services(all_d, services=state.services)
+            return check_service_compatibility(selected)
+        except Exception:
+            return None
 
     def _set_status(self, msg: str, kind: str = "") -> None:
         widget = self.query_one("#status-msg", Static)
@@ -619,13 +641,27 @@ class AgmindSetupApp(App[SetupState | None]):
             )
             dep_warn = f" ⚠️ Missing deps: {details}"
 
+        # Phase O: compat check — hard conflicts block, warnings — inform.
+        compat = self._check_compatibility(state)
+        compat_warn = ""
+        compat_error = False
+        if compat is not None:
+            err_items = compat.by_severity("error")
+            warn_items = compat.by_severity("warning")
+            if err_items:
+                compat_error = True
+                compat_warn = " ❌ " + "; ".join(i.message for i in err_items[:2])
+            elif warn_items:
+                compat_warn = " ⚠️ " + "; ".join(i.message for i in warn_items[:2])
+
         lines = preview.splitlines()
         self.preview_text = preview
+        status_kind = "error" if (missing_deps or compat_error) else "success"
         self._set_status(
             f"✓ Compose rendered ({len(lines)} lines). "
             f"Services: {len(state.services)}. "
-            f"Backend: {state.backend}. Domain: {state.domain}.{dep_warn}",
-            kind="success" if not missing_deps else "error",
+            f"Backend: {state.backend}. Domain: {state.domain}.{dep_warn}{compat_warn}",
+            kind=status_kind,
         )
 
     def action_submit(self) -> None:

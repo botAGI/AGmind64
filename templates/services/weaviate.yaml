@@ -17,3 +17,10 @@ env:
 resources:
   cpus: 4.0
   mem_limit: 8g
+
+# Phase O capabilities
+provides:
+- vector_db
+conflicts_with:
+- qdrant
+- milvus

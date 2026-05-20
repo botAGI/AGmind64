@@ -25,3 +25,7 @@ routing:
   middleware_chain: chain-llm
 observability:
   prometheus_scrape: true
+
+# Phase O capabilities
+provides:
+- embedding_inference

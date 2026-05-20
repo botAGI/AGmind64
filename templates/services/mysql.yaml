@@ -14,3 +14,7 @@ env:
 resources:
   cpus: 4.0
   mem_limit: 4g
+
+# Phase O capabilities
+provides:
+- mysql_db

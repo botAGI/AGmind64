@@ -22,3 +22,7 @@ health:
   - pg_isready -U dify -d dify
   interval: 10s
   retries: 5
+
+# Phase O capabilities
+provides:
+- postgres_db

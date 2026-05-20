@@ -22,3 +22,7 @@ routing:
   host: chat.agmind.dev
   middleware_chain: chain-llm
   sse: true
+
+# Phase O capabilities
+consumes:
+- llm_inference

@@ -225,6 +225,27 @@ class ServiceDescriptor(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     """Имена других сервисов (для `depends_on:` в compose)."""
 
+    # ---- Phase O: capability graph ----
+    provides: list[str] = Field(default_factory=list)
+    """Capability tags которые сервис предоставляет, e.g. ['vector_db'],
+    ['reverse_proxy'], ['rag_stack']. Используется для conflict detection
+    (несколько сервисов одной capability = коллизия) и capability injection
+    (consumer получает env vars указывающие на выбранного provider'а).
+
+    Convention: snake_case, single noun. Не путать с tier (логическая группа)
+    — capability это behavioural contract."""
+
+    conflicts_with: list[str] = Field(default_factory=list)
+    """Имена сервисов которые не могут жить с этим в одном compose.
+    Hard error если оба выбраны (см. check_service_compatibility).
+    Example: ragflow conflicts_with [dify-api, dify-web, ...]."""
+
+    consumes: list[str] = Field(default_factory=list)
+    """Capability tags которые сервис consumes (использует чужие).
+    Renderer injects env vars из capability_bindings table:
+      e.g. dify-api consumes=['vector_db'] + выбран milvus
+        →  inject VECTOR_STORE=milvus, MILVUS_URI=http://milvus:19530."""
+
     # ---- Limits ----
     resources: ResourceLimits = Field(default_factory=ResourceLimits)
 

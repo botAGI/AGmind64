@@ -17,3 +17,13 @@ depends_on:
 resources:
   cpus: 4.0
   mem_limit: 4g
+
+# Phase O capabilities
+provides:
+- dify_stack
+consumes:
+- llm_inference
+- embedding_inference
+- vector_db
+conflicts_with:
+- ragflow

@@ -13,3 +13,10 @@ volumes:
 resources:
   cpus: 8.0
   mem_limit: 16g
+
+# Phase O capabilities
+provides:
+- vector_db
+conflicts_with:
+- qdrant
+- weaviate

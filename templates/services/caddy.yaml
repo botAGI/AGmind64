@@ -15,3 +15,11 @@ volumes:
 resources:
   cpus: 2.0
   mem_limit: 256m
+
+# Phase O capabilities
+provides:
+- reverse_proxy
+- tls_termination
+conflicts_with:
+- traefik
+- nginx

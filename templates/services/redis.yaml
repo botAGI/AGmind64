@@ -19,3 +19,7 @@ health:
   - redis-cli
   - ping
   interval: 10s
+
+# Phase O capabilities
+provides:
+- redis_cache

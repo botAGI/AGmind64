@@ -63,3 +63,7 @@ routing:
   sse: true
 observability:
   prometheus_scrape: true
+
+# Phase O capabilities
+provides:
+- llm_inference

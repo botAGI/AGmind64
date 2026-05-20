@@ -281,6 +281,35 @@ def descriptor_to_compose_service(
     return svc
 
 
+def inject_capability_env(
+    selected: dict[str, ServiceDescriptor],
+) -> dict[str, dict[str, str]]:
+    """Phase O.B: compute env vars to add to each consumer based on capability bindings.
+
+    Walks consumers (services with .consumes non-empty), resolves who provides
+    each capability among selected services, and looks up BINDINGS table.
+
+    Returns: {consumer_name: {ENV_VAR: value}} — to merge into descriptor env.
+    Consumers without resolvable provider или no binding entry → empty dict.
+    """
+    from agmind.services.capability_bindings import env_for_consumer
+    from agmind.services.compatibility import resolve_capability_provider
+
+    extra_env: dict[str, dict[str, str]] = {}
+    for name, d in selected.items():
+        if not d.consumes:
+            continue
+        consumer_env: dict[str, str] = {}
+        for cap in d.consumes:
+            provider = resolve_capability_provider(selected, cap)
+            if provider is None:
+                continue
+            consumer_env.update(env_for_consumer(cap, provider, name))
+        if consumer_env:
+            extra_env[name] = consumer_env
+    return extra_env
+
+
 def render_compose(
     descriptors: list[ServiceDescriptor],
     traefik_enabled: bool = True,
@@ -293,10 +322,22 @@ def render_compose(
         traefik_enabled: добавлять Traefik labels из routing config
         network_name: имя shared bridge сети
     """
-    services_block = {
-        d.name: descriptor_to_compose_service(d, traefik_enabled)
-        for d in sorted(descriptors, key=lambda x: x.name)
-    }
+    selected_map = {d.name: d for d in descriptors}
+    capability_env = inject_capability_env(selected_map)
+
+    services_block_local: dict[str, Any] = {}
+    for d in sorted(descriptors, key=lambda x: x.name):
+        svc = descriptor_to_compose_service(d, traefik_enabled)
+        extra = capability_env.get(d.name)
+        if extra:
+            env_block = svc.setdefault("environment", {})
+            if isinstance(env_block, list):
+                env_block = dict(item.split("=", 1) for item in env_block if "=" in item)
+            for k, v in extra.items():
+                env_block.setdefault(k, v)
+            svc["environment"] = env_block
+        services_block_local[d.name] = svc
+    services_block = services_block_local
     compose: dict[str, Any] = {
         "services": services_block,
         "networks": {

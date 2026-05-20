@@ -55,3 +55,11 @@ health:
 observability:
   prometheus_scrape: true
   metrics_port: 9100
+
+# Phase O capabilities
+provides:
+- reverse_proxy
+- tls_termination
+conflicts_with:
+- caddy
+- nginx

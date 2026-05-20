@@ -24,3 +24,10 @@ health:
   - wget
   - -qO-
   - http://localhost/_nginx_health
+
+# Phase O capabilities
+provides:
+- reverse_proxy
+conflicts_with:
+- traefik
+- caddy
