@@ -170,13 +170,14 @@ def test_validate_passes_clean() -> None:
 
 # ---------- Textual Pilot integration ----------
 
-@pytest.mark.skip(
-    reason="Textual Pilot + reactive set_interval вешают headless event loop; "
-           "manual: `agmind setup` запускается корректно",
-)
 @pytest.mark.asyncio
-async def test_app_quit_via_keybinding() -> None:
-    """Smoke: app launches, Ctrl+C exits cleanly (use keybinding вместо click)."""
+async def test_app_quit_via_keybinding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke: app launches, Ctrl+C exits cleanly (use keybinding вместо click).
+
+    AGMIND_LOGO_DISABLE_ANIMATION=1 отключает reactive interval в AnimatedLogo
+    который иначе вешал headless event loop.
+    """
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
     detected = DetectedHardware(
         ram_gb=128, gpu_name="AMD x", is_strix_halo=True,
         vulkan_present=True, rocm_present=True, docker_present=True,
@@ -188,12 +189,12 @@ async def test_app_quit_via_keybinding() -> None:
     assert app.result_state is None
 
 
-@pytest.mark.skip(
-    reason="Textual Pilot + reactive set_interval вешают headless event loop",
-)
 @pytest.mark.asyncio
-async def test_app_apply_via_keybinding_with_valid_state() -> None:
+async def test_app_apply_via_keybinding_with_valid_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Apply через Ctrl+S keybinding (pilot.click ломается на OOB кнопки)."""
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
     detected = DetectedHardware(
         ram_gb=128, gpu_name="AMD x", is_strix_halo=True,
         vulkan_present=True, rocm_present=True, docker_present=True,
@@ -202,7 +203,7 @@ async def test_app_apply_via_keybinding_with_valid_state() -> None:
     initial = SetupState(
         domain="agmind.mycompany.example",
         cf_api_token="X" * 40,
-        profiles=["core"],
+        services=["traefik", "llama-llm", "qdrant"],
         backend="vulkan",
     )
     app = AgmindSetupApp(detected=detected, initial_state=initial)
@@ -210,7 +211,9 @@ async def test_app_apply_via_keybinding_with_valid_state() -> None:
         await pilot.press("ctrl+s")
     assert app.result_state is not None
     assert app.result_state.domain == "agmind.mycompany.example"
-    assert "core" in app.result_state.profiles
+    # Phase J.1.8: services заменил profiles как primary selection
+    assert "traefik" in app.result_state.services
+    assert "llama-llm" in app.result_state.services
 
 
 def test_logo_widget_import() -> None:

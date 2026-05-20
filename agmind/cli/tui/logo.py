@@ -114,7 +114,11 @@ class AnimatedLogo(Widget):
     _timer: object | None = None
 
     def on_mount(self) -> None:
-        # tick offset каждые `speed` секунд → gradient крутится
+        # tick offset каждые `speed` секунд → gradient крутится.
+        # AGMIND_LOGO_DISABLE_ANIMATION=1 → отключить таймер (для headless
+        # Textual Pilot tests, где reactive interval вешает event loop).
+        if _os.environ.get("AGMIND_LOGO_DISABLE_ANIMATION"):
+            return
         self._timer = self.set_interval(self.speed, self._tick)
 
     def on_unmount(self) -> None:
