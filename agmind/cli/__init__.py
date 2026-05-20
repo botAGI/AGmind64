@@ -378,6 +378,55 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- migrate subcommand group (Phase L.D) ----
+    migrate_app = typer.Typer(
+        name="migrate",
+        help="Manage AGmind state schema migrations (Phase L.D).",
+        no_args_is_help=True,
+    )
+    app.add_typer(migrate_app)
+
+    @migrate_app.command("status")
+    def migrate_status(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show current schema version + applied/pending migrations."""
+        from agmind.cli.migrate_cmd import cmd_status
+
+        raise typer.Exit(code=cmd_status(as_json=as_json))
+
+    @migrate_app.command("list")
+    def migrate_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List all known migrations (registered in agmind.migrations.versions)."""
+        from agmind.cli.migrate_cmd import cmd_list
+
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @migrate_app.command("up")
+    def migrate_up(
+        target: int | None = typer.Option(
+            None, "--target", help="Apply migrations up to this version (inclusive)."
+        ),
+    ) -> None:
+        """Apply pending migrations."""
+        from agmind.cli.migrate_cmd import cmd_up
+
+        raise typer.Exit(code=cmd_up(target=target))
+
+    @migrate_app.command("down")
+    def migrate_down(
+        steps: int = typer.Option(1, "--steps", help="How many migrations to roll back."),
+        target: int | None = typer.Option(
+            None, "--target", help="Roll back everything above this version."
+        ),
+    ) -> None:
+        """Roll back applied migrations."""
+        from agmind.cli.migrate_cmd import cmd_down
+
+        raise typer.Exit(code=cmd_down(steps=steps, target=target))
+
     return app
 
 
