@@ -2,7 +2,7 @@
 name: llama-llm
 image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
 tier: inference
-purpose: LLM token generation via llama-server (Vulkan RADV primary)
+purpose: LLM token generation via llama-server (Vulkan RADV primary, Qwen3.6-A3B MoE tuned)
 profiles:
 - core
 ports:
@@ -13,6 +13,30 @@ env:
   AMD_VULKAN_ICD: RADV
   VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
   GGML_VK_VISIBLE_DEVICES: '0'
+# Phase H runtime flags — community-tuned для Qwen3.6-35B-A3B MoE на gfx1151
+# (см. .planning/research/x86-migration/R16-qwen-strix-halo-flags.md).
+# Менять модель → менять --model arg; bench show Q4_K_M = 70.2 t/s decode.
+command:
+- --host
+- 0.0.0.0
+- --port
+- '8080'
+- --model
+- /models/Qwen3.6-35B-A3B-Q4_K_M.gguf
+- -ngl
+- '999'
+- --flash-attn
+- --cache-type-k
+- q8_0
+- --cache-type-v
+- q8_0
+- --ubatch-size
+- '2048'
+- --batch-size
+- '2048'
+- --no-mmap
+- --ctx-size
+- '16384'
 devices:
 - /dev/dri
 group_add:

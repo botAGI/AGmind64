@@ -1,8 +1,8 @@
 # AGmind benchmarks — Strix Halo (gfx1151, RDNA 3.5)
 
-> **Status:** skeleton. Будет заполнен после Phase D полного тестирования
-> на реальном железе (текущая dev-машина имеет gfx1151 но без установленных
-> vulkaninfo/rocminfo — см. `agmind doctor`).
+> **Status:** Phase H run in progress. Reference table заполнена из community
+> recon (R3/R4/R15/R16); local Strix Halo numbers — section "Phase H —
+> Qwen3.6-35B-A3B run" ниже (пополняется по мере завершения bench'ей).
 >
 > Контекст: AMD Ryzen AI Max+ 395 (Strix Halo) — Zen 5 16C/32T + Radeon
 > 8060S (gfx1151, RDNA 3.5, 40 CU), 128 GB unified LPDDR5X.
@@ -96,7 +96,71 @@ docker run --rm \
     --threads 16 -p 512 -n 128
 ```
 
-## Local run results
+## Phase H — Qwen3.6-35B-A3B run (this repo, 2026-05-20)
+
+Driver: user перешёл с DGX Spark на Strix Halo, нужно прямое сравнение
+архитектур на той же модели которую он гонял на Spark. Modus:
+**llama.cpp Vulkan b9049 + Q4_K_M GGUF**.
+
+### DGX Spark baseline (user's prior data, source [habr 1033342](https://habr.com/ru/articles/1033342/))
+
+| Engine                | Quant       | tg single (t/s) | Notes                       |
+|-----------------------|-------------|-----------------|-----------------------------|
+| vLLM cu130-nightly    | FP8 native  | 51.0–52.5       | Default config              |
+| vLLM cu130-nightly    | NVFP4 4-bit | 40.9            | NVIDIA's experimental quant |
+| vLLM fork (AEON-7 DFlash) | FP8     | 69.7 avg / 107 peak | community fork, DFlash kernels |
+
+Aggregate at 32 concurrent requests: 498.6 tok/s (AEON-7 DFlash).
+
+### Strix Halo community baseline (source [0xSero/HF](https://huggingface.co/0xSero/Qwen3.6-35B-A3B-GGUF-Strix))
+
+Tested на Framework Desktop (AMD Ryzen AI MAX+ 395 / Radeon 8060S / 128 GB
+unified) via llama.cpp Vulkan:
+
+| Quant       | Size    | pp512 (t/s) | tg128 (t/s) | Note                |
+|-------------|---------|-------------|-------------|---------------------|
+| Q4_K_M      | 21.2 GB | 1021        | **70.2**    | production sweet    |
+| Q4_0        | 19.7 GB | n/a         | **76.5**    | fastest decode      |
+| DYNAMIC mix | 19 GB   | **1100**    | 64.0        | fastest prefill     |
+
+### Strix Halo (this repo) — measured
+
+| Run | Quant   | Build | Backend | Flags                       | pp512  | tg128  | Date       |
+|-----|---------|-------|---------|-----------------------------|--------|--------|------------|
+| H.1 | Q4_K_M  | b9049 | Vulkan  | -fa -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 --no-mmap -ngl 999 | TBD | TBD | 2026-05-20 |
+
+Reproduce — standalone (no agmind deploy required):
+
+```bash
+docker run --rm \
+  -v ~/AGmindx86/models:/models:ro \
+  --device /dev/dri \
+  --group-add video --group-add render \
+  --security-opt seccomp=unconfined \
+  -e AMD_VULKAN_ICD=RADV \
+  -e GGML_VK_VISIBLE_DEVICES=0 \
+  --entrypoint /app/llama-bench \
+  ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049 \
+  -m /models/Qwen3.6-35B-A3B-Q4_K_M.gguf \
+  -p 512 -n 128 -r 5 \
+  -fa 1 -ctk q8_0 -ctv q8_0 -ub 2048 -b 2048 \
+  --no-mmap -ngl 999
+```
+
+### Architecture-comparison takeaways
+
+- DGX Spark (FP8 native vLLM) vs Strix Halo (Q4_K_M llama.cpp Vulkan):
+  не apples-to-apples из-за разного engine + quantization, но end-user
+  tps сопоставимы.
+- Strix Halo Q4_K_M tg128 ≈ 70 t/s **обходит** DGX Spark FP8 (51–52 t/s)
+  на ~35%, и **обгоняет** даже AEON-7 DFlash (69.7 avg) на бумаге.
+- Quality difference Q4_K_M vs FP8 на 35B MoE — ~2–3% MMLU per community
+  evals; для interactive chat workload разница неощутима.
+- Phase H DoD: numerical proof что переезд с GB10 на Strix Halo не теряет
+  performance для main inference workload (chat / MoE). При confirmed tg ≥
+  community baseline ±5% — migration validated.
+
+## Local run results (legacy section, Llama-2-7B baseline)
 
 _Заполняется при первом полном D/G прогоне на оборудовании с
 установленными vulkaninfo + rocminfo. См. `agmind doctor` для статуса
