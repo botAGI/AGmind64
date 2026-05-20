@@ -30,6 +30,14 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select, Static
 
+
+class AGCheckbox(Checkbox):
+    """Compact checkbox with `[✓] / [ ]` glyphs вместо толстых `▐X▌` блоков."""
+
+    BUTTON_LEFT = "["
+    BUTTON_RIGHT = "]"
+    BUTTON_INNER = "✓"
+
 from agmind.cli.tui.logo import AnimatedLogo
 from agmind.log import logger
 
@@ -339,21 +347,15 @@ class AgmindSetupApp(App[SetupState | None]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        # Animated colorful gradient logo (Phase J — pyfiglet + Rich Text)
-        yield AnimatedLogo(text="AGMIND", subtitle="x86 · Strix Halo · Setup Wizard")
+        # Compact gradient logo (Phase J.1.10 — `cybermedium` font: 3 строки
+        # вместо 6, без subtitle — он дублировал Header.SUB_TITLE).
+        yield AnimatedLogo(text="AGMINDx86", subtitle="", font="cybermedium")
 
-        # Detected hardware box
-        with Vertical(id="detected-box"):
-            yield Label("🖥  Detected hardware", classes="label")
-            yield Static(self._detected_text(), id="detected-text")
+        # Single-line hardware summary
+        yield Static(self._detected_text(), id="detected-text")
 
         with VerticalScroll(id="form-container"):
-            yield Label("Domain для Traefik TLS", classes="section")
-            yield Static(
-                "💡 Совет: используй subdomain (e.g. lab.yourdomain.com),\n"
-                "    чтобы не конфликтовать с существующими сайтами на apex.",
-                classes="hint",
-            )
+            yield Label("Domain (Traefik TLS, subdomain рекомендуется)", classes="section")
             yield Input(
                 placeholder="lab.yourdomain.com",
                 id="domain-input",
@@ -376,18 +378,8 @@ class AgmindSetupApp(App[SetupState | None]):
                 allow_blank=False,
             )
 
-            # Phase J.1.8: per-service selection grouped by tier.
-            # User видит каждый сервис отдельно с checkbox, smart defaults включены.
             total = sum(len(svcs) for svcs in self.services_by_tier.values())
-            yield Label(
-                f"Services (per-service выбор, {total} доступно)",
-                classes="section",
-            )
-            yield Static(
-                "💡 Smart defaults включают minimal production set "
-                "(traefik + llama-* + qdrant + observability).",
-                classes="hint",
-            )
+            yield Label(f"Services ({total} available — defaults preselected)", classes="section")
             with Container(id="service-checkboxes"):
                 for tier, services in self.services_by_tier.items():
                     tier_label = _TIER_LABELS.get(tier, tier)
@@ -397,12 +389,11 @@ class AgmindSetupApp(App[SetupState | None]):
                             f"{tier_label}  ·  {len(services)} services",
                             classes="tier-section",
                         )
-                        for name, purpose in services:
-                            # Trim purpose to 50 chars чтобы умещалось на терминалах ~100 col
-                            short_purpose = (purpose or "").strip()[:50]
-                            label = f"{name}  —  {short_purpose}" if short_purpose else name
-                            yield Checkbox(
-                                label,
+                        for name, _purpose in services:
+                            # Compact: just the service name. Purpose редко короче имени
+                            # и в 2-колоночном grid не помещается чисто.
+                            yield AGCheckbox(
+                                name,
                                 id=f"svc-{self._slug(name)}",
                                 value=(name in self.state.services),
                             )
@@ -417,17 +408,12 @@ class AgmindSetupApp(App[SetupState | None]):
 
     def _detected_text(self) -> str:
         d = self.detected
-        gpu = d.gpu_name or "(none detected)"
-        strix = "✓ Strix Halo (gfx1151)" if d.is_strix_halo else "✗ not Strix Halo"
-        vulkan = "✓" if d.vulkan_present else "✗"
-        rocm = "✓" if d.rocm_present else "✗"
-        docker = "✓" if d.docker_present else "✗ (требуется!)"
+        gpu = "Strix Halo gfx1151" if d.is_strix_halo else (d.gpu_name or "no GPU")
+        vk = "✓" if d.vulkan_present else "✗"
+        rc = "✓" if d.rocm_present else "✗"
+        dk = "✓" if d.docker_present else "✗!"
         return (
-            f"RAM:     {d.ram_gb:.1f} GB → recommended tier: {d.recommended_tier}\n"
-            f"GPU:     {gpu}\n"
-            f"Type:    {strix}\n"
-            f"Vulkan:  {vulkan}    ROCm: {rocm}    Docker: {docker}\n"
-            f"Kernel:  {platform.release()}"
+            f"{d.ram_gb:.0f} GB · {gpu} · Vulkan {vk} ROCm {rc} Docker {dk} · tier={d.recommended_tier}"
         )
 
     @staticmethod
