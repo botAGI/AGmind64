@@ -395,6 +395,121 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- install command (Phase N) ----
+
+    @app.command()
+    def install(
+        domain: str | None = typer.Option(
+            None, "--domain", envvar="AGMIND_DOMAIN",
+            help="Public domain для Traefik TLS (skip prompt if set).",
+        ),
+        cf_token_file: Path | None = typer.Option(
+            None, "--cf-token-file",
+            help="File с Cloudflare API token (skip prompt if set, chmod 600).",
+        ),
+        model_repo: str = typer.Option(
+            "0xSero/Qwen3.6-35B-A3B-GGUF-Strix", "--model-repo",
+            help="HuggingFace repo с GGUF model (set --model-file='' to skip)",
+        ),
+        model_file: str = typer.Option(
+            "Qwen3.6-35B-A3B-Q4_K_M.gguf", "--model-file",
+            help="GGUF filename внутри repo (empty string = no model download).",
+        ),
+        no_tui: bool = typer.Option(
+            False, "--no-tui",
+            help="CLI-only run без Textual UI (для CI / headless).",
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run",
+            help="Только preflight + wizard, без bootstrap/pull/deploy.",
+        ),
+    ) -> None:
+        """Phase N: end-to-end install (preflight → bootstrap → pull → deploy).
+
+        Запрашивает sudo password один раз для bootstrap step (apt, usermod,
+        mkdir в /var/lib и /opt). После bootstrap всё остальное идёт от user.
+        """
+        import getpass
+
+        from agmind.cli.tui.setup_wizard import (
+            STATE_PATH,
+            SetupState,
+            run_setup_wizard,
+        )
+        from agmind.install.orchestrator import (
+            InstallConfig,
+            InstallOrchestrator,
+        )
+        from agmind.install.steps import default_steps
+
+        # 1. Sudo password — раньше чем что-либо.
+        try:
+            sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
+        except (EOFError, KeyboardInterrupt):
+            typer.echo("\naborted: sudo password не введён", err=True)
+            raise typer.Exit(code=2)
+        if not sudo_pw:
+            typer.echo("aborted: empty sudo password", err=True)
+            raise typer.Exit(code=2)
+
+        # 2. Wizard для domain/token/services (или skip если все CLI flags заданы).
+        initial = SetupState(
+            domain=domain or "",
+            cf_api_token=cf_token_file.read_text().strip() if cf_token_file else "",
+        )
+        if not no_tui:
+            wizard_state = run_setup_wizard(initial_state=initial, auto_deploy=False)
+            if wizard_state is None:
+                typer.echo("aborted: wizard cancelled", err=True)
+                raise typer.Exit(code=1)
+        else:
+            wizard_state = initial
+
+        # 3. Build install config.
+        config = InstallConfig(
+            domain=wizard_state.domain,
+            cf_api_token=wizard_state.cf_api_token,
+            services=wizard_state.services,
+            backend=wizard_state.backend,
+            model_repo=model_repo if model_file else None,
+            model_file=model_file if model_file else None,
+            sudo_password=sudo_pw,
+        )
+
+        if dry_run:
+            typer.echo("dry-run: stopping после wizard")
+            typer.echo(json.dumps(config.redact(), indent=2, ensure_ascii=False))
+            raise typer.Exit(code=0)
+
+        # 4. Orchestrator + progress.
+        steps = default_steps()
+        if no_tui:
+            def cli_cb(event) -> None:  # type: ignore[no-untyped-def]
+                from agmind.install.orchestrator import ProgressKind
+                glyph = {
+                    ProgressKind.STEP_START: "▶",
+                    ProgressKind.STEP_DONE: "✓",
+                    ProgressKind.STEP_ERROR: "✗",
+                    ProgressKind.LOG: " ",
+                    ProgressKind.PROGRESS: "%",
+                }.get(event.kind, "·")
+                typer.echo(f"[{glyph}] {event.step_id}: {event.text}")
+
+            orchestrator = InstallOrchestrator(config=config, steps=steps, callback=cli_cb)
+            result = orchestrator.run()
+            raise typer.Exit(code=0 if result.success else 1)
+
+        from agmind.cli.tui.install_screen import InstallProgressScreen
+        from textual.app import App
+
+        class _InstallShell(App[None]):
+            CSS_PATH = None
+
+            def on_mount(self) -> None:
+                self.push_screen(InstallProgressScreen(config=config, steps=steps))
+
+        _InstallShell().run()
+
     # ---- ops subcommands: logs / shell / backup / restore (Phase L.E) ----
 
     @app.command()
