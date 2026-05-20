@@ -391,16 +391,21 @@ class AgmindSetupApp(App[SetupState | None]):
             with Container(id="service-checkboxes"):
                 for tier, services in self.services_by_tier.items():
                     tier_label = _TIER_LABELS.get(tier, tier)
-                    yield Label(
-                        f"\n{tier_label} ({len(services)})",
-                        classes="tier-section",
-                    )
-                    for name, purpose in services:
-                        yield Checkbox(
-                            f"{name:<25} {purpose}",
-                            id=f"svc-{self._slug(name)}",
-                            value=(name in self.state.services),
+                    # Each tier — visual bordered card
+                    with Container(classes="tier-group"):
+                        yield Label(
+                            f"{tier_label}  ·  {len(services)} services",
+                            classes="tier-section",
                         )
+                        for name, purpose in services:
+                            # Trim purpose to 50 chars чтобы умещалось на терминалах ~100 col
+                            short_purpose = (purpose or "").strip()[:50]
+                            label = f"{name}  —  {short_purpose}" if short_purpose else name
+                            yield Checkbox(
+                                label,
+                                id=f"svc-{self._slug(name)}",
+                                value=(name in self.state.services),
+                            )
 
         with Horizontal(id="button-row"):
             yield Button("Preview", id="preview-btn", variant="primary")
