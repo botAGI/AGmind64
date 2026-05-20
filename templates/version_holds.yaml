@@ -1,0 +1,38 @@
+# Phase P: upstream version holds.
+#
+# Format:
+#   <image-without-tag>:
+#     reason: "human-readable why we don't bump"
+#     hold_until: ISO-date (optional — auto-clear после)
+#     max_version: "v1.x"  (optional cap — bump до этого OK, выше — нет)
+#
+# Используется scripts/version_check.py чтобы pad'нуть statuses:
+#   ⏸ HOLD <reason>
+#   🔒 X-pinned (if dependency requires)
+#
+# Edit при появлении upstream breaking changes / known regressions.
+
+# llama.cpp pin reason: Phase H baseline verified на b9049 (73 t/s).
+# Bumping без re-bench может изменить tps; держим до сравнения.
+ghcr.io/ggml-org/llama.cpp:
+  reason: "Phase H bench reference build (b9049). Bump после re-bench на новой версии."
+  hold_until: 2026-08-01
+
+# Dify pin: 1.14.2 — current latest per github.com/langgenius/dify/releases.
+# Plugin Daemon co-bump обязателен (см. AGmind issue#63 legacy precedent).
+langgenius/dify-api:
+  reason: "Plugin Daemon co-bump required; bump только после verify в dify-plugin-daemon."
+
+langgenius/dify-plugin-daemon:
+  reason: "Local build — track upstream stable carefully. 0.6.x = current target."
+
+# Pydantic-pinned services (через docker-compose):
+postgres:
+  reason: "Dify pins postgres:15-alpine; bump только после Dify minor с обновлённым pin."
+
+redis:
+  reason: "Dify pins redis:6-alpine; bump только после Dify minor с обновлённым pin."
+
+# RAGFlow ES requirement:
+elasticsearch:
+  reason: "RAGFlow требует ES 9.x совместимый с DOC_ENGINE=elasticsearch."

@@ -1,0 +1,80 @@
+# Phase P: weekly upstream version check.
+#
+# Scans templates/services/*.yaml + docker/Dockerfile.* pins,
+# probes upstream registries (Docker Hub, GHCR, GitHub Releases),
+# pads HOLD annotations from templates/version_holds.yaml,
+# и создаёт/обновляет GitHub issue с тегом 'upstream-update'.
+#
+# Aligned with legacy AGmind workflow (https://github.com/botAGI/AGmind/issues/63).
+
+name: Upstream Version Check
+
+on:
+  schedule:
+    # Каждый понедельник 06:00 UTC = 09:00 МСК
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print to job log only, do NOT create/update issue"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML (single dep for parser)
+        run: pip install pyyaml
+
+      - name: Run version check
+        id: check
+        run: |
+          python3 scripts/version_check.py --output report.md --json report.json
+          echo "report_path=report.md" >> "$GITHUB_OUTPUT"
+          cat report.md
+
+      - name: Upload report artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-check-report
+          path: |
+            report.md
+            report.json
+          retention-days: 90
+
+      - name: Update or create GitHub issue
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="Upstream version report ($(date -u +%Y-%m-%d))"
+          BODY="$(cat report.md)"
+
+          # Найти existing open issue с label upstream-update
+          EXISTING_ISSUE=$(gh issue list --label upstream-update --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING_ISSUE" ]; then
+            echo "Updating existing issue #$EXISTING_ISSUE"
+            gh issue edit "$EXISTING_ISSUE" --title "$TITLE" --body "$BODY"
+          else
+            echo "Creating new issue"
+            gh issue create \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label upstream-update
+          fi
