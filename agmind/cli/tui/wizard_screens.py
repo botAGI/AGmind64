@@ -33,6 +33,8 @@ from textual.widgets import (
     Static,
 )
 
+from agmind.i18n import t
+
 
 # ---- Shared header / footer / step indicator ----
 
@@ -67,26 +69,26 @@ class DomainScreen(Screen[None]):
             TokenLengthValidator,
         )
         yield Header(show_clock=False)
-        yield StepHeader(1, 4, "Domain + Cloudflare token")
+        yield StepHeader(1, 4, t("wizard.section.domain"))
         with VerticalScroll():
-            yield Label("Domain (Traefik TLS — subdomain рекомендуется)", classes="section")
+            yield Label(t("wizard.section.domain"), classes="section")
             yield Input(
-                placeholder="lab.yourdomain.com",
+                placeholder=t("wizard.placeholder.domain"),
                 id="domain-input",
                 value=self.app.state.domain,
                 validators=[DomainValidator()],
             )
-            yield Label("Cloudflare API token (Zone:DNS:Edit)", classes="section")
+            yield Label(t("wizard.section.cf_token"), classes="section")
             yield Input(
-                placeholder="paste token (hidden, ≥20 chars)",
+                placeholder=t("wizard.placeholder.cf_token"),
                 id="cf-token-input",
                 value=self.app.state.cf_api_token,
                 password=True,
                 validators=[TokenLengthValidator()],
             )
         with Horizontal(id="nav-row"):
-            yield Button("Quit", id="back-btn", variant="default")
-            yield Button("Next →", id="next-btn", variant="primary")
+            yield Button(t("wizard.btn.quit"), id="back-btn", variant="default")
+            yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -131,47 +133,47 @@ class ModelScreen(Screen[None]):
             models_for_wizard,
         )
         yield Header(show_clock=False)
-        yield StepHeader(2, 4, "Model + inference settings")
+        yield StepHeader(2, 4, t("wizard.section.model"))
         with VerticalScroll():
-            yield Label("Model", classes="section")
+            yield Label(t("wizard.section.model"), classes="section")
             model_options = models_for_wizard()
             model_options.append(("Custom HuggingFace…", "custom"))
             yield Select(
                 model_options, id="model-select",
                 value=self.app.state.model_id, allow_blank=False,
             )
-            yield Static("Custom HF (fill для id=custom):", classes="hint")
+            yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
             yield Input(
-                placeholder="HF repo: user/repo-name",
+                placeholder=t("wizard.placeholder.model_repo"),
                 id="model-repo-input", value=self.app.state.model_repo,
             )
             yield Input(
-                placeholder="GGUF filename: model.Q4_K_M.gguf",
+                placeholder=t("wizard.placeholder.model_file"),
                 id="model-file-input", value=self.app.state.model_file,
             )
-            yield Label("Context size", classes="section")
+            yield Label(t("wizard.section.ctx_size"), classes="section")
             yield Select(
                 [(label, str(n)) for n, label in CTX_SIZE_PRESETS],
                 id="ctx-size-select", value=str(self.app.state.ctx_size), allow_blank=False,
             )
-            yield Label("KV cache quant", classes="section")
+            yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
                 [(label, val) for val, label in KV_CACHE_TYPES],
                 id="kv-cache-select", value=self.app.state.kv_cache_type, allow_blank=False,
             )
-            yield Label("CPU threads", classes="section")
+            yield Label(t("wizard.section.threads"), classes="section")
             yield Select(
                 [(label, str(n)) for n, label in THREADS_PRESETS],
                 id="threads-select", value=str(self.app.state.threads), allow_blank=False,
             )
-            yield Label("Parallel slots", classes="section")
+            yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
                 [(label, str(n)) for n, label in PARALLEL_PRESETS],
                 id="parallel-select", value=str(self.app.state.parallel_slots), allow_blank=False,
             )
         with Horizontal(id="nav-row"):
-            yield Button("← Back", id="back-btn", variant="default")
-            yield Button("Next →", id="next-btn", variant="primary")
+            yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
+            yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -243,7 +245,7 @@ class ServicesScreen(Screen[None]):
         yield Header(show_clock=False)
         services_by_tier = self.app.services_by_tier
         total = sum(len(svcs) for svcs in services_by_tier.values())
-        yield StepHeader(3, 4, f"Services ({total} available)")
+        yield StepHeader(3, 4, t("wizard.section.services", default=f"Services ({total} available)").format(total=total))
         with VerticalScroll(id="service-checkboxes"):
             for tier, services in services_by_tier.items():
                 tier_label = _TIER_LABELS.get(tier, tier)
@@ -259,8 +261,8 @@ class ServicesScreen(Screen[None]):
                             value=(name in self.app.state.services),
                         )
         with Horizontal(id="nav-row"):
-            yield Button("← Back", id="back-btn", variant="default")
-            yield Button("Next →", id="next-btn", variant="primary")
+            yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
+            yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -303,12 +305,12 @@ class ConfirmScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         state = self.app.state
         yield Header(show_clock=False)
-        yield StepHeader(4, 4, "Confirm + Apply")
+        yield StepHeader(4, 4, t("wizard.confirm.title", default="Confirm + Apply"))
         with VerticalScroll():
             yield Static(self._summary(state), id="summary-text")
         with Horizontal(id="nav-row"):
-            yield Button("← Back", id="back-btn", variant="default")
-            yield Button("✓ Apply", id="apply-btn", variant="success")
+            yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
+            yield Button(t("wizard.btn.apply"), id="apply-btn", variant="success")
         yield Footer()
 
     def _summary(self, state) -> str:  # type: ignore[no-untyped-def]

@@ -600,6 +600,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             False, "--list-models",
             help="Print curated model catalog и выйти.",
         ),
+        lang: str = typer.Option(
+            "", "--lang",
+            help="UI language (en|ru). Default — auto-detect via LANG env.",
+        ),
         no_tui: bool = typer.Option(
             False, "--no-tui",
             help="CLI-only run без Textual UI (для CI / headless).",
@@ -627,6 +631,11 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             InstallOrchestrator,
         )
         from agmind.install.steps import default_steps
+
+        # Phase M3.T: set AGMIND_LANG для i18n.detect_lang()
+        if lang:
+            import os as _os
+            _os.environ["AGMIND_LANG"] = lang.strip().lower()
 
         # 0. --list-models — print catalog и выйти
         if list_models:

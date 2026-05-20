@@ -13,5 +13,39 @@
 
   "errors.no_backend": "На хосте нет доступного compute backend.",
   "errors.invalid_engine": "Engine {engine!r} не поддерживается backend'ом {backend!r}.",
-  "errors.amdvlk_present": "Обнаружен AMDVLK — он может перехватывать RADV."
+  "errors.amdvlk_present": "Обнаружен AMDVLK — он может перехватывать RADV.",
+
+  "wizard.title": "AGmindx86 — Мастер установки",
+  "wizard.section.domain": "Домен (Traefik TLS, рекомендуется subdomain)",
+  "wizard.section.cf_token": "Cloudflare API токен (Zone:DNS:Edit)",
+  "wizard.section.backend": "Backend",
+  "wizard.section.model": "Модель",
+  "wizard.section.custom_hf_hint": "Custom HF (заполни если выбрана 'Custom HuggingFace'):",
+  "wizard.section.ctx_size": "Размер контекста",
+  "wizard.section.kv_cache": "Квантизация KV cache",
+  "wizard.section.threads": "CPU потоки",
+  "wizard.section.parallel": "Параллельные слоты (concurrent requests)",
+  "wizard.section.services": "Сервисы ({total} доступно — выбраны defaults)",
+
+  "wizard.placeholder.domain": "lab.your-domain.com",
+  "wizard.placeholder.cf_token": "вставь токен (скрыто)",
+  "wizard.placeholder.model_repo": "HF repo: user/repo-name",
+  "wizard.placeholder.model_file": "GGUF файл: model.Q4_K_M.gguf",
+
+  "wizard.btn.preview": "Preview",
+  "wizard.btn.apply": "Применить",
+  "wizard.btn.quit": "Выйти",
+  "wizard.btn.next": "Далее",
+  "wizard.btn.back": "Назад",
+  "wizard.btn.close": "Закрыть",
+
+  "wizard.validation.domain_required": "домен должен содержать '.' (e.g. lab.yourcompany.com)",
+  "wizard.validation.token_short": "CF API токен < 20 chars — неверный",
+  "wizard.validation.no_services": "Выбери хотя бы один сервис",
+  "wizard.validation.no_docker": "Docker не установлен — apt install docker.io",
+
+  "wizard.toast.validation_errors_title": "Ошибки валидации",
+  "wizard.toast.cannot_apply_title": "Невозможно применить",
+  "wizard.toast.render_failed_title": "Render failed",
+  "wizard.toast.preview_title": "Preview"
 }

@@ -4,9 +4,53 @@ from __future__ import annotations
 
 import pytest
 
-from agmind.i18n import detect_lang, t
+from agmind.i18n import _load, detect_lang, t
 
 pytestmark = pytest.mark.backend_any
+
+
+# ---- Phase M3.T: wizard catalogs coverage ----
+
+
+WIZARD_KEYS = (
+    "wizard.title",
+    "wizard.section.domain",
+    "wizard.section.cf_token",
+    "wizard.section.backend",
+    "wizard.section.model",
+    "wizard.section.ctx_size",
+    "wizard.section.kv_cache",
+    "wizard.section.threads",
+    "wizard.section.parallel",
+    "wizard.section.services",
+    "wizard.placeholder.domain",
+    "wizard.placeholder.cf_token",
+    "wizard.btn.preview",
+    "wizard.btn.apply",
+    "wizard.btn.next",
+    "wizard.btn.back",
+    "wizard.toast.validation_errors_title",
+)
+
+
+def test_all_wizard_keys_present_in_en() -> None:
+    en = _load("en")
+    for k in WIZARD_KEYS:
+        assert k in en, f"missing en key: {k}"
+
+
+def test_all_wizard_keys_present_in_ru() -> None:
+    ru = _load("ru")
+    for k in WIZARD_KEYS:
+        assert k in ru, f"missing ru key: {k}"
+
+
+def test_wizard_section_services_interpolates() -> None:
+    en = t("wizard.section.services", lang="en")
+    ru = t("wizard.section.services", lang="ru")
+    assert "{total}" in en
+    assert "{total}" in ru
+    assert en.format(total=33) == "Services (33 available — defaults preselected)"
 
 
 def test_detect_lang_default_en(monkeypatch: pytest.MonkeyPatch) -> None:
