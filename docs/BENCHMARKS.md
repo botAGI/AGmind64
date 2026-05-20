@@ -154,7 +154,7 @@ Reproduce — standalone (no agmind deploy required):
 
 ```bash
 docker run --rm \
-  -v ~/AGmindx86/models:/models:ro \
+  -v ~/.local/share/agmind/models:/models:ro \
   --device /dev/dri \
   --group-add video --group-add render \
   --security-opt seccomp=unconfined \
