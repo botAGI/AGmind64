@@ -395,6 +395,79 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- upgrade subcommand group (Phase M3.R) ----
+    upgrade_app = typer.Typer(
+        name="upgrade",
+        help="Bump pinned image versions + safely redeploy с rollback.",
+        no_args_is_help=False,
+        invoke_without_command=True,
+    )
+    app.add_typer(upgrade_app)
+
+    @upgrade_app.callback(invoke_without_command=True)
+    def upgrade_cb(
+        ctx: typer.Context,
+        component: str | None = typer.Option(
+            None, "--component", "-c",
+            help="Service name (e.g. ragflow). Bump его image tag.",
+        ),
+        version: str | None = typer.Option(
+            None, "--version", "-v",
+            help="Target tag (e.g. v0.25.5). Required с --component.",
+        ),
+        digest: str | None = typer.Option(
+            None, "--digest",
+            help="Optional sha256 digest (без `sha256:` prefix).",
+        ),
+        check: bool = typer.Option(
+            False, "--check",
+            help="Run version_check.py scanner и выйти.",
+        ),
+        apply: bool = typer.Option(
+            False, "--apply",
+            help="Re-deploy after bump (uses Phase L.B runner).",
+        ),
+        rollback: bool = typer.Option(
+            False, "--rollback",
+            help="Revert last bump (read latest state + restore template).",
+        ),
+        force: bool = typer.Option(
+            False, "--force",
+            help="Bump даже если pin в version_holds.yaml.",
+        ),
+    ) -> None:
+        """Phase M3.R: upgrade lifecycle."""
+        if ctx.invoked_subcommand is not None:
+            return
+
+        from agmind.cli.upgrade_cmd import (
+            cmd_apply,
+            cmd_check,
+            cmd_component,
+            cmd_rollback,
+        )
+
+        if check:
+            raise typer.Exit(code=cmd_check())
+        if rollback:
+            raise typer.Exit(code=cmd_rollback())
+        if apply and not component:
+            raise typer.Exit(code=cmd_apply())
+        if component:
+            if version is None:
+                typer.echo("ERROR: --component requires --version", err=True)
+                raise typer.Exit(code=2)
+            rc = cmd_component(
+                service=component, version=version, force=force, digest=digest,
+            )
+            if rc != 0 or not apply:
+                raise typer.Exit(code=rc)
+            raise typer.Exit(code=cmd_apply())
+
+        typer.echo("Usage: agmind upgrade [--check | --component X --version Y "
+                  "[--apply] | --apply | --rollback]")
+        raise typer.Exit(code=2)
+
     # ---- models subcommand group (Phase M3.Q) ----
     models_app = typer.Typer(
         name="models",
