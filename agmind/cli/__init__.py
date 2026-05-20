@@ -395,6 +395,72 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- ops subcommands: logs / shell / backup / restore (Phase L.E) ----
+
+    @app.command()
+    def logs(
+        service: str | None = typer.Argument(
+            None, help="Service name (omit для всех сервисов)."
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"), "--install-dir", help="Deployment dir."
+        ),
+        tail: int = typer.Option(200, "--tail", help="Initial backlog lines."),
+        follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+    ) -> None:
+        """Stream docker compose logs."""
+        from agmind.cli.ops_cmd import cmd_logs
+
+        raise typer.Exit(code=cmd_logs(service, install_dir, tail, follow))
+
+    @app.command()
+    def shell(
+        service: str = typer.Argument(..., help="Service name."),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"), "--install-dir", help="Deployment dir."
+        ),
+        cmd: str = typer.Option(
+            "/bin/sh", "--cmd", help="Command to run (default /bin/sh)."
+        ),
+        workdir: str | None = typer.Option(
+            None, "--workdir", "-w", help="Working dir внутри container."
+        ),
+    ) -> None:
+        """Open shell inside running service container (docker compose exec)."""
+        from agmind.cli.ops_cmd import cmd_shell
+
+        # shlex.split чтобы поддержать `--cmd "python -m foo"`
+        import shlex
+
+        cmd_list = shlex.split(cmd) if cmd else None
+        raise typer.Exit(code=cmd_shell(service, install_dir, cmd_list, workdir))
+
+    @app.command()
+    def backup(
+        output: Path = typer.Option(
+            ...,
+            "--output",
+            "-o",
+            help="Path для .tar.gz (e.g. agmind-2026-05-20.tar.gz).",
+        ),
+    ) -> None:
+        """Create tar.gz backup of compose / .env / state / snapshots (Phase L.E)."""
+        from agmind.cli.ops_cmd import cmd_backup
+
+        raise typer.Exit(code=cmd_backup(output))
+
+    @app.command()
+    def restore(
+        backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
+        yes: bool = typer.Option(
+            False, "-y", "--yes", help="Skip interactive confirmation."
+        ),
+    ) -> None:
+        """Restore deployment from `agmind backup` archive (Phase L.E)."""
+        from agmind.cli.ops_cmd import cmd_restore
+
+        raise typer.Exit(code=cmd_restore(backup_file, yes=yes))
+
     # ---- migrate subcommand group (Phase L.D) ----
     migrate_app = typer.Typer(
         name="migrate",
