@@ -28,7 +28,34 @@ from typing import ClassVar
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.validation import Function, ValidationResult, Validator
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select, Static
+
+
+class DomainValidator(Validator):
+    """Inline validator для domain Input — non-empty + содержит точку + не placeholder."""
+
+    def validate(self, value: str) -> ValidationResult:
+        v = value.strip()
+        if not v:
+            return self.failure("required (e.g. lab.example.com)")
+        if "." not in v:
+            return self.failure("must contain '.'")
+        if v == "agmind.dev":
+            return self.failure("agmind.dev is placeholder — use your own")
+        return self.success()
+
+
+class TokenLengthValidator(Validator):
+    """Inline validator для CF API token — empty OK (filled later), ≥20 chars если есть."""
+
+    def validate(self, value: str) -> ValidationResult:
+        v = value.strip()
+        if not v:
+            return self.success()  # empty ok (token loaded из --cf-token-file)
+        if len(v) < 20:
+            return self.failure(f"too short ({len(v)} chars, expected ≥20)")
+        return self.success()
 
 
 class AGCheckbox(Checkbox):
@@ -393,6 +420,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 placeholder="lab.yourdomain.com",
                 id="domain-input",
                 value=self.state.domain,
+                validators=[DomainValidator()],
             )
 
             yield Label("Cloudflare API token (Zone:DNS:Edit)", classes="section")
@@ -401,6 +429,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 id="cf-token-input",
                 value=self.state.cf_api_token,
                 password=True,
+                validators=[TokenLengthValidator()],
             )
 
             yield Label("Backend", classes="section")
@@ -649,6 +678,9 @@ class AgmindSetupApp(App[SetupState | None]):
         state = self._collect_state()
         errors = self._validate(state)
         if errors:
+            # Phase M3.S.1: toast вместо persistent status-msg
+            self.notify("\n".join(errors), title="Validation errors",
+                        severity="error", timeout=8.0)
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 
@@ -660,6 +692,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 traefik_enabled=True,
             )
         except Exception as exc:  # noqa: BLE001
+            self.notify(str(exc), title="Render failed", severity="error", timeout=10.0)
             self._set_status(f"❌ render failed: {exc}", kind="error")
             return
 
@@ -684,17 +717,28 @@ class AgmindSetupApp(App[SetupState | None]):
         lines = preview.splitlines()
         self.preview_text = preview
         status_kind = "error" if missing_deps else "success"
-        self._set_status(
-            f"✓ Compose rendered ({len(lines)} lines). "
+        summary = (
+            f"Compose rendered ({len(lines)} lines). "
             f"Services: {len(state.services)}. "
-            f"Backend: {state.backend}. Domain: {state.domain}.{dep_warn}{compat_warn}",
-            kind=status_kind,
+            f"Backend: {state.backend}. Domain: {state.domain}."
         )
+        self._set_status(f"✓ {summary}{dep_warn}{compat_warn}", kind=status_kind)
+        # Phase M3.S.1: Toast для immediate feedback (status-msg остаётся как
+        # archive — toast исчезает 4s)
+        severity = "information"
+        if missing_deps:
+            severity = "warning"
+        elif compat_warn:
+            severity = "warning"
+        self.notify(summary + (compat_warn or ""), title="Preview", severity=severity)
 
     def action_submit(self) -> None:
         state = self._collect_state()
         errors = self._validate(state)
         if errors:
+            # Phase M3.S.1: toast + status — toast вылетает первым (visible)
+            self.notify("\n".join(errors), title="Cannot apply",
+                        severity="error", timeout=10.0)
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 

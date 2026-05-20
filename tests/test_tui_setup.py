@@ -122,6 +122,65 @@ def test_state_explicit_services_overrides_default() -> None:
     assert s.services == ["traefik", "llama-llm"]
 
 
+# ---------- Phase M3.S.1: inline Input validators ----------
+
+
+def test_domain_validator_empty_fails() -> None:
+    from agmind.cli.tui.setup_wizard import DomainValidator
+
+    v = DomainValidator()
+    result = v.validate("")
+    assert not result.is_valid
+    assert "required" in (result.failure_descriptions[0] if result.failure_descriptions else "")
+
+
+def test_domain_validator_no_dot_fails() -> None:
+    from agmind.cli.tui.setup_wizard import DomainValidator
+
+    result = DomainValidator().validate("localhost")
+    assert not result.is_valid
+    assert "'." in (result.failure_descriptions[0] if result.failure_descriptions else "")
+
+
+def test_domain_validator_placeholder_rejected() -> None:
+    from agmind.cli.tui.setup_wizard import DomainValidator
+
+    result = DomainValidator().validate("agmind.dev")
+    assert not result.is_valid
+    assert "placeholder" in (result.failure_descriptions[0] if result.failure_descriptions else "")
+
+
+def test_domain_validator_valid_passes() -> None:
+    from agmind.cli.tui.setup_wizard import DomainValidator
+
+    for v in ("lab.example.com", "agi.mycorp.io", "x.y.z.test"):
+        result = DomainValidator().validate(v)
+        assert result.is_valid, f"{v} should be valid"
+
+
+def test_token_validator_empty_ok() -> None:
+    from agmind.cli.tui.setup_wizard import TokenLengthValidator
+
+    # Empty OK — token может load'нуться из --cf-token-file
+    result = TokenLengthValidator().validate("")
+    assert result.is_valid
+
+
+def test_token_validator_short_fails() -> None:
+    from agmind.cli.tui.setup_wizard import TokenLengthValidator
+
+    result = TokenLengthValidator().validate("abc123")
+    assert not result.is_valid
+    assert "too short" in (result.failure_descriptions[0] if result.failure_descriptions else "")
+
+
+def test_token_validator_long_passes() -> None:
+    from agmind.cli.tui.setup_wizard import TokenLengthValidator
+
+    result = TokenLengthValidator().validate("X" * 40)
+    assert result.is_valid
+
+
 def test_state_default_model_settings_phase_n_g() -> None:
     """Phase N.G: SetupState имеет model_id / ctx_size / kv_cache_type defaults."""
     s = SetupState()

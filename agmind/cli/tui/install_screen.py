@@ -116,7 +116,9 @@ class InstallProgressScreen(Screen[InstallResult]):
             for step in self.steps:
                 yield Static(self._step_line(step), id=f"install-step-{step.step_id}")
 
-        yield ProgressBar(total=100, id="step-progress-bar", show_eta=False)
+        # Phase M3.S.1: show_eta=True — ETA полезно для long-running steps
+        # (model download / docker pull).
+        yield ProgressBar(total=100, id="step-progress-bar", show_eta=True)
 
         with Vertical(id="log-panel"):
             yield Label("Live log:", classes="section")
