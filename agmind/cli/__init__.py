@@ -407,13 +407,29 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             None, "--cf-token-file",
             help="File с Cloudflare API token (skip prompt if set, chmod 600).",
         ),
+        model_id: str = typer.Option(
+            "", "--model-id",
+            help="Curated model id (см. `agmind install --list-models`) или 'custom'.",
+        ),
         model_repo: str = typer.Option(
-            "0xSero/Qwen3.6-35B-A3B-GGUF-Strix", "--model-repo",
-            help="HuggingFace repo с GGUF model (set --model-file='' to skip)",
+            "", "--model-repo",
+            help="HF repo (для custom). Перекрывает curated.",
         ),
         model_file: str = typer.Option(
-            "Qwen3.6-35B-A3B-Q4_K_M.gguf", "--model-file",
-            help="GGUF filename внутри repo (empty string = no model download).",
+            "", "--model-file",
+            help="GGUF filename. Empty + non-custom id → resolved из catalog.",
+        ),
+        ctx_size: int = typer.Option(
+            0, "--ctx-size",
+            help="Context size override (0 = use wizard / model suggested).",
+        ),
+        kv_cache: str = typer.Option(
+            "", "--kv-cache",
+            help="KV cache quant (q8_0 / q4_0 / f16). Empty = wizard default.",
+        ),
+        list_models: bool = typer.Option(
+            False, "--list-models",
+            help="Print curated model catalog и выйти.",
         ),
         no_tui: bool = typer.Option(
             False, "--no-tui",
@@ -436,11 +452,25 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             SetupState,
             run_setup_wizard,
         )
+        from agmind.install.models import CURATED_MODELS, find_by_id
         from agmind.install.orchestrator import (
             InstallConfig,
             InstallOrchestrator,
         )
         from agmind.install.steps import default_steps
+
+        # 0. --list-models — print catalog и выйти
+        if list_models:
+            typer.echo(f"{'ID':<22} {'NAME':<35} {'SIZE':>8} {'QUANT':<8} CTX")
+            typer.echo("-" * 90)
+            for m in CURATED_MODELS:
+                marker = "★" if m.strix_tested else " "
+                typer.echo(
+                    f"{marker} {m.id:<20} {m.name:<35} {m.size_gib:>6.1f}GB "
+                    f"{m.quant:<8} {m.suggested_ctx}"
+                )
+            typer.echo("\n★ = measured on Strix Halo (Phase H verified)")
+            raise typer.Exit(code=0)
 
         # 1. Sudo password — раньше чем что-либо.
         try:
@@ -452,10 +482,15 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             typer.echo("aborted: empty sudo password", err=True)
             raise typer.Exit(code=2)
 
-        # 2. Wizard для domain/token/services (или skip если все CLI flags заданы).
+        # 2. Wizard для domain/token/services (или skip если no_tui).
         initial = SetupState(
             domain=domain or "",
             cf_api_token=cf_token_file.read_text().strip() if cf_token_file else "",
+            model_id=model_id or "qwen36-a3b-q4km",
+            model_repo=model_repo,
+            model_file=model_file,
+            ctx_size=ctx_size or 16384,
+            kv_cache_type=kv_cache or "q8_0",
         )
         if not no_tui:
             wizard_state = run_setup_wizard(initial_state=initial, auto_deploy=False)
@@ -465,14 +500,23 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         else:
             wizard_state = initial
 
-        # 3. Build install config.
+        # 3. Resolve final model repo/file (curated or custom).
+        final_repo, final_file = wizard_state.resolve_model_repo_file()
+        # CLI flags override wizard values if provided.
+        if model_repo:
+            final_repo = model_repo
+        if model_file:
+            final_file = model_file
+
         config = InstallConfig(
             domain=wizard_state.domain,
             cf_api_token=wizard_state.cf_api_token,
             services=wizard_state.services,
             backend=wizard_state.backend,
-            model_repo=model_repo if model_file else None,
-            model_file=model_file if model_file else None,
+            model_repo=final_repo if final_file else None,
+            model_file=final_file if final_file else None,
+            ctx_size=ctx_size or wizard_state.ctx_size,
+            kv_cache_type=kv_cache or wizard_state.kv_cache_type,
             sudo_password=sudo_pw,
         )
 

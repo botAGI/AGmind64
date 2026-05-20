@@ -75,6 +75,19 @@ class SetupState:
     model_tier: str = "auto"
     install_dir: str = str(DEFAULT_INSTALL_DIR)
 
+    # Phase N.G: model selector + inference settings.
+    # model_id != "custom" → use curated catalog. id == "custom" → repo/file заполняет user.
+    model_id: str = "qwen36-a3b-q4km"
+    """Curated catalog id (agmind.install.models.CURATED_MODELS) or 'custom'."""
+    model_repo: str = ""
+    """HF repo id, e.g. 'TheBloke/Llama-2-7B-GGUF'. Filled из catalog или вручную."""
+    model_file: str = ""
+    """GGUF filename inside repo. Empty = skip model download step."""
+    ctx_size: int = 16384
+    """llama-server --ctx-size flag."""
+    kv_cache_type: str = "q8_0"
+    """KV cache quant (passed как both --cache-type-k и --cache-type-v)."""
+
     def to_json(self, path: Path) -> None:
         """Save state (БЕЗ cf_api_token — он в secret file)."""
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +98,23 @@ class SetupState:
     @classmethod
     def from_json(cls, path: Path) -> SetupState:
         data = json.loads(path.read_text(encoding="utf-8"))
+        # Phase N.G fields may be missing в old state.json — backward-compat
+        # default'ы из @dataclass.
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        data = {k: v for k, v in data.items() if k in known}
         return cls(**data)
+
+    def resolve_model_repo_file(self) -> tuple[str, str]:
+        """Resolve final (repo, file) for download/template — curated id или custom values."""
+        if self.model_id == "custom":
+            return self.model_repo, self.model_file
+        from agmind.install.models import find_by_id
+
+        entry = find_by_id(self.model_id)
+        if entry is not None:
+            return entry.repo, entry.file
+        # Fallback — id not found, use raw fields
+        return self.model_repo, self.model_file
 
 
 @dataclass(frozen=True)
@@ -378,6 +407,53 @@ class AgmindSetupApp(App[SetupState | None]):
                 allow_blank=False,
             )
 
+            # Phase N.G: model selector
+            from agmind.install.models import (
+                CTX_SIZE_PRESETS,
+                KV_CACHE_TYPES,
+                models_for_wizard,
+            )
+            yield Label("Model", classes="section")
+            model_options = models_for_wizard()
+            model_options.append(("Custom HuggingFace…", "custom"))
+            yield Select(
+                model_options,
+                id="model-select",
+                value=self.state.model_id,
+                allow_blank=False,
+            )
+            # Inputs для custom HF — видны всегда, заполняются если выбран Custom
+            yield Static(
+                "Custom HF (fill only если выбран 'Custom HuggingFace'):",
+                classes="hint",
+            )
+            yield Input(
+                placeholder="HF repo id: user/repo-name",
+                id="model-repo-input",
+                value=self.state.model_repo,
+            )
+            yield Input(
+                placeholder="GGUF filename: model.Q4_K_M.gguf",
+                id="model-file-input",
+                value=self.state.model_file,
+            )
+
+            yield Label("Context size", classes="section")
+            yield Select(
+                [(label, str(n)) for n, label in CTX_SIZE_PRESETS],
+                id="ctx-size-select",
+                value=str(self.state.ctx_size),
+                allow_blank=False,
+            )
+
+            yield Label("KV cache quantization", classes="section")
+            yield Select(
+                [(label, val) for val, label in KV_CACHE_TYPES],
+                id="kv-cache-select",
+                value=self.state.kv_cache_type,
+                allow_blank=False,
+            )
+
             total = sum(len(svcs) for svcs in self.services_by_tier.values())
             yield Label(f"Services ({total} available — defaults preselected)", classes="section")
             with Container(id="service-checkboxes"):
@@ -436,6 +512,28 @@ class AgmindSetupApp(App[SetupState | None]):
                 if cb.value:
                     services.append(name)
 
+        # Phase N.G: model + context settings
+        model_select = self.query_one("#model-select", Select)
+        model_id = str(model_select.value) if model_select.value is not None else "qwen36-a3b-q4km"
+        model_repo = self.query_one("#model-repo-input", Input).value.strip()
+        model_file = self.query_one("#model-file-input", Input).value.strip()
+        # If curated id selected — resolve repo+file из catalog (overrides empty inputs)
+        if model_id != "custom":
+            from agmind.install.models import find_by_id
+            entry = find_by_id(model_id)
+            if entry is not None:
+                model_repo = entry.repo
+                model_file = entry.file
+
+        ctx_select = self.query_one("#ctx-size-select", Select)
+        try:
+            ctx_size = int(str(ctx_select.value)) if ctx_select.value is not None else 16384
+        except ValueError:
+            ctx_size = 16384
+
+        kv_select = self.query_one("#kv-cache-select", Select)
+        kv_cache_type = str(kv_select.value) if kv_select.value is not None else "q8_0"
+
         return SetupState(
             domain=domain,
             cf_api_token=cf_token,
@@ -444,6 +542,11 @@ class AgmindSetupApp(App[SetupState | None]):
             backend=backend,
             model_tier=self.detected.recommended_tier,
             install_dir=self.state.install_dir,
+            model_id=model_id,
+            model_repo=model_repo,
+            model_file=model_file,
+            ctx_size=ctx_size,
+            kv_cache_type=kv_cache_type,
         )
 
     def _validate(self, state: SetupState) -> list[str]:

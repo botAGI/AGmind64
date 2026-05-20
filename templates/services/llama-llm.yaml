@@ -13,30 +13,34 @@ env:
   AMD_VULKAN_ICD: RADV
   VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
   GGML_VK_VISIBLE_DEVICES: '0'
-# Phase H runtime flags — community-tuned для Qwen3.6-35B-A3B MoE на gfx1151
-# (см. .planning/research/x86-migration/R16-qwen-strix-halo-flags.md).
-# Менять модель → менять --model arg; bench show Q4_K_M = 70.2 t/s decode.
+  # Phase N.G: model + context settings populated from InstallConfig.
+  # Defaults match Qwen3.6-35B-A3B Q4_K_M baseline (Phase H verified).
+  AGMIND_MODEL_FILE: ${AGMIND_MODEL_FILE:-Qwen3.6-35B-A3B-Q4_K_M.gguf}
+  AGMIND_CTX_SIZE: ${AGMIND_CTX_SIZE:-16384}
+  AGMIND_KV_CACHE: ${AGMIND_KV_CACHE:-q8_0}
+# Community-tuned runtime flags для MoE на gfx1151 (см. R16).
+# Менять модель / контекст / KV cache → через env vars (см. AGMIND_MODEL_FILE).
 command:
 - --host
 - 0.0.0.0
 - --port
 - '8080'
 - --model
-- /models/Qwen3.6-35B-A3B-Q4_K_M.gguf
+- /models/${AGMIND_MODEL_FILE}
 - -ngl
 - '999'
 - --flash-attn
 - --cache-type-k
-- q8_0
+- ${AGMIND_KV_CACHE}
 - --cache-type-v
-- q8_0
+- ${AGMIND_KV_CACHE}
 - --ubatch-size
 - '2048'
 - --batch-size
 - '2048'
 - --no-mmap
 - --ctx-size
-- '16384'
+- ${AGMIND_CTX_SIZE}
 devices:
 - /dev/dri
 group_add:

@@ -122,6 +122,78 @@ def test_state_explicit_services_overrides_default() -> None:
     assert s.services == ["traefik", "llama-llm"]
 
 
+def test_state_default_model_settings_phase_n_g() -> None:
+    """Phase N.G: SetupState имеет model_id / ctx_size / kv_cache_type defaults."""
+    s = SetupState()
+    assert s.model_id == "qwen36-a3b-q4km"
+    assert s.ctx_size == 16384
+    assert s.kv_cache_type == "q8_0"
+
+
+def test_resolve_model_repo_file_curated() -> None:
+    """resolve_model_repo_file() возвращает curated repo/file для known id."""
+    s = SetupState(model_id="qwen36-a3b-q4km")
+    repo, file = s.resolve_model_repo_file()
+    assert repo == "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"
+    assert file == "Qwen3.6-35B-A3B-Q4_K_M.gguf"
+
+
+def test_resolve_model_repo_file_custom() -> None:
+    """resolve_model_repo_file() с id='custom' возвращает raw model_repo/file."""
+    s = SetupState(model_id="custom", model_repo="my/repo", model_file="x.gguf")
+    repo, file = s.resolve_model_repo_file()
+    assert repo == "my/repo"
+    assert file == "x.gguf"
+
+
+def test_resolve_model_repo_file_unknown_id_fallback() -> None:
+    """Неизвестный id → возвращает raw fields (degrade gracefully)."""
+    s = SetupState(model_id="bogus-id", model_repo="alt/repo", model_file="alt.gguf")
+    repo, file = s.resolve_model_repo_file()
+    assert repo == "alt/repo"
+    assert file == "alt.gguf"
+
+
+def test_state_json_roundtrip_phase_n_fields(tmp_path: pytest.TempPathFactory) -> None:
+    """Phase N.G fields сохраняются и читаются обратно через to_json/from_json."""
+    from pathlib import Path
+
+    s = SetupState(
+        domain="x.example",
+        model_id="custom",
+        model_repo="my/repo",
+        model_file="m.gguf",
+        ctx_size=32768,
+        kv_cache_type="q4_0",
+    )
+    path = Path(str(tmp_path)) / "state.json"
+    s.to_json(path)
+    loaded = SetupState.from_json(path)
+    assert loaded.model_id == "custom"
+    assert loaded.model_repo == "my/repo"
+    assert loaded.model_file == "m.gguf"
+    assert loaded.ctx_size == 32768
+    assert loaded.kv_cache_type == "q4_0"
+
+
+def test_state_from_json_backward_compat_missing_fields(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Старый state.json без Phase N.G полей загружается с default'ами."""
+    import json
+    from pathlib import Path
+
+    path = Path(str(tmp_path)) / "old.json"
+    path.write_text(json.dumps({
+        "domain": "old.example", "profiles": [], "services": [],
+        "backend": "auto", "model_tier": "auto", "install_dir": "/opt/agmind",
+    }))
+    loaded = SetupState.from_json(path)
+    assert loaded.domain == "old.example"
+    assert loaded.model_id == "qwen36-a3b-q4km"  # default
+    assert loaded.ctx_size == 16384  # default
+
+
 def test_get_services_by_tier_returns_grouped() -> None:
     from agmind.cli.tui.setup_wizard import _TIER_ORDER, get_services_by_tier
 

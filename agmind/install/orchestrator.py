@@ -93,6 +93,10 @@ class InstallConfig:
     install_dir: Path = DEFAULT_INSTALL_DIR
     models_dir: Path = DEFAULT_MODELS_DIR
     sudo_password: str | None = None  # secret — очищается после bootstrap
+    # Phase N.G: inference settings passed to llama-server via env vars
+    # (compose template reads AGMIND_MODEL_FILE / AGMIND_CTX_SIZE / AGMIND_KV_CACHE).
+    ctx_size: int = 16384
+    kv_cache_type: str = "q8_0"
 
     def redact(self) -> dict[str, object]:
         """Safe dict for logging — secrets replaced with ***."""
@@ -105,6 +109,8 @@ class InstallConfig:
             "model_file": self.model_file,
             "install_dir": str(self.install_dir),
             "models_dir": str(self.models_dir),
+            "ctx_size": self.ctx_size,
+            "kv_cache_type": self.kv_cache_type,
             "sudo_password": "*** (set)" if self.sudo_password else "(unset)",
         }
 

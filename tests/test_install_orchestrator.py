@@ -204,7 +204,37 @@ def test_default_steps_list_is_stable() -> None:
 
     s = default_steps()
     ids = [step.step_id for step in s]
-    assert ids == ["doctor", "bootstrap", "image_pull", "model_pull", "deploy"]
+    assert ids == ["doctor", "bootstrap", "image_pull", "model_pull", "env_write", "deploy"]
+
+
+def test_env_write_step_writes_file(tmp_path: object) -> None:
+    """EnvWriteStep creates .env с правильными vars."""
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        install_dir=tmp_path / "opt",  # type: ignore[operator]
+        model_repo="r", model_file="model.gguf",
+        ctx_size=32768, kv_cache_type="q4_0",
+    )
+    events: list[ProgressEvent] = []
+    result = EnvWriteStep().run(events.append, cfg)
+    assert result.success
+    env_file = cfg.install_dir / ".env"
+    text = env_file.read_text()
+    assert "AGMIND_DOMAIN=lab.example.com" in text
+    assert "AGMIND_MODEL_FILE=model.gguf" in text
+    assert "AGMIND_CTX_SIZE=32768" in text
+    assert "AGMIND_KV_CACHE=q4_0" in text
+
+
+def test_install_config_carries_ctx_kv(tmp_path: object) -> None:
+    cfg = _make_config(tmp_path)  # type: ignore[arg-type]
+    assert cfg.ctx_size == 16384
+    assert cfg.kv_cache_type == "q8_0"
+    payload = cfg.redact()
+    assert payload["ctx_size"] == 16384
+    assert payload["kv_cache_type"] == "q8_0"
 
 
 def test_default_steps_all_have_label() -> None:

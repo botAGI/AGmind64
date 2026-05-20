@@ -28,6 +28,14 @@ dependencies = [
   "questionary>=2.0",
   "platformdirs>=4.2",
   "pydantic>=2.7",
+  # Phase N: `agmind install` orchestrator вызывает ansible-playbook для
+  # bootstrap step (apt / usermod / mkdir). Без ansible-core install не запустится.
+  "ansible-core>=2.16",
+  "structlog>=24.0",
+  "textual>=0.80",
+  "pyfiglet>=1.0",
+  "PyYAML>=6.0",
+  "huggingface_hub>=0.24",
 ]
 
 [project.optional-dependencies]

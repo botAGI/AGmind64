@@ -391,6 +391,49 @@ class DeployStep(InstallStep):
 # ---------- step list factory ----------
 
 
+class EnvWriteStep(InstallStep):
+    """Write `/opt/agmind/.env` с runtime settings (model file, ctx, KV cache).
+
+    `templates/services/llama-llm.yaml` ссылается на эти env vars через
+    docker compose ${VAR} substitution.
+    """
+
+    step_id = "env_write"
+    label = "Write runtime .env"
+
+    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
+        start = time.monotonic()
+        env_path = config.install_dir / ".env"
+        config.install_dir.mkdir(parents=True, exist_ok=True)
+
+        lines = [
+            "# AGmind runtime env — written by `agmind install` Phase N.G.",
+            "# Hand-edit allowed, but `agmind install` rerun перепишет.",
+            f"AGMIND_DOMAIN={config.domain}",
+            f"AGMIND_MODEL_FILE={config.model_file or ''}",
+            f"AGMIND_CTX_SIZE={config.ctx_size}",
+            f"AGMIND_KV_CACHE={config.kv_cache_type}",
+        ]
+        try:
+            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            env_path.chmod(0o644)
+        except OSError as exc:
+            return InstallStepResult(
+                step_id=self.step_id, success=False,
+                message=f"cannot write {env_path}: {exc}",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+        callback(_make_event(
+            self.step_id, ProgressKind.LOG,
+            f"wrote {env_path} with model={config.model_file} ctx={config.ctx_size}",
+        ))
+        return InstallStepResult(
+            step_id=self.step_id, success=True,
+            message=f".env written ({len(lines)} vars)",
+            elapsed=timedelta(seconds=time.monotonic() - start),
+        )
+
+
 def default_steps() -> list[InstallStep]:
     """Stock install pipeline. Order matters."""
     return [
@@ -398,6 +441,7 @@ def default_steps() -> list[InstallStep]:
         BootstrapStep(),
         ImagePullStep(),
         ModelDownloadStep(),
+        EnvWriteStep(),  # before DeployStep — compose читает .env
         DeployStep(),
     ]
 
@@ -406,6 +450,7 @@ __all__ = [
     "BootstrapStep",
     "DeployStep",
     "DoctorStep",
+    "EnvWriteStep",
     "ImagePullStep",
     "ModelDownloadStep",
     "default_steps",

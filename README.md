@@ -16,16 +16,85 @@
 
 ## Quick start
 
+### One-command install (Phase N, recommended)
+
 ```bash
-# Install (после установки git):
+# Bootstrap (один раз — клонит репо и ставит Python deps):
 git clone <repo-url> agmind && cd agmind
-pip install -e ".[dev]"
+uv venv && uv pip install -e ".[dev]"  # либо `python -m venv .venv && pip install -e ".[dev]"`
 
+# End-to-end install — один prompt sudo, дальше всё в TUI:
+agmind install
+```
+
+`agmind install` запускает unified flow:
+
+```
+[sudo password]  →  TUI wizard (domain / CF token / services / model / context)
+                 →  InstallProgressScreen с live log:
+                       [✓] Preflight diagnostics          12s · 7 ok / 2 warn
+                       [✓] System bootstrap (sudo/apt)    1m 48s · ansible OK
+                       [✓] Docker image pull              2m 14s · all cached
+                       [✓] Model download (Qwen3.6 Q4_K_M) 18m · 21 GB
+                       [✓] Write runtime .env             <1s
+                       [✓] Deploy compose + healthcheck   45s · 11/11 healthy
+                 →  Summary с URLs (https://llama.yourdomain.com etc.)
+```
+
+### Selecting a model
+
+Phase N.G даёт curated catalog + custom HF input в wizard:
+
+```bash
+# List of verified models (★ = measured on this hardware):
+agmind install --list-models
+#
+# ID                     NAME                                    SIZE QUANT    CTX
+# ------------------------------------------------------------------------------------------
+# ★ qwen36-a3b-q4km      Qwen3.6-35B-A3B (MoE)                 21.2GB Q4_K_M   16384
+# ★ qwen36-a3b-q4_0      Qwen3.6-35B-A3B (MoE)                 19.7GB Q4_0     16384
+# ★ qwen36-a3b-dyn       Qwen3.6-35B-A3B (MoE, DYNAMIC mix)    19.0GB DYNAMIC  16384
+#   llama2-7b-q4_0       Llama-2-7B                             3.8GB Q4_0     4096
+#   llama2-7b-q4km       Llama-2-7B                             4.1GB Q4_K_M   4096
+#   bge-m3-q8            BGE-M3 (multilingual embed)            0.6GB Q8_0     8192
+
+# Use curated id (skip wizard):
+agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
+  --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0
+
+# Use custom HuggingFace repo / file:
+agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
+  --model-repo user/CustomGGUF --model-file model.Q5_K_M.gguf \
+  --ctx-size 32768 --kv-cache q4_0
+```
+
+В TUI wizard'е "Model" section имеет:
+- **Select** — curated catalog с пометкой ★ для tested + "Custom HuggingFace…"
+- **HF repo / filename** input'ы (заполняются если выбран Custom)
+- **Context size** — 4K / 8K / 16K / 32K / 64K / 128K presets
+- **KV cache** — q8_0 (recommended) / q4_0 (aggressive) / f16 (default llama.cpp)
+
+### Day-2 ops
+
+```bash
 # Preflight check:
-python -m agmind doctor
+agmind doctor
 
-# Backend selection probe:
-python -m agmind status
+# Backend / device info:
+agmind status
+
+# Live deployment dashboard (Phase J.2):
+agmind status --tui
+
+# Logs / shell / backup / restore (Phase L.E):
+agmind logs llama-llm -f
+agmind shell traefik --cmd "/bin/sh"
+agmind backup --output ~/agmind-backup.tar.gz
+agmind restore ~/agmind-backup.tar.gz
+
+# State schema migrations (Phase L.D):
+agmind migrate status
+agmind migrate up
 
 # Audit (запрет CUDA/aarch64/etc в основном дереве):
 make audit
