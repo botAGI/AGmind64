@@ -157,6 +157,26 @@ KV_CACHE_TYPES: tuple[tuple[str, str], ...] = (
 )
 
 
+# CPU threads — relevant для MoE / small models. Strix Halo = 16C/32T,
+# llama-server default = всё доступное. -1 = auto.
+THREADS_PRESETS: tuple[tuple[int, str], ...] = (
+    (-1, "auto (use all available cores)"),
+    (8, "8 threads — minimal"),
+    (16, "16 threads — Strix Halo balanced"),
+    (32, "32 threads — Strix Halo max (HT)"),
+)
+
+
+# Parallel slots — для concurrent serving. >1 enables continuous batching
+# (llama-server multiplexes N requests). Trade-off: VRAM × N.
+PARALLEL_PRESETS: tuple[tuple[int, str], ...] = (
+    (1, "1 — serial (default, безопасно)"),
+    (2, "2 — light concurrency"),
+    (4, "4 — moderate (нужно ~2× ctx VRAM)"),
+    (8, "8 — heavy multi-tenant (нужно ~4× ctx VRAM)"),
+)
+
+
 def find_by_id(model_id: str) -> ModelEntry | None:
     """Lookup curated model by short id."""
     for m in CURATED_MODELS:
@@ -191,6 +211,8 @@ __all__ = [
     "CTX_SIZE_PRESETS",
     "CURATED_MODELS",
     "KV_CACHE_TYPES",
+    "PARALLEL_PRESETS",
+    "THREADS_PRESETS",
     "ModelEntry",
     "ModelKind",
     "default_model_id",

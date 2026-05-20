@@ -282,7 +282,8 @@ def test_model_download_idempotent_if_present(tmp_path: Path) -> None:
     (cfg.models_dir / "model.gguf").write_bytes(b"\x00" * (200 * 1024 * 1024))
     result = ModelDownloadStep().run(lambda _e: None, cfg)
     assert result.success is True
-    assert "already present" in result.message
+    # Phase N.H rename: "already present" → "reused" (semantic same)
+    assert "reused" in result.message.lower() or "already present" in result.message
 
 
 # ---------- BootstrapStep — no sudo password rejected ----------

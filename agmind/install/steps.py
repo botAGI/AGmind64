@@ -288,12 +288,51 @@ class ImagePullStep(InstallStep):
 
 
 class ModelDownloadStep(InstallStep):
-    """Download model from HF (если model_repo + model_file заданы)."""
+    """Download model from HF (если model_repo + model_file заданы).
+
+    Detect logic (skip re-download если модель уже скачана):
+      1. `{models_dir}/{model_file}` (default /var/lib/agmind/models/) → reuse
+      2. User fallback `~/.local/share/agmind/models/{model_file}` → move в models_dir
+      3. None of above → curl download с resume support
+
+    Минимальный размер чтобы считать "real model" = 100 MiB (filter stubs).
+    """
 
     step_id = "model_pull"
     label = "Model download"
 
     PROGRESS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+    MIN_VALID_SIZE = 100 * 1024 * 1024  # 100 MiB — filter empty placeholders / partial
+
+    @staticmethod
+    def _fallback_dirs(config: InstallConfig) -> list[Path]:
+        """Other locations to check for already-downloaded model."""
+        from os.path import expanduser
+        candidates = [
+            Path(expanduser("~/.local/share/agmind/models")),  # XDG user fallback
+            # Future: Hugging Face HOME cache directory if user has model there.
+        ]
+        # Drop duplicates / models_dir itself
+        seen = {config.models_dir.resolve()}
+        out: list[Path] = []
+        for c in candidates:
+            r = c.resolve() if c.exists() else c
+            if r in seen:
+                continue
+            seen.add(r)
+            out.append(c)
+        return out
+
+    def _detect_existing(self, config: InstallConfig) -> tuple[Path | None, str]:
+        """Return (path, status_msg) — где модель уже есть. None если nowhere."""
+        target = config.models_dir / config.model_file
+        if target.exists() and target.stat().st_size >= self.MIN_VALID_SIZE:
+            return target, f"already present в {target.parent}"
+        for fb in self._fallback_dirs(config):
+            cand = fb / config.model_file
+            if cand.exists() and cand.stat().st_size >= self.MIN_VALID_SIZE:
+                return cand, f"found in fallback {fb}"
+        return None, "not present anywhere"
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
@@ -305,16 +344,49 @@ class ModelDownloadStep(InstallStep):
             )
 
         target = config.models_dir / config.model_file
-        if target.exists() and target.stat().st_size > 100 * 1024 * 1024:
+        config.models_dir.mkdir(parents=True, exist_ok=True)
+
+        # Detect existing — default location или fallback
+        existing, status = self._detect_existing(config)
+        if existing is not None:
+            size_mb = existing.stat().st_size // (1024 * 1024)
+            if existing == target:
+                callback(_make_event(
+                    self.step_id, ProgressKind.LOG,
+                    f"skip download: {existing} ({size_mb} MiB) — {status}",
+                ))
+                return InstallStepResult(
+                    step_id=self.step_id, success=True,
+                    message=f"reused {size_mb} MiB at {existing}",
+                    elapsed=timedelta(seconds=time.monotonic() - start),
+                )
+            # Found в fallback — move в правильное место чтобы compose volume mount работал
+            callback(_make_event(
+                self.step_id, ProgressKind.LOG,
+                f"moving {existing} → {target} (saves re-download {size_mb} MiB)",
+            ))
+            import shutil
+            try:
+                shutil.move(str(existing), str(target))
+            except OSError as exc:
+                # Cross-device move на разных FS → copy + remove
+                try:
+                    shutil.copy2(str(existing), str(target))
+                    existing.unlink()
+                except OSError as exc2:
+                    return InstallStepResult(
+                        step_id=self.step_id, success=False,
+                        message=f"cannot relocate model: {exc2} (initial: {exc})",
+                        elapsed=timedelta(seconds=time.monotonic() - start),
+                    )
             return InstallStepResult(
                 step_id=self.step_id, success=True,
-                message=f"model already present ({target.stat().st_size // (1024*1024)} MiB)",
+                message=f"relocated {size_mb} MiB from fallback → {target.parent}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
 
-        # Use curl с resume — стабильнее hf на медленной сети (см. R16 follow-up).
+        # No existing — download через curl с resume support.
         url = f"https://huggingface.co/{config.model_repo}/resolve/main/{config.model_file}"
-        config.models_dir.mkdir(parents=True, exist_ok=True)
         cmd = ["curl", "-fL", "-C", "-", "-o", str(target),
                "--progress-bar", "--retry", "3", url]
 
@@ -413,6 +485,8 @@ class EnvWriteStep(InstallStep):
             f"AGMIND_MODEL_FILE={config.model_file or ''}",
             f"AGMIND_CTX_SIZE={config.ctx_size}",
             f"AGMIND_KV_CACHE={config.kv_cache_type}",
+            f"AGMIND_THREADS={config.threads}",
+            f"AGMIND_PARALLEL={config.parallel_slots}",
         ]
         try:
             env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

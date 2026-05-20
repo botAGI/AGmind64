@@ -87,6 +87,10 @@ class SetupState:
     """llama-server --ctx-size flag."""
     kv_cache_type: str = "q8_0"
     """KV cache quant (passed как both --cache-type-k и --cache-type-v)."""
+    threads: int = -1
+    """llama-server --threads. -1 = auto (server picks CPU count)."""
+    parallel_slots: int = 1
+    """llama-server --parallel. >1 enables continuous batching N concurrent requests."""
 
     def to_json(self, path: Path) -> None:
         """Save state (БЕЗ cf_api_token — он в secret file)."""
@@ -454,6 +458,23 @@ class AgmindSetupApp(App[SetupState | None]):
                 allow_blank=False,
             )
 
+            # Inference threads + parallel slots
+            from agmind.install.models import PARALLEL_PRESETS, THREADS_PRESETS
+            yield Label("CPU threads", classes="section")
+            yield Select(
+                [(label, str(n)) for n, label in THREADS_PRESETS],
+                id="threads-select",
+                value=str(self.state.threads),
+                allow_blank=False,
+            )
+            yield Label("Parallel slots (concurrent requests)", classes="section")
+            yield Select(
+                [(label, str(n)) for n, label in PARALLEL_PRESETS],
+                id="parallel-select",
+                value=str(self.state.parallel_slots),
+                allow_blank=False,
+            )
+
             total = sum(len(svcs) for svcs in self.services_by_tier.values())
             yield Label(f"Services ({total} available — defaults preselected)", classes="section")
             with Container(id="service-checkboxes"):
@@ -534,6 +555,18 @@ class AgmindSetupApp(App[SetupState | None]):
         kv_select = self.query_one("#kv-cache-select", Select)
         kv_cache_type = str(kv_select.value) if kv_select.value is not None else "q8_0"
 
+        threads_select = self.query_one("#threads-select", Select)
+        try:
+            threads = int(str(threads_select.value)) if threads_select.value is not None else -1
+        except ValueError:
+            threads = -1
+
+        parallel_select = self.query_one("#parallel-select", Select)
+        try:
+            parallel_slots = int(str(parallel_select.value)) if parallel_select.value is not None else 1
+        except ValueError:
+            parallel_slots = 1
+
         return SetupState(
             domain=domain,
             cf_api_token=cf_token,
@@ -547,6 +580,8 @@ class AgmindSetupApp(App[SetupState | None]):
             model_file=model_file,
             ctx_size=ctx_size,
             kv_cache_type=kv_cache_type,
+            threads=threads,
+            parallel_slots=parallel_slots,
         )
 
     def _validate(self, state: SetupState) -> list[str]:
