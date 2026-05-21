@@ -30,12 +30,24 @@ ergonomics, capability-aware service graph, multi-step TUI with i18n.
 
 ## Current position
 
-- **Milestone:** v0.3.0 (M3 UX + ops polish) — **shipped**
-- **Tip commit:** `57fd3ab` (M3.T i18n hookup) on develop
-- **Tests:** 843 passing, 0 skipped, 0 failed
-- **Audit:** 0 findings on 212 files
+- **Milestone:** v0.3.0 (M3 shipped) → **M4 in progress (cluster + UX polish bundle)**
+- **Tip commit (local):** `fafc6cb` (M4 cluster mDNS + UX bundle); push pending GH token refresh
+- **Tests:** 865 passing, 0 skipped, 0 failed
+- **Audit:** 0 findings on 215 files
 - **Doctor:** 7 ok / 2 warn / 0 fail on real Strix Halo box
-- **Today (2026-05-20):** 29 коммитов от L.D до M3.T (full M2 + M3 в один день)
+- **Cluster detect:** working — `agmind cluster {detect,advertise,status}` via mDNS
+
+## M4 wave (in progress, local-only pending push)
+
+| Phase | What | Status |
+|-------|------|--------|
+| M4.1 | Multi-step wizard теперь DEFAULT (escape via `--legacy-wizard`) | ✅ `f9b220d` (local) |
+| M4.U.1 | Cluster auto-detect via zeroconf mDNS (`agmind cluster ...`) | ✅ `fafc6cb` (local) |
+| M4.2 | `agmind setup` alias для `install` | ✅ `fafc6cb` |
+| M4.3 | i18n validators (DomainValidator/TokenLengthValidator → EN/RU) | ✅ `fafc6cb` |
+| M4.4 | doctor colored Rich output (auto-detect + NO_COLOR) | ✅ `fafc6cb` |
+| M4.5 | status `--tui` hotkeys: pause (p) / filter (f) / sort (s) | ✅ `fafc6cb` |
+| M4.6 | Install model_pull MB/s + ETA throttling | ✅ `fafc6cb` |
 
 ## Milestones
 
