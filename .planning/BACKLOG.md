@@ -1,5 +1,10 @@
 # AGmind x86 — Backlog (post-Phase P, 2026-05-20)
 
+> **M5 SHIPPED 2026-05-21:** model split + per-service settings + TUI polish round 2
+> + cluster TUI integration. 886 tests · 0 audit findings.
+> Commits: `1e63fb0` (M5.1+M5.2) + `c86b3e0` (M5.3+M5.4).
+
+
 Структурированный backlog для next sessions. Сгруппировано по
 **milestone × priority**. См. `ROADMAP.md` для phase context.
 
@@ -114,7 +119,7 @@ Bump single image pin + redeploy с rollback safety.
 
 ---
 
-## M5 v0.5.0 — Model selectors split + TUI polish round 2 (NEXT)
+## M5 v0.5.0 — Model selectors split + TUI polish round 2 ✅ SHIPPED 2026-05-21
 
 User feedback 2026-05-21 (контекст compaction approaching):
 "очень тупая логика — ты в одно окно выбора модели уебал и embedding;
