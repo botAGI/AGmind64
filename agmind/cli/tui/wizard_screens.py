@@ -40,16 +40,9 @@ from agmind.i18n import t
 
 
 def _make_step_header(step_n: int, total: int, title: str) -> Static:
-    """Factory для pip-boy style step indicator.
-
-    M4.7 — Fallout terminal: ╔══ STEP n/N · TITLE ══╗ + [▓▓░░] progress bar.
-    """
-    bar_filled = "▓" * step_n + "░" * (total - step_n)
-    text = (
-        f"[bold]╔══ STEP {step_n}/{total} · {title.upper()} "
-        f"{'═' * max(2, 60 - len(title) - 12)}╗[/bold]\n"
-        f"[bold]║   [/bold][{bar_filled}][bold]  ── ROBCO TERMLINK / AGMIND x86 ──[/bold]"
-    )
+    """Pip-boy step indicator — clean single-line bar (M4.7.2)."""
+    dots = ("●" * step_n) + ("○" * (total - step_n))
+    text = f"STEP {step_n}/{total}  ·  {title.upper()}  ·  {dots}"
     return Static(text, classes="step-header")
 
 

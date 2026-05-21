@@ -25,15 +25,16 @@ Footer {
     color: $pip-dim;
 }
 
-/* Step indicator + section labels */
+/* Step indicator — full-width centered banner */
 .step-header {
     background: $pip-bg;
     color: $pip-amber;
     text-style: bold;
-    padding: 0 1;
+    padding: 0 2;
     margin: 0;
-    height: auto;
-    border-bottom: heavy $pip-faint;
+    height: 1;
+    width: 100%;
+    text-align: center;
 }
 
 #title {
@@ -52,10 +53,17 @@ Footer {
 }
 
 #form-container {
-    margin: 0 1;
-    padding: 0 1;
+    margin: 1 4;
+    padding: 1 3;
     border: heavy $pip-faint;
     height: auto;
+    background: $pip-bg;
+}
+
+/* M4.7.2 — center wizard screen content (max-width ~100 cols) */
+VerticalScroll {
+    padding: 1 4;
+    margin: 0;
     background: $pip-bg;
 }
 
