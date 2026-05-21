@@ -302,6 +302,8 @@ class ModelDownloadStep(InstallStep):
     label = "Model download"
 
     PROGRESS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+    # M4.6: curl --progress-bar also writes speed/ETA, parse it for richer events
+    SPEED_RE = re.compile(r"(\d+\.?\d*)\s*([KMG])\s")
     MIN_VALID_SIZE = 100 * 1024 * 1024  # 100 MiB — filter empty placeholders / partial
 
     @staticmethod
@@ -390,13 +392,32 @@ class ModelDownloadStep(InstallStep):
         cmd = ["curl", "-fL", "-C", "-", "-o", str(target),
                "--progress-bar", "--retry", "3", url]
 
+        # M4.6: throttle progress updates чтобы не флудить event stream
+        last_pct = [-1]
+
         def parse_curl_pct(line: str) -> None:
             m = self.PROGRESS_RE.search(line)
             if m:
                 try:
+                    pct = int(float(m.group(1)))
+                except (ValueError, IndexError):
+                    return
+                # Only emit когда % changes by ≥1, чтобы не дублировать
+                if pct == last_pct[0]:
+                    return
+                last_pct[0] = pct
+                # Try parse speed для richer log line
+                speed_m = self.SPEED_RE.search(line)
+                speed_label = ""
+                if speed_m:
+                    val = speed_m.group(1)
+                    unit = speed_m.group(2)
+                    speed_label = f" @ {val}{unit}/s"
+                try:
                     callback(_make_event(
-                        self.step_id, ProgressKind.PROGRESS, line,
-                        pct=int(float(m.group(1))),
+                        self.step_id, ProgressKind.PROGRESS,
+                        f"download {pct}%{speed_label}",
+                        pct=pct,
                     ))
                 except (ValueError, IndexError):
                     pass

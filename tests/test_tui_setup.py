@@ -125,7 +125,9 @@ def test_state_explicit_services_overrides_default() -> None:
 # ---------- Phase M3.S.1: inline Input validators ----------
 
 
-def test_domain_validator_empty_fails() -> None:
+def test_domain_validator_empty_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase M4.3: force EN для assertion stability (validators теперь i18n)
+    monkeypatch.setenv("AGMIND_LANG", "en")
     from agmind.cli.tui.setup_wizard import DomainValidator
 
     v = DomainValidator()
@@ -134,7 +136,8 @@ def test_domain_validator_empty_fails() -> None:
     assert "required" in (result.failure_descriptions[0] if result.failure_descriptions else "")
 
 
-def test_domain_validator_no_dot_fails() -> None:
+def test_domain_validator_no_dot_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGMIND_LANG", "en")
     from agmind.cli.tui.setup_wizard import DomainValidator
 
     result = DomainValidator().validate("localhost")
@@ -142,7 +145,8 @@ def test_domain_validator_no_dot_fails() -> None:
     assert "'." in (result.failure_descriptions[0] if result.failure_descriptions else "")
 
 
-def test_domain_validator_placeholder_rejected() -> None:
+def test_domain_validator_placeholder_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGMIND_LANG", "en")
     from agmind.cli.tui.setup_wizard import DomainValidator
 
     result = DomainValidator().validate("agmind.dev")
@@ -166,7 +170,8 @@ def test_token_validator_empty_ok() -> None:
     assert result.is_valid
 
 
-def test_token_validator_short_fails() -> None:
+def test_token_validator_short_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGMIND_LANG", "en")
     from agmind.cli.tui.setup_wizard import TokenLengthValidator
 
     result = TokenLengthValidator().validate("abc123")

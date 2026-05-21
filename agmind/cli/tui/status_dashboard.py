@@ -151,10 +151,18 @@ class StatusDashboardApp(App[None]):
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("r", "refresh", "Refresh now", show=True),
+        # Phase M4.5
+        Binding("p", "toggle_pause", "Pause/resume", show=True),
+        Binding("f", "cycle_filter", "Filter", show=True),
+        Binding("s", "cycle_sort", "Sort", show=True),
     ]
 
     TITLE = "AGmind · Dashboard"
     SUB_TITLE = "live docker compose ps · J.2"
+
+    # Phase M4.5: filter / sort cycle
+    FILTER_OPTIONS = ("all", "running", "unhealthy", "exited")
+    SORT_OPTIONS = ("name", "state", "health", "uptime")
 
     def __init__(
         self,
@@ -167,6 +175,18 @@ class StatusDashboardApp(App[None]):
         self._snapshot: ComposeStateSnapshot | None = None
         self._last_refresh_ts: float = 0.0
         self._refresh_timer: object | None = None
+        # Phase M4.5 state
+        self._paused = False
+        self._filter_idx = 0   # 0 = all
+        self._sort_idx = 0     # 0 = name
+
+    @property
+    def _filter_name(self) -> str:
+        return self.FILTER_OPTIONS[self._filter_idx]
+
+    @property
+    def _sort_name(self) -> str:
+        return self.SORT_OPTIONS[self._sort_idx]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -192,12 +212,37 @@ class StatusDashboardApp(App[None]):
             self._refresh_timer = None
 
     def refresh_state(self) -> None:
+        # Phase M4.5: respect pause
+        if self._paused:
+            return
         self._snapshot = query_compose_state(self.install_dir)
         self._last_refresh_ts = time.time()
         self._update_view()
 
     def action_refresh(self) -> None:
-        self.refresh_state()
+        # Manual refresh — works даже paused
+        self._snapshot = query_compose_state(self.install_dir)
+        self._last_refresh_ts = time.time()
+        self._update_view()
+
+    def action_toggle_pause(self) -> None:
+        self._paused = not self._paused
+        self._safe_update_view()
+
+    def action_cycle_filter(self) -> None:
+        self._filter_idx = (self._filter_idx + 1) % len(self.FILTER_OPTIONS)
+        self._safe_update_view()
+
+    def action_cycle_sort(self) -> None:
+        self._sort_idx = (self._sort_idx + 1) % len(self.SORT_OPTIONS)
+        self._safe_update_view()
+
+    def _safe_update_view(self) -> None:
+        """Try update view, skip silently если widgets not mounted (unit tests)."""
+        try:
+            self._update_view()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _update_view(self) -> None:
         summary = self.query_one("#dashboard-summary", Static)
@@ -222,17 +267,46 @@ class StatusDashboardApp(App[None]):
         unhealthy_part = (
             f" · [red]Unhealthy: {snap.unhealthy}[/red]" if snap.unhealthy else ""
         )
+        # Phase M4.5: include filter/sort/pause state в header
+        pause_part = "  [yellow]⏸ PAUSED[/yellow]" if self._paused else ""
+        filter_part = (
+            f"  [dim]filter:[/dim] [bold]{self._filter_name}[/bold]"
+            if self._filter_name != "all" else ""
+        )
+        sort_part = (
+            f"  [dim]sort:[/dim] [bold]{self._sort_name}[/bold]"
+            if self._sort_name != "name" else ""
+        )
         summary.update(
             f"Install: [bold]{self.install_dir}[/bold] · "
             f"Running: [green]{snap.running}/{snap.total}[/green] · "
             f"Healthy: [green]{snap.healthy}/{snap.total}[/green]"
-            f"{unhealthy_part} · "
-            f"Refresh every {self.refresh_interval:.0f}s "
-            f"(press [bold]r[/bold] to force)"
+            f"{unhealthy_part}"
+            f"{pause_part}{filter_part}{sort_part}"
         )
 
+        # Phase M4.5: filter
+        services = list(snap.services)
+        f = self._filter_name
+        if f == "running":
+            services = [s for s in services if s.state == "running"]
+        elif f == "unhealthy":
+            services = [s for s in services if s.health == "unhealthy"]
+        elif f == "exited":
+            services = [s for s in services if s.state != "running"]
+        # Phase M4.5: sort
+        sort_key = self._sort_name
+        if sort_key == "state":
+            services.sort(key=lambda s: (s.state, s.service))
+        elif sort_key == "health":
+            services.sort(key=lambda s: (s.health, s.service))
+        elif sort_key == "uptime":
+            services.sort(key=lambda s: s.uptime)
+        else:  # name
+            services.sort(key=lambda s: (s.service, s.name))
+
         table.clear()
-        for s in snap.services:
+        for s in services:
             health = _HEALTH_GLYPH.get(s.health, s.health or "—")
             state = _STATE_GLYPH.get(s.state, s.state or "—")
             image_short = s.image if len(s.image) <= 40 else f"…{s.image[-39:]}"

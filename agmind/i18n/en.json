@@ -40,7 +40,11 @@
   "wizard.btn.close": "Close",
 
   "wizard.validation.domain_required": "domain must contain '.' (e.g. lab.yourcompany.com)",
+  "wizard.validation.domain_empty": "required (e.g. lab.example.com)",
+  "wizard.validation.domain_no_dot": "must contain '.'",
+  "wizard.validation.domain_placeholder": "agmind.dev is placeholder — use your own",
   "wizard.validation.token_short": "CF API token < 20 chars — invalid",
+  "wizard.validation.token_too_short": "too short ({n} chars, expected ≥20)",
   "wizard.validation.no_services": "Select at least one service",
   "wizard.validation.no_docker": "Docker not installed — apt install docker.io",
 

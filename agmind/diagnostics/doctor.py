@@ -359,12 +359,40 @@ def run_preflight() -> DoctorReport:
     return report
 
 
-def doctor_report(*, as_json: bool = False) -> str:
-    """Human-readable или JSON отчёт."""
+def doctor_report(*, as_json: bool = False, color: bool | None = None) -> str:
+    """Human-readable или JSON отчёт.
+
+    Phase M4.4: colored output via Rich markup. Enable controlled by:
+      - `color` kwarg (None → auto-detect: True if stdout TTY, False otherwise)
+      - `NO_COLOR=1` env var → forced off
+    """
     report = run_preflight()
     if as_json:
         return report.to_json()
 
+    # Auto-detect color support
+    if color is None:
+        import os as _os
+        import sys as _sys
+        color = (
+            _sys.stdout.isatty()
+            and _os.environ.get("NO_COLOR", "") == ""
+            and _os.environ.get("AGMIND_NO_COLOR", "") == ""
+        )
+
+    if color:
+        # Use rich to render markup → ANSI codes
+        try:
+            from rich.console import Console
+            from io import StringIO
+            buf = StringIO()
+            console = Console(file=buf, force_terminal=True, color_system="truecolor", width=120)
+            _render_colored(report, console)
+            return buf.getvalue().rstrip("\n")
+        except ImportError:
+            pass  # fall through to plain
+
+    # Plain (no color) — legacy format preserved
     lines: list[str] = []
     icons = {"ok": "✓", "warn": "⚠", "fail": "✗", "skip": "·"}
     for c in report.checks:
@@ -377,3 +405,32 @@ def doctor_report(*, as_json: bool = False) -> str:
     lines.insert(0, "")
     lines.insert(0, f"AGmind doctor — {summary['ok']} ok / {summary['warn']} warn / {summary['fail']} fail / {summary['skip']} skip")
     return "\n".join(lines)
+
+
+def _render_colored(report, console) -> None:  # type: ignore[no-untyped-def]
+    """Print doctor report через Rich console (M4.4)."""
+    summary = report.to_dict()["summary"]
+    header = (
+        f"[bold]AGmind doctor[/bold]  —  "
+        f"[green]{summary['ok']} ok[/green] / "
+        f"[yellow]{summary['warn']} warn[/yellow] / "
+        f"[red]{summary['fail']} fail[/red] / "
+        f"[dim]{summary['skip']} skip[/dim]"
+    )
+    console.print(header)
+    console.print()
+
+    style_map = {
+        "ok": ("[green]✓[/green]", "default"),
+        "warn": ("[yellow]⚠[/yellow]", "yellow"),
+        "fail": ("[red]✗[/red]", "red"),
+        "skip": ("[dim]·[/dim]", "dim"),
+    }
+    for c in report.checks:
+        glyph, msg_style = style_map.get(c.status, ("?", "default"))
+        if msg_style == "default":
+            console.print(f"  {glyph}  [bold]{c.name:<24s}[/bold] {c.message}")
+        else:
+            console.print(f"  {glyph}  [bold]{c.name:<24s}[/bold] [{msg_style}]{c.message}[/{msg_style}]")
+        if c.fix_hint and c.status in ("warn", "fail"):
+            console.print(f"      [dim]→ {c.fix_hint}[/dim]")

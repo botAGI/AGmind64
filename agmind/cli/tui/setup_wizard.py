@@ -33,16 +33,29 @@ from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Sele
 
 
 class DomainValidator(Validator):
-    """Inline validator для domain Input — non-empty + содержит точку + не placeholder."""
+    """Inline validator для domain Input — non-empty + содержит точку + не placeholder.
+
+    M4.3: messages через i18n.t() — supports EN/RU.
+    """
 
     def validate(self, value: str) -> ValidationResult:
+        from agmind.i18n import t
         v = value.strip()
         if not v:
-            return self.failure("required (e.g. lab.example.com)")
+            return self.failure(t(
+                "wizard.validation.domain_empty",
+                default="required (e.g. lab.example.com)",
+            ))
         if "." not in v:
-            return self.failure("must contain '.'")
+            return self.failure(t(
+                "wizard.validation.domain_no_dot",
+                default="must contain '.'",
+            ))
         if v == "agmind.dev":
-            return self.failure("agmind.dev is placeholder — use your own")
+            return self.failure(t(
+                "wizard.validation.domain_placeholder",
+                default="agmind.dev is placeholder — use your own",
+            ))
         return self.success()
 
 
@@ -50,11 +63,16 @@ class TokenLengthValidator(Validator):
     """Inline validator для CF API token — empty OK (filled later), ≥20 chars если есть."""
 
     def validate(self, value: str) -> ValidationResult:
+        from agmind.i18n import t
         v = value.strip()
         if not v:
             return self.success()  # empty ok (token loaded из --cf-token-file)
         if len(v) < 20:
-            return self.failure(f"too short ({len(v)} chars, expected ≥20)")
+            msg = t(
+                "wizard.validation.token_too_short",
+                default=f"too short ({{n}} chars, expected ≥20)",
+            )
+            return self.failure(msg.format(n=len(v)))
         return self.success()
 
 

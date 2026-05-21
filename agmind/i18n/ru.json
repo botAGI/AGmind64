@@ -40,7 +40,11 @@
   "wizard.btn.close": "Закрыть",
 
   "wizard.validation.domain_required": "домен должен содержать '.' (e.g. lab.yourcompany.com)",
+  "wizard.validation.domain_empty": "обязательно (e.g. lab.example.com)",
+  "wizard.validation.domain_no_dot": "должен содержать '.'",
+  "wizard.validation.domain_placeholder": "agmind.dev — placeholder, используй свой домен",
   "wizard.validation.token_short": "CF API токен < 20 chars — неверный",
+  "wizard.validation.token_too_short": "слишком короткий ({n} chars, нужно ≥20)",
   "wizard.validation.no_services": "Выбери хотя бы один сервис",
   "wizard.validation.no_docker": "Docker не установлен — apt install docker.io",
 

@@ -194,6 +194,61 @@ def test_service_state_immutable() -> None:
         s.service = "y"  # type: ignore[misc]
 
 
+# ---- Phase M4.5: filter/sort/pause ----
+
+
+def test_dashboard_filter_default_all(tmp_path: Path) -> None:
+    app = StatusDashboardApp(install_dir=tmp_path)
+    assert app._filter_name == "all"
+    assert app._sort_name == "name"
+    assert app._paused is False
+
+
+def test_dashboard_action_toggle_pause(tmp_path: Path) -> None:
+    app = StatusDashboardApp(install_dir=tmp_path)
+    assert app._paused is False
+    app.action_toggle_pause()
+    assert app._paused is True
+    app.action_toggle_pause()
+    assert app._paused is False
+
+
+def test_dashboard_action_cycle_filter(tmp_path: Path) -> None:
+    app = StatusDashboardApp(install_dir=tmp_path)
+    initial = app._filter_name
+    app.action_cycle_filter()
+    second = app._filter_name
+    assert second != initial
+    # Cycle через всех 4 → returns to first
+    for _ in range(3):
+        app.action_cycle_filter()
+    assert app._filter_name == initial
+
+
+def test_dashboard_action_cycle_sort(tmp_path: Path) -> None:
+    app = StatusDashboardApp(install_dir=tmp_path)
+    initial = app._sort_name
+    app.action_cycle_sort()
+    second = app._sort_name
+    assert second != initial
+
+
+def test_dashboard_paused_refresh_state_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """refresh_state() пропускает probe если paused."""
+    app = StatusDashboardApp(install_dir=tmp_path)
+    app._paused = True
+
+    called: list[bool] = []
+    monkeypatch.setattr(
+        "agmind.cli.tui.status_dashboard.query_compose_state",
+        lambda _i: called.append(True) or None,
+    )
+    app.refresh_state()
+    assert called == []
+
+
 def test_snapshot_computed_props() -> None:
     snap = ComposeStateSnapshot(
         services=(

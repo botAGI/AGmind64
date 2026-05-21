@@ -36,6 +36,8 @@ dependencies = [
   "pyfiglet>=1.0",
   "PyYAML>=6.0",
   "huggingface_hub>=0.24",
+  # M4.U: cluster auto-detect via mDNS (Avahi-compatible). Pure Python.
+  "zeroconf>=0.130",
 ]
 
 [project.optional-dependencies]

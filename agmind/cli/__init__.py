@@ -395,6 +395,90 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         )
         raise typer.Exit(code=rc)
 
+    # ---- setup alias for install (Phase M4.2 — legacy UX parity) ----
+    @app.command(name="setup")
+    def setup_alias(
+        domain: str | None = typer.Option(None, "--domain", envvar="AGMIND_DOMAIN"),
+        cf_token_file: Path | None = typer.Option(None, "--cf-token-file"),
+        model_id: str = typer.Option("", "--model-id"),
+        lang: str = typer.Option("", "--lang"),
+        legacy_wizard: bool = typer.Option(False, "--legacy-wizard"),
+        dry_run: bool = typer.Option(False, "--dry-run"),
+    ) -> None:
+        """Alias for `agmind install` (legacy AGmind UX parity)."""
+        # Just forward all flags to install command
+        from agmind.cli import __init__ as _cli_module  # type: ignore[attr-defined]
+
+        # Use direct invocation since typer commands are nested closures
+        if lang:
+            import os as _os
+            _os.environ["AGMIND_LANG"] = lang.strip().lower()
+
+        if dry_run:
+            typer.echo("agmind setup is alias для `agmind install`. Use `agmind install --help`.")
+            raise typer.Exit(code=0)
+
+        # Re-launch via subprocess — самый простой re-dispatch
+        import subprocess
+        import sys as _sys
+        cmd = [_sys.executable, "-m", "agmind", "install"]
+        if domain:
+            cmd.extend(["--domain", domain])
+        if cf_token_file:
+            cmd.extend(["--cf-token-file", str(cf_token_file)])
+        if model_id:
+            cmd.extend(["--model-id", model_id])
+        if lang:
+            cmd.extend(["--lang", lang])
+        if legacy_wizard:
+            cmd.append("--legacy-wizard")
+        raise typer.Exit(code=subprocess.run(cmd, check=False).returncode)
+
+    # ---- cluster subcommand group (Phase M4.U.1 — mDNS auto-detect) ----
+    cluster_app = typer.Typer(
+        name="cluster",
+        help="Multi-node coordination — mDNS-based peer discovery.",
+        no_args_is_help=True,
+    )
+    app.add_typer(cluster_app)
+
+    @cluster_app.command("detect")
+    def cluster_detect(
+        timeout: float = typer.Option(
+            3.0, "--timeout", "-t", help="Discovery duration в секундах",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Browse LAN для agmind peers via mDNS (one-shot)."""
+        from agmind.cli.cluster_cmd import cmd_detect
+
+        raise typer.Exit(code=cmd_detect(timeout=timeout, as_json=as_json))
+
+    @cluster_app.command("advertise")
+    def cluster_advertise(
+        port: int = typer.Option(
+            41423, "--port", "-p", help="Port для service advertisement",
+        ),
+        duration: float = typer.Option(
+            0.0, "--duration", "-d",
+            help="Stop после N seconds (0 = forever / Ctrl+C)",
+        ),
+    ) -> None:
+        """Publish this node как `_agmind._tcp.local.` service (daemon mode)."""
+        from agmind.cli.cluster_cmd import cmd_advertise
+
+        raise typer.Exit(code=cmd_advertise(port=port, duration=duration))
+
+    @cluster_app.command("status")
+    def cluster_status(
+        timeout: float = typer.Option(3.0, "--timeout", "-t"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show this node info + discovered peers."""
+        from agmind.cli.cluster_cmd import cmd_status
+
+        raise typer.Exit(code=cmd_status(timeout=timeout, as_json=as_json))
+
     # ---- upgrade subcommand group (Phase M3.R) ----
     upgrade_app = typer.Typer(
         name="upgrade",
