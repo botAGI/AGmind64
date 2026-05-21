@@ -271,11 +271,12 @@ _BACKEND_DESCRIPTIONS: dict[str, str] = {
 # Phase J.1.8: per-service discovery (replaces profile-based selection в UI).
 
 _TIER_LABELS: dict[str, str] = {
-    "edge": "🌐 Edge & Routing",
-    "inference": "🧠 Inference (LLM)",
-    "app": "📦 Apps",
-    "storage": "💾 Storage",
-    "ops": "📊 Operations",
+    # Phase M4.7 — Fallout pip-boy angle brackets (square parsed как markup).
+    "edge": "<NET> EDGE & ROUTING",
+    "inference": "<LLM> INFERENCE",
+    "app": "<APP> APPLICATIONS",
+    "storage": "<STR> STORAGE",
+    "ops": "<OPS> OPERATIONS",
 }
 
 # Visual tier order top-down в UI
@@ -401,8 +402,9 @@ class AgmindSetupApp(App[SetupState | None]):
         Binding("ctrl+p", "preview", "Preview diff", show=True),
     ]
 
-    TITLE = "AGmindx86 Setup Wizard"
-    SUB_TITLE = "Phase J — TUI replacement для CLI flags"
+    # Phase M4.7: Fallout pip-boy style header
+    TITLE = "ROBCO INDUSTRIES (TM) TERMLINK · AGMIND x86"
+    SUB_TITLE = "── PRIVATE LLM/RAG STACK · SETUP TERMINAL ──"
 
     def __init__(
         self,

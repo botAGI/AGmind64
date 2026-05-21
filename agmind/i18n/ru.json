@@ -32,12 +32,12 @@
   "wizard.placeholder.model_repo": "HF repo: user/repo-name",
   "wizard.placeholder.model_file": "GGUF файл: model.Q4_K_M.gguf",
 
-  "wizard.btn.preview": "Preview",
-  "wizard.btn.apply": "Применить",
-  "wizard.btn.quit": "Выйти",
-  "wizard.btn.next": "Далее",
-  "wizard.btn.back": "Назад",
-  "wizard.btn.close": "Закрыть",
+  "wizard.btn.preview": "< PREVIEW >",
+  "wizard.btn.apply": "< ПРИМЕНИТЬ >",
+  "wizard.btn.quit": "< ВЫХОД >",
+  "wizard.btn.next": "< ДАЛЕЕ >",
+  "wizard.btn.back": "< НАЗАД >",
+  "wizard.btn.close": "< ЗАКРЫТЬ >",
 
   "wizard.validation.domain_required": "домен должен содержать '.' (e.g. lab.yourcompany.com)",
   "wizard.validation.domain_empty": "обязательно (e.g. lab.example.com)",

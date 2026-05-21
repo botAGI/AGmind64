@@ -40,9 +40,16 @@ from agmind.i18n import t
 
 
 def _make_step_header(step_n: int, total: int, title: str) -> Static:
-    """Factory для 'Step N of M' header — returns plain Static widget."""
-    dots = "● " * step_n + "○ " * (total - step_n)
-    text = f"[bold]Step {step_n} of {total} · {title}[/bold]\n{dots.strip()}"
+    """Factory для pip-boy style step indicator.
+
+    M4.7 — Fallout terminal: ╔══ STEP n/N · TITLE ══╗ + [▓▓░░] progress bar.
+    """
+    bar_filled = "▓" * step_n + "░" * (total - step_n)
+    text = (
+        f"[bold]╔══ STEP {step_n}/{total} · {title.upper()} "
+        f"{'═' * max(2, 60 - len(title) - 12)}╗[/bold]\n"
+        f"[bold]║   [/bold][{bar_filled}][bold]  ── ROBCO TERMLINK / AGMIND x86 ──[/bold]"
+    )
     return Static(text, classes="step-header")
 
 
@@ -314,17 +321,26 @@ class ConfirmScreen(Screen[None]):
         yield Footer()
 
     def _summary(self, state) -> str:  # type: ignore[no-untyped-def]
+        # Phase M4.7: Fallout pip-boy STATUS REPORT
+        token_mask = "*" * min(8, len(state.cf_api_function)) if False else "*" * 8
+        line = "─" * 60
         return (
-            f"[bold]Domain:[/bold]      {state.domain}\n"
-            f"[bold]CF token:[/bold]    {'*' * 8} ({len(state.cf_api_token)} chars)\n"
-            f"[bold]Backend:[/bold]     {state.backend}\n"
-            f"[bold]Model:[/bold]       {state.model_id} → {state.model_repo}/{state.model_file}\n"
-            f"[bold]Context:[/bold]     {state.ctx_size}\n"
-            f"[bold]KV cache:[/bold]    {state.kv_cache_type}\n"
-            f"[bold]Threads:[/bold]     {state.threads}\n"
-            f"[bold]Parallel:[/bold]    {state.parallel_slots}\n"
-            f"[bold]Services:[/bold]    {len(state.services)} selected\n"
+            f"[bold]── DEPLOYMENT STATUS REPORT ──[/bold]\n"
+            f"{line}\n"
+            f"  DOMAIN ............. {state.domain}\n"
+            f"  CF API TOKEN ....... {'*' * 8} ({len(state.cf_api_token)} CHARS)\n"
+            f"  BACKEND ............ {state.backend}\n"
+            f"  MODEL .............. {state.model_id}\n"
+            f"      REPO/FILE ...... {state.model_repo}/{state.model_file}\n"
+            f"  CTX SIZE ........... {state.ctx_size}\n"
+            f"  KV CACHE ........... {state.kv_cache_type}\n"
+            f"  CPU THREADS ........ {state.threads}\n"
+            f"  PARALLEL SLOTS ..... {state.parallel_slots}\n"
+            f"{line}\n"
+            f"  SERVICES SELECTED .. {len(state.services)}\n"
             f"  {', '.join(sorted(state.services))}\n"
+            f"{line}\n"
+            f"\n  PRESS [bold]< APPLY >[/bold] TO DEPLOY · PRESS [bold]< BACK >[/bold] TO REVIEW\n"
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

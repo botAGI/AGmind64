@@ -1,19 +1,51 @@
-/* Phase J.1.10: compact TUI — узкие отступы, тонкие границы, 2-колоночный grid. */
+/* Phase M4.7: Fallout pip-boy terminal style — bright green on black,
+   box-drawing borders, ASCII brackets, monospace, docked navigation. */
+
+$pip-bg: #0a1410;
+$pip-fg: #00ff41;
+$pip-dim: #00aa2a;
+$pip-faint: #006619;
+$pip-amber: #ffb000;
+$pip-red: #ff3030;
+$pip-cursor: #00ff41;
 
 Screen {
-    background: $surface;
+    background: $pip-bg;
+    color: $pip-fg;
+}
+
+Header {
+    background: $pip-bg;
+    color: $pip-fg;
+    text-style: bold;
+}
+
+Footer {
+    background: $pip-bg;
+    color: $pip-dim;
+}
+
+/* Step indicator + section labels */
+.step-header {
+    background: $pip-bg;
+    color: $pip-amber;
+    text-style: bold;
+    padding: 0 1;
+    margin: 0;
+    height: auto;
+    border-bottom: heavy $pip-faint;
 }
 
 #title {
-    color: $accent;
+    color: $pip-amber;
     text-style: bold;
     padding: 0 1;
     text-align: center;
 }
 
 #detected-text {
-    color: $text-muted;
-    background: $boost;
+    color: $pip-dim;
+    background: $pip-bg;
     padding: 0 1;
     margin: 0 1;
     text-align: center;
@@ -22,39 +54,62 @@ Screen {
 #form-container {
     margin: 0 1;
     padding: 0 1;
-    border: tall $primary 30%;
+    border: heavy $pip-faint;
     height: auto;
+    background: $pip-bg;
 }
 
 Label.section {
     text-style: bold;
     margin: 1 0 0 0;
-    color: $accent;
+    color: $pip-amber;
 }
 
+/* Inputs */
 Input {
     margin: 0 0 1 0;
+    background: $pip-bg;
+    color: $pip-fg;
+    border: tall $pip-faint;
 }
 
+Input:focus {
+    border: tall $pip-fg;
+    background: $pip-bg;
+}
+
+Input.-invalid {
+    border: tall $pip-red;
+}
+
+/* Select */
 Select {
     margin: 0 0 1 0;
+    background: $pip-bg;
+    color: $pip-fg;
 }
 
+Select > SelectCurrent {
+    background: $pip-bg;
+    color: $pip-fg;
+    border: tall $pip-faint;
+}
+
+/* Service tier card — Fallout pip-boy panel */
 #service-checkboxes {
     height: auto;
     padding: 0;
     margin: 0;
 }
 
-/* Tier card — тонкая граница, плотные внутренности, 2 колонки чекбоксов. */
 .tier-group {
     layout: grid;
     grid-size: 2;
     grid-columns: 1fr 1fr;
     grid-gutter: 0 2;
     grid-rows: auto;
-    border: tall $accent 25%;
-    background: $boost;
+    border: heavy $pip-faint;
+    background: $pip-bg;
     margin: 0 0 1 0;
     padding: 0 1;
     height: auto;
@@ -62,7 +117,7 @@ Select {
 
 Label.tier-section {
     text-style: bold;
-    color: $accent;
+    color: $pip-amber;
     column-span: 2;
     padding: 0;
     margin: 0;
@@ -74,49 +129,142 @@ Label.tier-section {
     padding: 0;
     height: 1;
     width: 100%;
-    background: transparent;
+    background: $pip-bg;
+    color: $pip-fg;
     border: none;
 }
 
 .tier-group Checkbox:hover {
-    background: $primary 20%;
+    background: $pip-faint 50%;
 }
 
 .tier-group Checkbox.-on {
-    color: $success;
+    color: $pip-fg;
+    text-style: bold;
+}
+
+.tier-group Checkbox.-off {
+    color: $pip-dim;
+}
+
+/* Navigation bar — DOCKED bottom, never scrolls. */
+#nav-row {
+    dock: bottom;
+    align: center middle;
+    height: 3;
+    background: $pip-bg;
+    border-top: heavy $pip-faint;
+    padding: 0 1;
 }
 
 #button-row {
+    dock: bottom;
     align: center middle;
-    margin: 1 0 0 0;
     height: 3;
+    background: $pip-bg;
+    border-top: heavy $pip-faint;
+    padding: 0 1;
 }
 
-#button-row Button {
+#install-buttons {
+    dock: bottom;
+    align: center middle;
+    height: 3;
+    background: $pip-bg;
+    border-top: heavy $pip-faint;
+}
+
+Button {
+    background: $pip-bg;
+    color: $pip-fg;
+    border: tall $pip-faint;
+    text-style: bold;
     margin: 0 1;
-    min-width: 12;
+    min-width: 14;
 }
 
+Button:hover {
+    background: $pip-faint;
+    color: $pip-fg;
+    border: tall $pip-fg;
+}
+
+Button:focus {
+    border: tall $pip-amber;
+    text-style: bold reverse;
+}
+
+Button.-primary {
+    background: $pip-bg;
+    color: $pip-amber;
+    border: tall $pip-amber;
+}
+
+Button.-primary:hover {
+    background: $pip-amber 20%;
+}
+
+Button.-success {
+    background: $pip-bg;
+    color: $pip-fg;
+    border: tall $pip-fg;
+}
+
+Button.-success:focus {
+    background: $pip-fg 30%;
+    text-style: bold;
+}
+
+Button.-error {
+    background: $pip-bg;
+    color: $pip-red;
+    border: tall $pip-red;
+}
+
+/* Preview / log panels */
 #preview-box {
-    border: tall $warning 40%;
+    border: heavy $pip-faint;
     padding: 0 1;
     margin: 0 1;
     height: 16;
     overflow: auto;
+    background: $pip-bg;
+    color: $pip-fg;
 }
 
 Static.hint {
-    color: $text-muted;
+    color: $pip-dim;
     margin: 0;
     padding: 0;
     text-style: italic;
 }
 
+/* Status line */
 #status-msg {
     margin: 0 1;
     padding: 0 1;
-    color: $text-muted;
+    color: $pip-dim;
+    background: $pip-bg;
 }
 
-#status-msg.success { color: $success; text-style: bold; }
-#status-msg.error { color: $error; text-style: bold; }
+#status-msg.success { color: $pip-fg; text-style: bold; }
+#status-msg.error { color: $pip-red; text-style: bold; }
+
+/* Confirm screen summary */
+#summary-text {
+    padding: 1 2;
+    background: $pip-bg;
+    color: $pip-fg;
+    border: heavy $pip-faint;
+    margin: 0 1;
+}
+
+/* Scrollbars */
+* {
+    scrollbar-background: $pip-bg;
+    scrollbar-background-hover: $pip-bg;
+    scrollbar-background-active: $pip-bg;
+    scrollbar-color: $pip-faint;
+    scrollbar-color-hover: $pip-dim;
+    scrollbar-color-active: $pip-fg;
+}
