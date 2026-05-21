@@ -37,6 +37,20 @@ ergonomics, capability-aware service graph, multi-step TUI with i18n.
 - **Doctor:** 7 ok / 2 warn / 0 fail on real Strix Halo box
 - **Cluster detect:** working — `agmind cluster {detect,advertise,status}` via mDNS
 
+## M5 v0.5.0 NEXT — Model split + TUI polish round 2
+
+User feedback 2026-05-21: "в одно окно выбора модели уебал и embedding;
+где rerank? настройки тоже отдельные. внешний вид всё ещё очко".
+
+| Phase | What | Effort |
+|-------|------|-------:|
+| M5.1 | Split model selector: 3 sections (LLM / Embed / Rerank), filter `models_for_wizard()` by kind, SetupState с embed_/rerank_ fields | ~3h |
+| M5.2 | Per-service inference settings: AGMIND_{LLM,EMBED,RERANK}_{CTX,KV,PARALLEL} | ~1.5h |
+| M5.3 | TUI polish round 2: Rule separators, full-width hardware panel, F1 help overlay, inline hint, empty-state banner, color-coded diff, animated progress | ~2h |
+| M5.4 | Wizard cluster integration: detect peers banner в DomainScreen + "deploy to all" toggle | ~1.5h |
+
+См. `.planning/BACKLOG.md` для full DoD per task.
+
 ## M4 wave (in progress, local-only pending push)
 
 | Phase | What | Status |

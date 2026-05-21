@@ -114,6 +114,69 @@ Bump single image pin + redeploy с rollback safety.
 
 ---
 
+## M5 v0.5.0 — Model selectors split + TUI polish round 2 (NEXT)
+
+User feedback 2026-05-21 (контекст compaction approaching):
+"очень тупая логика — ты в одно окно выбора модели уебал и embedding;
+а где rerank? и настройки тоже отдельные. + внешний вид всё ещё очко."
+
+### M5.1 — Split model selector на 3 secции (LLM + Embed + Rerank)
+
+Сейчас wizard's `ModelScreen` имеет ОДИН `model-select` для всех типов
+моделей — но CURATED_MODELS уже содержит `kind="llm"|"embed"|"rerank"`.
+User видит embed-модели вместе с LLM в одном dropdown.
+
+| # | Task | Effort |
+|---|------|:------:|
+| M5.1.1 | Filter `models_for_wizard()` по kind — return 3 separate lists | 20 min |
+| M5.1.2 | SetupState: + `embed_model_id`, `embed_repo`, `embed_file`; + `rerank_model_id`, `rerank_repo`, `rerank_file` | 15 min |
+| M5.1.3 | ModelScreen split на три blocked sections: LLM / Embed / Rerank, каждая с свой curated + "Custom HF" + ctx (только LLM) | 1.5h |
+| M5.1.4 | InstallConfig + steps.ModelDownloadStep: pull all три модели (sequential) | 30 min |
+| M5.1.5 | llama-embed.yaml / llama-rerank.yaml templates параметризовать через AGMIND_EMBED_FILE / AGMIND_RERANK_FILE | 30 min |
+| M5.1.6 | Tests: per-section catalog filtering + 3-model download | 30 min |
+
+### M5.2 — Per-service inference settings
+
+Сейчас AGMIND_CTX_SIZE / KV_CACHE / THREADS / PARALLEL применяются ко
+**всем** llama-* services. Реально:
+- LLM сервер — ctx 16K-256K, KV q8_0, parallel 1+
+- Embed сервер — ctx обычно 8K (max), KV f16 (короткие inputs), parallel высокий
+- Rerank сервер — ctx 512-2048, KV f16
+
+| # | Task | Effort |
+|---|------|:------:|
+| M5.2.1 | SetupState добавить `embed_ctx_size`, `embed_kv_cache`, `embed_parallel`, `rerank_ctx_size` | 15 min |
+| M5.2.2 | EnvWriteStep пишет AGMIND_LLM_CTX_SIZE / AGMIND_EMBED_CTX_SIZE / AGMIND_RERANK_CTX_SIZE (renamed) | 30 min |
+| M5.2.3 | templates/services/llama-{embed,rerank}.yaml: command stanza с separate env vars | 30 min |
+
+### M5.3 — TUI polish round 2 ("внешний вид всё ещё очко")
+
+Concrete refinements (after M4.7.1-4 already shipped):
+
+| # | Task | Approach |
+|---|------|----------|
+| M5.3.1 | Textual `Rule` widget для visual separators между form sections | Replace empty Static с Rule(line_style="heavy", color="$pip-faint") |
+| M5.3.2 | Detected hardware: full-width Panel вверху wizard (не сейчас "одна строка dim в углу") | Use `Panel` + ASCII art-table layout |
+| M5.3.3 | Field hint inline label-side (Tooltip widget) | f"Domain    [dim](TLS, subdomain recommended)[/dim]" |
+| M5.3.4 | Empty-state визуально явный — Services screen если 0 selected | Show "[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]" banner |
+| M5.3.5 | Color-coded SetupState diff в ConfirmScreen — changed fields в amber | Compare initial vs final state |
+| M5.3.6 | Animated progress bar в InstallProgressScreen — current step pulse | Textual reactive interval @ 200ms |
+| M5.3.7 | Help overlay (F1 keybinding) — модальный screen с full keymap | New HelpScreen pushed on F1 |
+| M5.3.8 | TabbedContent или Pages для config groups (alternative к multi-step) | Investigate `from textual.widgets import TabbedContent` |
+
+### M5.4 — agmind cluster TUI integration
+
+User уже подключил второй LAN node. Сейчас `agmind cluster detect` есть.
+Wizard ServicesScreen НЕ показывает «cluster peers — deploy to all?».
+
+| # | Task |
+|---|------|
+| M5.4.1 | DomainScreen — после CF token block добавить «Cluster peers detected (N)» auto-discover banner |
+| M5.4.2 | Checkbox «Deploy on this node only / Replicate to peers» |
+| M5.4.3 | Ansible inventory generation если "replicate" + N peers |
+
+**M5 total estimate:** ~7h split на 3 sub-milestones (model split / settings / TUI polish).
+
 ## M4 v0.4.0 — Cluster + plugins (deferred)
 
 ### M4.U — Phase M cluster (multi-node)
