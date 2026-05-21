@@ -604,6 +604,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             "", "--lang",
             help="UI language (en|ru). Default — auto-detect via LANG env.",
         ),
+        legacy_wizard: bool = typer.Option(
+            False, "--legacy-wizard",
+            help="Force legacy single-screen wizard (default — multi-step с Phase M4).",
+        ),
         no_tui: bool = typer.Option(
             False, "--no-tui",
             help="CLI-only run без Textual UI (для CI / headless).",
@@ -671,7 +675,11 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             kv_cache_type=kv_cache or "q8_0",
         )
         if not no_tui:
-            wizard_state = run_setup_wizard(initial_state=initial, auto_deploy=False)
+            # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
+            ms = False if legacy_wizard else None  # None = default (multi-step)
+            wizard_state = run_setup_wizard(
+                initial_state=initial, auto_deploy=False, multi_step=ms,
+            )
             if wizard_state is None:
                 typer.echo("aborted: wizard cancelled", err=True)
                 raise typer.Exit(code=1)

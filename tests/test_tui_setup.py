@@ -314,7 +314,8 @@ async def test_app_quit_via_keybinding(monkeypatch: pytest.MonkeyPatch) -> None:
         vulkan_present=True, rocm_present=True, docker_present=True,
         recommended_tier="XL",
     )
-    app = AgmindSetupApp(detected=detected)
+    # M4.1: explicit multi_step=False для legacy single-screen test
+    app = AgmindSetupApp(detected=detected, multi_step=False)
     async with app.run_test(size=(140, 60)) as pilot:
         await pilot.press("ctrl+c")
     assert app.result_state is None
@@ -337,7 +338,8 @@ async def test_app_apply_via_keybinding_with_valid_state(
         services=["traefik", "llama-llm", "qdrant"],
         backend="vulkan",
     )
-    app = AgmindSetupApp(detected=detected, initial_state=initial)
+    # M4.1: legacy single-screen test — explicit multi_step=False
+    app = AgmindSetupApp(detected=detected, initial_state=initial, multi_step=False)
     async with app.run_test(size=(140, 60)) as pilot:
         await pilot.press("ctrl+s")
     assert app.result_state is not None

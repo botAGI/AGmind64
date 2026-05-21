@@ -400,11 +400,19 @@ class AgmindSetupApp(App[SetupState | None]):
         self.preview_text: str = ""
         self.auto_deploy = auto_deploy
         """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
-        # Phase M3.S.2: opt-in multi-step wizard via env or kwarg.
-        # Default — legacy single-screen для backward compat.
+        # Phase M4.1: multi-step wizard теперь DEFAULT.
+        # Escape hatch: AGMIND_WIZARD_LEGACY=1 или multi_step=False kwarg.
         import os as _os_module
         if multi_step is None:
-            multi_step = _os_module.environ.get("AGMIND_WIZARD_MULTISTEP", "0") == "1"
+            legacy_env = _os_module.environ.get("AGMIND_WIZARD_LEGACY", "0") == "1"
+            # Backward compat: старый AGMIND_WIZARD_MULTISTEP=0 был "off" → теперь default on
+            multistep_env = _os_module.environ.get("AGMIND_WIZARD_MULTISTEP", "")
+            if multistep_env == "0":
+                multi_step = False
+            elif legacy_env:
+                multi_step = False
+            else:
+                multi_step = True
         self.multi_step = multi_step
         # Discover profiles + backends + services-by-tier dynamically.
         self.profiles_available = get_available_profiles()
@@ -842,17 +850,21 @@ class AgmindSetupApp(App[SetupState | None]):
 def run_setup_wizard(
     initial_state: SetupState | None = None,
     auto_deploy: bool = False,
+    multi_step: bool | None = None,
 ) -> SetupState | None:
     """Launch wizard, return collected state or None если cancelled.
 
-    Если auto_deploy=True — Apply внутри wizard pushes DeployProgressScreen с
-    live прогрессом docker compose up + healthcheck wait. Без auto_deploy
-    Apply просто сохраняет config и exit'ит.
+    Args:
+        initial_state: pre-populated SetupState (для resume / CLI flags)
+        auto_deploy: True → Apply pushes DeployProgressScreen с live progress
+        multi_step: None → default per env (M4.1 — default True);
+                    True/False explicit override
     """
     detected = detect_hardware()
     app = AgmindSetupApp(
         detected=detected,
         initial_state=initial_state,
         auto_deploy=auto_deploy,
+        multi_step=multi_step,
     )
     return app.run()

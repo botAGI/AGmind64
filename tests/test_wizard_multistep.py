@@ -21,33 +21,44 @@ def _detected() -> DetectedHardware:
     )
 
 
-def test_multistep_default_off() -> None:
-    """Без env / kwarg — single-screen flow (multi_step=False)."""
+def test_multistep_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M4.1: multi-step теперь DEFAULT."""
+    for k in ("AGMIND_WIZARD_LEGACY", "AGMIND_WIZARD_MULTISTEP"):
+        monkeypatch.delenv(k, raising=False)
+    app = AgmindSetupApp(detected=_detected())
+    assert app.multi_step is True
+
+
+def test_legacy_env_forces_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AGMIND_WIZARD_LEGACY=1 → single-screen (M4.1 escape hatch)."""
+    monkeypatch.setenv("AGMIND_WIZARD_LEGACY", "1")
+    monkeypatch.delenv("AGMIND_WIZARD_MULTISTEP", raising=False)
     app = AgmindSetupApp(detected=_detected())
     assert app.multi_step is False
 
 
-def test_multistep_via_kwarg() -> None:
+def test_legacy_multistep_zero_also_disables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Backward compat: старый AGMIND_WIZARD_MULTISTEP=0 продолжает работать."""
+    monkeypatch.setenv("AGMIND_WIZARD_MULTISTEP", "0")
+    monkeypatch.delenv("AGMIND_WIZARD_LEGACY", raising=False)
+    app = AgmindSetupApp(detected=_detected())
+    assert app.multi_step is False
+
+
+def test_multistep_via_kwarg_true() -> None:
     app = AgmindSetupApp(detected=_detected(), multi_step=True)
     assert app.multi_step is True
 
 
-def test_multistep_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGMIND_WIZARD_MULTISTEP", "1")
-    app = AgmindSetupApp(detected=_detected())
-    assert app.multi_step is True
-
-
-def test_multistep_env_zero_disables(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGMIND_WIZARD_MULTISTEP", "0")
-    app = AgmindSetupApp(detected=_detected())
+def test_multistep_via_kwarg_false() -> None:
+    app = AgmindSetupApp(detected=_detected(), multi_step=False)
     assert app.multi_step is False
 
 
 def test_kwarg_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGMIND_WIZARD_MULTISTEP", "1")
-    app = AgmindSetupApp(detected=_detected(), multi_step=False)
-    assert app.multi_step is False
+    monkeypatch.setenv("AGMIND_WIZARD_LEGACY", "1")
+    app = AgmindSetupApp(detected=_detected(), multi_step=True)
+    assert app.multi_step is True
 
 
 # ---- Pilot tests (Pilot + AGMIND_LOGO_DISABLE_ANIMATION=1) ----
