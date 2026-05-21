@@ -144,7 +144,9 @@ CTX_SIZE_PRESETS: tuple[tuple[int, str], ...] = (
     (16384, "16K — default (recommended)"),
     (32768, "32K — long documents"),
     (65536, "64K — codebase / very long context"),
-    (131072, "128K — extreme (требует много VRAM/GTT)"),
+    (131072, "128K — long-form (Qwen3.6 GQA → ~+2.4 GB)"),
+    (262144, "256K — Qwen3.6 native (GQA → ~+4.8 GB on top of 32K)"),
+    (524288, "512K — extreme (experimental, нужен KV q4_0 для < 10 GB add)"),
 )
 
 

@@ -77,11 +77,41 @@ class TokenLengthValidator(Validator):
 
 
 class AGCheckbox(Checkbox):
-    """Compact checkbox with `[✓] / [ ]` glyphs вместо толстых `▐X▌` блоков."""
+    """Pip-boy checkbox: `[ ]` unselected, `[✓]` selected.
+
+    M4.7.3 fix — older AGCheckbox renderил BUTTON_INNER='✓' одинаково в обоих
+    состояниях (Textual styles differ только color). User percepted "all
+    checked". Override `_button` property чтобы glyph меняется по value.
+    """
 
     BUTTON_LEFT = "["
     BUTTON_RIGHT = "]"
     BUTTON_INNER = "✓"
+
+    @property
+    def _button(self):  # type: ignore[no-untyped-def]
+        # Override Textual ToggleButton._button: swap glyph based on .value
+        # (mainline всегда draws BUTTON_INNER, styles только color → looks like
+        # all checked even при value=False).
+        from textual.content import Content
+        from textual.style import Style
+
+        button_style = self.get_visual_style("toggle--button")
+        side_style = Style(
+            foreground=button_style.background,
+            background=self.background_colors[1],
+        )
+        inner = self.BUTTON_INNER if self.value else " "
+        return Content.assemble(
+            (self.BUTTON_LEFT, side_style),
+            (inner, button_style),
+            (self.BUTTON_RIGHT, side_style),
+        )
+
+    def watch_value(self) -> None:  # type: ignore[override]
+        # Re-render button row on toggle (force redraw, не just style swap)
+        super().watch_value()
+        self.refresh()
 
 from agmind.cli.tui.logo import AnimatedLogo
 from agmind.log import logger

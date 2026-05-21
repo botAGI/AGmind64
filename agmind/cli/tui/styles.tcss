@@ -1,13 +1,16 @@
-/* Phase M4.7: Fallout pip-boy terminal style — bright green on black,
-   box-drawing borders, ASCII brackets, monospace, docked navigation. */
+/* Phase M4.7.3 — pip-boy refined.
+ * References: charmbracelet/gum (bordered prompts), lazygit (panels),
+ * huh (form wizard), k9s (dashboard) — applied via Textual primitives.
+ */
 
 $pip-bg: #0a1410;
+$pip-bg-soft: #0e1c14;
 $pip-fg: #00ff41;
 $pip-dim: #00aa2a;
 $pip-faint: #006619;
 $pip-amber: #ffb000;
+$pip-amber-dim: #aa7000;
 $pip-red: #ff3030;
-$pip-cursor: #00ff41;
 
 Screen {
     background: $pip-bg;
@@ -16,7 +19,7 @@ Screen {
 
 Header {
     background: $pip-bg;
-    color: $pip-fg;
+    color: $pip-amber;
     text-style: bold;
 }
 
@@ -25,16 +28,17 @@ Footer {
     color: $pip-dim;
 }
 
-/* Step indicator — full-width centered banner */
+/* Step indicator — full-width banner, dim divider below */
 .step-header {
     background: $pip-bg;
     color: $pip-amber;
     text-style: bold;
-    padding: 0 2;
-    margin: 0;
-    height: 1;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: 3;
     width: 100%;
     text-align: center;
+    border-bottom: heavy $pip-faint;
 }
 
 #title {
@@ -46,64 +50,90 @@ Footer {
 
 #detected-text {
     color: $pip-dim;
-    background: $pip-bg;
-    padding: 0 1;
-    margin: 0 1;
+    background: $pip-bg-soft;
+    padding: 0 2;
+    margin: 0 4 1 4;
     text-align: center;
+    border: tall $pip-faint;
 }
 
+/* Form container — centered с большими side margins */
 #form-container {
-    margin: 1 4;
+    margin: 0 8;
     padding: 1 3;
     border: heavy $pip-faint;
     height: auto;
     background: $pip-bg;
 }
 
-/* M4.7.2 — center wizard screen content (max-width ~100 cols) */
+/* VerticalScroll inset для всех screens */
 VerticalScroll {
     padding: 1 4;
     margin: 0;
     background: $pip-bg;
 }
 
+/* Section labels — amber bold с decorative line */
 Label.section {
     text-style: bold;
-    margin: 1 0 0 0;
+    margin: 1 0 0 1;
+    padding: 0;
     color: $pip-amber;
 }
 
 /* Inputs */
 Input {
-    margin: 0 0 1 0;
-    background: $pip-bg;
+    margin: 0 1 1 1;
+    background: $pip-bg-soft;
     color: $pip-fg;
     border: tall $pip-faint;
+    padding: 0 1;
 }
 
 Input:focus {
-    border: tall $pip-fg;
+    border: tall $pip-amber;
     background: $pip-bg;
+    color: $pip-fg;
 }
 
 Input.-invalid {
     border: tall $pip-red;
 }
 
+Input.-invalid:focus {
+    border: tall $pip-red;
+}
+
 /* Select */
 Select {
-    margin: 0 0 1 0;
+    margin: 0 1 1 1;
     background: $pip-bg;
     color: $pip-fg;
 }
 
 Select > SelectCurrent {
-    background: $pip-bg;
+    background: $pip-bg-soft;
     color: $pip-fg;
     border: tall $pip-faint;
 }
 
-/* Service tier card — Fallout pip-boy panel */
+Select:focus > SelectCurrent {
+    border: tall $pip-amber;
+}
+
+Select OptionList {
+    background: $pip-bg;
+    color: $pip-fg;
+    border: tall $pip-fg;
+}
+
+Select OptionList > .option-list--option-highlighted {
+    background: $pip-faint;
+    color: $pip-fg;
+    text-style: bold;
+}
+
+/* Service tier card — Pip-Boy panel */
 #service-checkboxes {
     height: auto;
     padding: 0;
@@ -119,7 +149,7 @@ Select > SelectCurrent {
     border: heavy $pip-faint;
     background: $pip-bg;
     margin: 0 0 1 0;
-    padding: 0 1;
+    padding: 0 1 1 1;
     height: auto;
 }
 
@@ -127,60 +157,55 @@ Label.tier-section {
     text-style: bold;
     color: $pip-amber;
     column-span: 2;
-    padding: 0;
-    margin: 0;
+    padding: 0 1;
+    margin: 0 0 1 0;
     width: 100%;
+    background: $pip-bg-soft;
+    border-bottom: tall $pip-faint;
 }
 
+/* Checkbox row — selected gets full-width green-bg highlight (charm/lazygit) */
 .tier-group Checkbox {
     margin: 0;
-    padding: 0;
+    padding: 0 1;
     height: 1;
     width: 100%;
     background: $pip-bg;
-    color: $pip-fg;
+    color: $pip-dim;
     border: none;
 }
 
 .tier-group Checkbox:hover {
-    background: $pip-faint 50%;
+    background: $pip-faint 40%;
+    color: $pip-fg;
 }
 
 .tier-group Checkbox.-on {
     color: $pip-fg;
     text-style: bold;
+    background: $pip-bg-soft;
 }
 
-.tier-group Checkbox.-off {
-    color: $pip-dim;
+.tier-group Checkbox.-on:hover {
+    background: $pip-faint 50%;
 }
 
-/* Navigation bar — DOCKED bottom, never scrolls. */
-#nav-row {
-    dock: bottom;
-    align: center middle;
-    height: 5;
-    background: $pip-bg;
-    border-top: heavy $pip-faint;
-    padding: 1 1;
+.tier-group Checkbox:focus {
+    color: $pip-amber;
+    text-style: bold;
+    background: $pip-faint 50%;
 }
 
-#button-row {
-    dock: bottom;
-    align: center middle;
-    height: 5;
-    background: $pip-bg;
-    border-top: heavy $pip-faint;
-    padding: 1 1;
-}
-
+/* Navigation row — docked bottom, height 5 (3 button + 1 border + 1 padding) */
+#nav-row,
+#button-row,
 #install-buttons {
     dock: bottom;
     align: center middle;
     height: 5;
     background: $pip-bg;
     border-top: heavy $pip-faint;
-    padding: 1 1;
+    padding: 1 2;
 }
 
 Button {
@@ -189,19 +214,18 @@ Button {
     border: tall $pip-fg;
     text-style: bold;
     margin: 0 2;
-    min-width: 16;
+    min-width: 18;
     height: 3;
 }
 
 Button:hover {
-    background: $pip-faint 50%;
+    background: $pip-faint 40%;
     color: $pip-fg;
     border: tall $pip-fg;
-    text-style: bold;
 }
 
 Button:focus {
-    background: $pip-fg 20%;
+    background: $pip-fg 25%;
     color: $pip-amber;
     border: tall $pip-amber;
     text-style: bold;
@@ -211,16 +235,14 @@ Button.-primary {
     background: $pip-bg;
     color: $pip-amber;
     border: tall $pip-amber;
-    text-style: bold;
 }
 
 Button.-primary:hover {
-    background: $pip-amber 20%;
-    color: $pip-amber;
+    background: $pip-amber 25%;
 }
 
 Button.-primary:focus {
-    background: $pip-amber 30%;
+    background: $pip-amber 40%;
     color: $pip-bg;
     border: tall $pip-amber;
 }
@@ -229,49 +251,40 @@ Button.-success {
     background: $pip-bg;
     color: $pip-fg;
     border: tall $pip-fg;
-    text-style: bold;
-}
-
-Button.-success:hover {
-    background: $pip-fg 20%;
-    color: $pip-fg;
 }
 
 Button.-success:focus {
-    background: $pip-fg 40%;
+    background: $pip-fg 50%;
     color: $pip-bg;
-    border: tall $pip-fg;
-    text-style: bold;
 }
 
 Button.-error {
     background: $pip-bg;
     color: $pip-red;
     border: tall $pip-red;
-    text-style: bold;
 }
 
 /* Preview / log panels */
 #preview-box {
     border: heavy $pip-faint;
     padding: 0 1;
-    margin: 0 1;
+    margin: 0 4;
     height: 16;
     overflow: auto;
-    background: $pip-bg;
+    background: $pip-bg-soft;
     color: $pip-fg;
 }
 
 Static.hint {
     color: $pip-dim;
-    margin: 0;
+    margin: 0 1;
     padding: 0;
     text-style: italic;
 }
 
 /* Status line */
 #status-msg {
-    margin: 0 1;
+    margin: 0 4;
     padding: 0 1;
     color: $pip-dim;
     background: $pip-bg;
@@ -280,13 +293,13 @@ Static.hint {
 #status-msg.success { color: $pip-fg; text-style: bold; }
 #status-msg.error { color: $pip-red; text-style: bold; }
 
-/* Confirm screen summary */
+/* Confirm screen summary — bordered Pip-Boy panel */
 #summary-text {
     padding: 1 2;
-    background: $pip-bg;
+    background: $pip-bg-soft;
     color: $pip-fg;
     border: heavy $pip-faint;
-    margin: 0 1;
+    margin: 0 4;
 }
 
 /* Scrollbars */
@@ -297,4 +310,27 @@ Static.hint {
     scrollbar-color: $pip-faint;
     scrollbar-color-hover: $pip-dim;
     scrollbar-color-active: $pip-fg;
+    scrollbar-corner-color: $pip-bg;
+}
+
+/* Toast notifications — pip-boy palette */
+Toast {
+    background: $pip-bg;
+    color: $pip-fg;
+    border: heavy $pip-amber;
+    padding: 0 2;
+}
+
+Toast.-information {
+    border: heavy $pip-fg;
+}
+
+Toast.-warning {
+    border: heavy $pip-amber;
+    color: $pip-amber;
+}
+
+Toast.-error {
+    border: heavy $pip-red;
+    color: $pip-red;
 }
