@@ -313,6 +313,70 @@ Static.hint {
     scrollbar-corner-color: $pip-bg;
 }
 
+/* M5.3.1: Rule separator (Textual `Rule` widget) — heavy pip-amber line */
+Rule {
+    color: $pip-amber-dim;
+    margin: 1 0;
+}
+
+/* M5.3.1+: per-role section header inside ModelScreen */
+.model-section-header {
+    color: $pip-amber;
+    text-style: bold;
+    padding: 0 2;
+    margin: 1 0 0 0;
+    width: 100%;
+    background: $pip-bg-soft;
+    border-bottom: heavy $pip-faint;
+}
+
+/* M5.3.2: hardware Panel (full-width, top of DomainScreen) */
+#hardware-panel {
+    color: $pip-fg;
+    background: $pip-bg-soft;
+    border: heavy $pip-amber-dim;
+    padding: 1 2;
+    margin: 0 4 1 4;
+    width: 100%;
+    height: auto;
+}
+
+/* M5.3.4: empty-state banner (ServicesScreen — 0 selected) */
+.empty-banner {
+    color: $pip-red;
+    background: $pip-bg-soft;
+    border: heavy $pip-red;
+    padding: 1 2;
+    margin: 1 0;
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+}
+
+.peers-banner {
+    color: $pip-amber;
+    background: $pip-bg-soft;
+    border: heavy $pip-amber-dim;
+    padding: 0 2;
+    margin: 1 0;
+    width: 100%;
+}
+
+/* M5.3.7: HelpScreen overlay */
+#help-content {
+    padding: 1 2;
+    background: $pip-bg-soft;
+    color: $pip-fg;
+    border: heavy $pip-amber-dim;
+    margin: 2 4;
+}
+
+/* M5.3.5: ConfirmScreen — `changed` field shown in amber */
+.diff-changed {
+    color: $pip-amber;
+    text-style: bold;
+}
+
 /* Toast notifications — pip-boy palette */
 Toast {
     background: $pip-bg;

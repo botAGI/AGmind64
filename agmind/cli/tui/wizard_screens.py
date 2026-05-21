@@ -36,6 +36,40 @@ from textual.widgets import (
 from agmind.i18n import t
 
 
+# ---- Shared helpers (M5.3) ----
+
+
+def _format_hardware_panel(d) -> str:  # type: ignore[no-untyped-def]
+    """M5.3.2: panel layout вместо single-line dim — Fallout pip-boy table.
+
+    Detection state already collected на app startup (см. detect_hardware).
+    """
+    if d is None:
+        return "[dim]NO HARDWARE DATA — running detached?[/dim]"
+    gpu = "Strix Halo gfx1151" if d.is_strix_halo else (d.gpu_name or "no GPU")
+    vk = "[bold green]OK[/bold green]" if d.vulkan_present else "[red]MISSING[/red]"
+    rc = "[bold green]OK[/bold green]" if d.rocm_present else "[red]MISSING[/red]"
+    dk = "[bold green]OK[/bold green]" if d.docker_present else "[red bold]MISSING[/red bold]"
+    return (
+        "[bold]── DETECTED HARDWARE ──[/bold]\n"
+        f"  RAM ............. {d.ram_gb:.0f} GB\n"
+        f"  GPU ............. {gpu}\n"
+        f"  Vulkan .......... {vk}\n"
+        f"  ROCm ............ {rc}\n"
+        f"  Docker .......... {dk}\n"
+        f"  Recommended tier  {d.recommended_tier}"
+    )
+
+
+def _format_cluster_peers_banner(peers: list[tuple[str, str]]) -> str:
+    """M5.4.1: banner shown when ≥1 peer detected via mDNS."""
+    if not peers:
+        return ""
+    listed = ", ".join(f"{h} ({a})" for h, a in peers[:3])
+    extra = f" + {len(peers) - 3} more" if len(peers) > 3 else ""
+    return f"[bold]CLUSTER PEERS DETECTED:[/bold] {len(peers)} — {listed}{extra}"
+
+
 # ---- Shared header / footer / step indicator ----
 
 
@@ -54,13 +88,14 @@ StepHeader = _make_step_header
 
 
 class DomainScreen(Screen[None]):
-    """Step 1: domain + CF token."""
+    """Step 1: domain + CF token + auto-detect hardware panel + cluster peers."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("ctrl+c", "quit", "Quit"),
         Binding("escape", "quit", "Quit"),
         Binding("tab", "focus_next", "Next field"),
         Binding("alt+n", "next_step", "Next"),
+        Binding("f1", "help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -70,8 +105,16 @@ class DomainScreen(Screen[None]):
         )
         yield Header(show_clock=False)
         yield StepHeader(1, 4, t("wizard.section.domain"))
+        # M5.3.2: full-width hardware panel наверху wizard
+        yield Static(_format_hardware_panel(self.app.detected), id="hardware-panel")
+        # M5.4.1: cluster peers banner (если detected) — auto-discover hint
+        peers = list(self.app.cluster_peers)
+        peers_banner = _format_cluster_peers_banner(peers)
+        if peers_banner:
+            yield Static(peers_banner, classes="peers-banner")
         with VerticalScroll():
             yield Label(t("wizard.section.domain"), classes="section")
+            yield Static("[dim](TLS via Cloudflare, subdomain recommended)[/dim]", classes="hint")
             yield Input(
                 placeholder=t("wizard.placeholder.domain"),
                 id="domain-input",
@@ -79,6 +122,7 @@ class DomainScreen(Screen[None]):
                 validators=[DomainValidator()],
             )
             yield Label(t("wizard.section.cf_token"), classes="section")
+            yield Static("[dim](Zone:DNS:Edit — ≥20 chars, hidden input)[/dim]", classes="hint")
             yield Input(
                 placeholder=t("wizard.placeholder.cf_token"),
                 id="cf-token-input",
@@ -86,10 +130,21 @@ class DomainScreen(Screen[None]):
                 password=True,
                 validators=[TokenLengthValidator()],
             )
+            # M5.4.2: cluster replicate checkbox (приходит вместе с peers banner)
+            if peers:
+                from agmind.cli.tui.setup_wizard import AGCheckbox
+                yield AGCheckbox(
+                    "Replicate stack to detected peers (mDNS auto-discover)",
+                    id="cluster-replicate-checkbox",
+                    value=getattr(self.app.state, "cluster_replicate", False),
+                )
         with Horizontal(id="nav-row"):
             yield Button(t("wizard.btn.quit"), id="back-btn", variant="default")
             yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
         yield Footer()
+
+    def action_help(self) -> None:
+        self.app.push_screen(HelpScreen())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back-btn":
@@ -103,6 +158,12 @@ class DomainScreen(Screen[None]):
     def _save_and_advance(self) -> None:
         self.app.state.domain = self.query_one("#domain-input", Input).value.strip()
         self.app.state.cf_api_token = self.query_one("#cf-token-input", Input).value.strip()
+        # M5.4: persist cluster-replicate checkbox если он есть на экране
+        try:
+            cb = self.query_one("#cluster-replicate-checkbox", Checkbox)
+            self.app.state.cluster_replicate = bool(cb.value)
+        except Exception:
+            pass
         # Validate before advancing
         if not self.app.state.domain or "." not in self.app.state.domain:
             self.app.notify("Domain должен содержать '.'", severity="error")
@@ -128,6 +189,7 @@ class ModelScreen(Screen[None]):
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("alt+b", "back", "Back"),
         Binding("alt+n", "next_step", "Next"),
+        Binding("f1", "help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -263,6 +325,9 @@ class ModelScreen(Screen[None]):
     def action_next_step(self) -> None:
         self._save_and_advance()
 
+    def action_help(self) -> None:
+        self.app.push_screen(HelpScreen())
+
     def _read_int(self, widget_id: str, default: int) -> int:
         try:
             value = self.query_one(f"#{widget_id}", Select).value
@@ -325,6 +390,7 @@ class ServicesScreen(Screen[None]):
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("alt+b", "back", "Back"),
         Binding("alt+n", "next_step", "Next"),
+        Binding("f1", "help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -336,6 +402,15 @@ class ServicesScreen(Screen[None]):
         services_by_tier = self.app.services_by_tier
         total = sum(len(svcs) for svcs in services_by_tier.values())
         yield StepHeader(3, 4, t("wizard.section.services", default=f"Services ({total} available)").format(total=total))
+        # M5.3.4: empty-state banner shown ONLY когда 0 selected (initial reactive)
+        selected_count = len(self.app.state.services)
+        yield Static(
+            "[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]"
+            if selected_count == 0 else
+            f"[dim]{selected_count} of {total} services selected[/dim]",
+            id="services-empty-banner",
+            classes="empty-banner" if selected_count == 0 else "hint",
+        )
         with VerticalScroll(id="service-checkboxes"):
             for tier, services in services_by_tier.items():
                 tier_label = _TIER_LABELS.get(tier, tier)
@@ -354,6 +429,30 @@ class ServicesScreen(Screen[None]):
             yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
             yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
         yield Footer()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """M5.3.4: re-render banner когда меняется selection count."""
+        if not str(event.checkbox.id or "").startswith("svc-"):
+            return
+        selected = sum(
+            1 for tier_services in self.app.services_by_tier.values()
+            for name, _ in tier_services
+            if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value
+        )
+        try:
+            banner = self.query_one("#services-empty-banner", Static)
+        except Exception:
+            return
+        total = sum(len(svcs) for svcs in self.app.services_by_tier.values())
+        if selected == 0:
+            banner.update("[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]")
+            banner.set_classes("empty-banner")
+        else:
+            banner.update(f"[dim]{selected} of {total} services selected[/dim]")
+            banner.set_classes("hint")
+
+    def action_help(self) -> None:
+        self.app.push_screen(HelpScreen())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back-btn":
@@ -390,7 +489,11 @@ class ConfirmScreen(Screen[None]):
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("alt+b", "back", "Back"),
         Binding("ctrl+s", "apply", "Apply"),
+        Binding("f1", "help", "Help"),
     ]
+
+    def action_help(self) -> None:
+        self.app.push_screen(HelpScreen())
 
     def compose(self) -> ComposeResult:
         state = self.app.state
@@ -449,15 +552,78 @@ class ConfirmScreen(Screen[None]):
         self.app.pop_screen()
 
     def action_apply(self) -> None:
+        # M5.4.3: если user выбрал replicate-to-peers — сгенерируй Ansible inventory.
+        if getattr(self.app.state, "cluster_replicate", False):
+            try:
+                from agmind.cluster.inventory import write_inventory
+                peers = list(self.app.cluster_peers)
+                path = write_inventory(peers)
+                self.app.notify(
+                    f"Cluster inventory: {path} ({len(peers)} peers)",
+                    title="Replicate enabled", severity="information", timeout=8.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.app.notify(
+                    f"Failed to write inventory: {exc}",
+                    title="Cluster replicate", severity="warning", timeout=8.0,
+                )
         # Hand off to original action_submit (saves state + push install).
         # Pop confirm screen first чтобы action_submit видел "root" app.
         self.app.pop_screen()
         self.app.action_submit()
 
 
+# ---- HelpScreen (F1 overlay) ----
+
+
+class HelpScreen(Screen[None]):
+    """M5.3.7: F1 keymap overlay — modal screen с full shortcut list."""
+
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        Binding("escape", "close", "Close"),
+        Binding("f1", "close", "Close"),
+        Binding("q", "close", "Close"),
+    ]
+
+    HELP_TEXT = (
+        "[bold]── AGMIND SETUP — KEY BINDINGS ──[/bold]\n\n"
+        "  [bold]Navigation[/bold]\n"
+        "    Alt+N           Next step\n"
+        "    Alt+B           Back to previous step\n"
+        "    Tab / Shift+Tab Move focus between fields\n"
+        "    F1              Show this help\n"
+        "    Esc / Q         Close help / Quit wizard\n\n"
+        "  [bold]Apply[/bold]\n"
+        "    Ctrl+S          Submit (apply on Confirm screen)\n\n"
+        "  [bold]Services screen[/bold]\n"
+        "    Space           Toggle service checkbox\n"
+        "    Arrows          Move between checkboxes\n\n"
+        "  [bold]Environment variables[/bold]\n"
+        "    AGMIND_WIZARD_LEGACY=1   force single-screen wizard\n"
+        "    AGMIND_LANG=ru/en        UI language\n\n"
+        "  PRESS [bold]< ESC >[/bold] OR [bold]< F1 >[/bold] TO RETURN"
+    )
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        with VerticalScroll():
+            yield Static(self.HELP_TEXT, id="help-content")
+        with Horizontal(id="nav-row"):
+            yield Button("Close (Esc)", id="close-btn", variant="primary")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-btn":
+            self.app.pop_screen()
+
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
+
 __all__ = [
     "ConfirmScreen",
     "DomainScreen",
+    "HelpScreen",
     "ModelScreen",
     "ServicesScreen",
     "StepHeader",

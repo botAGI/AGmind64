@@ -192,6 +192,10 @@ class SetupState:
     rerank_ctx_size: int = 2048
     """llama-rerank --ctx-size. Reranker inputs обычно короткие (query+doc)."""
 
+    # Phase M5.4: cluster integration.
+    cluster_replicate: bool = False
+    """True → wizard ConfirmScreen генерирует Ansible inventory + replicates на peers."""
+
     def to_json(self, path: Path) -> None:
         """Save state (БЕЗ cf_api_token — он в secret file)."""
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -505,6 +509,20 @@ class AgmindSetupApp(App[SetupState | None]):
         self.backends_available = get_available_backends()
         # Phase J.1.8: per-service selection grouped by tier
         self.services_by_tier = get_services_by_tier()
+        # Phase M5.4: cluster peers — populated lazily (mDNS browse) при первом read.
+        self._cluster_peers_cache: list[tuple[str, str]] | None = None
+
+    @property
+    def cluster_peers(self) -> list[tuple[str, str]]:
+        """List of (hostname, address) для detected mDNS peers (cached)."""
+        if self._cluster_peers_cache is None:
+            try:
+                from agmind.cluster.detect import discover
+                peers = discover(timeout=0.5, exclude_self=True)
+                self._cluster_peers_cache = [(p.hostname, p.address) for p in peers]
+            except Exception:
+                self._cluster_peers_cache = []
+        return self._cluster_peers_cache
 
     def on_mount(self) -> None:
         # Phase M3.S.2: multi-step mode pushes DomainScreen вместо single-screen render.
