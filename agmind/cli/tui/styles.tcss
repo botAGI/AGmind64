@@ -151,67 +151,88 @@ Label.tier-section {
 #nav-row {
     dock: bottom;
     align: center middle;
-    height: 3;
+    height: 5;
     background: $pip-bg;
     border-top: heavy $pip-faint;
-    padding: 0 1;
+    padding: 1 1;
 }
 
 #button-row {
     dock: bottom;
     align: center middle;
-    height: 3;
+    height: 5;
     background: $pip-bg;
     border-top: heavy $pip-faint;
-    padding: 0 1;
+    padding: 1 1;
 }
 
 #install-buttons {
     dock: bottom;
     align: center middle;
-    height: 3;
+    height: 5;
     background: $pip-bg;
     border-top: heavy $pip-faint;
+    padding: 1 1;
 }
 
 Button {
     background: $pip-bg;
     color: $pip-fg;
-    border: tall $pip-faint;
+    border: tall $pip-fg;
     text-style: bold;
-    margin: 0 1;
-    min-width: 14;
+    margin: 0 2;
+    min-width: 16;
+    height: 3;
 }
 
 Button:hover {
-    background: $pip-faint;
+    background: $pip-faint 50%;
     color: $pip-fg;
     border: tall $pip-fg;
+    text-style: bold;
 }
 
 Button:focus {
+    background: $pip-fg 20%;
+    color: $pip-amber;
     border: tall $pip-amber;
-    text-style: bold reverse;
+    text-style: bold;
 }
 
 Button.-primary {
     background: $pip-bg;
     color: $pip-amber;
     border: tall $pip-amber;
+    text-style: bold;
 }
 
 Button.-primary:hover {
     background: $pip-amber 20%;
+    color: $pip-amber;
+}
+
+Button.-primary:focus {
+    background: $pip-amber 30%;
+    color: $pip-bg;
+    border: tall $pip-amber;
 }
 
 Button.-success {
     background: $pip-bg;
     color: $pip-fg;
     border: tall $pip-fg;
+    text-style: bold;
+}
+
+Button.-success:hover {
+    background: $pip-fg 20%;
+    color: $pip-fg;
 }
 
 Button.-success:focus {
-    background: $pip-fg 30%;
+    background: $pip-fg 40%;
+    color: $pip-bg;
+    border: tall $pip-fg;
     text-style: bold;
 }
 
@@ -219,6 +240,7 @@ Button.-error {
     background: $pip-bg;
     color: $pip-red;
     border: tall $pip-red;
+    text-style: bold;
 }
 
 /* Preview / log panels */
