@@ -88,17 +88,27 @@ class InstallConfig:
     cf_api_token: str  # secret — будет очищен после bootstrap step
     services: list[str]
     backend: str = "auto"
+    # LLM model (legacy field names preserved для backward compat).
     model_repo: str | None = None  # HF repo id, e.g. "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"
     model_file: str | None = None  # e.g. "Qwen3.6-35B-A3B-Q4_K_M.gguf"
     install_dir: Path = DEFAULT_INSTALL_DIR
     models_dir: Path = DEFAULT_MODELS_DIR
     sudo_password: str | None = None  # secret — очищается после bootstrap
-    # Phase N.G: inference settings passed to llama-server via env vars
-    # (compose template reads AGMIND_MODEL_FILE / AGMIND_CTX_SIZE / AGMIND_KV_CACHE).
+    # Phase N.G: LLM inference settings passed to llama-llm via env vars
+    # (compose template reads AGMIND_MODEL_FILE / AGMIND_LLM_CTX_SIZE / AGMIND_LLM_KV_CACHE).
     ctx_size: int = 16384
     kv_cache_type: str = "q8_0"
     threads: int = -1
     parallel_slots: int = 1
+    # Phase M5.1: separate embed/rerank model + per-service settings.
+    embed_repo: str | None = None
+    embed_file: str | None = None
+    embed_ctx_size: int = 8192
+    embed_kv_cache: str = "f16"
+    embed_parallel: int = 4
+    rerank_repo: str | None = None
+    rerank_file: str | None = None
+    rerank_ctx_size: int = 2048
 
     def redact(self) -> dict[str, object]:
         """Safe dict for logging — secrets replaced with ***."""
@@ -109,12 +119,20 @@ class InstallConfig:
             "backend": self.backend,
             "model_repo": self.model_repo,
             "model_file": self.model_file,
+            "embed_repo": self.embed_repo,
+            "embed_file": self.embed_file,
+            "rerank_repo": self.rerank_repo,
+            "rerank_file": self.rerank_file,
             "install_dir": str(self.install_dir),
             "models_dir": str(self.models_dir),
             "ctx_size": self.ctx_size,
             "kv_cache_type": self.kv_cache_type,
             "threads": self.threads,
             "parallel_slots": self.parallel_slots,
+            "embed_ctx_size": self.embed_ctx_size,
+            "embed_kv_cache": self.embed_kv_cache,
+            "embed_parallel": self.embed_parallel,
+            "rerank_ctx_size": self.rerank_ctx_size,
             "sudo_password": "*** (set)" if self.sudo_password else "(unset)",
         }
 

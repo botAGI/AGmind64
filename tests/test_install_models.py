@@ -111,3 +111,51 @@ def test_ctx_presets_monotonic() -> None:
 
 def test_kv_cache_q8_recommended_first() -> None:
     assert KV_CACHE_TYPES[0][0] == "q8_0"
+
+
+# ---------- M5.1.1: kind filter ----------
+
+
+def test_models_for_wizard_kind_llm_excludes_embed() -> None:
+    """models_for_wizard(kind='llm') не должен содержать embed/rerank entries."""
+    out = models_for_wizard(kind="llm")
+    ids = [mid for _, mid in out]
+    for mid in ids:
+        entry = find_by_id(mid)
+        assert entry is not None
+        assert entry.kind == "llm", f"{mid} kind={entry.kind} попал в LLM list"
+
+
+def test_models_for_wizard_kind_embed_only_embed() -> None:
+    out = models_for_wizard(kind="embed")
+    assert len(out) >= 1, "должна быть хотя бы одна curated embed model"
+    for _, mid in out:
+        entry = find_by_id(mid)
+        assert entry is not None and entry.kind == "embed"
+
+
+def test_models_for_wizard_kind_rerank_returns_only_rerank() -> None:
+    """Если curated rerank нет — list пустой. None entries вида llm не должны просочиться."""
+    out = models_for_wizard(kind="rerank")
+    for _, mid in out:
+        entry = find_by_id(mid)
+        assert entry is not None and entry.kind == "rerank"
+
+
+def test_models_for_wizard_none_returns_all() -> None:
+    out = models_for_wizard(kind=None)
+    assert len(out) == len(CURATED_MODELS)
+
+
+def test_default_model_id_per_kind() -> None:
+    """default_model_id(kind) возвращает curated id для kind или 'custom' для rerank."""
+    from agmind.install.models import default_model_id as _did
+
+    assert _did("llm") == "qwen36-a3b-q4km"
+    embed_def = _did("embed")
+    embed_entry = find_by_id(embed_def)
+    assert embed_entry is not None and embed_entry.kind == "embed"
+    # Rerank не имеет curated catalog yet → 'custom'
+    assert _did("rerank") == "custom"
+    # Backward compat: bare default_model_id() = LLM
+    assert _did() == "qwen36-a3b-q4km"

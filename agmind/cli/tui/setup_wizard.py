@@ -150,22 +150,47 @@ class SetupState:
     model_tier: str = "auto"
     install_dir: str = str(DEFAULT_INSTALL_DIR)
 
-    # Phase N.G: model selector + inference settings.
+    # Phase N.G: LLM model selector + inference settings.
     # model_id != "custom" → use curated catalog. id == "custom" → repo/file заполняет user.
     model_id: str = "qwen36-a3b-q4km"
-    """Curated catalog id (agmind.install.models.CURATED_MODELS) or 'custom'."""
+    """LLM curated catalog id (agmind.install.models.CURATED_MODELS, kind=llm) or 'custom'."""
     model_repo: str = ""
-    """HF repo id, e.g. 'TheBloke/Llama-2-7B-GGUF'. Filled из catalog или вручную."""
+    """HF repo id для LLM, e.g. 'TheBloke/Llama-2-7B-GGUF'. Filled из catalog или вручную."""
     model_file: str = ""
-    """GGUF filename inside repo. Empty = skip model download step."""
+    """GGUF filename inside repo. Empty = skip LLM download step."""
     ctx_size: int = 16384
-    """llama-server --ctx-size flag."""
+    """llama-llm --ctx-size flag."""
     kv_cache_type: str = "q8_0"
-    """KV cache quant (passed как both --cache-type-k и --cache-type-v)."""
+    """LLM KV cache quant (passed как both --cache-type-k и --cache-type-v)."""
     threads: int = -1
-    """llama-server --threads. -1 = auto (server picks CPU count)."""
+    """llama-llm --threads. -1 = auto (server picks CPU count)."""
     parallel_slots: int = 1
-    """llama-server --parallel. >1 enables continuous batching N concurrent requests."""
+    """llama-llm --parallel. >1 enables continuous batching N concurrent requests."""
+
+    # Phase M5.1: separate embed model selector + per-service inference settings.
+    embed_model_id: str = "bge-m3-q8"
+    """Curated embed catalog id (CURATED_MODELS, kind=embed) or 'custom'."""
+    embed_repo: str = ""
+    """HF repo id для embed model (resolved из catalog когда id != 'custom')."""
+    embed_file: str = ""
+    """GGUF filename для embed model. Empty = skip embed download."""
+    embed_ctx_size: int = 8192
+    """llama-embed --ctx-size. BGE-M3 native max = 8192."""
+    embed_kv_cache: str = "f16"
+    """Embed KV cache quant. f16 = default (short inputs, no memory pressure)."""
+    embed_parallel: int = 4
+    """llama-embed --parallel. Embed = high concurrency (short inputs, batch friendly)."""
+
+    # Phase M5.1: separate rerank model selector.
+    # Default 'custom' + empty file = skip download / no curated rerank yet.
+    rerank_model_id: str = "custom"
+    """Curated rerank catalog id (CURATED_MODELS, kind=rerank) or 'custom'."""
+    rerank_repo: str = ""
+    """HF repo id для rerank model."""
+    rerank_file: str = ""
+    """GGUF filename для rerank model. Empty = skip rerank download / disable service."""
+    rerank_ctx_size: int = 2048
+    """llama-rerank --ctx-size. Reranker inputs обычно короткие (query+doc)."""
 
     def to_json(self, path: Path) -> None:
         """Save state (БЕЗ cf_api_token — он в secret file)."""
@@ -184,16 +209,27 @@ class SetupState:
         return cls(**data)
 
     def resolve_model_repo_file(self) -> tuple[str, str]:
-        """Resolve final (repo, file) for download/template — curated id или custom values."""
-        if self.model_id == "custom":
-            return self.model_repo, self.model_file
+        """Resolve final (repo, file) for LLM download — curated id или custom values."""
+        return self._resolve_repo_file(self.model_id, self.model_repo, self.model_file)
+
+    def resolve_embed_repo_file(self) -> tuple[str, str]:
+        """Resolve embed model (repo, file). Empty file = skip download."""
+        return self._resolve_repo_file(self.embed_model_id, self.embed_repo, self.embed_file)
+
+    def resolve_rerank_repo_file(self) -> tuple[str, str]:
+        """Resolve rerank model (repo, file). Empty file = skip download."""
+        return self._resolve_repo_file(self.rerank_model_id, self.rerank_repo, self.rerank_file)
+
+    @staticmethod
+    def _resolve_repo_file(model_id: str, raw_repo: str, raw_file: str) -> tuple[str, str]:
+        if model_id == "custom":
+            return raw_repo, raw_file
         from agmind.install.models import find_by_id
 
-        entry = find_by_id(self.model_id)
+        entry = find_by_id(model_id)
         if entry is not None:
             return entry.repo, entry.file
-        # Fallback — id not found, use raw fields
-        return self.model_repo, self.model_file
+        return raw_repo, raw_file
 
 
 @dataclass(frozen=True)

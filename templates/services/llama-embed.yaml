@@ -2,7 +2,7 @@
 name: llama-embed
 image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
 tier: inference
-purpose: Embedding inference (bge-m3 Q8_0) via llama-server pooling=cls
+purpose: Embedding inference (bge-m3 default) via llama-server pooling=cls
 profiles:
 - core
 ports:
@@ -12,6 +12,31 @@ volumes:
 env:
   AMD_VULKAN_ICD: RADV
   VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+  # Phase M5.1: embed model + per-service settings (separate from LLM).
+  AGMIND_EMBED_FILE: ${AGMIND_EMBED_FILE:-bge-m3-Q8_0.gguf}
+  AGMIND_EMBED_CTX_SIZE: ${AGMIND_EMBED_CTX_SIZE:-8192}
+  AGMIND_EMBED_KV_CACHE: ${AGMIND_EMBED_KV_CACHE:-f16}
+  AGMIND_EMBED_PARALLEL: ${AGMIND_EMBED_PARALLEL:-4}
+command:
+- --host
+- 0.0.0.0
+- --port
+- '8080'
+- --model
+- /models/${AGMIND_EMBED_FILE}
+- --embeddings
+- --pooling
+- cls
+- -ngl
+- '999'
+- --ctx-size
+- ${AGMIND_EMBED_CTX_SIZE}
+- --cache-type-k
+- ${AGMIND_EMBED_KV_CACHE}
+- --cache-type-v
+- ${AGMIND_EMBED_KV_CACHE}
+- --parallel
+- ${AGMIND_EMBED_PARALLEL}
 devices:
 - /dev/dri
 group_add:

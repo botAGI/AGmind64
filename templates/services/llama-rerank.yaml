@@ -2,7 +2,7 @@
 name: llama-rerank
 image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
 tier: inference
-purpose: Reranker (bge-reranker-v2-m3) via llama-server pooling=rank
+purpose: Reranker (bge-reranker-v2-m3 / custom) via llama-server pooling=rank
 profiles:
 - core
 ports:
@@ -11,6 +11,26 @@ volumes:
 - /var/lib/agmind/models:/models:ro
 env:
   AMD_VULKAN_ICD: RADV
+  VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+  # Phase M5.1: rerank model + per-service settings (separate from LLM / embed).
+  # Empty AGMIND_RERANK_FILE → service start будет fail; убери из services list
+  # если rerank не нужен.
+  AGMIND_RERANK_FILE: ${AGMIND_RERANK_FILE:-}
+  AGMIND_RERANK_CTX_SIZE: ${AGMIND_RERANK_CTX_SIZE:-2048}
+command:
+- --host
+- 0.0.0.0
+- --port
+- '8080'
+- --model
+- /models/${AGMIND_RERANK_FILE}
+- --reranking
+- --pooling
+- rank
+- -ngl
+- '999'
+- --ctx-size
+- ${AGMIND_RERANK_CTX_SIZE}
 devices:
 - /dev/dri
 group_add:

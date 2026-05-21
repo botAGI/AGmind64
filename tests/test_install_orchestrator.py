@@ -237,6 +237,80 @@ def test_install_config_carries_ctx_kv(tmp_path: object) -> None:
     assert payload["kv_cache_type"] == "q8_0"
 
 
+# ---------- M5.1: embed/rerank на InstallConfig ----------
+
+
+def test_install_config_has_embed_rerank_defaults(tmp_path: object) -> None:
+    cfg = _make_config(tmp_path)  # type: ignore[arg-type]
+    assert cfg.embed_ctx_size == 8192
+    assert cfg.embed_kv_cache == "f16"
+    assert cfg.embed_parallel == 4
+    assert cfg.rerank_ctx_size == 2048
+    # repo/file = None по дефолту = skip download
+    assert cfg.embed_repo is None
+    assert cfg.embed_file is None
+    assert cfg.rerank_repo is None
+    assert cfg.rerank_file is None
+
+
+def test_env_write_step_separates_llm_embed_rerank(tmp_path: object) -> None:
+    """M5.2: EnvWriteStep пишет separate AGMIND_LLM_* / EMBED_* / RERANK_* vars."""
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        install_dir=tmp_path / "opt",  # type: ignore[operator]
+        model_repo="llmrepo", model_file="llm.gguf",
+        ctx_size=32768, kv_cache_type="q4_0", threads=8, parallel_slots=2,
+        embed_repo="embedrepo", embed_file="bge.gguf",
+        embed_ctx_size=8192, embed_kv_cache="f16", embed_parallel=8,
+        rerank_repo="rerankrepo", rerank_file="rr.gguf",
+        rerank_ctx_size=1024,
+    )
+    events: list[ProgressEvent] = []
+    result = EnvWriteStep().run(events.append, cfg)
+    assert result.success
+    env_file = cfg.install_dir / ".env"
+    text = env_file.read_text()
+    # LLM
+    assert "AGMIND_MODEL_FILE=llm.gguf" in text
+    assert "AGMIND_LLM_CTX_SIZE=32768" in text
+    assert "AGMIND_LLM_KV_CACHE=q4_0" in text
+    assert "AGMIND_LLM_THREADS=8" in text
+    assert "AGMIND_LLM_PARALLEL=2" in text
+    # Embed
+    assert "AGMIND_EMBED_FILE=bge.gguf" in text
+    assert "AGMIND_EMBED_CTX_SIZE=8192" in text
+    assert "AGMIND_EMBED_KV_CACHE=f16" in text
+    assert "AGMIND_EMBED_PARALLEL=8" in text
+    # Rerank
+    assert "AGMIND_RERANK_FILE=rr.gguf" in text
+    assert "AGMIND_RERANK_CTX_SIZE=1024" in text
+    # Backward-compat legacy aliases preserved
+    assert "AGMIND_CTX_SIZE=32768" in text
+    assert "AGMIND_KV_CACHE=q4_0" in text
+
+
+def test_model_download_step_handles_empty_embed_rerank(tmp_path: object) -> None:
+    """Download step должен skip embed/rerank когда file пуст — без curl call."""
+    from agmind.install.steps import ModelDownloadStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        install_dir=tmp_path / "opt",  # type: ignore[operator]
+        models_dir=tmp_path / "models",  # type: ignore[operator]
+        model_repo=None, model_file=None,
+        embed_repo=None, embed_file=None,
+        rerank_repo=None, rerank_file=None,
+    )
+    events: list[ProgressEvent] = []
+    result = ModelDownloadStep().run(events.append, cfg)
+    assert result.success
+    assert "llm: no model" in result.message
+    assert "embed: no model" in result.message
+    assert "rerank: no model" in result.message
+
+
 def test_default_steps_all_have_label() -> None:
     from agmind.install.steps import default_steps
 

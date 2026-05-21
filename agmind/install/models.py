@@ -139,9 +139,11 @@ CURATED_MODELS: tuple[ModelEntry, ...] = (
 # Context-size presets shown в wizard. Real model max может быть выше
 # (Qwen3.6 supports 260K) но 16K-65K — sweet spot для production memory budget.
 CTX_SIZE_PRESETS: tuple[tuple[int, str], ...] = (
-    (4096, "4K — minimal (fast, low VRAM)"),
-    (8192, "8K — chat conversations"),
-    (16384, "16K — default (recommended)"),
+    (1024, "1K — minimal (rerank cross-encoder)"),
+    (2048, "2K — rerank default"),
+    (4096, "4K — minimal LLM (fast, low VRAM)"),
+    (8192, "8K — chat / embed default"),
+    (16384, "16K — LLM default (recommended)"),
     (32768, "32K — long documents"),
     (65536, "64K — codebase / long ctx"),
     (131072, "128K — long-form (~21 GB KV q8_0)"),
@@ -187,26 +189,44 @@ def find_by_id(model_id: str) -> ModelEntry | None:
     return None
 
 
-def models_for_wizard() -> list[tuple[str, str]]:
+def models_for_wizard(kind: ModelKind | None = None) -> list[tuple[str, str]]:
     """Returns list of (display, id) для Textual Select widget.
 
-    Sorted: strix_tested first (recommended), потом kind=llm size desc.
+    Args:
+        kind: filter — "llm" / "embed" / "rerank". None = all (legacy bulk list).
+
+    Sorted: strix_tested first (recommended), потом size desc.
     "Custom" вариант добавляется wizard'ом отдельно (не здесь — id collision risk).
     """
+    pool = CURATED_MODELS if kind is None else tuple(m for m in CURATED_MODELS if m.kind == kind)
     sortable = sorted(
-        CURATED_MODELS,
+        pool,
         key=lambda m: (
             0 if m.strix_tested else 1,
-            0 if m.kind == "llm" else 1,
+            0 if m.kind == "llm" else (1 if m.kind == "embed" else 2),
             -m.size_gib,
         ),
     )
     return [(m.display, m.id) for m in sortable]
 
 
-def default_model_id() -> str:
-    """Recommended default — current Phase H verified model."""
-    return "qwen36-a3b-q4km"
+# Per-kind default. Если curated rerank пока нет — возвращает "custom"
+# чтобы wizard показал empty Input fields для ручного ввода.
+_KIND_DEFAULTS: dict[str, str] = {
+    "llm": "qwen36-a3b-q4km",
+    "embed": "bge-m3-q8",
+    "rerank": "custom",
+}
+
+
+def default_model_id(kind: ModelKind | None = None) -> str:
+    """Recommended default model id для wizard initial value.
+
+    kind=None / "llm" → Phase H verified LLM baseline.
+    """
+    if kind is None:
+        return _KIND_DEFAULTS["llm"]
+    return _KIND_DEFAULTS.get(kind, "custom")
 
 
 __all__ = [

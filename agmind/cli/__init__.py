@@ -770,13 +770,15 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         else:
             wizard_state = initial
 
-        # 3. Resolve final model repo/file (curated or custom).
+        # 3. Resolve final model repo/file (curated or custom) — для каждого role.
         final_repo, final_file = wizard_state.resolve_model_repo_file()
-        # CLI flags override wizard values if provided.
+        # CLI flags override wizard LLM values if provided (kept legacy semantics).
         if model_repo:
             final_repo = model_repo
         if model_file:
             final_file = model_file
+        embed_repo, embed_file = wizard_state.resolve_embed_repo_file()
+        rerank_repo, rerank_file = wizard_state.resolve_rerank_repo_file()
 
         config = InstallConfig(
             domain=wizard_state.domain,
@@ -787,6 +789,16 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             model_file=final_file if final_file else None,
             ctx_size=ctx_size or wizard_state.ctx_size,
             kv_cache_type=kv_cache or wizard_state.kv_cache_type,
+            threads=wizard_state.threads,
+            parallel_slots=wizard_state.parallel_slots,
+            embed_repo=embed_repo if embed_file else None,
+            embed_file=embed_file if embed_file else None,
+            embed_ctx_size=wizard_state.embed_ctx_size,
+            embed_kv_cache=wizard_state.embed_kv_cache,
+            embed_parallel=wizard_state.embed_parallel,
+            rerank_repo=rerank_repo if rerank_file else None,
+            rerank_file=rerank_file if rerank_file else None,
+            rerank_ctx_size=wizard_state.rerank_ctx_size,
             sudo_password=sudo_pw,
         )
 

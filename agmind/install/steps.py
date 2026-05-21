@@ -288,14 +288,19 @@ class ImagePullStep(InstallStep):
 
 
 class ModelDownloadStep(InstallStep):
-    """Download model from HF (если model_repo + model_file заданы).
+    """Download up to 3 GGUF models from HF (LLM + Embed + Rerank).
 
-    Detect logic (skip re-download если модель уже скачана):
-      1. `{models_dir}/{model_file}` (default /var/lib/agmind/models/) → reuse
-      2. User fallback `~/.local/share/agmind/models/{model_file}` → move в models_dir
+    Phase M5.1: каждая role (llm/embed/rerank) скачивается отдельным
+    call'ом — pair (repo, file) of empty/None → skipped. Order: LLM →
+    Embed → Rerank (LLM blocking, embeds tiny, rerank optional).
+
+    Detect logic per file (skip re-download если модель уже скачана):
+      1. `{models_dir}/{file}` (default /var/lib/agmind/models/) → reuse
+      2. User fallback `~/.local/share/agmind/models/{file}` → move в models_dir
       3. None of above → curl download с resume support
 
-    Минимальный размер чтобы считать "real model" = 100 MiB (filter stubs).
+    Минимальный размер чтобы считать "real model" = 100 MiB. Embed/rerank
+    модели могут быть < 100 MiB — для них порог снижен до 10 MiB.
     """
 
     step_id = "model_pull"
@@ -305,6 +310,7 @@ class ModelDownloadStep(InstallStep):
     # M4.6: curl --progress-bar also writes speed/ETA, parse it for richer events
     SPEED_RE = re.compile(r"(\d+\.?\d*)\s*([KMG])\s")
     MIN_VALID_SIZE = 100 * 1024 * 1024  # 100 MiB — filter empty placeholders / partial
+    MIN_VALID_SIZE_SMALL = 10 * 1024 * 1024  # 10 MiB — для embed/rerank (BGE-M3 = 600 MiB)
 
     @staticmethod
     def _fallback_dirs(config: InstallConfig) -> list[Path]:
@@ -325,114 +331,119 @@ class ModelDownloadStep(InstallStep):
             out.append(c)
         return out
 
-    def _detect_existing(self, config: InstallConfig) -> tuple[Path | None, str]:
+    def _detect_existing(
+        self, models_dir: Path, file_name: str, min_size: int,
+        config: InstallConfig,
+    ) -> tuple[Path | None, str]:
         """Return (path, status_msg) — где модель уже есть. None если nowhere."""
-        target = config.models_dir / config.model_file
-        if target.exists() and target.stat().st_size >= self.MIN_VALID_SIZE:
+        target = models_dir / file_name
+        if target.exists() and target.stat().st_size >= min_size:
             return target, f"already present в {target.parent}"
         for fb in self._fallback_dirs(config):
-            cand = fb / config.model_file
-            if cand.exists() and cand.stat().st_size >= self.MIN_VALID_SIZE:
+            cand = fb / file_name
+            if cand.exists() and cand.stat().st_size >= min_size:
                 return cand, f"found in fallback {fb}"
         return None, "not present anywhere"
 
-    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
-        start = time.monotonic()
-        if not config.model_repo or not config.model_file:
-            return InstallStepResult(
-                step_id=self.step_id, success=True,
-                message="no model selected — skipped",
-                elapsed=timedelta(seconds=time.monotonic() - start),
-            )
+    def _download_one(
+        self,
+        role: str,
+        repo: str | None,
+        file_name: str | None,
+        config: InstallConfig,
+        callback: ProgressCallback,
+    ) -> tuple[bool, str]:
+        """Download single (repo, file). Returns (success, message)."""
+        if not repo or not file_name:
+            return True, f"{role}: no model — skipped"
 
-        target = config.models_dir / config.model_file
+        min_size = self.MIN_VALID_SIZE if role == "llm" else self.MIN_VALID_SIZE_SMALL
+        target = config.models_dir / file_name
         config.models_dir.mkdir(parents=True, exist_ok=True)
 
-        # Detect existing — default location или fallback
-        existing, status = self._detect_existing(config)
+        existing, status = self._detect_existing(config.models_dir, file_name, min_size, config)
         if existing is not None:
             size_mb = existing.stat().st_size // (1024 * 1024)
             if existing == target:
                 callback(_make_event(
                     self.step_id, ProgressKind.LOG,
-                    f"skip download: {existing} ({size_mb} MiB) — {status}",
+                    f"{role}: skip download {existing} ({size_mb} MiB) — {status}",
                 ))
-                return InstallStepResult(
-                    step_id=self.step_id, success=True,
-                    message=f"reused {size_mb} MiB at {existing}",
-                    elapsed=timedelta(seconds=time.monotonic() - start),
-                )
-            # Found в fallback — move в правильное место чтобы compose volume mount работал
+                return True, f"{role}: reused {size_mb} MiB"
             callback(_make_event(
                 self.step_id, ProgressKind.LOG,
-                f"moving {existing} → {target} (saves re-download {size_mb} MiB)",
+                f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
             ))
             import shutil
             try:
                 shutil.move(str(existing), str(target))
             except OSError as exc:
-                # Cross-device move на разных FS → copy + remove
                 try:
                     shutil.copy2(str(existing), str(target))
                     existing.unlink()
                 except OSError as exc2:
-                    return InstallStepResult(
-                        step_id=self.step_id, success=False,
-                        message=f"cannot relocate model: {exc2} (initial: {exc})",
-                        elapsed=timedelta(seconds=time.monotonic() - start),
-                    )
-            return InstallStepResult(
-                step_id=self.step_id, success=True,
-                message=f"relocated {size_mb} MiB from fallback → {target.parent}",
-                elapsed=timedelta(seconds=time.monotonic() - start),
-            )
+                    return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
+            return True, f"{role}: relocated {size_mb} MiB"
 
-        # No existing — download через curl с resume support.
-        url = f"https://huggingface.co/{config.model_repo}/resolve/main/{config.model_file}"
+        url = f"https://huggingface.co/{repo}/resolve/main/{file_name}"
         cmd = ["curl", "-fL", "-C", "-", "-o", str(target),
                "--progress-bar", "--retry", "3", url]
-
-        # M4.6: throttle progress updates чтобы не флудить event stream
         last_pct = [-1]
 
         def parse_curl_pct(line: str) -> None:
             m = self.PROGRESS_RE.search(line)
-            if m:
-                try:
-                    pct = int(float(m.group(1)))
-                except (ValueError, IndexError):
-                    return
-                # Only emit когда % changes by ≥1, чтобы не дублировать
-                if pct == last_pct[0]:
-                    return
-                last_pct[0] = pct
-                # Try parse speed для richer log line
-                speed_m = self.SPEED_RE.search(line)
-                speed_label = ""
-                if speed_m:
-                    val = speed_m.group(1)
-                    unit = speed_m.group(2)
-                    speed_label = f" @ {val}{unit}/s"
-                try:
-                    callback(_make_event(
-                        self.step_id, ProgressKind.PROGRESS,
-                        f"download {pct}%{speed_label}",
-                        pct=pct,
-                    ))
-                except (ValueError, IndexError):
-                    pass
+            if not m:
+                return
+            try:
+                pct = int(float(m.group(1)))
+            except (ValueError, IndexError):
+                return
+            if pct == last_pct[0]:
+                return
+            last_pct[0] = pct
+            speed_m = self.SPEED_RE.search(line)
+            speed_label = ""
+            if speed_m:
+                speed_label = f" @ {speed_m.group(1)}{speed_m.group(2)}/s"
+            try:
+                callback(_make_event(
+                    self.step_id, ProgressKind.PROGRESS,
+                    f"{role} download {pct}%{speed_label}",
+                    pct=pct,
+                ))
+            except (ValueError, IndexError):
+                pass
 
         rc, _ = _stream_subprocess(cmd, callback, self.step_id, extra_emit=parse_curl_pct)
-        elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:
-            return InstallStepResult(
-                step_id=self.step_id, success=False,
-                message=f"curl rc={rc} (model download failed)", elapsed=elapsed,
-            )
+            return False, f"{role}: curl rc={rc} (download failed)"
         size_mb = target.stat().st_size // (1024 * 1024)
+        return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
+
+    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
+        start = time.monotonic()
+
+        roles = (
+            ("llm", config.model_repo, config.model_file),
+            ("embed", config.embed_repo, config.embed_file),
+            ("rerank", config.rerank_repo, config.rerank_file),
+        )
+
+        messages: list[str] = []
+        for role, repo, file_name in roles:
+            ok, msg = self._download_one(role, repo, file_name, config, callback)
+            messages.append(msg)
+            if not ok:
+                return InstallStepResult(
+                    step_id=self.step_id, success=False,
+                    message=msg,
+                    elapsed=timedelta(seconds=time.monotonic() - start),
+                )
+
         return InstallStepResult(
             step_id=self.step_id, success=True,
-            message=f"downloaded {size_mb} MiB → {target.name}", elapsed=elapsed,
+            message="; ".join(messages),
+            elapsed=timedelta(seconds=time.monotonic() - start),
         )
 
 
@@ -499,15 +510,37 @@ class EnvWriteStep(InstallStep):
         env_path = config.install_dir / ".env"
         config.install_dir.mkdir(parents=True, exist_ok=True)
 
+        # Phase M5.2: separate LLM/Embed/Rerank env vars так чтобы templates
+        # параметризовали каждый llama-* service независимо. Legacy AGMIND_CTX_SIZE
+        # сохраняется для backward compat с уже-deployed compose stacks (template
+        # llama-llm.yaml имеет ${AGMIND_CTX_SIZE:-fallback}).
         lines = [
-            "# AGmind runtime env — written by `agmind install` Phase N.G.",
+            "# AGmind runtime env — written by `agmind install` Phase M5.2.",
             "# Hand-edit allowed, but `agmind install` rerun перепишет.",
             f"AGMIND_DOMAIN={config.domain}",
+            "",
+            "# ---- LLM (token generation) ----",
             f"AGMIND_MODEL_FILE={config.model_file or ''}",
+            f"AGMIND_LLM_CTX_SIZE={config.ctx_size}",
+            f"AGMIND_LLM_KV_CACHE={config.kv_cache_type}",
+            f"AGMIND_LLM_THREADS={config.threads}",
+            f"AGMIND_LLM_PARALLEL={config.parallel_slots}",
+            "",
+            "# Legacy aliases (pre-M5.2 templates) — same values as LLM block.",
             f"AGMIND_CTX_SIZE={config.ctx_size}",
             f"AGMIND_KV_CACHE={config.kv_cache_type}",
             f"AGMIND_THREADS={config.threads}",
             f"AGMIND_PARALLEL={config.parallel_slots}",
+            "",
+            "# ---- Embed (dense embeddings for RAG) ----",
+            f"AGMIND_EMBED_FILE={config.embed_file or ''}",
+            f"AGMIND_EMBED_CTX_SIZE={config.embed_ctx_size}",
+            f"AGMIND_EMBED_KV_CACHE={config.embed_kv_cache}",
+            f"AGMIND_EMBED_PARALLEL={config.embed_parallel}",
+            "",
+            "# ---- Rerank (cross-encoder ordering) ----",
+            f"AGMIND_RERANK_FILE={config.rerank_file or ''}",
+            f"AGMIND_RERANK_CTX_SIZE={config.rerank_ctx_size}",
         ]
         try:
             env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

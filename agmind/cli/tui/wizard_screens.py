@@ -117,7 +117,13 @@ class DomainScreen(Screen[None]):
 
 
 class ModelScreen(Screen[None]):
-    """Step 2: model selection + context settings."""
+    """Step 2: model selection + context settings.
+
+    Phase M5.1: split на 3 sections (LLM / Embed / Rerank). User видит
+    отдельный selector + custom HF fields + context для каждого role.
+    Раньше один dropdown миксовал все kinds — embed модели вылезали в LLM
+    list.
+    """
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("alt+b", "back", "Back"),
@@ -132,45 +138,114 @@ class ModelScreen(Screen[None]):
             THREADS_PRESETS,
             models_for_wizard,
         )
+        from textual.widgets import Rule
         yield Header(show_clock=False)
         yield StepHeader(2, 4, t("wizard.section.model"))
+        state = self.app.state
+        ctx_options = [(label, str(n)) for n, label in CTX_SIZE_PRESETS]
+        kv_options = [(label, val) for val, label in KV_CACHE_TYPES]
+        parallel_options = [(label, str(n)) for n, label in PARALLEL_PRESETS]
+        threads_options = [(label, str(n)) for n, label in THREADS_PRESETS]
         with VerticalScroll():
-            yield Label(t("wizard.section.model"), classes="section")
-            model_options = models_for_wizard()
-            model_options.append(("Custom HuggingFace…", "custom"))
+            # ---- LLM section ----
+            yield Label("<LLM> TOKEN GENERATION", classes="model-section-header")
+            llm_options = models_for_wizard(kind="llm")
+            llm_options.append(("Custom HuggingFace…", "custom"))
             yield Select(
-                model_options, id="model-select",
-                value=self.app.state.model_id, allow_blank=False,
+                llm_options, id="llm-model-select",
+                value=state.model_id, allow_blank=False,
             )
             yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
             yield Input(
                 placeholder=t("wizard.placeholder.model_repo"),
-                id="model-repo-input", value=self.app.state.model_repo,
+                id="llm-model-repo-input", value=state.model_repo,
             )
             yield Input(
                 placeholder=t("wizard.placeholder.model_file"),
-                id="model-file-input", value=self.app.state.model_file,
+                id="llm-model-file-input", value=state.model_file,
             )
             yield Label(t("wizard.section.ctx_size"), classes="section")
             yield Select(
-                [(label, str(n)) for n, label in CTX_SIZE_PRESETS],
-                id="ctx-size-select", value=str(self.app.state.ctx_size), allow_blank=False,
+                list(ctx_options), id="llm-ctx-size-select",
+                value=str(state.ctx_size), allow_blank=False,
             )
             yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
-                [(label, val) for val, label in KV_CACHE_TYPES],
-                id="kv-cache-select", value=self.app.state.kv_cache_type, allow_blank=False,
+                list(kv_options), id="llm-kv-cache-select",
+                value=state.kv_cache_type, allow_blank=False,
             )
             yield Label(t("wizard.section.threads"), classes="section")
             yield Select(
-                [(label, str(n)) for n, label in THREADS_PRESETS],
-                id="threads-select", value=str(self.app.state.threads), allow_blank=False,
+                threads_options, id="llm-threads-select",
+                value=str(state.threads), allow_blank=False,
             )
             yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
-                [(label, str(n)) for n, label in PARALLEL_PRESETS],
-                id="parallel-select", value=str(self.app.state.parallel_slots), allow_blank=False,
+                list(parallel_options), id="llm-parallel-select",
+                value=str(state.parallel_slots), allow_blank=False,
             )
+
+            # ---- Embed section ----
+            yield Rule(line_style="heavy")
+            yield Label("<EMBED> DENSE EMBEDDINGS (RAG)", classes="model-section-header")
+            embed_options = models_for_wizard(kind="embed")
+            embed_options.append(("Custom HuggingFace…", "custom"))
+            yield Select(
+                embed_options, id="embed-model-select",
+                value=state.embed_model_id, allow_blank=False,
+            )
+            yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
+            yield Input(
+                placeholder=t("wizard.placeholder.model_repo"),
+                id="embed-repo-input", value=state.embed_repo,
+            )
+            yield Input(
+                placeholder=t("wizard.placeholder.model_file"),
+                id="embed-file-input", value=state.embed_file,
+            )
+            yield Label(t("wizard.section.ctx_size"), classes="section")
+            yield Select(
+                list(ctx_options), id="embed-ctx-size-select",
+                value=str(state.embed_ctx_size), allow_blank=False,
+            )
+            yield Label(t("wizard.section.kv_cache"), classes="section")
+            yield Select(
+                list(kv_options), id="embed-kv-cache-select",
+                value=state.embed_kv_cache, allow_blank=False,
+            )
+            yield Label(t("wizard.section.parallel"), classes="section")
+            yield Select(
+                list(parallel_options), id="embed-parallel-select",
+                value=str(state.embed_parallel), allow_blank=False,
+            )
+
+            # ---- Rerank section ----
+            yield Rule(line_style="heavy")
+            yield Label("<RERANK> CROSS-ENCODER (RAG ORDERING)", classes="model-section-header")
+            rerank_options = models_for_wizard(kind="rerank")
+            rerank_options.append(("Custom HuggingFace…", "custom"))
+            yield Select(
+                rerank_options, id="rerank-model-select",
+                value=state.rerank_model_id, allow_blank=False,
+            )
+            yield Static(
+                "[dim]Empty filename = skip rerank service (RAG будет без re-ordering)[/dim]",
+                classes="hint",
+            )
+            yield Input(
+                placeholder=t("wizard.placeholder.model_repo"),
+                id="rerank-repo-input", value=state.rerank_repo,
+            )
+            yield Input(
+                placeholder=t("wizard.placeholder.model_file"),
+                id="rerank-file-input", value=state.rerank_file,
+            )
+            yield Label(t("wizard.section.ctx_size"), classes="section")
+            yield Select(
+                list(ctx_options), id="rerank-ctx-size-select",
+                value=str(state.rerank_ctx_size), allow_blank=False,
+            )
+
         with Horizontal(id="nav-row"):
             yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
             yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
@@ -188,40 +263,55 @@ class ModelScreen(Screen[None]):
     def action_next_step(self) -> None:
         self._save_and_advance()
 
+    def _read_int(self, widget_id: str, default: int) -> int:
+        try:
+            value = self.query_one(f"#{widget_id}", Select).value
+            return int(str(value))
+        except (ValueError, TypeError):
+            return default
+
+    def _read_str(self, widget_id: str, default: str) -> str:
+        value = self.query_one(f"#{widget_id}", Select).value
+        return str(value) if value is not None else default
+
     def _save_and_advance(self) -> None:
+        from agmind.install.models import find_by_id
         state = self.app.state
-        model_select = self.query_one("#model-select", Select)
-        state.model_id = str(model_select.value) if model_select.value is not None else state.model_id
-        state.model_repo = self.query_one("#model-repo-input", Input).value.strip()
-        state.model_file = self.query_one("#model-file-input", Input).value.strip()
+
+        # ---- LLM ----
+        state.model_id = self._read_str("llm-model-select", state.model_id)
+        state.model_repo = self.query_one("#llm-model-repo-input", Input).value.strip()
+        state.model_file = self.query_one("#llm-model-file-input", Input).value.strip()
         if state.model_id != "custom":
-            from agmind.install.models import find_by_id
             entry = find_by_id(state.model_id)
             if entry is not None:
-                state.model_repo = entry.repo
-                state.model_file = entry.file
+                state.model_repo, state.model_file = entry.repo, entry.file
+        state.ctx_size = self._read_int("llm-ctx-size-select", state.ctx_size)
+        state.kv_cache_type = self._read_str("llm-kv-cache-select", state.kv_cache_type)
+        state.threads = self._read_int("llm-threads-select", state.threads)
+        state.parallel_slots = self._read_int("llm-parallel-select", state.parallel_slots)
 
-        ctx_select = self.query_one("#ctx-size-select", Select)
-        try:
-            state.ctx_size = int(str(ctx_select.value))
-        except (ValueError, TypeError):
-            pass
+        # ---- Embed ----
+        state.embed_model_id = self._read_str("embed-model-select", state.embed_model_id)
+        state.embed_repo = self.query_one("#embed-repo-input", Input).value.strip()
+        state.embed_file = self.query_one("#embed-file-input", Input).value.strip()
+        if state.embed_model_id != "custom":
+            entry = find_by_id(state.embed_model_id)
+            if entry is not None:
+                state.embed_repo, state.embed_file = entry.repo, entry.file
+        state.embed_ctx_size = self._read_int("embed-ctx-size-select", state.embed_ctx_size)
+        state.embed_kv_cache = self._read_str("embed-kv-cache-select", state.embed_kv_cache)
+        state.embed_parallel = self._read_int("embed-parallel-select", state.embed_parallel)
 
-        kv = self.query_one("#kv-cache-select", Select)
-        if kv.value is not None:
-            state.kv_cache_type = str(kv.value)
-
-        threads = self.query_one("#threads-select", Select)
-        try:
-            state.threads = int(str(threads.value))
-        except (ValueError, TypeError):
-            pass
-
-        parallel = self.query_one("#parallel-select", Select)
-        try:
-            state.parallel_slots = int(str(parallel.value))
-        except (ValueError, TypeError):
-            pass
+        # ---- Rerank ----
+        state.rerank_model_id = self._read_str("rerank-model-select", state.rerank_model_id)
+        state.rerank_repo = self.query_one("#rerank-repo-input", Input).value.strip()
+        state.rerank_file = self.query_one("#rerank-file-input", Input).value.strip()
+        if state.rerank_model_id != "custom":
+            entry = find_by_id(state.rerank_model_id)
+            if entry is not None:
+                state.rerank_repo, state.rerank_file = entry.repo, entry.file
+        state.rerank_ctx_size = self._read_int("rerank-ctx-size-select", state.rerank_ctx_size)
 
         self.app.push_screen(ServicesScreen())
 
@@ -314,21 +404,34 @@ class ConfirmScreen(Screen[None]):
         yield Footer()
 
     def _summary(self, state) -> str:  # type: ignore[no-untyped-def]
-        # Phase M4.7: Fallout pip-boy STATUS REPORT
-        token_mask = "*" * min(8, len(state.cf_api_function)) if False else "*" * 8
+        # Phase M4.7 + M5.1: Fallout pip-boy STATUS REPORT — separate LLM/Embed/Rerank
         line = "─" * 60
+        rerank_block = (
+            f"  RERANK ............. {state.rerank_model_id}\n"
+            f"      REPO/FILE ...... {state.rerank_repo}/{state.rerank_file}\n"
+            f"      CTX SIZE ....... {state.rerank_ctx_size}\n"
+        ) if state.rerank_file else "  RERANK ............. [dim]skipped (no model)[/dim]\n"
         return (
             f"[bold]── DEPLOYMENT STATUS REPORT ──[/bold]\n"
             f"{line}\n"
             f"  DOMAIN ............. {state.domain}\n"
             f"  CF API TOKEN ....... {'*' * 8} ({len(state.cf_api_token)} CHARS)\n"
             f"  BACKEND ............ {state.backend}\n"
-            f"  MODEL .............. {state.model_id}\n"
+            f"{line}\n"
+            f"  LLM ................ {state.model_id}\n"
             f"      REPO/FILE ...... {state.model_repo}/{state.model_file}\n"
-            f"  CTX SIZE ........... {state.ctx_size}\n"
-            f"  KV CACHE ........... {state.kv_cache_type}\n"
-            f"  CPU THREADS ........ {state.threads}\n"
-            f"  PARALLEL SLOTS ..... {state.parallel_slots}\n"
+            f"      CTX SIZE ....... {state.ctx_size}\n"
+            f"      KV CACHE ....... {state.kv_cache_type}\n"
+            f"      CPU THREADS .... {state.threads}\n"
+            f"      PARALLEL SLOTS . {state.parallel_slots}\n"
+            f"{line}\n"
+            f"  EMBED .............. {state.embed_model_id}\n"
+            f"      REPO/FILE ...... {state.embed_repo}/{state.embed_file}\n"
+            f"      CTX SIZE ....... {state.embed_ctx_size}\n"
+            f"      KV CACHE ....... {state.embed_kv_cache}\n"
+            f"      PARALLEL ....... {state.embed_parallel}\n"
+            f"{line}\n"
+            f"{rerank_block}"
             f"{line}\n"
             f"  SERVICES SELECTED .. {len(state.services)}\n"
             f"  {', '.join(sorted(state.services))}\n"
