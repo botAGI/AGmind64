@@ -60,9 +60,7 @@ def test_logs_unknown_service(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert "traefik" in out
 
 
-def test_logs_invokes_docker_compose(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_logs_invokes_docker_compose(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     install = _make_install_dir(tmp_path)
     captured: dict[str, object] = {}
 
@@ -75,7 +73,9 @@ def test_logs_invokes_docker_compose(
 
         return P()
 
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker" if name == "docker" else None)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/docker" if name == "docker" else None
+    )
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     rc = logs(install_dir=install, service="traefik", tail=42, follow=True)
@@ -89,9 +89,7 @@ def test_logs_invokes_docker_compose(
     assert captured["cwd"] == install
 
 
-def test_logs_no_service_means_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_logs_no_service_means_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     install = _make_install_dir(tmp_path)
     captured: dict[str, object] = {}
 
@@ -139,9 +137,7 @@ def test_shell_unknown_service(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert "unknown service" in capsys.readouterr().out
 
 
-def test_shell_invokes_docker_compose_exec(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_shell_invokes_docker_compose_exec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     install = _make_install_dir(tmp_path)
     captured: dict[str, object] = {}
 
@@ -165,9 +161,7 @@ def test_shell_invokes_docker_compose_exec(
     assert "/bin/bash" in cmd
 
 
-def test_shell_default_cmd_is_sh(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_shell_default_cmd_is_sh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     install = _make_install_dir(tmp_path)
     captured: dict[str, object] = {}
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")

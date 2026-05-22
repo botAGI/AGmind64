@@ -20,6 +20,7 @@ pytestmark = pytest.mark.backend_any
 
 # ---------- _parse_size ----------
 
+
 def test_parse_size_gb() -> None:
     assert _parse_size("Total reclaimed space: 1.5GB") == int(1.5 * 1024**3)
 
@@ -37,6 +38,7 @@ def test_parse_size_no_match() -> None:
 
 
 # ---------- gc_models ----------
+
 
 def test_gc_models_nonexistent_dir(tmp_path: Path) -> None:
     report = gc_models(models_dir=tmp_path / "does-not-exist", used_filenames=set())
@@ -86,6 +88,7 @@ def test_gc_models_skips_non_model_files(tmp_path: Path) -> None:
 
 # ---------- _scan_used_models ----------
 
+
 def test_scan_used_models_returns_set() -> None:
     """Scan should return a set (могут быть empty если нет descriptors)."""
     used = _scan_used_models()
@@ -93,6 +96,7 @@ def test_scan_used_models_returns_set() -> None:
 
 
 # ---------- format_gc_report ----------
+
 
 def test_format_report_empty() -> None:
     out = format_gc_report([])
@@ -124,8 +128,10 @@ def test_format_report_shows_error() -> None:
 
 # ---------- gc_containers (without docker) ----------
 
+
 def test_gc_containers_no_docker() -> None:
     with patch("agmind.deploy.gc._docker_available", return_value=False):
         from agmind.deploy.gc import gc_containers
+
         report = gc_containers()
         assert report.error == "docker not installed"

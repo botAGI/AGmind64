@@ -12,6 +12,7 @@ audit_forbidden.py — поиск платформо-зависимых хард
 Категории = раздел 3 AGMIND_MIGRATION_SPEC.md.
 Папка legacy/ исключена из аудита (там этому коду место).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,14 +20,23 @@ import fnmatch
 import json
 import re
 import sys
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 EXCLUDED_DIRS = {
-    ".git", ".venv", "venv", "node_modules", "__pycache__",
-    "legacy", "dist", "build", ".mypy_cache", ".pytest_cache",
-    ".ruff_cache", "site-packages",
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    "legacy",
+    "dist",
+    "build",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "site-packages",
 }
 
 # DEF-AUDIT-GITIGNORE: generated artifacts которые .gitignore исключает,
@@ -75,18 +85,45 @@ EXCLUDED_PATHS = {
 # Каталоги опт-аутенные как «рабочие notes» — recon-отчёты и журналы
 # сессий описывают legacy tech.
 EXCLUDED_PREFIXES = (
-    "docs/adr/",                              # ADR описывают историю решений
-    ".planning/research/x86-migration/",      # recon-отчёты
-    ".planning/sessions/",                    # session journals
-    ".planning/codebase/",                    # codebase maps (legit описывают forbidden patterns)
-    ".claude/",                               # IDE/agent config
+    "docs/adr/",  # ADR описывают историю решений
+    ".planning/research/x86-migration/",  # recon-отчёты
+    ".planning/sessions/",  # session journals
+    ".planning/codebase/",  # codebase maps (legit описывают forbidden patterns)
+    ".claude/",  # IDE/agent config
 )
 
 TEXT_SUFFIXES = {
-    ".py", ".pyx", ".pyi", ".toml", ".cfg", ".ini", ".yaml", ".yml",
-    ".json", ".md", ".rst", ".txt", ".sh", ".bash", ".zsh",
-    ".dockerfile", ".cmake", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp",
-    ".cu", ".cuh", ".rs", ".go", ".js", ".ts", ".tsx", ".jsx",
+    ".py",
+    ".pyx",
+    ".pyi",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".md",
+    ".rst",
+    ".txt",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".dockerfile",
+    ".cmake",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".cu",
+    ".cuh",
+    ".rs",
+    ".go",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
     "",
 }
 
@@ -238,14 +275,19 @@ def scan_file(p: Path, report: Report) -> None:
         for rule_id, desc, pat in RULES:
             if pat.search(line):
                 report.findings.append(
-                    Finding(rule=rule_id, description=desc, file=str(p),
-                            line=i, snippet=line.strip()[:200])
+                    Finding(
+                        rule=rule_id,
+                        description=desc,
+                        file=str(p),
+                        line=i,
+                        snippet=line.strip()[:200],
+                    )
                 )
 
 
 def print_report(report: Report) -> None:
     grouped = report.by_rule
-    print(f"\n=== AGmind audit ===")
+    print("\n=== AGmind audit ===")
     print(f"Файлов проверено: {report.scanned_files}")
     print(f"Находок:          {len(report.findings)}")
     if not report.findings:
@@ -265,10 +307,8 @@ def print_report(report: Report) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("path", nargs="?", default=".", type=Path)
-    ap.add_argument("--fail", action="store_true",
-                    help="exit 1 если есть находки (для CI)")
-    ap.add_argument("--json", type=Path, default=None,
-                    help="дополнительно записать JSON-отчёт")
+    ap.add_argument("--fail", action="store_true", help="exit 1 если есть находки (для CI)")
+    ap.add_argument("--json", type=Path, default=None, help="дополнительно записать JSON-отчёт")
     args = ap.parse_args()
 
     root = args.path.resolve()
@@ -282,8 +322,10 @@ def main() -> int:
     print_report(report)
 
     if args.json:
-        payload = {"scanned_files": report.scanned_files,
-                   "findings": [asdict(f) for f in report.findings]}
+        payload = {
+            "scanned_files": report.scanned_files,
+            "findings": [asdict(f) for f in report.findings],
+        }
         args.json.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
         print(f"\nJSON отчёт: {args.json}")
 

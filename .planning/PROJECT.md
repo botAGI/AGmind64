@@ -19,10 +19,11 @@ long-context pp + GDN models + batch embed), CPU fallback.
 
 ---
 
-## Current milestone: **v0.1.0-dev** (Migration complete, alpha)
+## Current milestone: **v0.6.0 candidate** (post-M5 hardening)
 
-**Status:** alpha — функциональность shipped, но real hardware validation
-не выполнена. Use at own risk.
+**Status:** post-M5 handoff. M1-M5 shipped; current work is release
+hardening, dirty cloud-artifact reconciliation, and real E2E/cluster
+confidence before GA.
 
 **Driver:** AGMIND_MIGRATION_SPEC.md (single source of truth для
 архитектурных решений).
@@ -30,7 +31,8 @@ long-context pp + GDN models + batch embed), CPU fallback.
 **Shipped:**
 - 3-layer architecture: Ansible (orchestration) + Python `agmind/` (runtime
   + CLI + cluster) + declarative catalogs (services.yaml, models.yaml)
-- 32 services pinned semver (27 с digest), 5 LLM tiers с GGUF inventory
+- 33 services pinned semver/digest where possible, curated LLM/embed/rerank
+  GGUF catalog
 - 4 routing strategies (round-robin, least-loaded, sticky-session, random)
 - HTTP REST client для llama-server (OpenAI-compatible) + streaming
 - LLMHandle ABC + 4 backends (cpu, vulkan, rocm, npu_stub) + 3 engines
@@ -38,12 +40,21 @@ long-context pp + GDN models + batch embed), CPU fallback.
 - 11 Ansible roles (preflight, bootstrap, strix_halo, docker,
   agmind_python, models, services, observability, security, smoke_test,
   cluster)
-- 306 test functions, 0 audit findings, 10 ADR-able decisions
-- 4 user docs (QUICKSTART/INSTALL/TROUBLESHOOTING/CLUSTER) + 3 ADR + 12 recon reports
+- `agmind install`, `deploy`, `gc`, `migrate`, `logs`, `shell`, `backup`,
+  `restore`, `models`, `upgrade`, `cluster`
+- Textual multi-step wizard with EN/RU i18n, LLM/embed/rerank model split,
+  per-service settings, cluster peer banner, replicate toggle, help overlay
+- Real Strix Halo benchmark evidence for Qwen3.6-35B-A3B Q4_K_M
+- 886 passing tests, 0 audit findings as of 2026-05-22
+- User docs, ADRs 0000-0012, and recon reports R0-R18
 
 ## Previous milestones
 
-(нет — это первый проект milestone после migration)
+- **M1 v0.1.0-dev:** migration alpha
+- **M2 v0.2.0:** production hardening
+- **M3 v0.3.0:** UX + ops polish
+- **M4 wave:** cluster mDNS + TUI/UX bundle
+- **M5 v0.5.0:** LLM/embed/rerank split + TUI polish round 2
 
 ## Reference documents
 
@@ -53,8 +64,8 @@ long-context pp + GDN models + batch embed), CPU fallback.
 - `docs/BENCHMARKS.md` — reference perf numbers
 - `docs/QUICKSTART.md` + `docs/INSTALL.md` + `docs/CLUSTER.md` — user guides
 - `docs/TROUBLESHOOTING.md` — cookbook
-- `docs/adr/` — 3 ADRs (template, migration, compute abstraction)
-- `.planning/research/x86-migration/` — 12 deep recon reports
+- `docs/adr/` — ADRs 0000-0012+
+- `.planning/research/x86-migration/` — recon reports R0-R18 + baselines
 
 ## Out of scope (для M1)
 
@@ -80,3 +91,5 @@ long-context pp + GDN models + batch embed), CPU fallback.
   (R0/karpathy/R1-R12 как примеры)
 - **3-layer separation** — Ansible не делает inference, Python не делает
   host bootstrap, services.yaml не impl logic
+- **GSD memory lives in `.planning/`** — update STATE/ROADMAP/BACKLOG/session
+  notes at handoff points so the next agent can continue from facts, not vibes.

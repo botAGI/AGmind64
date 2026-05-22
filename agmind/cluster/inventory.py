@@ -72,7 +72,7 @@ def generate_inventory_yaml(
             lines.append("          agmind_profiles:")
             lines.append("            - core")
             lines.append("          agmind_cluster_role: worker")
-            lines.append(f"          agmind_worker_endpoint: \"http://{slug}.local:8080\"")
+            lines.append(f'          agmind_worker_endpoint: "http://{slug}.local:8080"')
     return "\n".join(lines) + "\n"
 
 

@@ -68,7 +68,7 @@ def _parse_size(text: str) -> int:
         for suffix, mul in (("GB", 1024**3), ("MB", 1024**2), ("KB", 1024), ("B", 1)):
             if last.endswith(suffix):
                 try:
-                    val = float(last[:-len(suffix)])
+                    val = float(last[: -len(suffix)])
                     return int(val * mul)
                 except ValueError:
                     return 0
@@ -82,10 +82,20 @@ def gc_containers(dry_run: bool = False) -> GcReport:
 
     if dry_run:
         # docker container ls -a --filter status=exited --filter status=dead
-        result = _run(["docker", "container", "ls", "-a",
-                       "--filter", "status=exited",
-                       "--filter", "status=dead",
-                       "--format", "{{.Names}}"])
+        result = _run(
+            [
+                "docker",
+                "container",
+                "ls",
+                "-a",
+                "--filter",
+                "status=exited",
+                "--filter",
+                "status=dead",
+                "--format",
+                "{{.Names}}",
+            ]
+        )
         names = [n for n in result.stdout.strip().splitlines() if n]
         return GcReport(
             target="containers",
@@ -115,17 +125,31 @@ def gc_images(older_than_hours: int = 72, dry_run: bool = False) -> GcReport:
     until = f"{older_than_hours}h"
 
     if dry_run:
-        result = _run([
-            "docker", "image", "ls", "-a", "--filter", "dangling=true",
-            "--format", "{{.Repository}}:{{.Tag}} ({{.Size}})",
-        ])
+        result = _run(
+            [
+                "docker",
+                "image",
+                "ls",
+                "-a",
+                "--filter",
+                "dangling=true",
+                "--format",
+                "{{.Repository}}:{{.Tag}} ({{.Size}})",
+            ]
+        )
         items = [l for l in result.stdout.strip().splitlines() if l]
         return GcReport(target="images", items_removed=len(items), dry_run=True, items=items)
 
-    result = _run([
-        "docker", "image", "prune", "-af",
-        "--filter", f"until={until}",
-    ])
+    result = _run(
+        [
+            "docker",
+            "image",
+            "prune",
+            "-af",
+            "--filter",
+            f"until={until}",
+        ]
+    )
     if result.returncode != 0:
         return GcReport(target="images", error=result.stderr.strip())
     return GcReport(
@@ -147,9 +171,16 @@ def gc_volumes(aggressive: bool = False, dry_run: bool = False) -> GcReport:
         if aggressive:
             cmd = ["docker", "volume", "ls", "-q", "--filter", "dangling=true"]
         else:
-            cmd = ["docker", "volume", "ls", "-q",
-                   "--filter", "dangling=true",
-                   "--filter", "label=agmind.gc=auto"]
+            cmd = [
+                "docker",
+                "volume",
+                "ls",
+                "-q",
+                "--filter",
+                "dangling=true",
+                "--filter",
+                "label=agmind.gc=auto",
+            ]
         result = _run(cmd)
         items = [l for l in result.stdout.strip().splitlines() if l]
         return GcReport(target="volumes", items_removed=len(items), dry_run=True, items=items)
@@ -157,8 +188,7 @@ def gc_volumes(aggressive: bool = False, dry_run: bool = False) -> GcReport:
     if aggressive:
         result = _run(["docker", "volume", "prune", "-af"])
     else:
-        result = _run(["docker", "volume", "prune", "-af",
-                       "--filter", "label=agmind.gc=auto"])
+        result = _run(["docker", "volume", "prune", "-af", "--filter", "label=agmind.gc=auto"])
     if result.returncode != 0:
         return GcReport(target="volumes", error=result.stderr.strip())
     return GcReport(
@@ -256,6 +286,7 @@ def _scan_used_models() -> set[str]:
         for yaml_path in services_dir.glob("*.yaml"):
             try:
                 import yaml
+
                 data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
                 env = (data or {}).get("env", {}) if isinstance(data, dict) else {}
                 for value in env.values():
@@ -269,7 +300,9 @@ def _scan_used_models() -> set[str]:
     if models_yaml.exists():
         try:
             import yaml
+
             data = yaml.safe_load(models_yaml.read_text(encoding="utf-8"))
+
             # Walk values recursively
             def _walk(obj: object) -> None:
                 if isinstance(obj, dict):
@@ -280,6 +313,7 @@ def _scan_used_models() -> set[str]:
                         _walk(v)
                 elif isinstance(obj, str) and obj.endswith((".gguf", ".safetensors", ".bin")):
                     used.add(Path(obj).name)
+
             _walk(data)
         except Exception:
             pass
@@ -316,10 +350,7 @@ def format_gc_report(reports: list[GcReport]) -> str:
         else:
             size_gb = r.bytes_freed / 1024**3
             size_str = f"{size_gb:.2f} GB" if r.bytes_freed >= 1024**2 else f"{r.bytes_freed} B"
-            lines.append(
-                f"  ✓ {prefix}{r.target}: {r.items_removed} items, "
-                f"{size_str} freed"
-            )
+            lines.append(f"  ✓ {prefix}{r.target}: {r.items_removed} items, {size_str} freed")
             total_bytes += r.bytes_freed
 
     total_gb = total_bytes / 1024**3

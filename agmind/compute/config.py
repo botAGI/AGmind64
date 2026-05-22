@@ -19,11 +19,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-
 _ALLOWED_BACKENDS: Final = frozenset({"auto", "vulkan", "rocm", "cpu", "npu"})
-_ALLOWED_ENGINES: Final = frozenset(
-    {"auto", "llama_cpp", "vllm", "infinity", "stub"}
-)
+_ALLOWED_ENGINES: Final = frozenset({"auto", "llama_cpp", "vllm", "infinity", "stub"})
 
 
 class Profile(str, Enum):
@@ -62,9 +59,7 @@ class ComputeConfig:
 def _read_str(key: str, allowed: frozenset[str], default: str) -> str:
     val = os.environ.get(key, default).strip().lower()
     if val not in allowed:
-        raise ValueError(
-            f"{key}={val!r} not in {sorted(allowed)}"
-        )
+        raise ValueError(f"{key}={val!r} not in {sorted(allowed)}")
     return val
 
 
@@ -74,9 +69,7 @@ def _read_profile() -> Profile:
         return Profile(raw)
     except ValueError as exc:
         allowed = [p.value for p in Profile]
-        raise ValueError(
-            f"AGMIND_BACKEND_PROFILE={raw!r} not in {allowed}"
-        ) from exc
+        raise ValueError(f"AGMIND_BACKEND_PROFILE={raw!r} not in {allowed}") from exc
 
 
 def _read_device_id() -> int:

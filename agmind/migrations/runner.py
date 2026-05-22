@@ -47,7 +47,9 @@ class MigrationRunner:
         seen: dict[int, str] = {}
         for m in self._migrations:
             if m.version <= 0:
-                raise ValueError(f"migration {m.name} has invalid version {m.version} (must be > 0)")
+                raise ValueError(
+                    f"migration {m.name} has invalid version {m.version} (must be > 0)"
+                )
             if m.version in seen:
                 raise ValueError(
                     f"duplicate migration version {m.version}: {seen[m.version]} vs {m.name}"

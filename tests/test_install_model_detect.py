@@ -15,7 +15,8 @@ pytestmark = pytest.mark.backend_any
 
 def _cfg(tmp_path: Path, file_name: str = "Qwen.gguf") -> InstallConfig:
     return InstallConfig(
-        domain="x.example", cf_api_token="t" * 40,
+        domain="x.example",
+        cf_api_token="t" * 40,
         services=["llama-llm"],
         install_dir=tmp_path / "opt",
         models_dir=tmp_path / "prod_models",
@@ -51,10 +52,12 @@ def test_skip_if_too_small_blob_present(tmp_path: Path) -> None:
     # Now mock curl to avoid network — assert we DO attempt to download
     with patch("agmind.install.steps._stream_subprocess") as m:
         m.return_value = (0, [])
+
         # Make the file "appear" after download
         def fake_run(*args, **kwargs):
             _make_blob(target, size_mb=200)
             return (0, [])
+
         m.side_effect = fake_run
         result = ModelDownloadStep().run(lambda _e: None, cfg)
     assert result.success
@@ -62,7 +65,8 @@ def test_skip_if_too_small_blob_present(tmp_path: Path) -> None:
 
 
 def test_relocate_from_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Модель в ~/.local/share/agmind/models/ → move into models_dir, skip download."""
     cfg = _cfg(tmp_path)
@@ -72,7 +76,8 @@ def test_relocate_from_fallback(
 
     # Patch _fallback_dirs чтобы вернуло наш fake fallback (без real $HOME)
     monkeypatch.setattr(
-        ModelDownloadStep, "_fallback_dirs",
+        ModelDownloadStep,
+        "_fallback_dirs",
         staticmethod(lambda _c: [fallback_dir]),
     )
 
@@ -86,7 +91,8 @@ def test_relocate_from_fallback(
 
 
 def test_skip_relocate_if_target_already_correct(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Если model уже в models_dir — игнорируем fallback (default wins)."""
     cfg = _cfg(tmp_path)
@@ -96,7 +102,8 @@ def test_skip_relocate_if_target_already_correct(
     _make_blob(fallback / cfg.model_file, size_mb=200)
 
     monkeypatch.setattr(
-        ModelDownloadStep, "_fallback_dirs",
+        ModelDownloadStep,
+        "_fallback_dirs",
         staticmethod(lambda _c: [fallback]),
     )
 
@@ -108,14 +115,18 @@ def test_skip_relocate_if_target_already_correct(
 
 
 def test_download_called_when_nowhere_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cfg = _cfg(tmp_path)
     monkeypatch.setattr(
-        ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []),
+        ModelDownloadStep,
+        "_fallback_dirs",
+        staticmethod(lambda _c: []),
     )
 
     captured_cmd: list[list[str]] = []
+
     def fake_stream(cmd, callback, step_id, **kw):
         captured_cmd.append(cmd)
         # simulate download — write a 200 MB file

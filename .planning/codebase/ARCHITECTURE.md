@@ -263,7 +263,7 @@ nginx (master) → /v1/chat/completions
        # M2: + worker endpoints from /etc/agmind/cluster.yaml
        # M2: + nginx upstream weight=N (least_conn)
      }
-  
+
 Python agmind.cluster (M1 partial — module ready, nginx integration M2):
   load_cluster_config() → peers
   probe_all(peers, timeout=5) → healths

@@ -22,12 +22,13 @@ from agmind.log import setup as setup_logging
 # Lazy import typer чтобы import agmind.cli не валился без typer.
 try:
     import typer
+
     _HAS_TYPER = True
 except ImportError:
     _HAS_TYPER = False
 
 
-def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
+def _make_app() -> typer.Typer:
     """Build typer app. Calls typer at import-time only if available."""
     app = typer.Typer(
         name="agmind",
@@ -52,6 +53,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         out = doctor_report(as_json=as_json)
         typer.echo(out)
         from agmind.diagnostics.doctor import run_preflight
+
         report = run_preflight()
         if report.has_failures:
             raise typer.Exit(code=2)
@@ -230,15 +232,18 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             False, "--dry-run", help="Show what would be removed (don't delete)"
         ),
         aggressive: bool = typer.Option(
-            False, "--aggressive",
+            False,
+            "--aggressive",
             help="Remove ALL unused volumes (default: только labeled agmind.gc=auto)",
         ),
         older_than_hours: int = typer.Option(
-            72, "--older-than-hours",
+            72,
+            "--older-than-hours",
             help="Image age cutoff в часах (default: 72)",
         ),
         include_models: bool = typer.Option(
-            False, "--include-models",
+            False,
+            "--include-models",
             help="Также удалить GGUF/safetensors не упомянутые в descriptors",
         ),
     ) -> None:
@@ -296,9 +301,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         deploy_result = getattr(result, "_deploy_result", None)
         if deploy_result is not None:
             # Auto-deploy mode — exit code reflects result
-            typer.echo(
-                f"\n{'✓' if deploy_result.success else '✗'} {deploy_result.message}"
-            )
+            typer.echo(f"\n{'✓' if deploy_result.success else '✗'} {deploy_result.message}")
             raise typer.Exit(code=0 if deploy_result.success else 1)
         # Wizard-only mode — user уже видел next-steps в TUI SummaryScreen
         typer.echo(
@@ -406,12 +409,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         dry_run: bool = typer.Option(False, "--dry-run"),
     ) -> None:
         """Alias for `agmind install` (legacy AGmind UX parity)."""
-        # Just forward all flags to install command
-        from agmind.cli import __init__ as _cli_module  # type: ignore[attr-defined]
-
         # Use direct invocation since typer commands are nested closures
         if lang:
             import os as _os
+
             _os.environ["AGMIND_LANG"] = lang.strip().lower()
 
         if dry_run:
@@ -421,6 +422,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         # Re-launch via subprocess — самый простой re-dispatch
         import subprocess
         import sys as _sys
+
         cmd = [_sys.executable, "-m", "agmind", "install"]
         if domain:
             cmd.extend(["--domain", domain])
@@ -445,7 +447,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @cluster_app.command("detect")
     def cluster_detect(
         timeout: float = typer.Option(
-            3.0, "--timeout", "-t", help="Discovery duration в секундах",
+            3.0,
+            "--timeout",
+            "-t",
+            help="Discovery duration в секундах",
         ),
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
     ) -> None:
@@ -457,10 +462,15 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @cluster_app.command("advertise")
     def cluster_advertise(
         port: int = typer.Option(
-            41423, "--port", "-p", help="Port для service advertisement",
+            41423,
+            "--port",
+            "-p",
+            help="Port для service advertisement",
         ),
         duration: float = typer.Option(
-            0.0, "--duration", "-d",
+            0.0,
+            "--duration",
+            "-d",
             help="Stop после N seconds (0 = forever / Ctrl+C)",
         ),
     ) -> None:
@@ -492,31 +502,40 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     def upgrade_cb(
         ctx: typer.Context,
         component: str | None = typer.Option(
-            None, "--component", "-c",
+            None,
+            "--component",
+            "-c",
             help="Service name (e.g. ragflow). Bump его image tag.",
         ),
         version: str | None = typer.Option(
-            None, "--version", "-v",
+            None,
+            "--version",
+            "-v",
             help="Target tag (e.g. v0.25.5). Required с --component.",
         ),
         digest: str | None = typer.Option(
-            None, "--digest",
+            None,
+            "--digest",
             help="Optional sha256 digest (без `sha256:` prefix).",
         ),
         check: bool = typer.Option(
-            False, "--check",
+            False,
+            "--check",
             help="Run version_check.py scanner и выйти.",
         ),
         apply: bool = typer.Option(
-            False, "--apply",
+            False,
+            "--apply",
             help="Re-deploy after bump (uses Phase L.B runner).",
         ),
         rollback: bool = typer.Option(
-            False, "--rollback",
+            False,
+            "--rollback",
             help="Revert last bump (read latest state + restore template).",
         ),
         force: bool = typer.Option(
-            False, "--force",
+            False,
+            "--force",
             help="Bump даже если pin в version_holds.yaml.",
         ),
     ) -> None:
@@ -542,14 +561,19 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
                 typer.echo("ERROR: --component requires --version", err=True)
                 raise typer.Exit(code=2)
             rc = cmd_component(
-                service=component, version=version, force=force, digest=digest,
+                service=component,
+                version=version,
+                force=force,
+                digest=digest,
             )
             if rc != 0 or not apply:
                 raise typer.Exit(code=rc)
             raise typer.Exit(code=cmd_apply())
 
-        typer.echo("Usage: agmind upgrade [--check | --component X --version Y "
-                  "[--apply] | --apply | --rollback]")
+        typer.echo(
+            "Usage: agmind upgrade [--check | --component X --version Y "
+            "[--apply] | --apply | --rollback]"
+        )
         raise typer.Exit(code=2)
 
     # ---- models subcommand group (Phase M3.Q) ----
@@ -563,7 +587,8 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @models_app.command("list")
     def models_list(
         local: bool = typer.Option(
-            True, "--local/--catalog",
+            True,
+            "--local/--catalog",
             help="--local: scan models dir (default). --catalog: legacy registry.",
         ),
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
@@ -578,10 +603,13 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @models_app.command("info")
     def models_info(
         model_id: str | None = typer.Argument(
-            None, help="Curated model id (см. `agmind install --list-models`)",
+            None,
+            help="Curated model id (см. `agmind install --list-models`)",
         ),
         file: str | None = typer.Option(
-            None, "--file", help="Inspect local file by name (in models dir or absolute path)",
+            None,
+            "--file",
+            help="Inspect local file by name (in models dir or absolute path)",
         ),
     ) -> None:
         """Show details для curated model OR local file."""
@@ -592,35 +620,51 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @models_app.command("pull")
     def models_pull(
         model_id: str | None = typer.Argument(
-            None, help="Curated id (e.g. qwen36-a3b-q4km)",
+            None,
+            help="Curated id (e.g. qwen36-a3b-q4km)",
         ),
         repo: str | None = typer.Option(
-            None, "--repo", help="HF repo (для custom — combine with --file)",
+            None,
+            "--repo",
+            help="HF repo (для custom — combine with --file)",
         ),
         file: str | None = typer.Option(
-            None, "--file", help="GGUF filename in HF repo",
+            None,
+            "--file",
+            help="GGUF filename in HF repo",
         ),
         force: bool = typer.Option(
-            False, "--force", help="Re-download даже если уже есть",
+            False,
+            "--force",
+            help="Re-download даже если уже есть",
         ),
     ) -> None:
         """Download GGUF model from curated catalog или custom HF repo."""
         from agmind.cli.models_cmd import cmd_pull
 
-        raise typer.Exit(code=cmd_pull(
-            model_id=model_id, repo=repo, file=file, force=force,
-        ))
+        raise typer.Exit(
+            code=cmd_pull(
+                model_id=model_id,
+                repo=repo,
+                file=file,
+                force=force,
+            )
+        )
 
     @models_app.command("rm")
     def models_rm(
         model_id: str | None = typer.Argument(
-            None, help="Curated id (resolves to filename in models dir)",
+            None,
+            help="Curated id (resolves to filename in models dir)",
         ),
         file: str | None = typer.Option(
-            None, "--file", help="Remove by filename (resolved against models dir)",
+            None,
+            "--file",
+            help="Remove by filename (resolved against models dir)",
         ),
         force: bool = typer.Option(
-            False, "--force",
+            False,
+            "--force",
             help="Remove даже если referenced в /opt/agmind/.env",
         ),
     ) -> None:
@@ -653,51 +697,64 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @app.command()
     def install(
         domain: str | None = typer.Option(
-            None, "--domain", envvar="AGMIND_DOMAIN",
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
             help="Public domain для Traefik TLS (skip prompt if set).",
         ),
         cf_token_file: Path | None = typer.Option(
-            None, "--cf-token-file",
+            None,
+            "--cf-token-file",
             help="File с Cloudflare API token (skip prompt if set, chmod 600).",
         ),
         model_id: str = typer.Option(
-            "", "--model-id",
+            "",
+            "--model-id",
             help="Curated model id (см. `agmind install --list-models`) или 'custom'.",
         ),
         model_repo: str = typer.Option(
-            "", "--model-repo",
+            "",
+            "--model-repo",
             help="HF repo (для custom). Перекрывает curated.",
         ),
         model_file: str = typer.Option(
-            "", "--model-file",
+            "",
+            "--model-file",
             help="GGUF filename. Empty + non-custom id → resolved из catalog.",
         ),
         ctx_size: int = typer.Option(
-            0, "--ctx-size",
+            0,
+            "--ctx-size",
             help="Context size override (0 = use wizard / model suggested).",
         ),
         kv_cache: str = typer.Option(
-            "", "--kv-cache",
+            "",
+            "--kv-cache",
             help="KV cache quant (q8_0 / q4_0 / f16). Empty = wizard default.",
         ),
         list_models: bool = typer.Option(
-            False, "--list-models",
+            False,
+            "--list-models",
             help="Print curated model catalog и выйти.",
         ),
         lang: str = typer.Option(
-            "", "--lang",
+            "",
+            "--lang",
             help="UI language (en|ru). Default — auto-detect via LANG env.",
         ),
         legacy_wizard: bool = typer.Option(
-            False, "--legacy-wizard",
+            False,
+            "--legacy-wizard",
             help="Force legacy single-screen wizard (default — multi-step с Phase M4).",
         ),
         no_tui: bool = typer.Option(
-            False, "--no-tui",
+            False,
+            "--no-tui",
             help="CLI-only run без Textual UI (для CI / headless).",
         ),
         dry_run: bool = typer.Option(
-            False, "--dry-run",
+            False,
+            "--dry-run",
             help="Только preflight + wizard, без bootstrap/pull/deploy.",
         ),
     ) -> None:
@@ -709,11 +766,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         import getpass
 
         from agmind.cli.tui.setup_wizard import (
-            STATE_PATH,
             SetupState,
             run_setup_wizard,
         )
-        from agmind.install.models import CURATED_MODELS, find_by_id
+        from agmind.install.models import CURATED_MODELS
         from agmind.install.orchestrator import (
             InstallConfig,
             InstallOrchestrator,
@@ -723,6 +779,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         # Phase M3.T: set AGMIND_LANG для i18n.detect_lang()
         if lang:
             import os as _os
+
             _os.environ["AGMIND_LANG"] = lang.strip().lower()
 
         # 0. --list-models — print catalog и выйти
@@ -762,7 +819,9 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
             ms = False if legacy_wizard else None  # None = default (multi-step)
             wizard_state = run_setup_wizard(
-                initial_state=initial, auto_deploy=False, multi_step=ms,
+                initial_state=initial,
+                auto_deploy=False,
+                multi_step=ms,
             )
             if wizard_state is None:
                 typer.echo("aborted: wizard cancelled", err=True)
@@ -810,8 +869,10 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         # 4. Orchestrator + progress.
         steps = default_steps()
         if no_tui:
+
             def cli_cb(event) -> None:  # type: ignore[no-untyped-def]
                 from agmind.install.orchestrator import ProgressKind
+
                 glyph = {
                     ProgressKind.STEP_START: "▶",
                     ProgressKind.STEP_DONE: "✓",
@@ -825,8 +886,9 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
             result = orchestrator.run()
             raise typer.Exit(code=0 if result.success else 1)
 
-        from agmind.cli.tui.install_screen import InstallProgressScreen
         from textual.app import App
+
+        from agmind.cli.tui.install_screen import InstallProgressScreen
 
         class _InstallShell(App[None]):
             CSS_PATH = None
@@ -840,9 +902,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
 
     @app.command()
     def logs(
-        service: str | None = typer.Argument(
-            None, help="Service name (omit для всех сервисов)."
-        ),
+        service: str | None = typer.Argument(None, help="Service name (omit для всех сервисов)."),
         install_dir: Path = typer.Option(
             Path("/opt/agmind"), "--install-dir", help="Deployment dir."
         ),
@@ -860,18 +920,16 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
         install_dir: Path = typer.Option(
             Path("/opt/agmind"), "--install-dir", help="Deployment dir."
         ),
-        cmd: str = typer.Option(
-            "/bin/sh", "--cmd", help="Command to run (default /bin/sh)."
-        ),
+        cmd: str = typer.Option("/bin/sh", "--cmd", help="Command to run (default /bin/sh)."),
         workdir: str | None = typer.Option(
             None, "--workdir", "-w", help="Working dir внутри container."
         ),
     ) -> None:
         """Open shell inside running service container (docker compose exec)."""
-        from agmind.cli.ops_cmd import cmd_shell
-
         # shlex.split чтобы поддержать `--cmd "python -m foo"`
         import shlex
+
+        from agmind.cli.ops_cmd import cmd_shell
 
         cmd_list = shlex.split(cmd) if cmd else None
         raise typer.Exit(code=cmd_shell(service, install_dir, cmd_list, workdir))
@@ -893,9 +951,7 @@ def _make_app() -> "typer.Typer":  # type: ignore[name-defined]
     @app.command()
     def restore(
         backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
-        yes: bool = typer.Option(
-            False, "-y", "--yes", help="Skip interactive confirmation."
-        ),
+        yes: bool = typer.Option(False, "-y", "--yes", help="Skip interactive confirmation."),
     ) -> None:
         """Restore deployment from `agmind backup` archive (Phase L.E)."""
         from agmind.cli.ops_cmd import cmd_restore

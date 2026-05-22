@@ -40,9 +40,7 @@ def test_select_auto_rocm_preferred_for_pp() -> None:
 
 
 def test_select_auto_rocm_preferred_for_embed_batch() -> None:
-    assert _select_auto(
-        _cfg(Profile.EMBED_BATCH), ["vulkan", "rocm", "cpu"]
-    ) == "rocm"
+    assert _select_auto(_cfg(Profile.EMBED_BATCH), ["vulkan", "rocm", "cpu"]) == "rocm"
 
 
 def test_select_auto_vulkan_preferred_for_tg() -> None:
@@ -50,15 +48,11 @@ def test_select_auto_vulkan_preferred_for_tg() -> None:
 
 
 def test_select_auto_vulkan_preferred_for_mixed() -> None:
-    assert _select_auto(
-        _cfg(Profile.MIXED), ["vulkan", "rocm", "cpu"]
-    ) == "vulkan"
+    assert _select_auto(_cfg(Profile.MIXED), ["vulkan", "rocm", "cpu"]) == "vulkan"
 
 
 def test_select_auto_vulkan_preferred_for_embed_single() -> None:
-    assert _select_auto(
-        _cfg(Profile.EMBED_SINGLE), ["vulkan", "rocm", "cpu"]
-    ) == "vulkan"
+    assert _select_auto(_cfg(Profile.EMBED_SINGLE), ["vulkan", "rocm", "cpu"]) == "vulkan"
 
 
 def test_select_auto_pp_fallback_to_vulkan_when_no_rocm() -> None:
@@ -66,9 +60,7 @@ def test_select_auto_pp_fallback_to_vulkan_when_no_rocm() -> None:
 
 
 def test_select_auto_embed_batch_fallback_to_vulkan() -> None:
-    assert _select_auto(
-        _cfg(Profile.EMBED_BATCH), ["vulkan", "cpu"]
-    ) == "vulkan"
+    assert _select_auto(_cfg(Profile.EMBED_BATCH), ["vulkan", "cpu"]) == "vulkan"
 
 
 def test_select_auto_rocm_only_for_tg() -> None:

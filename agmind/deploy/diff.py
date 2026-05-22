@@ -34,17 +34,12 @@ class ComposeDiff:
 
     @property
     def has_changes(self) -> bool:
-        return bool(
-            self.added or self.removed or self.image_changed or self.config_changed
-        )
+        return bool(self.added or self.removed or self.image_changed or self.config_changed)
 
     @property
     def total_changes(self) -> int:
         return (
-            len(self.added)
-            + len(self.removed)
-            + len(self.image_changed)
-            + len(self.config_changed)
+            len(self.added) + len(self.removed) + len(self.image_changed) + len(self.config_changed)
         )
 
 
@@ -99,9 +94,7 @@ def compute_diff(current_text: str, new_text: str) -> ComposeDiff:
 
         # config change check (любой другой ключ отличается)
         if cur != new:
-            config_changed.append(
-                ServiceChange(name=name, kind="config_changed", detail="")
-            )
+            config_changed.append(ServiceChange(name=name, kind="config_changed", detail=""))
 
     # Raw unified для verbose mode
     raw_unified = "".join(

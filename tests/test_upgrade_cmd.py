@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -26,16 +25,17 @@ def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def _make_descriptor(services_dir: Path, name: str, image: str, tag: str,
-                     digest: str | None = None) -> Path:
+def _make_descriptor(
+    services_dir: Path, name: str, image: str, tag: str, digest: str | None = None
+) -> Path:
     yaml_path = services_dir / f"{name}.yaml"
     lines = [
         f"name: {name}",
         f"image: {image}:{tag}" + (f"@sha256:{digest}" if digest else ""),
-        f"tier: storage",
-        f"purpose: test",
-        f"profiles:",
-        f"- test",
+        "tier: storage",
+        "purpose: test",
+        "profiles:",
+        "- test",
     ]
     if digest:
         lines.insert(2, f"digest: {digest}")
@@ -55,8 +55,7 @@ def test_read_current_pin_no_digest(tmp_repo: Path) -> None:
 
 def test_read_current_pin_with_digest(tmp_repo: Path) -> None:
     services = tmp_repo / "templates" / "services"
-    p = _make_descriptor(services, "beta", "vendor/beta", "v0.1",
-                         digest="abc123" + "0" * 58)
+    p = _make_descriptor(services, "beta", "vendor/beta", "v0.1", digest="abc123" + "0" * 58)
     result = upgrade_cmd._read_current_pin(p)
     assert result == ("vendor/beta", "v0.1", "abc123" + "0" * 58)
 
@@ -96,7 +95,8 @@ def test_bump_pin_adds_digest_if_absent(tmp_repo: Path) -> None:
 
 
 def test_component_bumps_tag(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")
@@ -109,14 +109,16 @@ def test_component_bumps_tag(
 
 
 def test_component_unknown_service(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = upgrade_cmd.cmd_component("ghost", "1.0.0")
     assert rc == 1
 
 
 def test_component_noop_if_already_at_target(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")
@@ -126,7 +128,8 @@ def test_component_noop_if_already_at_target(
 
 
 def test_component_respects_holds_without_force(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")
@@ -144,7 +147,8 @@ def test_component_respects_holds_without_force(
 
 
 def test_component_force_bypasses_holds(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")
@@ -174,7 +178,8 @@ def test_component_saves_upgrade_state(tmp_repo: Path) -> None:
 
 
 def test_rollback_restores_old_tag(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")
@@ -189,7 +194,8 @@ def test_rollback_restores_old_tag(
 
 
 def test_rollback_no_state_returns_error(
-    tmp_repo: Path, capsys: pytest.CaptureFixture[str],
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = upgrade_cmd.cmd_rollback()
     assert rc == 1
@@ -209,7 +215,8 @@ def test_rollback_archives_state_file(tmp_repo: Path) -> None:
 
 
 def test_check_invokes_version_check_script(
-    tmp_repo: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """cmd_check вызывает scripts/version_check.py через subprocess."""
     called: list[list[str]] = []

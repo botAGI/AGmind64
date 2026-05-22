@@ -20,11 +20,11 @@ def test_parse_env_text_export_prefix() -> None:
 
 
 def test_parse_env_text_quoted_values() -> None:
-    text = '''
+    text = """
 FOO="hello world"
 BAR='literal $string'
 BAZ=unquoted
-'''
+"""
     out = parse_env_text(text)
     assert out["FOO"] == "hello world"
     assert out["BAR"] == "literal $string"

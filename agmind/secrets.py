@@ -74,10 +74,7 @@ def read_creds(path: Path | None = None) -> dict[str, str]:
         return {}
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode != 0o600:
-        raise PermissionError(
-            f"{path} has mode {oct(mode)}, expected 0o600. "
-            f"Fix: chmod 600 {path}"
-        )
+        raise PermissionError(f"{path} has mode {oct(mode)}, expected 0o600. Fix: chmod 600 {path}")
     out: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()

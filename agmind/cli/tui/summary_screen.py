@@ -22,7 +22,6 @@ from textual.widgets import Button, Footer, Header, Static
 
 from agmind.deploy.runner import DeployResult
 
-
 SummaryMode = Literal["next_steps", "deploy_success", "deploy_failure"]
 
 
@@ -185,7 +184,7 @@ class SummaryScreen(Screen[None]):
                 "  • Rollback to previous state:\n"
                 "      agmind rollback\n"
                 "  • Or try smaller profile first:\n"
-                f"      agmind setup --deploy   # выбери только 'core'"
+                "      agmind setup --deploy   # выбери только 'core'"
             )
         else:
             # next_steps mode
@@ -203,9 +202,9 @@ class SummaryScreen(Screen[None]):
                 "  Option B — full deploy через Ansible (systemd + secrets):\n"
                 "\n"
                 "      sudo ansible-playbook ansible/install.yml --extra-vars \\\n"
-                f"        \"agmind_domain={self.domain} \\\n"
+                f'        "agmind_domain={self.domain} \\\n'
                 f"         agmind_cf_api_token=$(cat {self.token_path}) \\\n"
-                f"         agmind_profiles=[{profiles_csv}]\"\n"
+                f'         agmind_profiles=[{profiles_csv}]"\n'
                 "\n"
                 "  Option C — повторить wizard с auto-deploy:\n"
                 "      agmind setup --deploy"

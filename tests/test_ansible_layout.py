@@ -100,9 +100,16 @@ def test_install_yml_imports_all_roles() -> None:
                 referenced_roles.add(role_block.get("role", ""))
 
     expected = {
-        "preflight", "bootstrap", "strix_halo", "docker",
-        "agmind_python", "models", "services", "observability",
-        "security", "smoke_test",
+        "preflight",
+        "bootstrap",
+        "strix_halo",
+        "docker",
+        "agmind_python",
+        "models",
+        "services",
+        "observability",
+        "security",
+        "smoke_test",
     }
     assert expected.issubset(referenced_roles), (
         f"install.yml missing roles: {expected - referenced_roles}"

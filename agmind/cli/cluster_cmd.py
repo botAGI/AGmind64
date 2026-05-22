@@ -10,9 +10,13 @@ import time
 from agmind.cluster.detect import (
     DEFAULT_AGMIND_PORT,
     DEFAULT_DISCOVERY_TIMEOUT,
-    advertise as _advertise,
-    discover as _discover,
     gather_node_info,
+)
+from agmind.cluster.detect import (
+    advertise as _advertise,
+)
+from agmind.cluster.detect import (
+    discover as _discover,
 )
 
 
@@ -21,12 +25,15 @@ def cmd_detect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = False
     peers = _discover(timeout=timeout)
     if as_json:
         from dataclasses import asdict
+
         print(json.dumps([asdict(p) for p in peers], indent=2, ensure_ascii=False))
         return 0
 
     if not peers:
         print(f"No agmind peers found (searched for {timeout:.1f}s).")
-        print(f"Hint: on other nodes run `agmind cluster advertise` чтобы они появились в discovery.")
+        print(
+            "Hint: on other nodes run `agmind cluster advertise` чтобы они появились в discovery."
+        )
         return 0
 
     print(f"Detected {len(peers)} peer(s):")
@@ -34,9 +41,11 @@ def cmd_detect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = False
     print("-" * 100)
     for p in peers:
         marker = "★" if p.is_strix_halo else " "
-        print(f" {marker} {p.hostname:<26} {p.address:<17} {p.gpu:<34} {p.ram_gb:>5.1f}GB  v{p.version}")
+        print(
+            f" {marker} {p.hostname:<26} {p.address:<17} {p.gpu:<34} {p.ram_gb:>5.1f}GB  v{p.version}"
+        )
     print()
-    print(f"★ = Strix Halo (gfx1151) compatible peer")
+    print("★ = Strix Halo (gfx1151) compatible peer")
     return 0
 
 
@@ -83,6 +92,7 @@ def cmd_status(as_json: bool = False, timeout: float = DEFAULT_DISCOVERY_TIMEOUT
 
     if as_json:
         from dataclasses import asdict
+
         payload = {
             "self": asdict(self_info),
             "peers": [asdict(p) for p in peers],
@@ -93,12 +103,14 @@ def cmd_status(as_json: bool = False, timeout: float = DEFAULT_DISCOVERY_TIMEOUT
 
     print(f"This node: {self_info.hostname} @ {self_info.address}")
     print(f"  GPU: {self_info.gpu_name}")
-    print(f"  RAM: {self_info.ram_gb:.1f} GB · Strix Halo: {'yes' if self_info.is_strix_halo else 'no'}")
+    print(
+        f"  RAM: {self_info.ram_gb:.1f} GB · Strix Halo: {'yes' if self_info.is_strix_halo else 'no'}"
+    )
     print(f"  agmind v{self_info.agmind_version}")
     print()
     if not peers:
-        print(f"Cluster: 1 node (this only)")
-        print(f"Hint: run `agmind cluster advertise` on other nodes для discovery.")
+        print("Cluster: 1 node (this only)")
+        print("Hint: run `agmind cluster advertise` on other nodes для discovery.")
         return 0
     print(f"Cluster: {1 + len(peers)} nodes ({len(peers)} peer(s) discovered):")
     for p in peers:

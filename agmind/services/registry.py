@@ -112,7 +112,8 @@ def _parse_yaml(text: str) -> dict[str, Any]:
     Если PyYAML установлен — использует его (надёжнее).
     """
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
+
         return yaml.safe_load(text) or {}
     except ImportError:
         return _fallback_yaml_parse(text)
@@ -122,7 +123,6 @@ def _fallback_yaml_parse(text: str) -> dict[str, Any]:
     """Tiny YAML subset parser (без PyYAML). 2-space indent only."""
     root: dict[str, Any] = {}
     stack: list[tuple[int, Any]] = [(-2, root)]  # (indent, container)
-    pending_key: list[tuple[int, str, Any]] = []  # (indent, key, parent)
 
     for raw in text.splitlines():
         line = raw.rstrip()

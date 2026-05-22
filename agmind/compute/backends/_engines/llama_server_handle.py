@@ -11,7 +11,8 @@ Llama() instance), HTTP handle:
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Sequence
+from collections.abc import Iterator, Sequence
+from typing import Any
 
 from agmind.compute.base import LLMHandle
 from agmind.compute.clients import LlamaServerClient, SamplingParams
@@ -129,7 +130,8 @@ class LlamaServerHandle(LLMHandle):
 
     @staticmethod
     def _sampling_from_kwargs(
-        temperature: float, kwargs: dict[str, Any],
+        temperature: float,
+        kwargs: dict[str, Any],
     ) -> SamplingParams:
         """Build SamplingParams from kwargs + temperature default."""
         return SamplingParams(

@@ -20,7 +20,7 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -34,7 +34,6 @@ from textual.widgets import (
 )
 
 from agmind.i18n import t
-
 
 # ---- Shared helpers (M5.3) ----
 
@@ -103,6 +102,7 @@ class DomainScreen(Screen[None]):
             DomainValidator,
             TokenLengthValidator,
         )
+
         yield Header(show_clock=False)
         yield StepHeader(1, 4, t("wizard.section.domain"))
         # M5.3.2: full-width hardware panel наверху wizard
@@ -133,6 +133,7 @@ class DomainScreen(Screen[None]):
             # M5.4.2: cluster replicate checkbox (приходит вместе с peers banner)
             if peers:
                 from agmind.cli.tui.setup_wizard import AGCheckbox
+
                 yield AGCheckbox(
                     "Replicate stack to detected peers (mDNS auto-discover)",
                     id="cluster-replicate-checkbox",
@@ -193,6 +194,8 @@ class ModelScreen(Screen[None]):
     ]
 
     def compose(self) -> ComposeResult:
+        from textual.widgets import Rule
+
         from agmind.install.models import (
             CTX_SIZE_PRESETS,
             KV_CACHE_TYPES,
@@ -200,7 +203,7 @@ class ModelScreen(Screen[None]):
             THREADS_PRESETS,
             models_for_wizard,
         )
-        from textual.widgets import Rule
+
         yield Header(show_clock=False)
         yield StepHeader(2, 4, t("wizard.section.model"))
         state = self.app.state
@@ -214,37 +217,49 @@ class ModelScreen(Screen[None]):
             llm_options = models_for_wizard(kind="llm")
             llm_options.append(("Custom HuggingFace…", "custom"))
             yield Select(
-                llm_options, id="llm-model-select",
-                value=state.model_id, allow_blank=False,
+                llm_options,
+                id="llm-model-select",
+                value=state.model_id,
+                allow_blank=False,
             )
             yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
             yield Input(
                 placeholder=t("wizard.placeholder.model_repo"),
-                id="llm-model-repo-input", value=state.model_repo,
+                id="llm-model-repo-input",
+                value=state.model_repo,
             )
             yield Input(
                 placeholder=t("wizard.placeholder.model_file"),
-                id="llm-model-file-input", value=state.model_file,
+                id="llm-model-file-input",
+                value=state.model_file,
             )
             yield Label(t("wizard.section.ctx_size"), classes="section")
             yield Select(
-                list(ctx_options), id="llm-ctx-size-select",
-                value=str(state.ctx_size), allow_blank=False,
+                list(ctx_options),
+                id="llm-ctx-size-select",
+                value=str(state.ctx_size),
+                allow_blank=False,
             )
             yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
-                list(kv_options), id="llm-kv-cache-select",
-                value=state.kv_cache_type, allow_blank=False,
+                list(kv_options),
+                id="llm-kv-cache-select",
+                value=state.kv_cache_type,
+                allow_blank=False,
             )
             yield Label(t("wizard.section.threads"), classes="section")
             yield Select(
-                threads_options, id="llm-threads-select",
-                value=str(state.threads), allow_blank=False,
+                threads_options,
+                id="llm-threads-select",
+                value=str(state.threads),
+                allow_blank=False,
             )
             yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
-                list(parallel_options), id="llm-parallel-select",
-                value=str(state.parallel_slots), allow_blank=False,
+                list(parallel_options),
+                id="llm-parallel-select",
+                value=str(state.parallel_slots),
+                allow_blank=False,
             )
 
             # ---- Embed section ----
@@ -253,32 +268,42 @@ class ModelScreen(Screen[None]):
             embed_options = models_for_wizard(kind="embed")
             embed_options.append(("Custom HuggingFace…", "custom"))
             yield Select(
-                embed_options, id="embed-model-select",
-                value=state.embed_model_id, allow_blank=False,
+                embed_options,
+                id="embed-model-select",
+                value=state.embed_model_id,
+                allow_blank=False,
             )
             yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
             yield Input(
                 placeholder=t("wizard.placeholder.model_repo"),
-                id="embed-repo-input", value=state.embed_repo,
+                id="embed-repo-input",
+                value=state.embed_repo,
             )
             yield Input(
                 placeholder=t("wizard.placeholder.model_file"),
-                id="embed-file-input", value=state.embed_file,
+                id="embed-file-input",
+                value=state.embed_file,
             )
             yield Label(t("wizard.section.ctx_size"), classes="section")
             yield Select(
-                list(ctx_options), id="embed-ctx-size-select",
-                value=str(state.embed_ctx_size), allow_blank=False,
+                list(ctx_options),
+                id="embed-ctx-size-select",
+                value=str(state.embed_ctx_size),
+                allow_blank=False,
             )
             yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
-                list(kv_options), id="embed-kv-cache-select",
-                value=state.embed_kv_cache, allow_blank=False,
+                list(kv_options),
+                id="embed-kv-cache-select",
+                value=state.embed_kv_cache,
+                allow_blank=False,
             )
             yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
-                list(parallel_options), id="embed-parallel-select",
-                value=str(state.embed_parallel), allow_blank=False,
+                list(parallel_options),
+                id="embed-parallel-select",
+                value=str(state.embed_parallel),
+                allow_blank=False,
             )
 
             # ---- Rerank section ----
@@ -287,8 +312,10 @@ class ModelScreen(Screen[None]):
             rerank_options = models_for_wizard(kind="rerank")
             rerank_options.append(("Custom HuggingFace…", "custom"))
             yield Select(
-                rerank_options, id="rerank-model-select",
-                value=state.rerank_model_id, allow_blank=False,
+                rerank_options,
+                id="rerank-model-select",
+                value=state.rerank_model_id,
+                allow_blank=False,
             )
             yield Static(
                 "[dim]Empty filename = skip rerank service (RAG будет без re-ordering)[/dim]",
@@ -296,16 +323,20 @@ class ModelScreen(Screen[None]):
             )
             yield Input(
                 placeholder=t("wizard.placeholder.model_repo"),
-                id="rerank-repo-input", value=state.rerank_repo,
+                id="rerank-repo-input",
+                value=state.rerank_repo,
             )
             yield Input(
                 placeholder=t("wizard.placeholder.model_file"),
-                id="rerank-file-input", value=state.rerank_file,
+                id="rerank-file-input",
+                value=state.rerank_file,
             )
             yield Label(t("wizard.section.ctx_size"), classes="section")
             yield Select(
-                list(ctx_options), id="rerank-ctx-size-select",
-                value=str(state.rerank_ctx_size), allow_blank=False,
+                list(ctx_options),
+                id="rerank-ctx-size-select",
+                value=str(state.rerank_ctx_size),
+                allow_blank=False,
             )
 
         with Horizontal(id="nav-row"):
@@ -341,6 +372,7 @@ class ModelScreen(Screen[None]):
 
     def _save_and_advance(self) -> None:
         from agmind.install.models import find_by_id
+
         state = self.app.state
 
         # ---- LLM ----
@@ -395,19 +427,26 @@ class ServicesScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         from agmind.cli.tui.setup_wizard import (
-            AGCheckbox,
             _TIER_LABELS,
+            AGCheckbox,
         )
+
         yield Header(show_clock=False)
         services_by_tier = self.app.services_by_tier
         total = sum(len(svcs) for svcs in services_by_tier.values())
-        yield StepHeader(3, 4, t("wizard.section.services", default=f"Services ({total} available)").format(total=total))
+        yield StepHeader(
+            3,
+            4,
+            t("wizard.section.services", default=f"Services ({total} available)").format(
+                total=total
+            ),
+        )
         # M5.3.4: empty-state banner shown ONLY когда 0 selected (initial reactive)
         selected_count = len(self.app.state.services)
         yield Static(
             "[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]"
-            if selected_count == 0 else
-            f"[dim]{selected_count} of {total} services selected[/dim]",
+            if selected_count == 0
+            else f"[dim]{selected_count} of {total} services selected[/dim]",
             id="services-empty-banner",
             classes="empty-banner" if selected_count == 0 else "hint",
         )
@@ -435,7 +474,8 @@ class ServicesScreen(Screen[None]):
         if not str(event.checkbox.id or "").startswith("svc-"):
             return
         selected = sum(
-            1 for tier_services in self.app.services_by_tier.values()
+            1
+            for tier_services in self.app.services_by_tier.values()
             for name, _ in tier_services
             if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value
         )
@@ -510,10 +550,14 @@ class ConfirmScreen(Screen[None]):
         # Phase M4.7 + M5.1: Fallout pip-boy STATUS REPORT — separate LLM/Embed/Rerank
         line = "─" * 60
         rerank_block = (
-            f"  RERANK ............. {state.rerank_model_id}\n"
-            f"      REPO/FILE ...... {state.rerank_repo}/{state.rerank_file}\n"
-            f"      CTX SIZE ....... {state.rerank_ctx_size}\n"
-        ) if state.rerank_file else "  RERANK ............. [dim]skipped (no model)[/dim]\n"
+            (
+                f"  RERANK ............. {state.rerank_model_id}\n"
+                f"      REPO/FILE ...... {state.rerank_repo}/{state.rerank_file}\n"
+                f"      CTX SIZE ....... {state.rerank_ctx_size}\n"
+            )
+            if state.rerank_file
+            else "  RERANK ............. [dim]skipped (no model)[/dim]\n"
+        )
         return (
             f"[bold]── DEPLOYMENT STATUS REPORT ──[/bold]\n"
             f"{line}\n"
@@ -556,16 +600,21 @@ class ConfirmScreen(Screen[None]):
         if getattr(self.app.state, "cluster_replicate", False):
             try:
                 from agmind.cluster.inventory import write_inventory
+
                 peers = list(self.app.cluster_peers)
                 path = write_inventory(peers)
                 self.app.notify(
                     f"Cluster inventory: {path} ({len(peers)} peers)",
-                    title="Replicate enabled", severity="information", timeout=8.0,
+                    title="Replicate enabled",
+                    severity="information",
+                    timeout=8.0,
                 )
             except Exception as exc:  # noqa: BLE001
                 self.app.notify(
                     f"Failed to write inventory: {exc}",
-                    title="Cluster replicate", severity="warning", timeout=8.0,
+                    title="Cluster replicate",
+                    severity="warning",
+                    timeout=8.0,
                 )
         # Hand off to original action_submit (saves state + push install).
         # Pop confirm screen first чтобы action_submit видел "root" app.

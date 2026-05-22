@@ -15,7 +15,7 @@ FROM ${BASE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common \
         mesa-vulkan-drivers libvulkan1 vulkan-tools \
-        glslc shaderc spirv-tools glslang-tools libvulkan-dev \
+        glslc libshaderc-dev spirv-tools glslang-tools libvulkan-dev \
         spirv-headers \
         libglvnd0 libgl1 libegl1 libegl-mesa0 libglx0 \
     && rm -rf /var/lib/apt/lists/*

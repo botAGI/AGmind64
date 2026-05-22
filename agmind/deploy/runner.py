@@ -112,7 +112,7 @@ def deploy(
     no_prompt: bool = False,
     healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
     snapshot_reason: str = "",
-    progress: "ProgressCallback | None" = None,
+    progress: ProgressCallback | None = None,
 ) -> DeployResult:
     """Main deploy orchestrator.
 
@@ -162,7 +162,10 @@ def deploy(
             message="no changes — current deployment matches rendered",
         )
 
-    _emit("diff", f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}")
+    _emit(
+        "diff",
+        f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}",
+    )
 
     if not apply:
         # Dry run mode — return diff for caller to display
@@ -182,7 +185,8 @@ def deploy(
             profile=",".join(profiles),
             reason=snapshot_reason or f"pre-deploy {','.join(profiles)}",
             descriptors_dir=install_dir / "templates" / "services"
-                if (install_dir / "templates" / "services").exists() else None,
+            if (install_dir / "templates" / "services").exists()
+            else None,
             env_file=install_dir / ".env" if (install_dir / ".env").exists() else None,
         )
         log.info("snapshot created: %s", snapshot.id)
@@ -297,6 +301,7 @@ def _rollback_to_snapshot(snapshot: Snapshot, install_dir: Path) -> bool:
         # Restore descriptors (optional — sometimes not present)
         if snapshot.descriptors_dir.exists():
             import shutil
+
             target = install_dir / "templates" / "services"
             if target.exists():
                 shutil.rmtree(target)

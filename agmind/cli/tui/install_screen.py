@@ -174,14 +174,18 @@ class InstallProgressScreen(Screen[InstallResult]):
             self.app.call_from_thread(self._handle_event, event)
 
         orchestrator = InstallOrchestrator(
-            config=self.config, steps=self.steps, callback=progress_cb,
+            config=self.config,
+            steps=self.steps,
+            callback=progress_cb,
         )
         try:
             self.result = orchestrator.run()
         except Exception as exc:  # noqa: BLE001
             from agmind.install.orchestrator import InstallResult as _IR
+
             self.result = _IR(
-                success=False, steps=(),
+                success=False,
+                steps=(),
                 message=f"unhandled orchestrator error: {exc}",
             )
         self.app.call_from_thread(self._finalize)
@@ -203,7 +207,9 @@ class InstallProgressScreen(Screen[InstallResult]):
             log_widget.write(f"[dim]{ts}[/dim] [red]✗ {event.step_id}: {event.text}[/red]")
         elif event.kind is ProgressKind.PROGRESS:
             if event.progress_pct is not None:
-                self.query_one("#step-progress-bar", ProgressBar).update(progress=event.progress_pct)
+                self.query_one("#step-progress-bar", ProgressBar).update(
+                    progress=event.progress_pct
+                )
         else:  # LOG
             log_widget.write(f"[dim]{ts}[/dim] {event.text}")
 
@@ -234,9 +240,12 @@ class InstallProgressScreen(Screen[InstallResult]):
 
     def action_cancel(self) -> None:
         from agmind.install.orchestrator import InstallResult as _IR
+
         if self.result is None:
             self.result = _IR(
-                success=False, steps=(), message="cancelled by user",
+                success=False,
+                steps=(),
+                message="cancelled by user",
             )
         self.dismiss(self.result)
 

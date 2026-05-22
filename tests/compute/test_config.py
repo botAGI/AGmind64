@@ -81,9 +81,7 @@ def test_read_config_invalid_profile(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_profile_enum_values() -> None:
     """Profile names — stable; смена ломает CI configs."""
-    assert {p.value for p in Profile} == {
-        "tg", "pp", "mixed", "embed_single", "embed_batch"
-    }
+    assert {p.value for p in Profile} == {"tg", "pp", "mixed", "embed_single", "embed_batch"}
 
 
 def test_compute_config_is_frozen() -> None:

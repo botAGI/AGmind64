@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -99,9 +98,7 @@ def _check_kernel() -> CheckResult:
                 "OK if это Ubuntu HWE 6.17.0-19+; иначе ROCm может видеть "
                 "только ~15.5 GiB VRAM (ROCm/issues/5444)."
             ),
-            fix_hint=(
-                "sudo apt install --install-recommends linux-generic-hwe-24.04"
-            ),
+            fix_hint=("sudo apt install --install-recommends linux-generic-hwe-24.04"),
         )
     return CheckResult(
         name="kernel-version",
@@ -110,9 +107,7 @@ def _check_kernel() -> CheckResult:
             f"Kernel {host.kernel_version} too old. "
             "Strix Halo gfx1151 requires ≥6.17.0 (HWE) или 6.18.4 (mainline)."
         ),
-        fix_hint=(
-            "sudo apt install --install-recommends linux-generic-hwe-24.04 && reboot"
-        ),
+        fix_hint=("sudo apt install --install-recommends linux-generic-hwe-24.04 && reboot"),
     )
 
 
@@ -157,14 +152,10 @@ def _check_gtt_pool() -> CheckResult:
     return CheckResult(
         name="gtt-pool",
         status="warn",
-        message=(
-            f"GTT pool only {gib:.1f} GiB on {ram_gib:.0f} GiB RAM "
-            f"— sub-optimal."
-        ),
+        message=(f"GTT pool only {gib:.1f} GiB on {ram_gib:.0f} GiB RAM — sub-optimal."),
         fix_hint=(
             f"Add to GRUB cmdline: ttm.pages_limit={pages} "
-            "ttm.page_pool_size=" + str(pages) +
-            " — см. docs/HARDWARE.md."
+            "ttm.page_pool_size=" + str(pages) + " — см. docs/HARDWARE.md."
         ),
     )
 
@@ -374,6 +365,7 @@ def doctor_report(*, as_json: bool = False, color: bool | None = None) -> str:
     if color is None:
         import os as _os
         import sys as _sys
+
         color = (
             _sys.stdout.isatty()
             and _os.environ.get("NO_COLOR", "") == ""
@@ -383,8 +375,10 @@ def doctor_report(*, as_json: bool = False, color: bool | None = None) -> str:
     if color:
         # Use rich to render markup → ANSI codes
         try:
-            from rich.console import Console
             from io import StringIO
+
+            from rich.console import Console
+
             buf = StringIO()
             console = Console(file=buf, force_terminal=True, color_system="truecolor", width=120)
             _render_colored(report, console)
@@ -401,9 +395,15 @@ def doctor_report(*, as_json: bool = False, color: bool | None = None) -> str:
         if c.fix_hint and c.status in ("warn", "fail"):
             lines.append(f"      → {c.fix_hint}")
 
-    summary = report.to_dict()["summary"]
     lines.insert(0, "")
-    lines.insert(0, f"AGmind doctor — {summary['ok']} ok / {summary['warn']} warn / {summary['fail']} fail / {summary['skip']} skip")
+    lines.insert(
+        0,
+        "AGmind doctor — "
+        f"{sum(1 for c in report.checks if c.status == 'ok')} ok / "
+        f"{sum(1 for c in report.checks if c.status == 'warn')} warn / "
+        f"{sum(1 for c in report.checks if c.status == 'fail')} fail / "
+        f"{sum(1 for c in report.checks if c.status == 'skip')} skip",
+    )
     return "\n".join(lines)
 
 
@@ -431,6 +431,8 @@ def _render_colored(report, console) -> None:  # type: ignore[no-untyped-def]
         if msg_style == "default":
             console.print(f"  {glyph}  [bold]{c.name:<24s}[/bold] {c.message}")
         else:
-            console.print(f"  {glyph}  [bold]{c.name:<24s}[/bold] [{msg_style}]{c.message}[/{msg_style}]")
+            console.print(
+                f"  {glyph}  [bold]{c.name:<24s}[/bold] [{msg_style}]{c.message}[/{msg_style}]"
+            )
         if c.fix_hint and c.status in ("warn", "fail"):
             console.print(f"      [dim]→ {c.fix_hint}[/dim]")

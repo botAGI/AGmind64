@@ -19,6 +19,7 @@ pytestmark = pytest.mark.backend_any
 
 # ---------- SetupState ----------
 
+
 def test_state_default() -> None:
     s = SetupState()
     assert s.domain == ""
@@ -47,6 +48,7 @@ def test_state_roundtrip_excludes_token(tmp_path: Path) -> None:
 
 # ---------- detect_hardware ----------
 
+
 def test_detect_returns_dataclass() -> None:
     d = detect_hardware()
     assert isinstance(d, DetectedHardware)
@@ -64,10 +66,15 @@ def test_detect_includes_required_fields() -> None:
 
 # ---------- Validation ----------
 
+
 def test_validate_rejects_empty_domain() -> None:
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected, initial_state=SetupState(domain=""))
@@ -79,8 +86,12 @@ def test_validate_rejects_empty_domain() -> None:
 def test_validate_accepts_real_owned_domain() -> None:
     """User может реально владеть `agmind.dev` — не reject."""
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
@@ -92,8 +103,12 @@ def test_validate_accepts_real_owned_domain() -> None:
 
 def test_validate_rejects_short_token() -> None:
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
@@ -104,14 +119,20 @@ def test_validate_rejects_short_token() -> None:
 
 def test_validate_rejects_no_services_or_profiles() -> None:
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
     state = SetupState(
-        domain="x.example", cf_api_token="x" * 30,
-        services=[], profiles=[],  # ничего не выбрано
+        domain="x.example",
+        cf_api_token="x" * 30,
+        services=[],
+        profiles=[],  # ничего не выбрано
     )
     errors = app._validate(state)
     assert any("service" in e.lower() for e in errors)
@@ -248,10 +269,18 @@ def test_state_from_json_backward_compat_missing_fields(
     from pathlib import Path
 
     path = Path(str(tmp_path)) / "old.json"
-    path.write_text(json.dumps({
-        "domain": "old.example", "profiles": [], "services": [],
-        "backend": "auto", "model_tier": "auto", "install_dir": "/opt/agmind",
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "domain": "old.example",
+                "profiles": [],
+                "services": [],
+                "backend": "auto",
+                "model_tier": "auto",
+                "install_dir": "/opt/agmind",
+            }
+        )
+    )
     loaded = SetupState.from_json(path)
     assert loaded.domain == "old.example"
     assert loaded.model_id == "qwen36-a3b-q4km"  # default
@@ -277,8 +306,12 @@ def test_get_services_by_tier_returns_grouped() -> None:
 
 def test_validate_warns_no_docker() -> None:
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=False,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=False,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
@@ -289,8 +322,12 @@ def test_validate_warns_no_docker() -> None:
 
 def test_validate_passes_clean() -> None:
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     app = AgmindSetupApp(detected=detected)
@@ -306,6 +343,7 @@ def test_validate_passes_clean() -> None:
 
 # ---------- Textual Pilot integration ----------
 
+
 @pytest.mark.asyncio
 async def test_app_quit_via_keybinding(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke: app launches, Ctrl+C exits cleanly (use keybinding вместо click).
@@ -315,8 +353,12 @@ async def test_app_quit_via_keybinding(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="AMD x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="AMD x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     # M4.1: explicit multi_step=False для legacy single-screen test
@@ -333,8 +375,12 @@ async def test_app_apply_via_keybinding_with_valid_state(
     """Apply через Ctrl+S keybinding (pilot.click ломается на OOB кнопки)."""
     monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
     detected = DetectedHardware(
-        ram_gb=128, gpu_name="AMD x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128,
+        gpu_name="AMD x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="XL",
     )
     initial = SetupState(

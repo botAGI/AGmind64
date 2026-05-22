@@ -79,11 +79,7 @@ def filter_by_profile(
     if "full" in profiles:
         return dict(descriptors)
     wanted = set(profiles)
-    return {
-        name: d
-        for name, d in descriptors.items()
-        if set(d.profiles) & wanted
-    }
+    return {name: d for name, d in descriptors.items() if set(d.profiles) & wanted}
 
 
 def filter_by_services(
@@ -165,7 +161,9 @@ def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
 
     # SSE-safe: обязательно для llama-server streaming (deep-dive 01 §1)
     if routing.sse:
-        labels[f"traefik.http.services.{name}.loadbalancer.responseforwarding.flushinterval"] = "1ms"
+        labels[f"traefik.http.services.{name}.loadbalancer.responseforwarding.flushinterval"] = (
+            "1ms"
+        )
         labels[f"traefik.http.routers.{name}.tls.options"] = "no-http2@file"
 
     return labels
@@ -394,9 +392,7 @@ def render_to_string(
     descriptors = load_descriptors(services_dir)
     selected = select_services(descriptors, profiles=profiles, services=services)
     if not selected:
-        raise ValueError(
-            f"No services match: profiles={profiles}, services={services}"
-        )
+        raise ValueError(f"No services match: profiles={profiles}, services={services}")
     compose = render_compose(list(selected.values()), traefik_enabled=traefik_enabled)
     rendered = to_yaml(compose)
     if domain and domain != "agmind.dev":

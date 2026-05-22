@@ -196,7 +196,7 @@ TUI screen вызывает orchestrator из `@work(thread=True)` worker и
   config field. Откладываем до запроса.
 - **Cancel mid-step** не interruptable: orchestrator не передаёт
   cancellation token в steps. Cancel button dismisses screen, но
-  background work (`docker pull`, `curl`) продолжает. Acceptable: 
+  background work (`docker pull`, `curl`) продолжает. Acceptable:
   cancel редко нужен, force-kill через Ctrl+C на терминал работает.
 
 ### Что нужно сделать

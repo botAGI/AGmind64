@@ -1,9 +1,9 @@
 """Phase L.D: `agmind migrate` CLI subcommands.
 
-    agmind migrate status                # current version + pending
-    agmind migrate list                  # все известные миграции
-    agmind migrate up [--target N]       # apply pending
-    agmind migrate down [--steps N | --target N]   # rollback
+agmind migrate status                # current version + pending
+agmind migrate list                  # все известные миграции
+agmind migrate up [--target N]       # apply pending
+agmind migrate down [--steps N | --target N]   # rollback
 """
 
 from __future__ import annotations

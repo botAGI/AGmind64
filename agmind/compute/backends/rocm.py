@@ -28,7 +28,8 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from agmind.compute.base import Backend, DeviceInfo, LLMHandle
 from agmind.compute.detect import detect_host
@@ -55,8 +56,7 @@ class ROCmBackend(Backend):
             )
         if engine not in _SUPPORTED_ENGINES:
             raise ValueError(
-                f"ROCm backend engine={engine!r} not supported. "
-                f"M1 allowed: {_SUPPORTED_ENGINES}"
+                f"ROCm backend engine={engine!r} not supported. M1 allowed: {_SUPPORTED_ENGINES}"
             )
         self._engine = engine
         _apply_rocm_env()
@@ -75,7 +75,7 @@ class ROCmBackend(Backend):
         return True
 
     @classmethod
-    def make(cls, engine: str = "auto") -> "ROCmBackend":
+    def make(cls, engine: str = "auto") -> ROCmBackend:
         if engine == "auto":
             engine = "llama_cpp"
         return cls(engine=engine)
@@ -124,6 +124,7 @@ class ROCmBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_hip import (
             LlamaCppHIPEngine,
         )
+
         return LlamaCppHIPEngine().load(model_path, **kwargs)
 
     def embed(self, texts: Sequence[str], model: str) -> list[list[float]]:
@@ -137,6 +138,7 @@ class ROCmBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_hip import (
             LlamaCppHIPEngine,
         )
+
         return LlamaCppHIPEngine().embed(texts, model)
 
     def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
@@ -150,6 +152,7 @@ class ROCmBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_hip import (
             LlamaCppHIPEngine,
         )
+
         return LlamaCppHIPEngine().rerank(query, documents)
 
 

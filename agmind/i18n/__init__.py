@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 from typing import Final
 
-
 _LANG_FILES: Final = {
     "en": Path(__file__).parent / "en.json",
     "ru": Path(__file__).parent / "ru.json",

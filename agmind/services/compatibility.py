@@ -87,16 +87,18 @@ def check_service_compatibility(
     }
     for cap, svcs in providers.items():
         if len(svcs) > 1:
-            issues.append(CompatIssue(
-                severity="warning",
-                kind="redundant_provider",
-                services=tuple(sorted(svcs)),
-                capability=cap,
-                message=(
-                    f"Capability '{cap}' предоставляется {len(svcs)} сервисами: "
-                    f"{', '.join(sorted(svcs))}. Достаточно одного."
-                ),
-            ))
+            issues.append(
+                CompatIssue(
+                    severity="warning",
+                    kind="redundant_provider",
+                    services=tuple(sorted(svcs)),
+                    capability=cap,
+                    message=(
+                        f"Capability '{cap}' предоставляется {len(svcs)} сервисами: "
+                        f"{', '.join(sorted(svcs))}. Достаточно одного."
+                    ),
+                )
+            )
 
     # ---- 3. Missing capabilities (consumer без provider) ----
     consumed: dict[str, list[str]] = defaultdict(list)
@@ -105,16 +107,18 @@ def check_service_compatibility(
             consumed[cap].append(name)
     for cap, consumers in consumed.items():
         if cap not in providers:
-            issues.append(CompatIssue(
-                severity="warning",
-                kind="missing_capability",
-                services=tuple(sorted(consumers)),
-                capability=cap,
-                message=(
-                    f"Сервис(ы) {', '.join(sorted(consumers))} requires "
-                    f"'{cap}', но ни один selected сервис не provides его."
-                ),
-            ))
+            issues.append(
+                CompatIssue(
+                    severity="warning",
+                    kind="missing_capability",
+                    services=tuple(sorted(consumers)),
+                    capability=cap,
+                    message=(
+                        f"Сервис(ы) {', '.join(sorted(consumers))} requires "
+                        f"'{cap}', но ни один selected сервис не provides его."
+                    ),
+                )
+            )
 
     # Sort: errors → warnings → info
     severity_order = {"error": 0, "warning": 1, "info": 2}
@@ -135,9 +139,7 @@ def resolve_capability_provider(
     Если providers > 1 — возвращает первый по алфавиту (с т.з. determinism).
     Если 0 — None.
     """
-    providers = sorted(
-        name for name, d in selected.items() if capability in d.provides
-    )
+    providers = sorted(name for name, d in selected.items() if capability in d.provides)
     return providers[0] if providers else None
 
 

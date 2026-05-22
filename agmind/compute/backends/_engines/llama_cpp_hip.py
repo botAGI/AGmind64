@@ -8,12 +8,12 @@ GGML_HIP_ROCWMMA_FATTN=ON, etc).
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from agmind.compute.base import LLMHandle
 from agmind.compute.backends._engines.llama_cpp_cpu import (
-    _LlamaCppHandle,
     _cosine,
+    _LlamaCppHandle,
     _safe_embed,
 )
 from agmind.log import logger
@@ -32,16 +32,20 @@ class LlamaCppHIPEngine:
             "n_gpu_layers": kwargs.get("n_gpu_layers", -1),  # 999 = all
             # Для HIP: -dio (direct IO) обязателен для моделей >6 GB
             "use_mmap": kwargs.get("use_mmap", False),
-            "flash_attn": kwargs.get("flash_attn", True),    # rocWMMA FA
-            "n_batch": kwargs.get("n_batch", 2048),          # из discussion #20856
+            "flash_attn": kwargs.get("flash_attn", True),  # rocWMMA FA
+            "n_batch": kwargs.get("n_batch", 2048),  # из discussion #20856
             "n_ubatch": kwargs.get("n_ubatch", 512),
             "verbose": False,
         }
         for k, v in kwargs.items():
             if k not in defaults:
                 defaults[k] = v
-        log.info("llama-cpp HIP load: %s (n_ctx=%d n_gpu_layers=%d)",
-                 model_path, defaults["n_ctx"], defaults["n_gpu_layers"])
+        log.info(
+            "llama-cpp HIP load: %s (n_ctx=%d n_gpu_layers=%d)",
+            model_path,
+            defaults["n_ctx"],
+            defaults["n_gpu_layers"],
+        )
         llama = Llama(model_path=model_path, **defaults)
         return _LlamaCppHandle(llama)
 
@@ -80,9 +84,7 @@ class LlamaCppHIPEngine:
 
         model_path = kwargs.pop("model", None)
         if model_path is None:
-            raise ValueError(
-                "rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'"
-            )
+            raise ValueError("rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'")
         defaults: dict[str, Any] = {
             "model_path": model_path,
             "embedding": True,

@@ -72,7 +72,9 @@ def cmd_status(
     print(f"Purpose: {d.purpose}")
     print(f"Profiles: {', '.join(d.profiles) or '(none)'}")
     if d.routing:
-        print(f"Routing: https://{d.routing.host} (chain={d.routing.middleware_chain}, sse={d.routing.sse})")
+        print(
+            f"Routing: https://{d.routing.host} (chain={d.routing.middleware_chain}, sse={d.routing.sse})"
+        )
     else:
         print("Routing: (internal-only)")
     if d.observability.prometheus_scrape:

@@ -11,7 +11,6 @@ import pytest
 from agmind.install.orchestrator import (
     InstallConfig,
     InstallOrchestrator,
-    InstallResult,
     InstallStep,
     InstallStepResult,
     ProgressCallback,
@@ -34,21 +33,23 @@ class FakeStep(InstallStep):
     log_lines: list[str] = field(default_factory=list)
     raised: Exception | None = None
 
-    def run(
-        self, callback: ProgressCallback, config: InstallConfig
-    ) -> InstallStepResult:
+    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         for line in self.log_lines:
             callback(ProgressEvent(step_id=self.step_id, kind=ProgressKind.LOG, text=line))
         if self.raised is not None:
             raise self.raised
         if self.should_fail:
             return InstallStepResult(
-                step_id=self.step_id, success=False,
-                message=self.fail_message, elapsed=timedelta(seconds=0.1),
+                step_id=self.step_id,
+                success=False,
+                message=self.fail_message,
+                elapsed=timedelta(seconds=0.1),
             )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
-            message=f"{self.step_id} ok", elapsed=timedelta(seconds=0.1),
+            step_id=self.step_id,
+            success=True,
+            message=f"{self.step_id} ok",
+            elapsed=timedelta(seconds=0.1),
         )
 
 
@@ -93,7 +94,9 @@ def test_orchestrator_runs_all_steps(tmp_path: Path) -> None:
         FakeStep(step_id="c", label="C"),
     ]
     orchestrator = InstallOrchestrator(
-        config=_make_config(tmp_path), steps=steps, callback=events.append,
+        config=_make_config(tmp_path),
+        steps=steps,
+        callback=events.append,
     )
     result = orchestrator.run()
     assert result.success is True
@@ -113,7 +116,9 @@ def test_orchestrator_stops_at_first_failure(tmp_path: Path) -> None:
         FakeStep(step_id="never-runs"),
     ]
     result = InstallOrchestrator(
-        config=_make_config(tmp_path), steps=steps, callback=events.append,
+        config=_make_config(tmp_path),
+        steps=steps,
+        callback=events.append,
     ).run()
     assert result.success is False
     assert len(result.steps) == 2  # никогда не дошли до step c
@@ -132,7 +137,9 @@ def test_orchestrator_catches_unhandled_exception(tmp_path: Path) -> None:
         FakeStep(step_id="crash", raised=RuntimeError("blow up")),
     ]
     result = InstallOrchestrator(
-        config=_make_config(tmp_path), steps=steps, callback=events.append,
+        config=_make_config(tmp_path),
+        steps=steps,
+        callback=events.append,
     ).run()
     assert result.success is False
     assert "blow up" in result.failed_step.message
@@ -142,7 +149,9 @@ def test_orchestrator_emits_step_logs(tmp_path: Path) -> None:
     events: list[ProgressEvent] = []
     steps = [FakeStep(step_id="a", log_lines=["hello", "world"])]
     InstallOrchestrator(
-        config=_make_config(tmp_path), steps=steps, callback=events.append,
+        config=_make_config(tmp_path),
+        steps=steps,
+        callback=events.append,
     ).run()
     logs = [e.text for e in events if e.kind is ProgressKind.LOG]
     assert logs == ["hello", "world"]
@@ -177,7 +186,9 @@ def test_orchestrator_callback_exception_swallowed(tmp_path: Path) -> None:
 
     steps = [FakeStep(step_id="a")]
     result = InstallOrchestrator(
-        config=_make_config(tmp_path), steps=steps, callback=bad_cb,
+        config=_make_config(tmp_path),
+        steps=steps,
+        callback=bad_cb,
     ).run()
     # Step should still succeed — callback errors are logged but ignored.
     assert result.success is True
@@ -212,10 +223,14 @@ def test_env_write_step_writes_file(tmp_path: object) -> None:
     from agmind.install.steps import EnvWriteStep
 
     cfg = InstallConfig(
-        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm"],
         install_dir=tmp_path / "opt",  # type: ignore[operator]
-        model_repo="r", model_file="model.gguf",
-        ctx_size=32768, kv_cache_type="q4_0",
+        model_repo="r",
+        model_file="model.gguf",
+        ctx_size=32768,
+        kv_cache_type="q4_0",
     )
     events: list[ProgressEvent] = []
     result = EnvWriteStep().run(events.append, cfg)
@@ -258,13 +273,23 @@ def test_env_write_step_separates_llm_embed_rerank(tmp_path: object) -> None:
     from agmind.install.steps import EnvWriteStep
 
     cfg = InstallConfig(
-        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm"],
         install_dir=tmp_path / "opt",  # type: ignore[operator]
-        model_repo="llmrepo", model_file="llm.gguf",
-        ctx_size=32768, kv_cache_type="q4_0", threads=8, parallel_slots=2,
-        embed_repo="embedrepo", embed_file="bge.gguf",
-        embed_ctx_size=8192, embed_kv_cache="f16", embed_parallel=8,
-        rerank_repo="rerankrepo", rerank_file="rr.gguf",
+        model_repo="llmrepo",
+        model_file="llm.gguf",
+        ctx_size=32768,
+        kv_cache_type="q4_0",
+        threads=8,
+        parallel_slots=2,
+        embed_repo="embedrepo",
+        embed_file="bge.gguf",
+        embed_ctx_size=8192,
+        embed_kv_cache="f16",
+        embed_parallel=8,
+        rerank_repo="rerankrepo",
+        rerank_file="rr.gguf",
         rerank_ctx_size=1024,
     )
     events: list[ProgressEvent] = []
@@ -296,12 +321,17 @@ def test_model_download_step_handles_empty_embed_rerank(tmp_path: object) -> Non
     from agmind.install.steps import ModelDownloadStep
 
     cfg = InstallConfig(
-        domain="lab.example.com", cf_api_token="X" * 40, services=["llama-llm"],
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm"],
         install_dir=tmp_path / "opt",  # type: ignore[operator]
         models_dir=tmp_path / "models",  # type: ignore[operator]
-        model_repo=None, model_file=None,
-        embed_repo=None, embed_file=None,
-        rerank_repo=None, rerank_file=None,
+        model_repo=None,
+        model_file=None,
+        embed_repo=None,
+        embed_file=None,
+        rerank_repo=None,
+        rerank_file=None,
     )
     events: list[ProgressEvent] = []
     result = ModelDownloadStep().run(events.append, cfg)

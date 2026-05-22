@@ -30,9 +30,7 @@ def test_no_compose_file_returns_error(tmp_path: Path) -> None:
     assert snap.total == 0
 
 
-def test_compose_command_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_compose_command_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
 
     def fake_run(*_args: object, **_kwargs: object) -> object:
@@ -44,9 +42,7 @@ def test_compose_command_missing(
     assert "docker command not found" in snap.error
 
 
-def test_compose_command_nonzero_rc(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_compose_command_nonzero_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
 
     class FakeProc:
@@ -61,9 +57,7 @@ def test_compose_command_nonzero_rc(
     assert "boom" in snap.error
 
 
-def test_compose_command_timeout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_compose_command_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
 
     def fake_run(*_args: object, **_kwargs: object) -> Any:
@@ -88,9 +82,7 @@ def _mock_run_with_stdout(monkeypatch: pytest.MonkeyPatch, stdout: str) -> None:
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: FakeProc())
 
 
-def test_parse_compose_ps_jsonl(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_parse_compose_ps_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
     rows = [
         {
@@ -131,9 +123,7 @@ def test_parse_compose_ps_jsonl(
     assert "traefik" in names
 
 
-def test_parse_handles_invalid_json_lines(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_parse_handles_invalid_json_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
     payload = (
         '{"Service": "ok", "Name": "ok-1", "State": "running", "Health": "healthy"}\n'
@@ -147,9 +137,7 @@ def test_parse_handles_invalid_json_lines(
     assert {s.service for s in snap.services} == {"ok", "ok2"}
 
 
-def test_parse_handles_empty_lines(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_parse_handles_empty_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
     _mock_run_with_stdout(monkeypatch, "\n\n\n")
     snap = query_compose_state(tmp_path)
@@ -234,7 +222,8 @@ def test_dashboard_action_cycle_sort(tmp_path: Path) -> None:
 
 
 def test_dashboard_paused_refresh_state_noop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """refresh_state() пропускает probe если paused."""
     app = StatusDashboardApp(install_dir=tmp_path)

@@ -214,8 +214,7 @@ def _legacy_to_descriptor(svc: Service, tier: str) -> ServiceDescriptor:
     parsed = _split_extra_args(list(svc.extra_args))
     if parsed["remainder"]:
         print(
-            f"  ! {svc.name}: unmapped extra_args (no compose equivalent): "
-            f"{parsed['remainder']}",
+            f"  ! {svc.name}: unmapped extra_args (no compose equivalent): {parsed['remainder']}",
             file=sys.stderr,
         )
     routing = None
@@ -270,7 +269,9 @@ def migrate(dry_run: bool = False) -> int:
     """Run migration. Returns exit code (0 success, 1 error)."""
     registry = load_registry()
     if not registry:
-        print("ERROR: load_registry() returned empty — check templates/services.yaml", file=sys.stderr)
+        print(
+            "ERROR: load_registry() returned empty — check templates/services.yaml", file=sys.stderr
+        )
         return 1
 
     # Validate tier mapping covers all services
@@ -295,7 +296,9 @@ def migrate(dry_run: bool = False) -> int:
         out_path = SERVICES_DIR / f"{name}.yaml"
 
         if dry_run:
-            print(f"  [dry-run] would write {out_path.relative_to(REPO_ROOT)} ({len(yaml_text)} bytes, tier={tier})")
+            print(
+                f"  [dry-run] would write {out_path.relative_to(REPO_ROOT)} ({len(yaml_text)} bytes, tier={tier})"
+            )
         else:
             out_path.write_text(yaml_text, encoding="utf-8")
             print(f"✓ {out_path.relative_to(REPO_ROOT)} (tier={tier})")

@@ -32,9 +32,7 @@ def cmd_chat(
     """
     from agmind.compute.clients import LlamaServerClient, SamplingParams
 
-    url = server_url or os.environ.get(
-        "AGMIND_LLAMA_SERVER_URL", "http://localhost:8080"
-    )
+    url = server_url or os.environ.get("AGMIND_LLAMA_SERVER_URL", "http://localhost:8080")
     client = LlamaServerClient(url)
 
     if not client.is_alive():
@@ -85,7 +83,9 @@ def cmd_chat(
         try:
             if stream:
                 for chunk in client.chat_stream(
-                    history, max_tokens=max_tokens, sampling=sampling,
+                    history,
+                    max_tokens=max_tokens,
+                    sampling=sampling,
                 ):
                     print(chunk, end="", flush=True)
                     reply_parts.append(chunk)

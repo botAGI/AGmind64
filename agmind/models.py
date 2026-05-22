@@ -107,9 +107,17 @@ def _model_from_dict(name: str, data: dict[str, Any], role: str = "primary") -> 
     extras: dict[str, Any] = {}
     for k, v in data.items():
         if k not in {
-            "name", "hf_repo", "filename", "quant", "size_gb",
-            "verification", "license", "languages_supported",
-            "ctx_native", "backend_preferred", "server_flags",
+            "name",
+            "hf_repo",
+            "filename",
+            "quant",
+            "size_gb",
+            "verification",
+            "license",
+            "languages_supported",
+            "ctx_native",
+            "backend_preferred",
+            "server_flags",
         }:
             extras[k] = v
     return ModelSpec(
@@ -142,7 +150,7 @@ def load_models_registry(path: Path | str | None = None) -> ModelsRegistry | Non
     for tier_name, tier_data in (raw.get("llm_tiers") or {}).items():
         if tier_name not in _VALID_TIERS:
             continue
-        tier_typed: Tier = tier_name  # type: ignore[assignment]
+        tier_typed: Tier = tier_name
         primary_data = tier_data.get("primary") or {}
         primary = _model_from_dict("", primary_data, role="primary")
 
@@ -180,24 +188,27 @@ def load_models_registry(path: Path | str | None = None) -> ModelsRegistry | Non
         embedding_primary=_model_from_dict("", embed_root.get("primary") or {}, role="primary"),
         embedding_ab=(
             _model_from_dict("", embed_root["ab_candidate"], role="ab_candidate")
-            if isinstance(embed_root.get("ab_candidate"), dict) else None
+            if isinstance(embed_root.get("ab_candidate"), dict)
+            else None
         ),
         reranker_primary=_model_from_dict("", rerank_root.get("primary") or {}, role="primary"),
         reranker_ab=(
             _model_from_dict("", rerank_root["ab_candidate"], role="ab_candidate")
-            if isinstance(rerank_root.get("ab_candidate"), dict) else None
+            if isinstance(rerank_root.get("ab_candidate"), dict)
+            else None
         ),
         vlm_light=(
             _model_from_dict("", vlm_root["light"], role="light")
-            if isinstance(vlm_root.get("light"), dict) else None
+            if isinstance(vlm_root.get("light"), dict)
+            else None
         ),
         vlm_quality=(
             _model_from_dict("", vlm_root["quality"], role="quality")
-            if isinstance(vlm_root.get("quality"), dict) else None
+            if isinstance(vlm_root.get("quality"), dict)
+            else None
         ),
         antipatterns=tuple(
-            dict(item) for item in (raw.get("antipatterns") or ())
-            if isinstance(item, dict)
+            dict(item) for item in (raw.get("antipatterns") or ()) if isinstance(item, dict)
         ),
     )
 
@@ -221,9 +232,9 @@ def detect_tier(ram_gib: float | None = None) -> Tier:
         return "XXL"
     if ram_gib >= _TIER_RAM_THRESHOLDS_GB["XL"] * 0.75:  # 75% of 128 = 96
         return "XL"
-    if ram_gib >= _TIER_RAM_THRESHOLDS_GB["L"] * 0.85:   # 85% of 64 = 54.4
+    if ram_gib >= _TIER_RAM_THRESHOLDS_GB["L"] * 0.85:  # 85% of 64 = 54.4
         return "L"
-    if ram_gib >= _TIER_RAM_THRESHOLDS_GB["M"] * 0.85:   # 85% of 32 = 27.2
+    if ram_gib >= _TIER_RAM_THRESHOLDS_GB["M"] * 0.85:  # 85% of 32 = 27.2
         return "M"
     return "S"
 
@@ -313,7 +324,5 @@ def resolve_vlm(
 def model_path(spec: ModelSpec, models_dir: str | Path | None = None) -> Path:
     """Return локальный путь файла модели."""
     if models_dir is None:
-        models_dir = os.environ.get(
-            "AGMIND_MODELS_DIR", "/var/lib/agmind/models"
-        )
+        models_dir = os.environ.get("AGMIND_MODELS_DIR", "/var/lib/agmind/models")
     return Path(models_dir) / spec.local_filename

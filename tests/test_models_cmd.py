@@ -35,7 +35,8 @@ def test_list_local_empty(models_dir: Path, capsys: pytest.CaptureFixture[str]) 
 
 
 def test_list_local_with_files(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_blob(models_dir / "alpha.gguf", size_mb=10)
     _write_blob(models_dir / "beta.gguf", size_mb=20)
@@ -48,7 +49,8 @@ def test_list_local_with_files(
 
 
 def test_list_local_json(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_blob(models_dir / "x.gguf", size_mb=5)
     rc = models_cmd.cmd_list_local(as_json=True)
@@ -60,7 +62,8 @@ def test_list_local_json(
 
 
 def test_list_local_skips_non_model_files(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     (models_dir / "readme.txt").write_text("ignore me")
     _write_blob(models_dir / "real.gguf", size_mb=2)
@@ -75,7 +78,8 @@ def test_list_local_skips_non_model_files(
 
 
 def test_info_curated_id(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = models_cmd.cmd_info(model_id="qwen36-a3b-q4km")
     assert rc == 0
@@ -86,14 +90,16 @@ def test_info_curated_id(
 
 
 def test_info_unknown_id(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = models_cmd.cmd_info(model_id="bogus")
     assert rc == 1
 
 
 def test_info_local_file(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_blob(models_dir / "my.gguf", size_mb=10)
     rc = models_cmd.cmd_info(file="my.gguf")
@@ -104,14 +110,16 @@ def test_info_local_file(
 
 
 def test_info_local_file_missing(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = models_cmd.cmd_info(file="nope.gguf")
     assert rc == 2
 
 
 def test_info_requires_id_or_file(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = models_cmd.cmd_info()
     assert rc == 2
@@ -121,7 +129,8 @@ def test_info_requires_id_or_file(
 
 
 def test_pull_skip_if_present(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     target = models_dir / "Qwen3.6-35B-A3B-Q4_K_M.gguf"
     _write_blob(target, size_mb=5)
@@ -131,7 +140,8 @@ def test_pull_skip_if_present(
 
 
 def test_pull_unknown_id(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = models_cmd.cmd_pull(model_id="bogus")
     assert rc == 1
@@ -143,7 +153,8 @@ def test_pull_requires_id_or_repo_file(models_dir: Path) -> None:
 
 
 def test_pull_curated_invokes_curl(
-    models_dir: Path, monkeypatch: pytest.MonkeyPatch,
+    models_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[list[str]] = []
 
@@ -169,7 +180,8 @@ def test_pull_curated_invokes_curl(
 
 
 def test_rm_by_file(
-    models_dir: Path, capsys: pytest.CaptureFixture[str],
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     target = models_dir / "rmme.gguf"
     _write_blob(target, size_mb=3)
@@ -193,8 +205,10 @@ def test_rm_unknown_id(models_dir: Path) -> None:
 
 
 def test_rm_warns_if_in_use(
-    models_dir: Path, monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+    models_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     target = models_dir / "running.gguf"
     _write_blob(target, size_mb=3)
@@ -216,7 +230,9 @@ def test_rm_warns_if_in_use(
 
 
 def test_rm_force_deletes_even_if_in_use(
-    models_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    models_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     target = models_dir / "running.gguf"
     _write_blob(target, size_mb=3)

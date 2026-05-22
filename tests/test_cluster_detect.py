@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import socket
-import time
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agmind.cluster.detect import (
-    AGMIND_SERVICE_TYPE,
-    DEFAULT_AGMIND_PORT,
     DiscoveredPeer,
     NodeInfo,
     _get_primary_ipv4,
@@ -27,9 +23,13 @@ pytestmark = pytest.mark.backend_any
 
 def test_node_info_to_txt_record() -> None:
     info = NodeInfo(
-        hostname="lab-host", address="10.0.0.5",
-        agmind_version="0.3.0", gpu_name="AMD Radeon 8060S",
-        ram_gb=125.5, is_strix_halo=True, services_count=12,
+        hostname="lab-host",
+        address="10.0.0.5",
+        agmind_version="0.3.0",
+        gpu_name="AMD Radeon 8060S",
+        ram_gb=125.5,
+        is_strix_halo=True,
+        services_count=12,
     )
     txt = info.to_txt_record()
     assert txt["hostname"] == "lab-host"
@@ -42,16 +42,24 @@ def test_node_info_to_txt_record() -> None:
 
 def test_node_info_strix_false_serializes_to_0() -> None:
     info = NodeInfo(
-        hostname="x", address="1.2.3.4", agmind_version="v",
-        gpu_name="g", ram_gb=10.0, is_strix_halo=False,
+        hostname="x",
+        address="1.2.3.4",
+        agmind_version="v",
+        gpu_name="g",
+        ram_gb=10.0,
+        is_strix_halo=False,
     )
     assert info.to_txt_record()["strix"] == "0"
 
 
 def test_node_info_truncates_long_hostname() -> None:
     info = NodeInfo(
-        hostname="x" * 200, address="1.2.3.4", agmind_version="v",
-        gpu_name="g", ram_gb=10.0, is_strix_halo=False,
+        hostname="x" * 200,
+        address="1.2.3.4",
+        agmind_version="v",
+        gpu_name="g",
+        ram_gb=10.0,
+        is_strix_halo=False,
     )
     assert len(info.to_txt_record()["hostname"]) <= 60
 
@@ -61,9 +69,14 @@ def test_node_info_truncates_long_hostname() -> None:
 
 def test_discovered_peer_display_marks_strix() -> None:
     p = DiscoveredPeer(
-        hostname="node1", address="10.0.0.5", port=41423,
-        version="0.3", gpu="AMD Radeon 8060S",
-        ram_gb=125.0, is_strix_halo=True, services_count=10,
+        hostname="node1",
+        address="10.0.0.5",
+        port=41423,
+        version="0.3",
+        gpu="AMD Radeon 8060S",
+        ram_gb=125.0,
+        is_strix_halo=True,
+        services_count=10,
     )
     assert "★" in p.display
     assert "node1" in p.display
@@ -71,8 +84,14 @@ def test_discovered_peer_display_marks_strix() -> None:
 
 def test_discovered_peer_display_non_strix_no_star() -> None:
     p = DiscoveredPeer(
-        hostname="x", address="1.2.3.4", port=42,
-        version="v", gpu="g", ram_gb=1.0, is_strix_halo=False, services_count=0,
+        hostname="x",
+        address="1.2.3.4",
+        port=42,
+        version="v",
+        gpu="g",
+        ram_gb=1.0,
+        is_strix_halo=False,
+        services_count=0,
     )
     assert "★" not in p.display
 
@@ -124,6 +143,7 @@ def test_gather_node_info_returns_struct() -> None:
 def test_discover_returns_empty_without_zeroconf(monkeypatch: pytest.MonkeyPatch) -> None:
     """Если zeroconf не installed — discover returns empty list (no crash)."""
     import sys
+
     monkeypatch.setitem(sys.modules, "zeroconf", None)
     # We can't fully simulate ImportError из inside; just verify call returns list
     # In current setup zeroconf IS installed, so it'll run normally with 0 results
@@ -149,9 +169,13 @@ def test_advertise_context_manager_smoke(monkeypatch: pytest.MonkeyPatch) -> Non
     return value поведение правильное.
     """
     info = NodeInfo(
-        hostname="test-node", address="127.0.0.1",
-        agmind_version="0.0.0-test", gpu_name="test",
-        ram_gb=1.0, is_strix_halo=False, services_count=0,
+        hostname="test-node",
+        address="127.0.0.1",
+        agmind_version="0.0.0-test",
+        gpu_name="test",
+        ram_gb=1.0,
+        is_strix_halo=False,
+        services_count=0,
     )
     reg = advertise(info, port=41999)
     with reg as advertised:
@@ -173,8 +197,12 @@ def test_advertise_raises_if_no_zeroconf(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     info = NodeInfo(
-        hostname="t", address="127.0.0.1", agmind_version="v",
-        gpu_name="g", ram_gb=1.0, is_strix_halo=False,
+        hostname="t",
+        address="127.0.0.1",
+        agmind_version="v",
+        gpu_name="g",
+        ram_gb=1.0,
+        is_strix_halo=False,
     )
     with pytest.raises(RuntimeError, match="zeroconf"):
         advertise(info)
@@ -184,7 +212,8 @@ def test_advertise_raises_if_no_zeroconf(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_cmd_detect_no_peers(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from agmind.cli import cluster_cmd
 
@@ -196,17 +225,27 @@ def test_cmd_detect_no_peers(
 
 
 def test_cmd_detect_finds_peers(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from agmind.cli import cluster_cmd
 
-    monkeypatch.setattr(cluster_cmd, "_discover", lambda timeout: [
-        DiscoveredPeer(
-            hostname="node1", address="10.0.0.5", port=41423,
-            version="0.3.0", gpu="AMD Radeon 8060S",
-            ram_gb=125.0, is_strix_halo=True, services_count=10,
-        ),
-    ])
+    monkeypatch.setattr(
+        cluster_cmd,
+        "_discover",
+        lambda timeout: [
+            DiscoveredPeer(
+                hostname="node1",
+                address="10.0.0.5",
+                port=41423,
+                version="0.3.0",
+                gpu="AMD Radeon 8060S",
+                ram_gb=125.0,
+                is_strix_halo=True,
+                services_count=10,
+            ),
+        ],
+    )
     rc = cluster_cmd.cmd_detect(timeout=0.1)
     assert rc == 0
     out = capsys.readouterr().out
@@ -216,18 +255,29 @@ def test_cmd_detect_finds_peers(
 
 
 def test_cmd_detect_json_output(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import json as _json
+
     from agmind.cli import cluster_cmd
 
-    monkeypatch.setattr(cluster_cmd, "_discover", lambda timeout: [
-        DiscoveredPeer(
-            hostname="alpha", address="1.2.3.4", port=42,
-            version="x", gpu="y", ram_gb=2.0,
-            is_strix_halo=False, services_count=0,
-        ),
-    ])
+    monkeypatch.setattr(
+        cluster_cmd,
+        "_discover",
+        lambda timeout: [
+            DiscoveredPeer(
+                hostname="alpha",
+                address="1.2.3.4",
+                port=42,
+                version="x",
+                gpu="y",
+                ram_gb=2.0,
+                is_strix_halo=False,
+                services_count=0,
+            ),
+        ],
+    )
     rc = cluster_cmd.cmd_detect(timeout=0.1, as_json=True)
     assert rc == 0
     data = _json.loads(capsys.readouterr().out)
@@ -236,16 +286,22 @@ def test_cmd_detect_json_output(
 
 
 def test_cmd_status_self_only(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from agmind.cli import cluster_cmd
 
     monkeypatch.setattr(cluster_cmd, "_discover", lambda timeout: [])
     monkeypatch.setattr(
-        cluster_cmd, "gather_node_info",
+        cluster_cmd,
+        "gather_node_info",
         lambda: NodeInfo(
-            hostname="solo", address="127.0.0.1", agmind_version="0.3",
-            gpu_name="t", ram_gb=8.0, is_strix_halo=False,
+            hostname="solo",
+            address="127.0.0.1",
+            agmind_version="0.3",
+            gpu_name="t",
+            ram_gb=8.0,
+            is_strix_halo=False,
         ),
     )
     rc = cluster_cmd.cmd_status(timeout=0.1)

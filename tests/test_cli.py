@@ -35,9 +35,10 @@ def test_make_app_builds_typer_instance() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_make_app_has_doctor_command() -> None:
-    from agmind.cli import _make_app
-    from click.testing import CliRunner  # type: ignore[import-untyped]
     import typer
+    from click.testing import CliRunner  # type: ignore[import-untyped]
+
+    from agmind.cli import _make_app
 
     cli_app = typer.main.get_command(_make_app())
     runner = CliRunner()
@@ -48,10 +49,11 @@ def test_make_app_has_doctor_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_app_version_command() -> None:
+    import typer
+    from click.testing import CliRunner
+
     from agmind import __version__
     from agmind.cli import _make_app
-    from click.testing import CliRunner
-    import typer
 
     cli_app = typer.main.get_command(_make_app())
     runner = CliRunner()

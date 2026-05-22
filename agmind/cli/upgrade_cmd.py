@@ -12,10 +12,11 @@ Respects templates/version_holds.yaml (refuse без --force).
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import sys
+from datetime import UTC
 from pathlib import Path
+from typing import Any
 
 from agmind.log import logger
 
@@ -26,7 +27,9 @@ SERVICES_DIR = REPO_ROOT / "templates" / "services"
 HOLDS_FILE = REPO_ROOT / "templates" / "version_holds.yaml"
 UPGRADE_STATE_DIR = Path.home() / ".local" / "share" / "agmind" / "upgrades"
 
-_IMAGE_LINE_RE = re.compile(r"^image:\s*(?P<image>[^\s:]+):(?P<tag>[^\s@]+)(?:@sha256:(?P<digest>[a-f0-9]+))?\s*$")
+_IMAGE_LINE_RE = re.compile(
+    r"^image:\s*(?P<image>[^\s:]+):(?P<tag>[^\s@]+)(?:@sha256:(?P<digest>[a-f0-9]+))?\s*$"
+)
 
 
 def _load_holds() -> dict[str, dict[str, str]]:
@@ -58,7 +61,9 @@ def _read_current_pin(yaml_path: Path) -> tuple[str, str, str | None] | None:
     return None
 
 
-def _bump_pin_in_yaml(yaml_path: Path, new_tag: str, new_digest: str | None = None) -> tuple[str, str]:
+def _bump_pin_in_yaml(
+    yaml_path: Path, new_tag: str, new_digest: str | None = None
+) -> tuple[str, str]:
     """Replace image tag (and digest) в descriptor. Returns (old_tag, new_tag)."""
     text = yaml_path.read_text(encoding="utf-8")
     new_lines: list[str] = []
@@ -94,27 +99,38 @@ def _bump_pin_in_yaml(yaml_path: Path, new_tag: str, new_digest: str | None = No
 
 
 def _save_upgrade_state(
-    service: str, yaml_path: Path, old_tag: str, new_tag: str,
+    service: str,
+    yaml_path: Path,
+    old_tag: str,
+    new_tag: str,
     old_digest: str | None,
 ) -> Path:
     """Persist info для rollback. Returns saved state path."""
     UPGRADE_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    from datetime import datetime
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     state_file = UPGRADE_STATE_DIR / f"{ts}_{service}.json"
     import json
-    state_file.write_text(json.dumps({
-        "service": service,
-        "yaml_path": str(yaml_path),
-        "old_tag": old_tag,
-        "new_tag": new_tag,
-        "old_digest": old_digest,
-        "timestamp": ts,
-    }, indent=2), encoding="utf-8")
+
+    state_file.write_text(
+        json.dumps(
+            {
+                "service": service,
+                "yaml_path": str(yaml_path),
+                "old_tag": old_tag,
+                "new_tag": new_tag,
+                "old_digest": old_digest,
+                "timestamp": ts,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return state_file
 
 
-def _latest_upgrade_state() -> dict | None:
+def _latest_upgrade_state() -> dict[str, Any] | None:
     """Read most recent upgrade state file."""
     if not UPGRADE_STATE_DIR.exists():
         return None
@@ -122,10 +138,12 @@ def _latest_upgrade_state() -> dict | None:
     if not files:
         return None
     import json
+
     try:
-        return json.loads(files[0].read_text(encoding="utf-8"))
+        payload = json.loads(files[0].read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
+    return payload if isinstance(payload, dict) else None
 
 
 # ---- main CLI entry points ----
@@ -138,18 +156,19 @@ def cmd_check() -> int:
         print(f"ERROR: {script} not found", file=sys.stderr)
         return 1
     rc = subprocess.run(
-        [sys.executable, str(script)], check=False,
+        [sys.executable, str(script)],
+        check=False,
     ).returncode
     return rc
 
 
-def cmd_component(service: str, version: str, force: bool = False,
-                  digest: str | None = None) -> int:
+def cmd_component(
+    service: str, version: str, force: bool = False, digest: str | None = None
+) -> int:
     """Bump pin для одного service в template + save rollback state."""
     yaml_path = _find_descriptor_for_service(service)
     if yaml_path is None:
-        print(f"ERROR: no descriptor для service {service!r} в {SERVICES_DIR}",
-              file=sys.stderr)
+        print(f"ERROR: no descriptor для service {service!r} в {SERVICES_DIR}", file=sys.stderr)
         return 1
 
     current = _read_current_pin(yaml_path)
@@ -163,7 +182,7 @@ def cmd_component(service: str, version: str, force: bool = False,
     if image in holds and not force:
         reason = holds[image].get("reason", "(no reason)")
         print(f"ERROR: {image} is HELD: {reason}", file=sys.stderr)
-        print(f"  Use --force to bump anyway.", file=sys.stderr)
+        print("  Use --force to bump anyway.", file=sys.stderr)
         return 1
 
     if old_tag == version:
@@ -173,16 +192,19 @@ def cmd_component(service: str, version: str, force: bool = False,
     print(f"Bumping {service}: {image}:{old_tag} → {image}:{version}")
     bumped_old, bumped_new = _bump_pin_in_yaml(yaml_path, version, digest)
     state_file = _save_upgrade_state(
-        service, yaml_path, bumped_old, bumped_new, old_digest,
+        service,
+        yaml_path,
+        bumped_old,
+        bumped_new,
+        old_digest,
     )
     print(f"  ✓ updated {yaml_path}")
     print(f"  ✓ saved upgrade state to {state_file}")
-    print(f"  Next: `agmind upgrade --apply` to re-deploy")
+    print("  Next: `agmind upgrade --apply` to re-deploy")
     return 0
 
 
-def cmd_apply(install_dir: Path = Path("/opt/agmind"),
-              healthcheck_timeout: int = 300) -> int:
+def cmd_apply(install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int = 300) -> int:
     """Re-run deploy after bump. Reuses Phase L.B runner для snapshot+rollback."""
     from agmind.deploy.runner import deploy
 
@@ -241,15 +263,16 @@ def cmd_rollback() -> int:
 
     # Move state file aside so next --rollback не двойной revert
     import shutil as _sh
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    from datetime import datetime
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     state_files = sorted(UPGRADE_STATE_DIR.glob("*.json"), reverse=True)
     if state_files:
         archived_dir = UPGRADE_STATE_DIR / "rolled_back"
         archived_dir.mkdir(exist_ok=True)
         _sh.move(str(state_files[0]), str(archived_dir / f"{ts}_{state_files[0].name}"))
 
-    print(f"  Next: `agmind upgrade --apply` to re-deploy with restored pin")
+    print("  Next: `agmind upgrade --apply` to re-deploy with restored pin")
     return 0
 
 

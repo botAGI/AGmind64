@@ -8,12 +8,13 @@ from pathlib import Path
 import pytest
 
 from agmind.deploy.diff import ComposeDiff, compute_diff, format_diff
-from agmind.deploy.snapshot import Snapshot, SnapshotManager
+from agmind.deploy.snapshot import SnapshotManager
 
 pytestmark = pytest.mark.backend_any
 
 
 # ---------- snapshot ----------
+
 
 @pytest.fixture
 def snapshot_mgr(tmp_path: Path) -> SnapshotManager:
@@ -120,6 +121,7 @@ def test_save_copies_env_file(snapshot_mgr: SnapshotManager, tmp_path: Path) -> 
 
 
 # ---------- diff ----------
+
 
 def test_diff_empty_no_changes() -> None:
     diff = compute_diff("services: {}", "services: {}")

@@ -37,9 +37,7 @@ def _make_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     (desc_dir / "traefik.yaml").write_text("name: traefik\n", encoding="utf-8")
     (desc_dir / "qdrant.yaml").write_text("name: qdrant\n", encoding="utf-8")
 
-    (user / "setup-state.json").write_text(
-        json.dumps({"domain": "x"}), encoding="utf-8"
-    )
+    (user / "setup-state.json").write_text(json.dumps({"domain": "x"}), encoding="utf-8")
     (user / "schema.json").write_text(
         json.dumps({"schema_version": 1, "applied": []}), encoding="utf-8"
     )
@@ -69,9 +67,7 @@ def test_backup_creates_tarball(tmp_path: Path) -> None:
     install, user, system = _make_repo(tmp_path)
     out = tmp_path / "backup.tar.gz"
 
-    result = create_backup(
-        output_path=out, sources=_custom_sources(install, user, system)
-    )
+    result = create_backup(output_path=out, sources=_custom_sources(install, user, system))
     assert out.exists()
     assert result.bytes_written > 0
     assert "compose" in result.sources_included
@@ -88,9 +84,7 @@ def test_backup_records_missing_sources(tmp_path: Path) -> None:
     (user / "setup-state.json").unlink()
     out = tmp_path / "backup.tar.gz"
 
-    result = create_backup(
-        output_path=out, sources=_custom_sources(install, user, system)
-    )
+    result = create_backup(output_path=out, sources=_custom_sources(install, user, system))
     assert "setup_state" in result.sources_missing
     assert "compose" in result.sources_included
 
@@ -158,9 +152,7 @@ def test_restore_roundtrip_files(tmp_path: Path) -> None:
     (install / ".env").unlink()
     (user / "setup-state.json").unlink()
 
-    result = restore_backup(
-        backup_path=backup, sources=_custom_sources(install, user, system)
-    )
+    result = restore_backup(backup_path=backup, sources=_custom_sources(install, user, system))
     assert "compose" in result.extracted
     assert "env" in result.extracted
     assert (install / "docker-compose.yml").read_text() == "services: {}\n"
@@ -179,9 +171,7 @@ def test_restore_directory_extracts_children(tmp_path: Path) -> None:
     shutil.rmtree(install / "templates" / "services")
     assert not (install / "templates" / "services").exists()
 
-    restore_backup(
-        backup_path=backup, sources=_custom_sources(install, user, system)
-    )
+    restore_backup(backup_path=backup, sources=_custom_sources(install, user, system))
     assert (install / "templates" / "services" / "traefik.yaml").exists()
     assert (install / "templates" / "services" / "qdrant.yaml").exists()
 

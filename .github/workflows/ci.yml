@@ -107,29 +107,17 @@ jobs:
         backend: [cpu, vulkan, rocm]
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
 
       - name: Build base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.base
-          platforms: linux/amd64
-          tags: agmind-base:ci
-          load: true
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,scope=base,mode=max
+        run: docker build -f docker/Dockerfile.base -t agmind-base:ci .
 
       - name: Build ${{ matrix.backend }} image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.${{ matrix.backend }}
-          platforms: linux/amd64
-          build-args: BASE_IMAGE=agmind-base:ci
-          tags: agmind-${{ matrix.backend }}:ci
-          cache-from: type=gha,scope=${{ matrix.backend }}
-          cache-to: type=gha,scope=${{ matrix.backend }},mode=max
+        run: |
+          docker build \
+            -f docker/Dockerfile.${{ matrix.backend }} \
+            --build-arg BASE_IMAGE=agmind-base:ci \
+            -t agmind-${{ matrix.backend }}:ci \
+            .
 
   # ---- Compose validation (Phase L.A) ----
   compose-validate:

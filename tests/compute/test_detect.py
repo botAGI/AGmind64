@@ -7,16 +7,14 @@ import pytest
 from agmind.compute.detect import (
     AMDVLK_ICD_FILES,
     GIB,
-    GPUInfo,
     HostInfo,
     ROCmInfo,
     VulkanInfo,
-    detect_host,
-    detect_vulkan,
-    detect_rocm,
     detect_gpu,
+    detect_host,
+    detect_rocm,
+    detect_vulkan,
 )
-
 
 pytestmark = pytest.mark.backend_any
 
@@ -84,7 +82,4 @@ def test_detect_host_warnings_when_amdvlk_present() -> None:
     """Если AMDVLK ICD файлы существуют — warnings должны их упомянуть."""
     info = detect_host()
     if info.vulkan.amdvlk_files_present:
-        assert any(
-            "AMDVLK" in w or "amdvlk" in w
-            for w in info.warnings
-        )
+        assert any("AMDVLK" in w or "amdvlk" in w for w in info.warnings)

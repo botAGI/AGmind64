@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import tarfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agmind.log import logger
@@ -114,18 +114,17 @@ def create_backup(
 
         metadata = {
             "format_version": BACKUP_FORMAT_VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "included": included,
             "missing": missing,
             "sources": [
-                {"label": s.label, "path": str(s.path), "optional": s.optional}
-                for s in sources
+                {"label": s.label, "path": str(s.path), "optional": s.optional} for s in sources
             ],
         }
         meta_bytes = json.dumps(metadata, indent=2, ensure_ascii=False).encode("utf-8")
         info = tarfile.TarInfo(name=METADATA_FILENAME)
         info.size = len(meta_bytes)
-        info.mtime = int(datetime.now(timezone.utc).timestamp())
+        info.mtime = int(datetime.now(UTC).timestamp())
         import io
 
         tar.addfile(info, io.BytesIO(meta_bytes))
@@ -231,7 +230,7 @@ def _extract_dir(tar: tarfile.TarFile, top: tarfile.TarInfo, target_root: Path) 
             continue
         if not m.name.startswith(prefix):
             continue
-        rel = m.name[len(prefix):]
+        rel = m.name[len(prefix) :]
         out_path = target_root / rel
         if m.isdir():
             out_path.mkdir(parents=True, exist_ok=True)

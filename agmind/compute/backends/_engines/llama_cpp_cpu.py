@@ -6,7 +6,8 @@ GPU. Реальная инициализация Llama instance — на `load()
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from agmind.compute.base import LLMHandle
 from agmind.log import logger
@@ -29,12 +30,14 @@ class _LlamaCppHandle(LLMHandle):
         max_tokens: int = 512,
         temperature: float = 0.7,
         stop: Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> str:
         out = self._llama(  # type: ignore[operator]
             prompt,
             max_tokens=max_tokens,
             temperature=temperature,
             stop=list(stop) if stop else None,
+            **kwargs,
         )
         # llama_cpp returns dict with choices[0]["text"]
         if isinstance(out, dict):
@@ -105,9 +108,7 @@ class LlamaCppCPUEngine:
 
         model_path = kwargs.pop("model", None)
         if model_path is None:
-            raise ValueError(
-                "rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'"
-            )
+            raise ValueError("rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'")
 
         defaults: dict[str, Any] = {
             "model_path": model_path,
@@ -143,9 +144,9 @@ def _safe_embed(llama: Any, text: str) -> list[float]:
 def _cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = sum(x * x for x in a) ** 0.5
     nb = sum(x * x for x in b) ** 0.5
     if na == 0 or nb == 0:
         return 0.0
-    return dot / (na * nb)
+    return float(dot / (na * nb))

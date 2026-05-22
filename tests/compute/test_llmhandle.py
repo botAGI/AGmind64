@@ -9,13 +9,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Sequence
+from collections.abc import Sequence
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from agmind.compute.base import LLMHandle
 from agmind.compute.backends._engines.llama_server_handle import LlamaServerHandle
+from agmind.compute.base import LLMHandle
 from agmind.compute.clients import LlamaServerClient
 
 pytestmark = pytest.mark.backend_any

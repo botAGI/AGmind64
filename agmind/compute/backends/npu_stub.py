@@ -9,10 +9,10 @@ NotImplementedError, не таинственный AttributeError.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from agmind.compute.base import Backend, DeviceInfo, LLMHandle
-
 
 _NOT_IMPLEMENTED_MSG = (
     "XDNA 2 NPU on Strix Halo is not supported by Ryzen AI SW on Linux "
@@ -35,7 +35,7 @@ class NPUStubBackend(Backend):
         return False
 
     @classmethod
-    def make(cls, engine: str = "auto") -> "NPUStubBackend":
+    def make(cls, engine: str = "auto") -> NPUStubBackend:
         # Note: даже если engine="auto", make() возвращает stub — но в
         # auto-select из get_backend() этот backend не выбирается
         # потому что `available() → False`.

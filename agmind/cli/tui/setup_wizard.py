@@ -18,17 +18,16 @@ non-interactive deploy через `agmind setup --from-state file.json`.
 from __future__ import annotations
 
 import json
-import platform
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.validation import Function, ValidationResult, Validator
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.validation import ValidationResult, Validator
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select, Static
 
 
@@ -40,22 +39,29 @@ class DomainValidator(Validator):
 
     def validate(self, value: str) -> ValidationResult:
         from agmind.i18n import t
+
         v = value.strip()
         if not v:
-            return self.failure(t(
-                "wizard.validation.domain_empty",
-                default="required (e.g. lab.example.com)",
-            ))
+            return self.failure(
+                t(
+                    "wizard.validation.domain_empty",
+                    default="required (e.g. lab.example.com)",
+                )
+            )
         if "." not in v:
-            return self.failure(t(
-                "wizard.validation.domain_no_dot",
-                default="must contain '.'",
-            ))
+            return self.failure(
+                t(
+                    "wizard.validation.domain_no_dot",
+                    default="must contain '.'",
+                )
+            )
         if v == "agmind.dev":
-            return self.failure(t(
-                "wizard.validation.domain_placeholder",
-                default="agmind.dev is placeholder — use your own",
-            ))
+            return self.failure(
+                t(
+                    "wizard.validation.domain_placeholder",
+                    default="agmind.dev is placeholder — use your own",
+                )
+            )
         return self.success()
 
 
@@ -64,13 +70,14 @@ class TokenLengthValidator(Validator):
 
     def validate(self, value: str) -> ValidationResult:
         from agmind.i18n import t
+
         v = value.strip()
         if not v:
             return self.success()  # empty ok (token loaded из --cf-token-file)
         if len(v) < 20:
             msg = t(
                 "wizard.validation.token_too_short",
-                default=f"too short ({{n}} chars, expected ≥20)",
+                default="too short ({n} chars, expected ≥20)",
             )
             return self.failure(msg.format(n=len(v)))
         return self.success()
@@ -108,10 +115,11 @@ class AGCheckbox(Checkbox):
             (self.BUTTON_RIGHT, side_style),
         )
 
-    def watch_value(self) -> None:  # type: ignore[override]
+    def watch_value(self) -> None:
         # Re-render button row on toggle (force redraw, не just style swap)
         super().watch_value()
         self.refresh()
+
 
 from agmind.cli.tui.logo import AnimatedLogo
 from agmind.log import logger
@@ -130,9 +138,16 @@ DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 # 11 services: traefik (edge) + llama-* (inference) + qdrant (storage) + 6 ops.
 _DEFAULT_SERVICES = {
     "traefik",
-    "llama-llm", "llama-embed", "llama-rerank",
+    "llama-llm",
+    "llama-embed",
+    "llama-rerank",
     "qdrant",
-    "prometheus", "grafana", "loki", "alloy", "alertmanager", "node-exporter",
+    "prometheus",
+    "grafana",
+    "loki",
+    "alloy",
+    "alertmanager",
+    "node-exporter",
 }
 
 
@@ -279,9 +294,7 @@ def detect_hardware() -> DetectedHardware:
     gpu_name = None
     is_strix_halo = False
     try:
-        result = subprocess.run(
-            ["lspci"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["lspci"], capture_output=True, text=True, timeout=5, check=False)
         for line in result.stdout.splitlines():
             line_low = line.lower()
             if "vga" in line_low or "display" in line_low or "3d" in line_low:
@@ -295,8 +308,7 @@ def detect_hardware() -> DetectedHardware:
 
     vulkan_present = shutil.which("vulkaninfo") is not None
     rocm_present = (
-        shutil.which("rocminfo") is not None
-        or Path("/opt/rocm-7.2.3/bin/rocminfo").exists()
+        shutil.which("rocminfo") is not None or Path("/opt/rocm-7.2.3/bin/rocminfo").exists()
     )
     docker_present = shutil.which("docker") is not None
 
@@ -424,7 +436,7 @@ def get_available_profiles() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for prof in sorted(profile_services, key=_sort_key):
         services = profile_services[prof]
-        desc = _PROFILE_DESCRIPTIONS.get(prof, f"custom profile")
+        desc = _PROFILE_DESCRIPTIONS.get(prof, "custom profile")
         out.append((prof, f"{desc} [{len(services)} services]"))
     return out
 
@@ -437,6 +449,7 @@ def get_available_backends() -> list[tuple[str, str]]:
     """
     try:
         from agmind.compute._registry import discover_backend_names
+
         names = discover_backend_names()
     except Exception:
         # Graceful degrade — fallback на 4 встроенных
@@ -460,6 +473,7 @@ BACKENDS_AVAILABLE: list[tuple[str, str]] = []  # populated lazy
 # ============================================================
 # Textual App
 # ============================================================
+
 
 class AgmindSetupApp(App[SetupState | None]):
     """One-screen setup wizard."""
@@ -493,13 +507,12 @@ class AgmindSetupApp(App[SetupState | None]):
         # Phase M4.1: multi-step wizard теперь DEFAULT.
         # Escape hatch: AGMIND_WIZARD_LEGACY=1 или multi_step=False kwarg.
         import os as _os_module
+
         if multi_step is None:
             legacy_env = _os_module.environ.get("AGMIND_WIZARD_LEGACY", "0") == "1"
             # Backward compat: старый AGMIND_WIZARD_MULTISTEP=0 был "off" → теперь default on
             multistep_env = _os_module.environ.get("AGMIND_WIZARD_MULTISTEP", "")
-            if multistep_env == "0":
-                multi_step = False
-            elif legacy_env:
+            if multistep_env == "0" or legacy_env:
                 multi_step = False
             else:
                 multi_step = True
@@ -518,6 +531,7 @@ class AgmindSetupApp(App[SetupState | None]):
         if self._cluster_peers_cache is None:
             try:
                 from agmind.cluster.detect import discover
+
                 peers = discover(timeout=0.5, exclude_self=True)
                 self._cluster_peers_cache = [(p.hostname, p.address) for p in peers]
             except Exception:
@@ -578,6 +592,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 KV_CACHE_TYPES,
                 models_for_wizard,
             )
+
             yield Label("Model", classes="section")
             model_options = models_for_wizard()
             model_options.append(("Custom HuggingFace…", "custom"))
@@ -621,6 +636,7 @@ class AgmindSetupApp(App[SetupState | None]):
 
             # Inference threads + parallel slots
             from agmind.install.models import PARALLEL_PRESETS, THREADS_PRESETS
+
             yield Label("CPU threads", classes="section")
             yield Select(
                 [(label, str(n)) for n, label in THREADS_PRESETS],
@@ -670,9 +686,7 @@ class AgmindSetupApp(App[SetupState | None]):
         vk = "✓" if d.vulkan_present else "✗"
         rc = "✓" if d.rocm_present else "✗"
         dk = "✓" if d.docker_present else "✗!"
-        return (
-            f"{d.ram_gb:.0f} GB · {gpu} · Vulkan {vk} ROCm {rc} Docker {dk} · tier={d.recommended_tier}"
-        )
+        return f"{d.ram_gb:.0f} GB · {gpu} · Vulkan {vk} ROCm {rc} Docker {dk} · tier={d.recommended_tier}"
 
     @staticmethod
     def _slug(name: str) -> str:
@@ -702,6 +716,7 @@ class AgmindSetupApp(App[SetupState | None]):
         # If curated id selected — resolve repo+file из catalog (overrides empty inputs)
         if model_id != "custom":
             from agmind.install.models import find_by_id
+
             entry = find_by_id(model_id)
             if entry is not None:
                 model_repo = entry.repo
@@ -724,7 +739,9 @@ class AgmindSetupApp(App[SetupState | None]):
 
         parallel_select = self.query_one("#parallel-select", Select)
         try:
-            parallel_slots = int(str(parallel_select.value)) if parallel_select.value is not None else 1
+            parallel_slots = (
+                int(str(parallel_select.value)) if parallel_select.value is not None else 1
+            )
         except ValueError:
             parallel_slots = 1
 
@@ -770,6 +787,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 load_descriptors,
                 select_services,
             )
+
             all_d = load_descriptors()
             selected = select_services(all_d, services=state.services)
             return check_missing_dependencies(selected, all_d)
@@ -811,13 +829,13 @@ class AgmindSetupApp(App[SetupState | None]):
         errors = self._validate(state)
         if errors:
             # Phase M3.S.1: toast вместо persistent status-msg
-            self.notify("\n".join(errors), title="Validation errors",
-                        severity="error", timeout=8.0)
+            self.notify("\n".join(errors), title="Validation errors", severity="error", timeout=8.0)
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 
         try:
             from agmind.services.renderer import render_to_string
+
             preview = render_to_string(
                 services=state.services,
                 domain=state.domain,
@@ -857,10 +875,8 @@ class AgmindSetupApp(App[SetupState | None]):
         self._set_status(f"✓ {summary}{dep_warn}{compat_warn}", kind=status_kind)
         # Phase M3.S.1: Toast для immediate feedback (status-msg остаётся как
         # archive — toast исчезает 4s)
-        severity = "information"
-        if missing_deps:
-            severity = "warning"
-        elif compat_warn:
+        severity: Literal["information", "warning"] = "information"
+        if missing_deps or compat_warn:
             severity = "warning"
         self.notify(summary + (compat_warn or ""), title="Preview", severity=severity)
 
@@ -869,8 +885,7 @@ class AgmindSetupApp(App[SetupState | None]):
         errors = self._validate(state)
         if errors:
             # Phase M3.S.1: toast + status — toast вылетает первым (visible)
-            self.notify("\n".join(errors), title="Cannot apply",
-                        severity="error", timeout=10.0)
+            self.notify("\n".join(errors), title="Cannot apply", severity="error", timeout=10.0)
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 
@@ -903,8 +918,9 @@ class AgmindSetupApp(App[SetupState | None]):
                 if deploy_result is not None:
                     state.__dict__["_deploy_result"] = deploy_result
                 # Push SummaryScreen (success или failure) внутри TUI
-                from typing import Literal
+
                 from agmind.deploy.runner import DeployResult as _DR
+
                 mode: Literal["next_steps", "deploy_success", "deploy_failure"] = (
                     "deploy_success"
                     if isinstance(deploy_result, _DR) and deploy_result.success

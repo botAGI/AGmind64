@@ -18,7 +18,9 @@ SCRIPT = REPO_ROOT / "scripts" / "version_check.py"
 def _run(*extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(SCRIPT), *extra],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -28,24 +30,28 @@ def _run(*extra: str) -> subprocess.CompletedProcess[str]:
 def test_compare_up_to_date() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._compare("v1.2.3", "1.2.3") == "up_to_date"
 
 
 def test_compare_patch() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._compare("1.2.3", "1.2.5") == "patch"
 
 
 def test_compare_minor() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._compare("1.2.3", "1.3.0") == "minor"
 
 
 def test_compare_major() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._compare("1.2.3", "2.0.0") == "major"
 
 
@@ -55,6 +61,7 @@ def test_compare_major() -> None:
 def test_scan_compose_finds_known_pins() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     pins = vc.scan_compose_pins(REPO_ROOT / "templates" / "services")
     images = {p[0] for p in pins}
     assert "infiniflow/ragflow" in images
@@ -65,6 +72,7 @@ def test_scan_compose_finds_known_pins() -> None:
 def test_scan_extracts_correct_tag() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     pins = vc.scan_compose_pins(REPO_ROOT / "templates" / "services")
     by_image = {p[0]: p[1] for p in pins}
     assert by_image["infiniflow/ragflow"] == "v0.25.5"
@@ -76,6 +84,7 @@ def test_scan_extracts_correct_tag() -> None:
 def test_holds_loaded() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     holds = vc.load_holds()
     assert "ghcr.io/ggml-org/llama.cpp" in holds
 
@@ -105,6 +114,7 @@ def test_holds_skip_probe() -> None:
     """Образы из version_holds.yaml выходят как 'hold' даже в online mode."""
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     reports = vc.build_reports(probe_fn=lambda _img: "v999.999.999")
     holds_in_report = [r for r in reports if r.status == "hold"]
     images = {r.image for r in holds_in_report}
@@ -115,6 +125,7 @@ def test_holds_skip_probe() -> None:
 def test_markdown_table_format() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     reports = vc.build_reports(probe_fn=lambda _img: None)
     md = vc.render_markdown(reports)
     assert "| Component |" in md
@@ -128,6 +139,7 @@ def test_markdown_table_format() -> None:
 def test_variant_filter_windowsservercore() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._is_variant_or_prerelease("2.11.3-windowsservercore-ltsc2025")
     assert vc._is_variant_or_prerelease("v3.7.1-windowsservercore-ltsc2025")
 
@@ -135,6 +147,7 @@ def test_variant_filter_windowsservercore() -> None:
 def test_variant_filter_arch_suffix() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._is_variant_or_prerelease("3.7.2-arm64")  # audit: allow test-string
     assert vc._is_variant_or_prerelease("v1.18-unprivileged")
     # MinIO RELEASE.* tag не semver — фильтруется через _VERSION_RE регэкса,
@@ -145,6 +158,7 @@ def test_variant_filter_arch_suffix() -> None:
 def test_variant_filter_os_variants() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._is_variant_or_prerelease("13.1.0-25893932881-ubuntu")
     assert vc._is_variant_or_prerelease("1.31.0-trixie-perl")
     assert vc._is_variant_or_prerelease("v1.83.0-alpine")
@@ -154,6 +168,7 @@ def test_variant_filter_os_variants() -> None:
 def test_variant_filter_prerelease() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     assert vc._is_variant_or_prerelease("v3.12.0-rc.0-distroless")
     assert vc._is_variant_or_prerelease("v0.32.1-rc.0")
     assert vc._is_variant_or_prerelease("1.38.0-dev-fc90344-arm64")  # audit: allow test-string
@@ -162,6 +177,7 @@ def test_variant_filter_prerelease() -> None:
 def test_variant_filter_sha_tags() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     # 40-char hex string = SHA tag
     assert vc._is_variant_or_prerelease("5631afef06ec88f80c28129aec7fd22a30006b14")
     assert vc._is_variant_or_prerelease("2565637e36448ae343a146281453a04a3a16fba7")
@@ -170,6 +186,7 @@ def test_variant_filter_sha_tags() -> None:
 def test_variant_filter_plain_semver_passes() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     # Plain semver — should NOT be filtered
     assert not vc._is_variant_or_prerelease("v0.25.5")
     assert not vc._is_variant_or_prerelease("1.14.2")
@@ -180,6 +197,7 @@ def test_variant_filter_plain_semver_passes() -> None:
 def test_probe_dispatch_quay() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     # No network — just verify dispatch picks Quay handler
     called = []
     vc._quay_latest = lambda owner, image: called.append((owner, image)) or "v9.9.9"
@@ -190,6 +208,7 @@ def test_probe_dispatch_quay() -> None:
 def test_probe_dispatch_gcr() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import version_check as vc
+
     called = []
     vc._gcr_latest = lambda project, image: called.append((project, image)) or "v0.99.0"
     assert vc.probe_latest("gcr.io/cadvisor/cadvisor") == "v0.99.0"

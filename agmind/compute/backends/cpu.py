@@ -8,8 +8,8 @@ Engine: только llama_cpp (CPU build).
 
 from __future__ import annotations
 
-import shutil
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from agmind.compute.base import Backend, DeviceInfo, LLMHandle
 from agmind.compute.detect import detect_host
@@ -28,8 +28,7 @@ class CPUBackend(Backend):
     def __init__(self, engine: str) -> None:
         if engine not in _SUPPORTED_ENGINES:
             raise ValueError(
-                f"CPU backend engine={engine!r} not supported. "
-                f"Allowed: {_SUPPORTED_ENGINES}"
+                f"CPU backend engine={engine!r} not supported. Allowed: {_SUPPORTED_ENGINES}"
             )
         self._engine = engine
         self._llm: LLMHandle | None = None
@@ -40,7 +39,7 @@ class CPUBackend(Backend):
         return True
 
     @classmethod
-    def make(cls, engine: str = "auto") -> "CPUBackend":
+    def make(cls, engine: str = "auto") -> CPUBackend:
         if engine == "auto":
             engine = "llama_cpp"
         return cls(engine=engine)
@@ -89,6 +88,7 @@ class CPUBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_cpu import (
             LlamaCppCPUEngine,
         )
+
         engine = LlamaCppCPUEngine()
         self._llm = engine.load(model_path, **kwargs)
         return self._llm
@@ -108,6 +108,7 @@ class CPUBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_cpu import (
             LlamaCppCPUEngine,
         )
+
         return LlamaCppCPUEngine().embed(texts, model)
 
     def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
@@ -125,6 +126,7 @@ class CPUBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_cpu import (
             LlamaCppCPUEngine,
         )
+
         return LlamaCppCPUEngine().rerank(query, documents)
 
 

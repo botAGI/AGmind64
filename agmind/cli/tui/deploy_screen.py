@@ -14,7 +14,6 @@ TUI screen subscribes и обновляет widgets. Same runner использ�
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -161,6 +160,7 @@ class DeployProgressScreen(Screen[DeployResult]):
     @work(exclusive=True, thread=True)
     def _run_deploy(self) -> None:
         """Run deploy в worker thread чтобы не блокировать UI loop."""
+
         def progress_cb(step: str, msg: str) -> None:
             timestamp = datetime.now().strftime("%H:%M:%S")
             log_widget = self.query_one("#deploy-log", RichLog)

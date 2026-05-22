@@ -13,9 +13,9 @@ Backends регистрируются в `agmind.compute._registry`. Auto-select
 
 from __future__ import annotations
 
+from agmind.compute._registry import get_backend, list_available_backends
 from agmind.compute.base import Backend, DeviceInfo
 from agmind.compute.config import Profile, read_config
-from agmind.compute._registry import get_backend, list_available_backends
 
 __all__ = [
     "Backend",

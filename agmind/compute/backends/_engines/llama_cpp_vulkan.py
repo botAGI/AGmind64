@@ -8,12 +8,12 @@ Lazy import llama_cpp. Engine не делает env-setup — это Backend.mak
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
-from agmind.compute.base import LLMHandle
 from agmind.compute.backends._engines.llama_cpp_cpu import (
-    _LlamaCppHandle,
     _cosine,
+    _LlamaCppHandle,
     _safe_embed,
 )
 from agmind.log import logger
@@ -30,18 +30,22 @@ class LlamaCppVulkanEngine:
         defaults: dict[str, Any] = {
             "n_ctx": kwargs.get("n_ctx", 8192),
             "n_gpu_layers": kwargs.get("n_gpu_layers", -1),  # все слои на GPU
-            "use_mmap": kwargs.get("use_mmap", False),       # critical для STX-H
-            "flash_attn": kwargs.get("flash_attn", True),    # Wave32 FA после PR #19625
+            "use_mmap": kwargs.get("use_mmap", False),  # critical для STX-H
+            "flash_attn": kwargs.get("flash_attn", True),  # Wave32 FA после PR #19625
             "n_batch": kwargs.get("n_batch", 512),
-            "n_ubatch": kwargs.get("n_ubatch", 256),         # safe для DeviceLost
+            "n_ubatch": kwargs.get("n_ubatch", 256),  # safe для DeviceLost
             "verbose": False,
         }
         # Только non-default user kwargs override
         for k, v in kwargs.items():
             if k not in defaults:
                 defaults[k] = v
-        log.info("llama-cpp Vulkan load: %s (n_ctx=%d n_gpu_layers=%d)",
-                 model_path, defaults["n_ctx"], defaults["n_gpu_layers"])
+        log.info(
+            "llama-cpp Vulkan load: %s (n_ctx=%d n_gpu_layers=%d)",
+            model_path,
+            defaults["n_ctx"],
+            defaults["n_gpu_layers"],
+        )
         llama = Llama(model_path=model_path, **defaults)
         return _LlamaCppHandle(llama)
 
@@ -83,9 +87,7 @@ class LlamaCppVulkanEngine:
 
         model_path = kwargs.pop("model", None)
         if model_path is None:
-            raise ValueError(
-                "rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'"
-            )
+            raise ValueError("rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'")
         # Для true reranker используем pooling=rank (LLAMA_POOLING_RANK = 4)
         defaults: dict[str, Any] = {
             "model_path": model_path,

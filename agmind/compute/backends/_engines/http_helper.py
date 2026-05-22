@@ -8,9 +8,13 @@ DRY: один источник истины для config read + client construc
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from agmind.compute.base import LLMHandle
+
+if TYPE_CHECKING:
+    from agmind.compute.clients import LlamaServerClient
 
 
 def _server_url() -> str:
@@ -20,7 +24,7 @@ def _server_url() -> str:
     return read_config().llama_server_url
 
 
-def _client() -> object | None:
+def _client() -> LlamaServerClient | None:
     """Return LlamaServerClient если URL set, else None."""
     url = _server_url()
     if not url:
@@ -39,7 +43,7 @@ def try_http_handle(model_path: str) -> LLMHandle | None:
         LlamaServerHandle,
     )
 
-    return LlamaServerHandle(client, model=model_path)  # type: ignore[arg-type]
+    return LlamaServerHandle(client, model=model_path)
 
 
 def try_http_embed(
@@ -50,7 +54,7 @@ def try_http_embed(
     client = _client()
     if client is None:
         return None
-    return client.embed(texts, model=model)  # type: ignore[attr-defined]
+    return client.embed(texts, model=model)
 
 
 def try_http_rerank(
@@ -61,4 +65,4 @@ def try_http_rerank(
     client = _client()
     if client is None:
         return None
-    return client.rerank(query, documents)  # type: ignore[attr-defined]
+    return client.rerank(query, documents)

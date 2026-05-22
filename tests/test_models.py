@@ -200,13 +200,13 @@ def test_resolve_vlm_quality_default() -> None:
     vlm = resolve_vlm(prefer_quality=True)
     if vlm is not None:
         # Quality variant — 7B
-        assert "7b" in vlm.name.lower() or "quality" == vlm.role
+        assert "7b" in vlm.name.lower() or vlm.role == "quality"
 
 
 def test_resolve_vlm_light() -> None:
     vlm = resolve_vlm(prefer_quality=False)
     if vlm is not None:
-        assert "3b" in vlm.name.lower() or "light" == vlm.role
+        assert "3b" in vlm.name.lower() or vlm.role == "light"
 
 
 # ---- model_path ----
@@ -229,6 +229,7 @@ def test_model_path_default() -> None:
     spec = ModelSpec(name="x", hf_repo="o/r", filename="m.gguf", quant="Q4", size_gb=1.0)
     # No env, no arg — default /var/lib/agmind/models
     import os
+
     os.environ.pop("AGMIND_MODELS_DIR", None)
     p = model_path(spec)
     assert "/var/lib/agmind/models" in str(p)

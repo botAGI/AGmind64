@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Final
 
@@ -382,8 +382,8 @@ def detect_host() -> HostInfo:
         if sys_ram > 0 and gpu.gtt_total_bytes < int(sys_ram * 0.7):
             recommended_pages = int(sys_ram * 0.94 / 4096)
             warnings.append(
-                f"GTT pool = {gpu.gtt_total_bytes/GIB:.1f} GiB on {sys_ram/GIB:.0f} GiB "
-                f"system. Sub-optimal — recommended ~{sys_ram*0.94/GIB:.0f} GiB. "
+                f"GTT pool = {gpu.gtt_total_bytes / GIB:.1f} GiB on {sys_ram / GIB:.0f} GiB "
+                f"system. Sub-optimal — recommended ~{sys_ram * 0.94 / GIB:.0f} GiB. "
                 f"Add to GRUB cmdline: ttm.pages_limit={recommended_pages} "
                 "(см. docs/HARDWARE.md)."
             )
@@ -417,12 +417,10 @@ def detect_host() -> HostInfo:
 
 def to_json(info: HostInfo) -> str:
     """Сериализовать HostInfo в JSON (для `agmind doctor --json`)."""
+
     def asdict(obj: object) -> object:
-        if hasattr(obj, "__dataclass_fields__"):
-            return {
-                k: asdict(getattr(obj, k))
-                for k in obj.__dataclass_fields__  # type: ignore[attr-defined]
-            }
+        if is_dataclass(obj):
+            return {f.name: asdict(getattr(obj, f.name)) for f in fields(obj)}
         if isinstance(obj, tuple):
             return [asdict(x) for x in obj]
         if isinstance(obj, list):
@@ -430,4 +428,5 @@ def to_json(info: HostInfo) -> str:
         if isinstance(obj, dict):
             return {k: asdict(v) for k, v in obj.items()}
         return obj
+
     return json.dumps(asdict(info), indent=2, ensure_ascii=False)

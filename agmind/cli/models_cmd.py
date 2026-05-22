@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.request import urlretrieve
 
 from agmind.log import logger
@@ -30,7 +31,8 @@ def cmd_list(as_json: bool = False) -> int:
 
     if as_json:
         import json
-        out = {
+
+        out: dict[str, Any] = {
             "schema_version": reg.schema_version,
             "last_updated": reg.last_updated,
             "llama_cpp": {
@@ -39,17 +41,17 @@ def cmd_list(as_json: bool = False) -> int:
             },
             "tiers": {},
         }
-        for tier_name, tier in reg.llm_tiers.items():
-            local = model_path(tier.primary, _models_dir())
+        for tier_name, tier_obj in reg.llm_tiers.items():
+            local = model_path(tier_obj.primary, _models_dir())
             out["tiers"][tier_name] = {
-                "description": tier.description,
+                "description": tier_obj.description,
                 "primary": {
-                    "name": tier.primary.name,
-                    "hf_repo": tier.primary.hf_repo,
-                    "filename": tier.primary.filename,
-                    "size_gb": tier.primary.size_gb,
-                    "verification": tier.primary.verification,
-                    "url": tier.primary.hf_url,
+                    "name": tier_obj.primary.name,
+                    "hf_repo": tier_obj.primary.hf_repo,
+                    "filename": tier_obj.primary.filename,
+                    "size_gb": tier_obj.primary.size_gb,
+                    "verification": tier_obj.primary.verification,
+                    "url": tier_obj.primary.hf_url,
                     "local_path": str(local),
                     "downloaded": local.exists(),
                 },
@@ -58,7 +60,9 @@ def cmd_list(as_json: bool = False) -> int:
         return 0
 
     print(f"AGmind models inventory  ({reg.last_updated})")
-    print(f"llama.cpp pin: min={reg.llama_cpp_min_build}, recommended={reg.llama_cpp_recommended_build}")
+    print(
+        f"llama.cpp pin: min={reg.llama_cpp_min_build}, recommended={reg.llama_cpp_recommended_build}"
+    )
     print()
     for tier_name in ("S", "M", "L", "XL", "XXL"):
         tier = reg.llm_tiers.get(tier_name)
@@ -67,7 +71,9 @@ def cmd_list(as_json: bool = False) -> int:
         m = tier.primary
         local = model_path(m, _models_dir())
         present = "✓" if local.exists() else "·"
-        print(f"  [{present}] {tier_name:3s}  {m.name:35s}  {m.size_gb:6.1f} GB  ({m.verification})")
+        print(
+            f"  [{present}] {tier_name:3s}  {m.name:35s}  {m.size_gb:6.1f} GB  ({m.verification})"
+        )
     print()
     print(f"Embed:   {reg.embedding_primary.name} ({reg.embedding_primary.size_gb:.2f} GB)")
     print(f"Rerank:  {reg.reranker_primary.name} ({reg.reranker_primary.size_gb:.2f} GB)")
@@ -132,7 +138,9 @@ def cmd_download(
             continue
         local = model_path(spec, models_dir)
         if local.exists() and not force:
-            print(f"  [{label}] {local.name} already present ({local.stat().st_size / 1024**3:.2f} GB)")
+            print(
+                f"  [{label}] {local.name} already present ({local.stat().st_size / 1024**3:.2f} GB)"
+            )
             continue
         print(f"  [{label}] downloading {spec.hf_url}  ({spec.size_gb} GB) → {local}")
         try:
@@ -179,7 +187,9 @@ def cmd_verify(tier: str | None = None) -> int:
         expected = spec.size_gb
         # Tolerance ±10%
         if expected > 0 and abs(size_gb - expected) / expected > 0.1:
-            print(f"  [{label}] SIZE_MISMATCH: {local} = {size_gb:.2f} GB (expected ~{expected} GB)")
+            print(
+                f"  [{label}] SIZE_MISMATCH: {local} = {size_gb:.2f} GB (expected ~{expected} GB)"
+            )
             issues += 1
         else:
             print(f"  [{label}] OK: {local.name} ({size_gb:.2f} GB)")
@@ -198,7 +208,10 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
 
         entry = find_by_id(model_id)
         if entry is None:
-            print(f"ERROR: unknown model id {model_id!r}. Use `agmind models list --catalog`.", file=sys.stderr)
+            print(
+                f"ERROR: unknown model id {model_id!r}. Use `agmind models list --catalog`.",
+                file=sys.stderr,
+            )
             return 1
         local = _models_dir() / entry.file
         present = "✓ downloaded" if local.exists() else "· not downloaded"
@@ -207,10 +220,14 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
         print(f"  HF repo:      {entry.repo}")
         print(f"  File:         {entry.file}")
         print(f"  Size:         {entry.size_gib:.1f} GiB")
-        print(f"  Params:       {entry.params_b:.1f}B" + (
-            f" total, {entry.active_params_b:.1f}B active (MoE)"
-            if entry.active_params_b is not None else ""
-        ))
+        print(
+            f"  Params:       {entry.params_b:.1f}B"
+            + (
+                f" total, {entry.active_params_b:.1f}B active (MoE)"
+                if entry.active_params_b is not None
+                else ""
+            )
+        )
         print(f"  Quant:        {entry.quant}")
         print(f"  Ctx:          {entry.suggested_ctx}")
         print(f"  Tested:       {'★ Strix Halo' if entry.strix_tested else '— not tested'}")
@@ -234,6 +251,7 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
         print(f"  Size:    {size_gib:.2f} GiB ({local.stat().st_size:,} bytes)")
         mtime = local.stat().st_mtime
         from datetime import datetime as _dt
+
         print(f"  Modified: {_dt.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')}")
         return 0
 
@@ -265,7 +283,6 @@ def cmd_pull(
             return 1
         repo = entry.repo
         file = entry.file
-        size_hint = entry.size_gib
 
     if not repo or not file:
         print("ERROR: provide <model_id> или --repo/--file pair", file=sys.stderr)
@@ -287,8 +304,7 @@ def cmd_pull(
     print(f"Downloading {url}")
     print(f"  → {target}")
     rc = subprocess.run(
-        ["curl", "-fL", "-C", "-", "-o", str(target),
-         "--progress-bar", "--retry", "3", url],
+        ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url],
         check=False,
     ).returncode
     if rc != 0:
@@ -299,8 +315,7 @@ def cmd_pull(
     return 0
 
 
-def cmd_rm(model_id: str | None = None, file: str | None = None,
-           force: bool = False) -> int:
+def cmd_rm(model_id: str | None = None, file: str | None = None, force: bool = False) -> int:
     """Delete model file. Warn если referenced в running compose."""
     if model_id is not None:
         from agmind.install.models import find_by_id
@@ -334,11 +349,11 @@ def cmd_rm(model_id: str | None = None, file: str | None = None,
                         file=sys.stderr,
                     )
                     print(
-                        f"  Stop the deployment first (`docker compose down`) или use --force.",
+                        "  Stop the deployment first (`docker compose down`) или use --force.",
                         file=sys.stderr,
                     )
                     return 1
-                print(f"WARNING: forcing rm despite reference in /opt/agmind/.env")
+                print("WARNING: forcing rm despite reference in /opt/agmind/.env")
         except OSError:
             pass
 
@@ -358,8 +373,7 @@ def cmd_list_local(as_json: bool = False) -> int:
         print(f"models dir not present: {models_dir}")
         return 0
 
-    files = sorted(p for p in models_dir.iterdir()
-                   if p.suffix in (".gguf", ".safetensors", ".bin"))
+    files = sorted(p for p in models_dir.iterdir() if p.suffix in (".gguf", ".safetensors", ".bin"))
     if not files:
         print(f"models dir empty: {models_dir}")
         return 0

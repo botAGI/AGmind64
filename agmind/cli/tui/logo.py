@@ -9,16 +9,16 @@ intervals для smooth animation (gradient cycling каждые 100ms).
 
 from __future__ import annotations
 
+# Tech/cyber palette — AMD red core + cyan highlights (Vulkan vibes).
+# Monochromatic-ish, не rainbow. Brand-appropriate для AMD Strix Halo.
+# Можно override через AGMIND_LOGO_THEME env var (red|cyan|matrix|amd).
+import os as _os
+
 import pyfiglet
 from rich.console import Console
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
-
-# Tech/cyber palette — AMD red core + cyan highlights (Vulkan vibes).
-# Monochromatic-ish, не rainbow. Brand-appropriate для AMD Strix Halo.
-# Можно override через AGMIND_LOGO_THEME env var (red|cyan|matrix|amd).
-import os as _os
 
 _PALETTES: dict[str, tuple[str, ...]] = {
     # Default: AMD branded red-orange-white burst
@@ -34,18 +34,36 @@ _PALETTES: dict[str, tuple[str, ...]] = {
     ),
     # Pure AMD red sweep
     "red": (
-        "#FF0033", "#E50028", "#CC001F", "#B30019",
-        "#990013", "#B30019", "#CC001F", "#E50028",
+        "#FF0033",
+        "#E50028",
+        "#CC001F",
+        "#B30019",
+        "#990013",
+        "#B30019",
+        "#CC001F",
+        "#E50028",
     ),
     # Cyber/Vulkan cyan
     "cyan": (
-        "#00FFE5", "#00E5FF", "#00C8FF", "#00ABFF",
-        "#0080FF", "#00ABFF", "#00C8FF", "#00E5FF",
+        "#00FFE5",
+        "#00E5FF",
+        "#00C8FF",
+        "#00ABFF",
+        "#0080FF",
+        "#00ABFF",
+        "#00C8FF",
+        "#00E5FF",
     ),
     # Matrix green (для шуточек)
     "matrix": (
-        "#00FF41", "#00CC33", "#009922", "#006611",
-        "#003300", "#006611", "#009922", "#00CC33",
+        "#00FF41",
+        "#00CC33",
+        "#009922",
+        "#006611",
+        "#003300",
+        "#006611",
+        "#009922",
+        "#00CC33",
     ),
 }
 
@@ -92,7 +110,7 @@ class AnimatedLogo(Widget):
     """
 
     # Reactive int — увеличивается каждые 100ms через self.set_interval.
-    offset: reactive[int] = reactive(0)
+    color_offset: reactive[int] = reactive(0)
 
     def __init__(
         self,
@@ -131,10 +149,10 @@ class AnimatedLogo(Widget):
             self._timer = None
 
     def _tick(self) -> None:
-        self.offset += 1
+        self.color_offset += 1
 
     def render(self) -> Text:
-        rendered = _render_gradient(self.ascii_art.rstrip("\n"), self.offset)
+        rendered = _render_gradient(self.ascii_art.rstrip("\n"), self.color_offset)
         if self.subtitle:
             rendered.append("\n")
             # Subtitle — static technical look (dim white) — без animation

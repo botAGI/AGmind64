@@ -33,11 +33,7 @@ def _load_backends() -> dict[str, type[Backend]]:
     игнорируются (graceful degrade на runtime в `.available()`).
     """
     out: dict[str, type[Backend]] = {}
-    try:
-        eps = entry_points(group="agmind.backends")
-    except TypeError:
-        # Python <3.10 compat (mode arg signature)
-        eps = entry_points().get("agmind.backends", [])  # type: ignore[union-attr]
+    eps = entry_points(group="agmind.backends")
 
     for ep in eps:
         try:
@@ -50,6 +46,7 @@ def _load_backends() -> dict[str, type[Backend]]:
     # Гарантирует что CPU всегда доступен — критический invariant I.1.
     if "cpu" not in out:
         from agmind.compute.backends.cpu import CPUBackend
+
         out["cpu"] = CPUBackend
 
     return out
@@ -66,11 +63,7 @@ def discover_backend_names() -> list[str]:
 def list_available_backends() -> list[str]:
     """Return names of backends whose `available()` returns True."""
     backends = _load_backends()
-    return [
-        name
-        for name in _BACKEND_PRIORITY
-        if name in backends and backends[name].available()
-    ]
+    return [name for name in _BACKEND_PRIORITY if name in backends and backends[name].available()]
 
 
 def _select_auto(config: ComputeConfig, available: list[str]) -> str:
@@ -144,9 +137,7 @@ def get_backend(profile: Profile | str | None = None) -> Backend:
         chosen = _select_auto(config, available)
     else:
         if config.backend not in backends:
-            raise RuntimeError(
-                f"AGMIND_BACKEND={config.backend!r} not registered"
-            )
+            raise RuntimeError(f"AGMIND_BACKEND={config.backend!r} not registered")
         if not backends[config.backend].available():
             raise RuntimeError(
                 f"AGMIND_BACKEND={config.backend!r} requested but not available "
@@ -154,6 +145,7 @@ def get_backend(profile: Profile | str | None = None) -> Backend:
             )
         chosen = config.backend
 
-    log.info("compute: backend=%s engine=%s profile=%s",
-             chosen, config.engine, config.profile.value)
+    log.info(
+        "compute: backend=%s engine=%s profile=%s", chosen, config.engine, config.profile.value
+    )
     return backends[chosen].make(engine=config.engine)

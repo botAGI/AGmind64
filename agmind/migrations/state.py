@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -67,12 +67,11 @@ class SchemaState:
         """Mark migration как applied. Обновляет schema_version если выше."""
         if self.is_applied(migration.version):
             return
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         self.applied.append(
             AppliedMigration(version=migration.version, name=migration.name, applied_at=ts)
         )
-        if migration.version > self.schema_version:
-            self.schema_version = migration.version
+        self.schema_version = max(migration.version, self.schema_version)
 
     def unrecord(self, version: int) -> None:
         """Remove migration из applied. Обновляет schema_version на highest remaining."""

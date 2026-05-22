@@ -8,7 +8,6 @@ from agmind.install.models import (
     CTX_SIZE_PRESETS,
     CURATED_MODELS,
     KV_CACHE_TYPES,
-    ModelEntry,
     default_model_id,
     find_by_id,
     models_for_wizard,

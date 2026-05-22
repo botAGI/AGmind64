@@ -21,11 +21,11 @@ from agmind.schemas import (
     ServiceDescriptor,
 )
 
-
 pytestmark = pytest.mark.backend_any
 
 
 # ---------- Minimal valid descriptor ----------
+
 
 def _minimal_descriptor(**overrides: object) -> ServiceDescriptor:
     """Helper: build a minimal valid descriptor with overrides."""
@@ -70,6 +70,7 @@ def test_extra_field_forbidden() -> None:
 
 # ---------- name validation ----------
 
+
 @pytest.mark.parametrize(
     "bad_name",
     [
@@ -98,6 +99,7 @@ def test_valid_names_accepted() -> None:
 
 # ---------- image validation ----------
 
+
 def test_latest_tag_rejected() -> None:
     with pytest.raises(ValidationError, match="latest"):
         _minimal_descriptor(image="qdrant/qdrant:latest")
@@ -114,6 +116,7 @@ def test_image_with_digest_accepted() -> None:
 
 
 # ---------- port validation ----------
+
 
 @pytest.mark.parametrize(
     "good_port",
@@ -134,6 +137,7 @@ def test_invalid_ports(bad_port: str) -> None:
 
 # ---------- mem_limit validation ----------
 
+
 @pytest.mark.parametrize("good", ["4g", "512m", "1024k", "16g"])
 def test_valid_mem_limit(good: str) -> None:
     rl = ResourceLimits(mem_limit=good)
@@ -148,6 +152,7 @@ def test_invalid_mem_limit(bad: str) -> None:
 
 # ---------- tier validation ----------
 
+
 def test_unknown_tier_rejected() -> None:
     with pytest.raises(ValidationError):
         _minimal_descriptor(tier="exotic")
@@ -161,6 +166,7 @@ def test_known_tiers(ok_tier: str) -> None:
 
 # ---------- depends_on validation ----------
 
+
 def test_depends_on_must_match_name_pattern() -> None:
     with pytest.raises(ValidationError):
         _minimal_descriptor(depends_on=["BadName"])
@@ -168,6 +174,7 @@ def test_depends_on_must_match_name_pattern() -> None:
 
 
 # ---------- Full descriptor with all sub-models ----------
+
 
 def test_full_descriptor_with_routing_and_observability() -> None:
     d = ServiceDescriptor.model_validate(
@@ -212,6 +219,7 @@ def test_full_descriptor_with_routing_and_observability() -> None:
 
 # ---------- fq_image() ----------
 
+
 def test_fq_image_without_digest() -> None:
     d = _minimal_descriptor()
     assert d.fq_image() == "qdrant/qdrant:v1.18.0"
@@ -228,6 +236,7 @@ def test_fq_image_with_prefixed_digest() -> None:
 
 
 # ---------- to_legacy_service() ----------
+
 
 def test_to_legacy_service_basic() -> None:
     d = _minimal_descriptor(
@@ -267,13 +276,27 @@ def test_to_legacy_service_strips_sha256_prefix() -> None:
 
 # ---------- JSON Schema export ----------
 
+
 def test_json_schema_has_expected_top_level_fields() -> None:
     schema = ServiceDescriptor.model_json_schema()
     properties = schema["properties"]
     expected = {
-        "name", "image", "digest", "tier", "purpose", "owner", "profiles",
-        "ports", "volumes", "env", "extra_args", "depends_on",
-        "resources", "health", "routing", "observability",
+        "name",
+        "image",
+        "digest",
+        "tier",
+        "purpose",
+        "owner",
+        "profiles",
+        "ports",
+        "volumes",
+        "env",
+        "extra_args",
+        "depends_on",
+        "resources",
+        "health",
+        "routing",
+        "observability",
     }
     assert expected.issubset(set(properties.keys()))
 
@@ -295,6 +318,7 @@ def test_json_schema_tier_is_enum() -> None:
 
 
 # ---------- Sub-model edge cases ----------
+
 
 def test_healthcheck_empty_test_rejected() -> None:
     with pytest.raises(ValidationError):

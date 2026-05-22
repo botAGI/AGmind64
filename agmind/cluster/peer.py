@@ -13,7 +13,6 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from agmind.log import logger
 
@@ -71,9 +70,7 @@ _DEFAULT_CONFIG_PATH = "/etc/agmind/cluster.yaml"
 
 def load_cluster_config(path: str | Path | None = None) -> ClusterConfig:
     """Load cluster.yaml. Если missing — return single-node default."""
-    p = Path(path) if path else Path(
-        os.environ.get("AGMIND_CLUSTER_CONFIG", _DEFAULT_CONFIG_PATH)
-    )
+    p = Path(path) if path else Path(os.environ.get("AGMIND_CLUSTER_CONFIG", _DEFAULT_CONFIG_PATH))
     if not p.exists():
         log.debug("cluster config not found at %s — single-node mode", p)
         return ClusterConfig(role="single-node")
@@ -91,12 +88,14 @@ def load_cluster_config(path: str | Path | None = None) -> ClusterConfig:
     for w in workers_raw:
         if not isinstance(w, dict):
             continue
-        peers.append(Peer(
-            url=str(w.get("url", "")),
-            name=str(w.get("name", "")),
-            weight=int(w.get("weight") or 1),
-            tags=tuple(str(t) for t in (w.get("tags") or ())),
-        ))
+        peers.append(
+            Peer(
+                url=str(w.get("url", "")),
+                name=str(w.get("name", "")),
+                weight=int(w.get("weight") or 1),
+                tags=tuple(str(t) for t in (w.get("tags") or ())),
+            )
+        )
 
     routing = cluster.get("routing") or {}
     return ClusterConfig(
@@ -140,7 +139,8 @@ def probe_peer(peer: Peer, timeout: float = 5.0) -> PeerHealth:
 
 
 def probe_all(
-    peers: list[Peer], timeout: float = 5.0,
+    peers: list[Peer],
+    timeout: float = 5.0,
 ) -> list[PeerHealth]:
     """Probe all peers sequentially. Returns list в том же порядке."""
     return [probe_peer(p, timeout=timeout) for p in peers]

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 import yaml
 
-import pytest
-
-from agmind.schemas import HealthCheck, ObservabilityConfig, RoutingConfig, ServiceDescriptor
+from agmind.schemas import ServiceDescriptor
 from agmind.services.renderer import (
     DEFAULT_LOGGING,
     descriptor_to_compose_service,
@@ -36,6 +35,7 @@ def _minimal_descriptor(**overrides: object) -> ServiceDescriptor:
 
 # ---------- load_descriptors ----------
 
+
 def test_load_descriptors_real_directory() -> None:
     """Все 32 файла загружаются без ошибок."""
     descriptors = load_descriptors()
@@ -52,6 +52,7 @@ def test_load_descriptors_returns_typed_objects() -> None:
 
 
 # ---------- filter_by_profile ----------
+
 
 def test_filter_by_profile_core() -> None:
     descriptors = load_descriptors()
@@ -82,6 +83,7 @@ def test_filter_by_profile_multiple() -> None:
 
 
 # ---------- render_traefik_labels ----------
+
 
 def test_traefik_labels_empty_when_no_routing() -> None:
     d = _minimal_descriptor()
@@ -131,6 +133,7 @@ def test_traefik_labels_no_sse_means_no_flush() -> None:
 
 # ---------- render_observability_labels ----------
 
+
 def test_observability_labels_default_loki_only() -> None:
     d = _minimal_descriptor()
     labels = render_observability_labels(d)
@@ -166,6 +169,7 @@ def test_observability_explicit_metrics_port() -> None:
 
 
 # ---------- descriptor_to_compose_service ----------
+
 
 def test_compose_service_minimal() -> None:
     d = _minimal_descriptor()
@@ -207,9 +211,7 @@ def test_compose_service_includes_metadata_labels() -> None:
 
 
 def test_compose_service_traefik_disabled_no_routing_labels() -> None:
-    d = _minimal_descriptor(
-        routing={"host": "qdrant.lan", "middleware_chain": "chain-internal"}
-    )
+    d = _minimal_descriptor(routing={"host": "qdrant.lan", "middleware_chain": "chain-internal"})
     svc = descriptor_to_compose_service(d, traefik_enabled=False)
     labels = svc["labels"]
     assert "traefik.enable" not in labels
@@ -227,6 +229,7 @@ def test_compose_service_logging_always_present() -> None:
 
 
 # ---------- render_compose end-to-end ----------
+
 
 def test_render_compose_smoke_core_profile() -> None:
     """Loaded all + filtered core + rendered → valid compose dict."""
@@ -274,6 +277,7 @@ def test_to_yaml_includes_header() -> None:
 
 
 # ---------- All 32 services smoke test ----------
+
 
 @pytest.mark.parametrize(
     "name",

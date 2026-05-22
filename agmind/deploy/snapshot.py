@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agmind.log import logger
@@ -96,7 +96,7 @@ class SnapshotManager:
             env_file: путь к .env файлу для copy
             agmind_version: version string
         """
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
         snap_path = self.snapshots_dir / ts
         snap_path.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +115,7 @@ class SnapshotManager:
         # meta
         meta = {
             "id": ts,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "profile": profile,
             "reason": reason,
             "agmind_version": agmind_version,
@@ -180,7 +180,7 @@ class SnapshotManager:
     def prune_old(self) -> int:
         """Delete snapshots older than retention. Returns count removed."""
         snapshots = self.list()
-        to_remove = snapshots[self.retention:]
+        to_remove = snapshots[self.retention :]
         removed = 0
         for snap in to_remove:
             try:

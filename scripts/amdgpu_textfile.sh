@@ -26,7 +26,9 @@ mkdir -p "${TEXTFILE_DIR}"
 # Helper: read sysfs value, return empty if missing
 read_val() {
     local path="$1"
-    [[ -r "${path}" ]] && cat "${path}" 2>/dev/null || true
+    if [[ -r "${path}" ]]; then
+        cat "${path}" 2>/dev/null || true
+    fi
 }
 
 {

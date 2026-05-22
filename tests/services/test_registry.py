@@ -111,14 +111,16 @@ def test_load_registry_real_services_yaml() -> None:
 
 def test_load_registry_minimal(tmp_path: Path) -> None:
     p = tmp_path / "services.yaml"
-    p.write_text(dedent("""
+    p.write_text(
+        dedent("""
         schema_version: 1
         services:
           alpha:
             image: alpine:3.21
             profiles:
               - core
-    """).strip())
+    """).strip()
+    )
     reg = load_registry(p)
     assert "alpha" in reg
     assert reg["alpha"].image == "alpine:3.21"
@@ -170,9 +172,7 @@ def test_services_for_profile_invalid_string() -> None:
 def test_validate_no_latest_passes_clean_registry() -> None:
     reg = load_registry()
     issues = validate_no_latest(reg)
-    assert issues == [], (
-        "templates/services.yaml имеет :latest tag — pin specific semver."
-    )
+    assert issues == [], "templates/services.yaml имеет :latest tag — pin specific semver."
 
 
 def test_validate_no_latest_detects_violation() -> None:

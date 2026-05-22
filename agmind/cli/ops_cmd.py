@@ -13,6 +13,8 @@ from pathlib import Path
 
 from agmind.ops.backup import (
     DEFAULT_INSTALL_DIR as BACKUP_INSTALL_DIR,
+)
+from agmind.ops.backup import (
     DEFAULT_SYSTEM_DIR,
     DEFAULT_USER_DIR,
     BackupResult,
@@ -80,7 +82,9 @@ def cmd_backup(
         return 1
     size_mb = result.bytes_written / (1024 * 1024)
     print(f"✓ backup written: {result.output_path} ({size_mb:.2f} MiB)")
-    print(f"  included ({len(result.sources_included)}): {', '.join(result.sources_included) or '<none>'}")
+    print(
+        f"  included ({len(result.sources_included)}): {', '.join(result.sources_included) or '<none>'}"
+    )
     if result.sources_missing:
         print(f"  missing  ({len(result.sources_missing)}): {', '.join(result.sources_missing)}")
     return 0
@@ -114,9 +118,7 @@ def cmd_restore(
     # compose'а гарантированно ломает container'ы (compose файл меняется на лету).
     running = _running_compose_services(install_dir)
     if running:
-        print(
-            f"\nWARNING: deployment at {install_dir} has {len(running)} running services:"
-        )
+        print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")
         print(f"  {', '.join(running)}")
         print("Restore поверх работающего compose может сломать containers.")
         print("Рекомендуется: `docker compose -f docker-compose.yml down` сначала.")
@@ -130,9 +132,7 @@ def cmd_restore(
             print("aborted.")
             return 1
 
-    sources = default_sources(
-        install_dir=install_dir, user_dir=user_dir, system_dir=system_dir
-    )
+    sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
     try:
         result = restore_backup(backup_path=backup_path, sources=sources)
     except Exception as exc:  # noqa: BLE001
@@ -145,8 +145,7 @@ def cmd_restore(
     token_path = user_dir / "cf_dns_api_token"
     if not token_path.exists():
         print(
-            f"\nNOTE: cf_dns_api_token не восстановлен (secret НЕ в backup'е). "
-            f"Восстанови вручную:"
+            "\nNOTE: cf_dns_api_token не восстановлен (secret НЕ в backup'е). Восстанови вручную:"
         )
         print(f'  echo "$TOKEN" > {token_path} && chmod 600 {token_path}')
 

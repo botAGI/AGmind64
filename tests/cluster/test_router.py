@@ -26,10 +26,7 @@ def _make_peers(n: int = 3) -> list[Peer]:
 def _alive(peers: list[Peer], alive_mask: list[bool] | None = None) -> list[PeerHealth]:
     if alive_mask is None:
         alive_mask = [True] * len(peers)
-    return [
-        PeerHealth(peer=p, is_alive=alive_mask[i])
-        for i, p in enumerate(peers)
-    ]
+    return [PeerHealth(peer=p, is_alive=alive_mask[i]) for i, p in enumerate(peers)]
 
 
 # ---- choose_peer basic ----

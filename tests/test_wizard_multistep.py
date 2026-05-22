@@ -15,8 +15,12 @@ pytestmark = pytest.mark.backend_any
 
 def _detected() -> DetectedHardware:
     return DetectedHardware(
-        ram_gb=128.0, gpu_name="x", is_strix_halo=True,
-        vulkan_present=True, rocm_present=True, docker_present=True,
+        ram_gb=128.0,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
         recommended_tier="full",
     )
 
@@ -75,6 +79,7 @@ async def test_multistep_pushes_domain_screen_on_mount(
         await pilot.pause(0.1)
         # Top of stack должен быть DomainScreen
         from agmind.cli.tui.wizard_screens import DomainScreen
+
         assert isinstance(app.screen, DomainScreen)
 
 
@@ -105,6 +110,7 @@ async def test_multistep_navigate_domain_to_model(
     async with app.run_test(size=(140, 60)) as pilot:
         await pilot.pause(0.1)
         from agmind.cli.tui.wizard_screens import DomainScreen, ModelScreen
+
         assert isinstance(app.screen, DomainScreen)
         # Press Next button через keypress alt+n
         await pilot.press("alt+n")
@@ -127,6 +133,7 @@ async def test_multistep_back_button_returns_to_previous(
         await pilot.press("alt+b")  # Model → Domain
         await pilot.pause(0.1)
         from agmind.cli.tui.wizard_screens import DomainScreen
+
         assert isinstance(app.screen, DomainScreen)
 
 
@@ -177,6 +184,7 @@ def test_cluster_peers_cached_empty_when_zeroconf_missing(
 def test_hardware_panel_formats_strix_halo_fields() -> None:
     """M5.3.2: _format_hardware_panel renders detected GPU + tier."""
     from agmind.cli.tui.wizard_screens import _format_hardware_panel
+
     panel = _format_hardware_panel(_detected())
     assert "DETECTED HARDWARE" in panel
     assert "Strix Halo" in panel
@@ -185,6 +193,7 @@ def test_hardware_panel_formats_strix_halo_fields() -> None:
 
 def test_cluster_peers_banner_formats_n_peers() -> None:
     from agmind.cli.tui.wizard_screens import _format_cluster_peers_banner
+
     banner = _format_cluster_peers_banner([("host1", "10.0.0.2"), ("host2", "10.0.0.3")])
     assert "CLUSTER PEERS DETECTED" in banner
     assert "host1" in banner and "host2" in banner
@@ -199,7 +208,9 @@ async def test_services_empty_banner_renders_when_no_selection(
     """M5.3.4: empty-state banner появляется когда services=[]."""
     monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
     initial = SetupState(
-        domain="lab.example.com", cf_api_token="X" * 40, services=[],
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=[],
     )
     app = AgmindSetupApp(detected=_detected(), initial_state=initial, multi_step=True)
     async with app.run_test(size=(140, 60)) as pilot:
@@ -208,8 +219,10 @@ async def test_services_empty_banner_renders_when_no_selection(
         await pilot.pause(0.1)
         await pilot.press("alt+n")  # Model → Services
         await pilot.pause(0.1)
-        from agmind.cli.tui.wizard_screens import ServicesScreen
         from textual.widgets import Static
+
+        from agmind.cli.tui.wizard_screens import ServicesScreen
+
         assert isinstance(app.screen, ServicesScreen)
         banner = app.screen.query_one("#services-empty-banner", Static)
         # Banner shown — text contains "NO SERVICES SELECTED"
@@ -225,6 +238,7 @@ async def test_help_screen_open_close(monkeypatch: pytest.MonkeyPatch) -> None:
     async with app.run_test(size=(140, 60)) as pilot:
         await pilot.pause(0.1)
         from agmind.cli.tui.wizard_screens import DomainScreen, HelpScreen
+
         assert isinstance(app.screen, DomainScreen)
         await pilot.press("f1")
         await pilot.pause(0.1)

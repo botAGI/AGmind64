@@ -121,9 +121,7 @@ def query_compose_state(install_dir: Path) -> ComposeStateSnapshot:
             )
         )
     services.sort(key=lambda s: (s.service, s.name))
-    return ComposeStateSnapshot(
-        services=tuple(services), error=None, compose_file=compose_file
-    )
+    return ComposeStateSnapshot(services=tuple(services), error=None, compose_file=compose_file)
 
 
 _HEALTH_GLYPH: dict[str, str] = {
@@ -177,8 +175,8 @@ class StatusDashboardApp(App[None]):
         self._refresh_timer: object | None = None
         # Phase M4.5 state
         self._paused = False
-        self._filter_idx = 0   # 0 = all
-        self._sort_idx = 0     # 0 = name
+        self._filter_idx = 0  # 0 = all
+        self._sort_idx = 0  # 0 = name
 
     @property
     def _filter_name(self) -> str:
@@ -199,9 +197,7 @@ class StatusDashboardApp(App[None]):
         table.add_columns("SERVICE", "STATE", "HEALTH", "UPTIME", "IMAGE")
         table.cursor_type = "row"
         self.refresh_state()
-        self._refresh_timer = self.set_interval(
-            self.refresh_interval, self.refresh_state
-        )
+        self._refresh_timer = self.set_interval(self.refresh_interval, self.refresh_state)
 
     def on_unmount(self) -> None:
         if self._refresh_timer is not None:
@@ -258,24 +254,22 @@ class StatusDashboardApp(App[None]):
             return
 
         if snap.total == 0:
-            summary.update(
-                f"[yellow]∅ no containers in {self.install_dir}[/yellow]"
-            )
+            summary.update(f"[yellow]∅ no containers in {self.install_dir}[/yellow]")
             table.clear()
             return
 
-        unhealthy_part = (
-            f" · [red]Unhealthy: {snap.unhealthy}[/red]" if snap.unhealthy else ""
-        )
+        unhealthy_part = f" · [red]Unhealthy: {snap.unhealthy}[/red]" if snap.unhealthy else ""
         # Phase M4.5: include filter/sort/pause state в header
         pause_part = "  [yellow]⏸ PAUSED[/yellow]" if self._paused else ""
         filter_part = (
             f"  [dim]filter:[/dim] [bold]{self._filter_name}[/bold]"
-            if self._filter_name != "all" else ""
+            if self._filter_name != "all"
+            else ""
         )
         sort_part = (
             f"  [dim]sort:[/dim] [bold]{self._sort_name}[/bold]"
-            if self._sort_name != "name" else ""
+            if self._sort_name != "name"
+            else ""
         )
         summary.update(
             f"Install: [bold]{self.install_dir}[/bold] · "
@@ -319,7 +313,5 @@ def run_dashboard(
     refresh_interval: float = DEFAULT_REFRESH_INTERVAL,
 ) -> None:
     """Launch dashboard. Blocking until user quits."""
-    app = StatusDashboardApp(
-        install_dir=install_dir, refresh_interval=refresh_interval
-    )
+    app = StatusDashboardApp(install_dir=install_dir, refresh_interval=refresh_interval)
     app.run()

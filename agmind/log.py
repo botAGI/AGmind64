@@ -21,11 +21,12 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Final
+from typing import Any, Final
 
 # structlog — soft dependency. Если не установлен, fallback на чистый stdlib.
 try:
     import structlog
+
     _HAS_STRUCTLOG = True
 except ImportError:
     structlog = None  # type: ignore[assignment]
@@ -86,7 +87,7 @@ def _setup_structlog(log_level: int) -> None:
 
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
 
-    shared_processors: list = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),

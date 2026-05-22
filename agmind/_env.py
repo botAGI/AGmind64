@@ -66,6 +66,7 @@ def env_get(key: str, env_file: str | Path | None = None, default: str = "") -> 
     """
     if env_file is None:
         from os import environ
+
         base = environ.get("AGMIND_CONFIG_DIR", "/etc/agmind")
         env_file = Path(base) / ".env"
     data = parse_env_file(env_file)

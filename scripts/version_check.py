@@ -34,10 +34,9 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SERVICES_DIR = REPO_ROOT / "templates" / "services"
@@ -52,22 +51,65 @@ _VERSION_RE = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[.-]([a-zA-Z0-9.-]
 # E.g. our pin caddy:2.11.3-alpine vs upstream "latest" 2.11.3-windowsservercore-ltsc2025
 # — это разные variants одной semver version, comparison не имеет смысла.
 _VARIANT_TOKENS = (
-    "windowsservercore", "windows-ltsc", "windows", "nanoserver",
-    "amd64", "arm64", "arm", "armv7", "ppc64le", "s390x",  # audit: allow arch-tokens-for-filter
-    "distroless", "ubuntu", "alpine", "trixie", "debian",
-    "perl", "fpm", "slim", "buster", "bookworm", "bullseye",
-    "scratch", "ubi", "ubi9", "ubi8", "centos", "fedora",
-    "oraclelinux9", "oraclelinux8", "oracle",
+    "windowsservercore",
+    "windows-ltsc",
+    "windows",
+    "nanoserver",
+    "amd64",
+    "arm64",  # audit: allow arch-tokens-for-filter
+    "arm",  # audit: allow arch-tokens-for-filter
+    "armv7",  # audit: allow arch-tokens-for-filter
+    "ppc64le",
+    "s390x",  # audit: allow arch-tokens-for-filter
+    "distroless",
+    "ubuntu",
+    "alpine",
+    "trixie",
+    "debian",
+    "perl",
+    "fpm",
+    "slim",
+    "buster",
+    "bookworm",
+    "bullseye",
+    "scratch",
+    "ubi",
+    "ubi9",
+    "ubi8",
+    "centos",
+    "fedora",
+    "oraclelinux9",
+    "oraclelinux8",
+    "oracle",
     "unprivileged",
-    "boringcrypto", "busybox", "otel", "builder",
-    "gpu-nvidia", "gpu-amd", "cuda", "rocm", "vulkan",
-    "node", "hadoop", "kafka", "spark",
+    "boringcrypto",
+    "busybox",
+    "otel",
+    "builder",
+    "gpu-nvidia",
+    "gpu-amd",
+    "cuda",
+    "rocm",
+    "vulkan",
+    "node",
+    "hadoop",
+    "kafka",
+    "spark",
 )
 
 # Pre-release / build / dev markers — pin не должен апгрейдиться на это.
 _PRERELEASE_TOKENS = (
-    "rc", "alpha", "beta", "pre", "nightly", "dev",
-    "snapshot", "preview", "edge", "canary", "test",
+    "rc",
+    "alpha",
+    "beta",
+    "pre",
+    "nightly",
+    "dev",
+    "snapshot",
+    "preview",
+    "edge",
+    "canary",
+    "test",
 )
 
 # Tag stripping: SHA-only (40 hex chars), date-only (8 digits), build IDs.
@@ -96,8 +138,11 @@ def _is_variant_or_prerelease(tag: str) -> bool:
             return True
     for tok in _PRERELEASE_TOKENS:
         if (
-            f"-{tok}" in low or f".{tok}" in low or f"+{tok}" in low
-            or low.endswith(f"-{tok}") or low.endswith(f".{tok}")
+            f"-{tok}" in low
+            or f".{tok}" in low
+            or f"+{tok}" in low
+            or low.endswith(f"-{tok}")
+            or low.endswith(f".{tok}")
         ):
             return True
     if _SHA_TAG_RE.match(low):
@@ -197,8 +242,7 @@ def _docker_hub_latest(image: str) -> str | None:
     tags = [t["name"] for t in data.get("results", [])]
     # Filter only semver-looking tags
     semver = [
-        t for t in tags
-        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -224,8 +268,7 @@ def _ghcr_latest(owner: str, image: str) -> str | None:
     tags = data.get("tags", []) or []
     # Filter semver-looking + drop variants / RC / SHA-only
     semver = [
-        t for t in tags
-        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -247,8 +290,7 @@ def _quay_latest(owner: str, image: str) -> str | None:
         return None
     tags = [t.get("name", "") for t in data.get("tags", []) if isinstance(t, dict)]
     semver = [
-        t for t in tags
-        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -270,8 +312,7 @@ def _gcr_latest(project: str, image: str) -> str | None:
         return None
     tags = data.get("tags", []) or []
     semver = [
-        t for t in tags
-        if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -293,17 +334,17 @@ def _github_release_latest(owner: str, repo: str) -> str | None:
 def probe_latest(image_with_path: str) -> str | None:
     """Dispatch на правильный registry probe basedon image prefix."""
     if image_with_path.startswith("ghcr.io/"):
-        parts = image_with_path[len("ghcr.io/"):].split("/", 1)
+        parts = image_with_path[len("ghcr.io/") :].split("/", 1)
         if len(parts) == 2:
             return _ghcr_latest(parts[0], parts[1])
         return None
     if image_with_path.startswith("quay.io/"):
-        parts = image_with_path[len("quay.io/"):].split("/", 1)
+        parts = image_with_path[len("quay.io/") :].split("/", 1)
         if len(parts) == 2:
             return _quay_latest(parts[0], parts[1])
         return None
     if image_with_path.startswith("gcr.io/"):
-        parts = image_with_path[len("gcr.io/"):].split("/", 1)
+        parts = image_with_path[len("gcr.io/") :].split("/", 1)
         if len(parts) == 2:
             return _gcr_latest(parts[0], parts[1])
         return None
@@ -382,35 +423,60 @@ def build_reports(probe_fn=probe_latest) -> list[PinReport]:
 
             hold = holds.get(image)
             if hold:
-                reports.append(PinReport(
-                    image=image, current=current_tag, latest=None,
-                    source=source, file=file, status="hold",
-                    hold_reason=hold.get("reason", "(no reason given)"),
-                ))
+                reports.append(
+                    PinReport(
+                        image=image,
+                        current=current_tag,
+                        latest=None,
+                        source=source,
+                        file=file,
+                        status="hold",
+                        hold_reason=hold.get("reason", "(no reason given)"),
+                    )
+                )
                 continue
 
             try:
                 latest = probe_fn(image)
             except Exception as exc:  # noqa: BLE001
-                reports.append(PinReport(
-                    image=image, current=current_tag, latest=None,
-                    source=source, file=file, status="error", error=str(exc),
-                ))
+                reports.append(
+                    PinReport(
+                        image=image,
+                        current=current_tag,
+                        latest=None,
+                        source=source,
+                        file=file,
+                        status="error",
+                        error=str(exc),
+                    )
+                )
                 continue
 
             if latest is None:
-                reports.append(PinReport(
-                    image=image, current=current_tag, latest=None,
-                    source=source, file=file, status="error",
-                    error="probe returned no version",
-                ))
+                reports.append(
+                    PinReport(
+                        image=image,
+                        current=current_tag,
+                        latest=None,
+                        source=source,
+                        file=file,
+                        status="error",
+                        error="probe returned no version",
+                    )
+                )
                 continue
 
             status = _compare(current_tag, latest)
-            reports.append(PinReport(
-                image=image, current=current_tag, latest=latest,
-                source=source, file=file, status=status,
-            ))
+            reports.append(
+                PinReport(
+                    image=image,
+                    current=current_tag,
+                    latest=latest,
+                    source=source,
+                    file=file,
+                    status=status,
+                )
+            )
 
     reports.sort(key=lambda r: (r.status, r.image))
     return reports
@@ -420,7 +486,7 @@ def build_reports(probe_fn=probe_latest) -> list[PinReport]:
 
 
 def render_markdown(reports: list[PinReport]) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(UTC).strftime("%Y-%m-%d")
     lines = [
         f"## Upstream Version Check — {now}",
         "",
@@ -440,26 +506,28 @@ def render_markdown(reports: list[PinReport]) -> str:
             note = f"`{r.file}`"
         lines.append(f"| `{r.image}` | {r.current} | {latest} | {status_cell} | {note} |")
 
-    lines.extend([
-        "",
-        "### Legend",
-        "",
-        "- **✅ up_to_date** — pin совпадает с latest registry tag.",
-        "- **📦 patch** — patch-bump доступен (semver Z).",
-        "- **🔄 minor** — minor-bump доступен (semver Y).",
-        "- **⚠️ major** — major-bump доступен (semver X). Breaking changes — review.",
-        "- **⏸ HOLD** — pin намеренно остановлен, см. `templates/version_holds.yaml` → reason.",
-        "- **❌ error** — probe failed (network / registry rate-limit / unknown image).",
-        "",
-        "### How to bump",
-        "",
-        "1. Update `image:` или `FROM` tag в `templates/services/*.yaml` / `docker/Dockerfile.*`",
-        "2. Update digest: `docker buildx imagetools inspect <image>:<tag>` → copy `sha256:...`",
-        "3. Local verify: `agmind doctor` + `pytest -q` + `scripts/audit_forbidden.py`",
-        "4. Commit + push; weekly `version-check.yml` подтвердит ✅ в next report.",
-        "",
-        f"_Generated by `scripts/version_check.py` at {now}._",
-    ])
+    lines.extend(
+        [
+            "",
+            "### Legend",
+            "",
+            "- **✅ up_to_date** — pin совпадает с latest registry tag.",
+            "- **📦 patch** — patch-bump доступен (semver Z).",
+            "- **🔄 minor** — minor-bump доступен (semver Y).",
+            "- **⚠️ major** — major-bump доступен (semver X). Breaking changes — review.",
+            "- **⏸ HOLD** — pin намеренно остановлен, см. `templates/version_holds.yaml` → reason.",
+            "- **❌ error** — probe failed (network / registry rate-limit / unknown image).",
+            "",
+            "### How to bump",
+            "",
+            "1. Update `image:` или `FROM` tag в `templates/services/*.yaml` / `docker/Dockerfile.*`",
+            "2. Update digest: `docker buildx imagetools inspect <image>:<tag>` → copy `sha256:...`",
+            "3. Local verify: `agmind doctor` + `pytest -q` + `scripts/audit_forbidden.py`",
+            "4. Commit + push; weekly `version-check.yml` подтвердит ✅ в next report.",
+            "",
+            f"_Generated by `scripts/version_check.py` at {now}._",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -470,8 +538,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output", type=Path, default=None, help="Write markdown into this file")
     ap.add_argument("--json", dest="json_out", type=Path, default=None, help="Write JSON dump")
-    ap.add_argument("--offline", action="store_true",
-                    help="Skip registry probes (для unit tests / CI dry-run)")
+    ap.add_argument(
+        "--offline", action="store_true", help="Skip registry probes (для unit tests / CI dry-run)"
+    )
     args = ap.parse_args()
 
     if args.offline:

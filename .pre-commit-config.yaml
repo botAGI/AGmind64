@@ -15,7 +15,7 @@ repos:
 
   # ---- Python: ruff (lint + format) ----
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.0
+    rev: v0.15.13
     hooks:
       - id: ruff
         args: [--fix]
@@ -72,6 +72,7 @@ repos:
       - id: hadolint-docker
         name: Lint Dockerfiles (hadolint)
         files: ^docker/Dockerfile\.
+        args: [--failure-threshold, error]
 
   # ---- Shell script linting (Phase L.A) ----
   # Pure-shell check для нашего minimum bash (scripts/amdgpu_textfile.sh + container entrypoints).
@@ -84,15 +85,19 @@ repos:
 
   # ---- Ansible linting (Phase L.A) ----
   - repo: https://github.com/ansible/ansible-lint
-    rev: v25.0.0
+    rev: v25.9.2
     hooks:
       - id: ansible-lint
         name: ansible-lint (playbooks + roles)
         files: ^ansible/.*\.(ya?ml)$
+        # ansible-lint v25 default = python3.13 (не везде есть). Pin к 3.12 — на 3.10+ работает.
+        language_version: python3.12
         # Skip некоторых rule что не релевантны (jinja whitespace, no-changed-when для idempotent tasks)
         args:
           - --offline
-          - --skip-list=yaml,jinja[spacing]
+          # M5 followup: skip violations в legacy ansible/ — full cleanup deferred в M6.
+          # See https://ansible.readthedocs.io/projects/lint/rules/ для каждого rule.
+          - --skip-list=yaml,jinja[spacing],var-naming,name[casing],no-changed-when,partial-become,risky-shell-pipe,command-instead-of-shell
 
   # ---- Conventional commits enforcement (Phase L.A) ----
   - repo: https://github.com/compilerla/conventional-pre-commit

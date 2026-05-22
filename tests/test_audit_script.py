@@ -22,7 +22,7 @@ def _run_audit(target: Path, *extra: str, fail: bool = False) -> tuple[int, str]
     cmd = [sys.executable, str(_AUDIT_SCRIPT), str(target), *extra]
     if fail:
         cmd.append("--fail")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     return result.returncode, result.stdout + result.stderr
 
 

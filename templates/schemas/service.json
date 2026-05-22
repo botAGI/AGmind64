@@ -290,6 +290,27 @@
       "title": "Depends On",
       "type": "array"
     },
+    "provides": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Provides",
+      "type": "array"
+    },
+    "conflicts_with": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Conflicts With",
+      "type": "array"
+    },
+    "consumes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consumes",
+      "type": "array"
+    },
     "resources": {
       "$ref": "#/$defs/ResourceLimits"
     },

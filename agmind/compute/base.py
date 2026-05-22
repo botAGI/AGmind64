@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -83,14 +84,12 @@ class LLMHandle(ABC):
         temperature: float = 0.7,
         stop: Sequence[str] | None = None,
         **kwargs: Any,
-    ) -> "Iterator[str]":
+    ) -> Iterator[str]:
         """Streaming completion — yields text chunks.
 
         Default — fallback к одиночному `generate()` (для backends где
         streaming не имеет смысла, e.g. NPU stub).
         """
-        from typing import Iterator as _It  # noqa: F401
-
         yield self.generate(
             prompt,
             max_tokens=max_tokens,
@@ -129,7 +128,7 @@ class LLMHandle(ABC):
         temperature: float = 0.7,
         stop: Sequence[str] | None = None,
         **kwargs: Any,
-    ) -> "Iterator[str]":
+    ) -> Iterator[str]:
         """Streaming chat. Default — fallback to generate_stream."""
         prompt = self._messages_to_prompt(messages)
         return self.generate_stream(
@@ -164,7 +163,7 @@ class LLMHandle(ABC):
     def close(self) -> None:
         """Release GPU memory and stop server processes."""
 
-    def __enter__(self) -> "LLMHandle":
+    def __enter__(self) -> LLMHandle:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -193,7 +192,7 @@ class Backend(ABC):
 
     @classmethod
     @abstractmethod
-    def make(cls, engine: str = "auto") -> "Backend":
+    def make(cls, engine: str = "auto") -> Backend:
         """Factory: создать инстанс backend с конкретным engine.
 
         Args:

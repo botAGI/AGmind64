@@ -97,6 +97,7 @@ def cmd_pull() -> int:
 
 # ---- Phase L.B: idempotent deploy + snapshot/rollback ----
 
+
 def cmd_deploy(
     profiles: list[str],
     install_dir: Path,
@@ -111,7 +112,8 @@ def cmd_deploy(
     Под капотом: snapshot → render → diff → docker compose up --remove-orphans
     → healthcheck wait → rollback at failure. См. agmind/deploy/.
     """
-    from agmind.deploy import deploy as do_deploy, format_diff
+    from agmind.deploy import deploy as do_deploy
+    from agmind.deploy import format_diff
 
     result = do_deploy(
         profiles=profiles,

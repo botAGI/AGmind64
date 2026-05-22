@@ -28,12 +28,17 @@ pytestmark = pytest.mark.backend_any
 # ---------- helpers ----------
 
 
-def _desc(name: str, provides: list[str] | None = None,
-          consumes: list[str] | None = None) -> ServiceDescriptor:
+def _desc(
+    name: str, provides: list[str] | None = None, consumes: list[str] | None = None
+) -> ServiceDescriptor:
     return ServiceDescriptor(
-        name=name, image=f"{name}:1.0", tier="storage", purpose=f"{name}",
+        name=name,
+        image=f"{name}:1.0",
+        tier="storage",
+        purpose=f"{name}",
         profiles=["test"],
-        provides=provides or [], consumes=consumes or [],
+        provides=provides or [],
+        consumes=consumes or [],
     )
 
 
@@ -166,8 +171,12 @@ def test_render_compose_injects_dify_milvus() -> None:
 
 def test_render_compose_does_not_override_manual_env() -> None:
     custom = ServiceDescriptor(
-        name="dify-api", image="dify-api:1.0", tier="app", purpose="test",
-        profiles=["test"], consumes=["vector_db"],
+        name="dify-api",
+        image="dify-api:1.0",
+        tier="app",
+        purpose="test",
+        profiles=["test"],
+        consumes=["vector_db"],
         env={"VECTOR_STORE": "preset-by-hand"},
     )
     selected = {
@@ -189,12 +198,21 @@ def test_real_catalog_ragflow_and_dify_coexist() -> None:
     официально интегрирует их.
     """
     from agmind.services.renderer import load_descriptors, select_services
+
     all_d = load_descriptors()
     selected = select_services(
         all_d,
         services=[
-            "ragflow", "dify-api", "llama-llm", "llama-embed",
-            "mysql", "elasticsearch", "minio", "redis", "postgres", "qdrant",
+            "ragflow",
+            "dify-api",
+            "llama-llm",
+            "llama-embed",
+            "mysql",
+            "elasticsearch",
+            "minio",
+            "redis",
+            "postgres",
+            "qdrant",
         ],
     )
     report = check_service_compatibility(selected)
@@ -204,6 +222,7 @@ def test_real_catalog_ragflow_and_dify_coexist() -> None:
 def test_real_catalog_ragflow_provides_dify_external_kb() -> None:
     """ragflow.provides включает dify_external_kb."""
     from agmind.services.renderer import load_descriptors
+
     all_d = load_descriptors()
     assert "dify_external_kb" in all_d["ragflow"].provides
 
@@ -211,6 +230,7 @@ def test_real_catalog_ragflow_provides_dify_external_kb() -> None:
 def test_real_catalog_dify_api_consumes_dify_external_kb() -> None:
     """dify-api.consumes включает dify_external_kb."""
     from agmind.services.renderer import load_descriptors
+
     all_d = load_descriptors()
     assert "dify_external_kb" in all_d["dify-api"].consumes
 
@@ -218,11 +238,21 @@ def test_real_catalog_dify_api_consumes_dify_external_kb() -> None:
 def test_real_catalog_ragflow_dify_integration_env_injected() -> None:
     """Когда выбраны и ragflow и dify-api — dify-api получает RAGFLOW_API_ENDPOINT."""
     from agmind.services.renderer import load_descriptors, select_services
+
     all_d = load_descriptors()
     selected = select_services(
-        all_d, services=[
-            "ragflow", "dify-api", "llama-llm", "llama-embed", "qdrant",
-            "mysql", "elasticsearch", "minio", "redis", "postgres",
+        all_d,
+        services=[
+            "ragflow",
+            "dify-api",
+            "llama-llm",
+            "llama-embed",
+            "qdrant",
+            "mysql",
+            "elasticsearch",
+            "minio",
+            "redis",
+            "postgres",
         ],
     )
     injected = inject_capability_env(selected)
@@ -236,6 +266,7 @@ def test_real_catalog_ragflow_uses_elasticsearch_not_milvus() -> None:
     Раньше я выдумал что ragflow.consumes=['vector_db'] и pickup milvus. Неправда.
     """
     from agmind.services.renderer import load_descriptors
+
     all_d = load_descriptors()
     rf = all_d["ragflow"]
     assert "search_index" in rf.consumes
@@ -245,10 +276,11 @@ def test_real_catalog_ragflow_uses_elasticsearch_not_milvus() -> None:
 def test_real_catalog_milvus_does_not_inject_into_ragflow() -> None:
     """Confirm: milvus НЕ injects в ragflow (мы перестали выдумывать)."""
     from agmind.services.renderer import load_descriptors, select_services
+
     all_d = load_descriptors()
     selected = select_services(
-        all_d, services=["milvus", "ragflow", "llama-llm", "mysql", "elasticsearch",
-                         "minio", "redis"],
+        all_d,
+        services=["milvus", "ragflow", "llama-llm", "mysql", "elasticsearch", "minio", "redis"],
     )
     injected = inject_capability_env(selected)
     rf_env = injected.get("ragflow", {})
@@ -260,10 +292,19 @@ def test_real_catalog_milvus_does_not_inject_into_ragflow() -> None:
 def test_real_catalog_es_injects_doc_engine_into_ragflow() -> None:
     """elasticsearch present → ragflow получает DOC_ENGINE=elasticsearch."""
     from agmind.services.renderer import load_descriptors, select_services
+
     all_d = load_descriptors()
     selected = select_services(
-        all_d, services=["elasticsearch", "ragflow", "llama-llm", "llama-embed",
-                         "mysql", "minio", "redis"],
+        all_d,
+        services=[
+            "elasticsearch",
+            "ragflow",
+            "llama-llm",
+            "llama-embed",
+            "mysql",
+            "minio",
+            "redis",
+        ],
     )
     injected = inject_capability_env(selected)
     rf_env = injected.get("ragflow", {})
@@ -274,6 +315,7 @@ def test_real_catalog_es_injects_doc_engine_into_ragflow() -> None:
 def test_real_catalog_traefik_and_caddy_no_hard_error() -> None:
     """traefik + caddy теперь не error — port collision это deploy issue, не service."""
     from agmind.services.renderer import load_descriptors, select_services
+
     all_d = load_descriptors()
     selected = select_services(all_d, services=["traefik", "caddy"])
     report = check_service_compatibility(selected)
@@ -286,5 +328,6 @@ def test_real_catalog_traefik_and_caddy_no_hard_error() -> None:
 def test_real_catalog_ragflow_pin_is_latest() -> None:
     """ragflow pin must be v0.25.5 (latest as of 2026-05-20 per ragflow.io/changelog)."""
     from agmind.services.renderer import load_descriptors
+
     all_d = load_descriptors()
     assert all_d["ragflow"].image == "infiniflow/ragflow:v0.25.5"

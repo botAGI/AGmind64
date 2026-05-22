@@ -22,8 +22,9 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any
 
 from agmind.log import logger
 
@@ -122,7 +123,10 @@ class LlamaServerClient:
     ) -> str:
         """POST /v1/completions с stream=False. Returns full text."""
         body = self._completion_body(
-            prompt, max_tokens=max_tokens, stop=stop, sampling=sampling,
+            prompt,
+            max_tokens=max_tokens,
+            stop=stop,
+            sampling=sampling,
             stream=False,
         )
         resp = self._post("/v1/completions", body)
@@ -138,7 +142,10 @@ class LlamaServerClient:
     ) -> Iterator[str]:
         """POST /v1/completions с stream=True. Yields text chunks (deltas)."""
         body = self._completion_body(
-            prompt, max_tokens=max_tokens, stop=stop, sampling=sampling,
+            prompt,
+            max_tokens=max_tokens,
+            stop=stop,
+            sampling=sampling,
             stream=True,
         )
         for event in self._post_sse("/v1/completions", body):
@@ -164,8 +171,12 @@ class LlamaServerClient:
             tools: optional OpenAI tool definitions (function calling).
         """
         body = self._chat_body(
-            messages, max_tokens=max_tokens, stop=stop,
-            sampling=sampling, tools=tools, stream=False,
+            messages,
+            max_tokens=max_tokens,
+            stop=stop,
+            sampling=sampling,
+            tools=tools,
+            stream=False,
         )
         resp = self._post("/v1/chat/completions", body)
         return _extract_chat_text(resp)
@@ -181,8 +192,12 @@ class LlamaServerClient:
     ) -> Iterator[str]:
         """POST /v1/chat/completions с stream=True. Yields delta chunks."""
         body = self._chat_body(
-            messages, max_tokens=max_tokens, stop=stop,
-            sampling=sampling, tools=tools, stream=True,
+            messages,
+            max_tokens=max_tokens,
+            stop=stop,
+            sampling=sampling,
+            tools=tools,
+            stream=True,
         )
         for event in self._post_sse("/v1/chat/completions", body):
             text = _extract_chat_delta(event)
@@ -336,7 +351,8 @@ class LlamaServerClient:
 
         try:
             with urllib.request.urlopen(
-                req, timeout=self.timeout,
+                req,
+                timeout=self.timeout,
                 context=ctx if url.startswith("https") else None,
             ) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
@@ -346,20 +362,17 @@ class LlamaServerClient:
                 body_text = exc.read().decode("utf-8", errors="replace")[:500]
             except Exception:  # noqa: BLE001
                 pass
-            raise LlamaServerError(
-                f"HTTP {exc.code} {method} {path}: {body_text}"
-            ) from exc
+            raise LlamaServerError(f"HTTP {exc.code} {method} {path}: {body_text}") from exc
         except urllib.error.URLError as exc:
-            raise LlamaServerError(
-                f"Network error {method} {url}: {exc.reason}"
-            ) from exc
+            raise LlamaServerError(f"Network error {method} {url}: {exc.reason}") from exc
 
         try:
-            return json.loads(raw)
+            payload = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LlamaServerError(
-                f"Non-JSON response from {url}: {raw[:200]}"
-            ) from exc
+            raise LlamaServerError(f"Non-JSON response from {url}: {raw[:200]}") from exc
+        if not isinstance(payload, dict):
+            raise LlamaServerError(f"Unexpected JSON response from {url}: {raw[:200]}")
+        return payload
 
     def _post_sse(
         self,
@@ -382,17 +395,14 @@ class LlamaServerClient:
 
         try:
             resp = urllib.request.urlopen(
-                req, timeout=self.timeout,
+                req,
+                timeout=self.timeout,
                 context=ctx if url.startswith("https") else None,
             )
         except urllib.error.HTTPError as exc:
-            raise LlamaServerError(
-                f"HTTP {exc.code} streaming POST {path}"
-            ) from exc
+            raise LlamaServerError(f"HTTP {exc.code} streaming POST {path}") from exc
         except urllib.error.URLError as exc:
-            raise LlamaServerError(
-                f"Network error streaming POST {url}: {exc.reason}"
-            ) from exc
+            raise LlamaServerError(f"Network error streaming POST {url}: {exc.reason}") from exc
 
         try:
             for line in _iter_sse_events(resp):

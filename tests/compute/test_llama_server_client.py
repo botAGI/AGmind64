@@ -5,8 +5,7 @@ Tests мокают urllib через unittest.mock (без реального se
 
 from __future__ import annotations
 
-import json
-from typing import Iterator
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,8 +40,14 @@ def test_sampling_params_to_dict() -> None:
     assert d["seed"] == 42
     # Все expected keys
     expected_keys = {
-        "temperature", "top_p", "top_k", "min_p",
-        "repeat_penalty", "frequency_penalty", "presence_penalty", "seed",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "repeat_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "seed",
     }
     assert set(d.keys()) == expected_keys
 

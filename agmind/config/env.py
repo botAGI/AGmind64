@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 import re
-import stat
 from pathlib import Path
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -26,6 +25,7 @@ def render_env(template: str, vars: dict[str, str]) -> str:
     Raises:
         KeyError: если placeholder не resolved (нет в vars).
     """
+
     def _sub(m: re.Match[str]) -> str:
         key = m.group(1)
         if key not in vars:

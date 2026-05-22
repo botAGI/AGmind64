@@ -14,9 +14,7 @@ from __future__ import annotations
 import pytest
 
 from agmind.compute import Backend, DeviceInfo, get_backend, list_available_backends
-from agmind.compute.base import LLMHandle
 from agmind.compute.config import Profile, read_config
-
 
 # ---- backend-agnostic тесты ----
 
@@ -148,9 +146,7 @@ def test_vulkan_backend_engine_only_llama_cpp() -> None:
 
 
 @pytest.mark.backend_rocm
-def test_rocm_backend_available_if_rocminfo_gfx1151(
-    has_rocm: bool, has_strix_halo: bool
-) -> None:
+def test_rocm_backend_available_if_rocminfo_gfx1151(has_rocm: bool, has_strix_halo: bool) -> None:
     from agmind.compute.backends.rocm import ROCmBackend
 
     if not has_rocm or not has_strix_halo:

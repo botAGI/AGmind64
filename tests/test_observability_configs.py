@@ -19,6 +19,7 @@ OBS_DIR = REPO_ROOT / "templates" / "observability"
 
 # ---- existence / structure ----
 
+
 def test_observability_dir_exists() -> None:
     assert OBS_DIR.exists()
 
@@ -40,6 +41,7 @@ def test_expected_files_present() -> None:
 
 # ---- prometheus.yml ----
 
+
 @pytest.fixture(scope="module")
 def prometheus_config() -> dict[str, object]:
     return yaml.safe_load((OBS_DIR / "prometheus.yml").read_text(encoding="utf-8"))
@@ -48,9 +50,6 @@ def prometheus_config() -> dict[str, object]:
 def test_prometheus_has_docker_sd_job(prometheus_config: dict[str, object]) -> None:
     """docker_sd_configs job существует — это краеугольный камень auto-discovery."""
     jobs = prometheus_config["scrape_configs"]  # type: ignore[index]
-    docker_sd_jobs = [
-        j for j in jobs if any("docker_sd_configs" in j for j in [list(j.keys())])  # noqa
-    ]
     # Простая проверка: есть job с docker_sd_configs
     has_docker_sd = any("docker_sd_configs" in j for j in jobs)  # type: ignore[index, union-attr]
     assert has_docker_sd, "no docker_sd_configs job — auto-discovery broken"
@@ -76,6 +75,7 @@ def test_prometheus_external_labels(prometheus_config: dict[str, object]) -> Non
 
 
 # ---- prometheus rules ----
+
 
 def test_llama_alerts_present() -> None:
     rules = yaml.safe_load((OBS_DIR / "prometheus/rules/llama.yml").read_text(encoding="utf-8"))
@@ -106,6 +106,7 @@ def test_amd_gpu_alerts_use_textfile_metrics() -> None:
 
 # ---- alertmanager ----
 
+
 @pytest.fixture(scope="module")
 def alertmanager_config() -> dict[str, object]:
     return yaml.safe_load((OBS_DIR / "alertmanager.yml").read_text(encoding="utf-8"))
@@ -126,16 +127,15 @@ def test_alertmanager_critical_route(alertmanager_config: dict[str, object]) -> 
     root_route = alertmanager_config["route"]  # type: ignore[index]
     subroutes = root_route.get("routes", [])  # type: ignore[union-attr]
     critical_routes = [
-        r for r in subroutes
-        if any(
-            "severity" in m and "critical" in m
-            for m in r.get("matchers", [])
-        )
+        r
+        for r in subroutes
+        if any("severity" in m and "critical" in m for m in r.get("matchers", []))
     ]
     assert critical_routes, "no critical severity route"
 
 
 # ---- alloy ----
+
 
 def test_alloy_config_has_docker_discovery() -> None:
     text = (OBS_DIR / "alloy/config.alloy").read_text(encoding="utf-8")
@@ -151,6 +151,7 @@ def test_alloy_propagates_agmind_labels() -> None:
 
 # ---- loki ----
 
+
 def test_loki_retention_14d() -> None:
     cfg = yaml.safe_load((OBS_DIR / "loki/loki.yml").read_text(encoding="utf-8"))
     assert cfg["limits_config"]["retention_period"] == "14d"
@@ -163,6 +164,7 @@ def test_loki_structured_metadata_enabled() -> None:
 
 
 # ---- grafana ----
+
 
 def test_grafana_datasources_minimal_set() -> None:
     cfg = yaml.safe_load(
@@ -180,6 +182,7 @@ def test_grafana_dashboard_provider_configured() -> None:
 
 
 # ---- gfx1151 textfile collector script ----
+
 
 def test_amdgpu_textfile_script_exists() -> None:
     path = REPO_ROOT / "scripts" / "amdgpu_textfile.sh"

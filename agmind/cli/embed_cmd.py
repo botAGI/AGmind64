@@ -27,9 +27,7 @@ def cmd_embed(
         print("ERROR: no input texts (args or stdin)", file=sys.stderr)
         return 1
 
-    url = server_url or os.environ.get(
-        "AGMIND_LLAMA_SERVER_URL", "http://localhost:8081"
-    )
+    url = server_url or os.environ.get("AGMIND_LLAMA_SERVER_URL", "http://localhost:8081")
     client = LlamaServerClient(url)
     try:
         vectors = client.embed(texts, model=model)
@@ -39,12 +37,11 @@ def cmd_embed(
 
     if as_json:
         out = [
-            {"text": t, "embedding": v, "dim": len(v)}
-            for t, v in zip(texts, vectors)
+            {"text": t, "embedding": v, "dim": len(v)} for t, v in zip(texts, vectors, strict=False)
         ]
         print(json.dumps(out, indent=2, ensure_ascii=False))
     else:
-        for t, v in zip(texts, vectors):
+        for t, v in zip(texts, vectors, strict=False):
             print(f"# {t[:60]}...")
             print(" ".join(f"{x:.4f}" for x in v[:8]) + "  ...")
     return 0
@@ -60,9 +57,7 @@ def cmd_rerank(
     """Rerank documents by relevance to query."""
     from agmind.compute.clients import LlamaServerClient
 
-    url = server_url or os.environ.get(
-        "AGMIND_LLAMA_SERVER_URL", "http://localhost:8082"
-    )
+    url = server_url or os.environ.get("AGMIND_LLAMA_SERVER_URL", "http://localhost:8082")
     client = LlamaServerClient(url)
     try:
         scores = client.rerank(query, documents, top_n=top_n)
@@ -72,7 +67,9 @@ def cmd_rerank(
 
     # Pretty: sort desc, print rank/score/doc
     ranked = sorted(
-        zip(documents, scores), key=lambda t: t[1], reverse=True,
+        zip(documents, scores, strict=False),
+        key=lambda t: t[1],
+        reverse=True,
     )
     for rank, (doc, score) in enumerate(ranked, start=1):
         print(f"{rank:3d}  {score:6.3f}  {doc[:80]}")

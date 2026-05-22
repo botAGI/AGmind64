@@ -7,11 +7,11 @@ InstallStepResult с success / message / elapsed.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,9 +21,9 @@ from agmind.install.orchestrator import (
     InstallStep,
     InstallStepResult,
     ProgressCallback,
+    ProgressEvent,
     ProgressKind,
 )
-
 
 # ---------- helpers ----------
 
@@ -35,7 +35,7 @@ def _stream_subprocess(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     stdin_payload: bytes | None = None,
-    extra_emit: callable | None = None,
+    extra_emit: Callable[[str], None] | None = None,
 ) -> tuple[int, list[str]]:
     """Run subprocess, stream stdout+stderr line-by-line via callback.
 
@@ -70,9 +70,7 @@ def _stream_subprocess(
             if not line:
                 continue
             captured.append(line)
-            callback(
-                _make_event(step_id, ProgressKind.LOG, line)
-            )
+            callback(_make_event(step_id, ProgressKind.LOG, line))
             if extra_emit is not None:
                 try:
                     extra_emit(line)
@@ -82,9 +80,15 @@ def _stream_subprocess(
     return rc, captured
 
 
-def _make_event(step_id: str, kind: ProgressKind, text: str, pct: int | None = None) -> object:
+def _make_event(
+    step_id: str,
+    kind: ProgressKind,
+    text: str,
+    pct: int | None = None,
+) -> ProgressEvent:
     """Local import to avoid circular: создать ProgressEvent без import outside."""
     from agmind.install.orchestrator import ProgressEvent
+
     return ProgressEvent(step_id=step_id, kind=kind, text=text, progress_pct=pct)
 
 
@@ -105,17 +109,21 @@ class DoctorStep(InstallStep):
             report = run_preflight()
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"doctor crashed: {exc}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
 
         for check in report.checks:
             glyph = {"ok": "✓", "warn": "⚠", "fail": "✗", "skip": "·"}.get(check.status, "?")
-            callback(_make_event(
-                self.step_id, ProgressKind.LOG,
-                f"  {glyph}  {check.name:<22} {check.message}",
-            ))
+            callback(
+                _make_event(
+                    self.step_id,
+                    ProgressKind.LOG,
+                    f"  {glyph}  {check.name:<22} {check.message}",
+                )
+            )
 
         elapsed = timedelta(seconds=time.monotonic() - start)
         ok_n = sum(1 for c in report.checks if c.status == "ok")
@@ -123,12 +131,14 @@ class DoctorStep(InstallStep):
         if report.has_failures:
             failed = [c.name for c in report.checks if c.status == "fail"]
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"hard fail in checks: {', '.join(failed)}",
                 elapsed=elapsed,
             )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
+            step_id=self.step_id,
+            success=True,
             message=f"{ok_n} ok / {warn_n} warn / 0 fail",
             elapsed=elapsed,
         )
@@ -155,7 +165,8 @@ class BootstrapStep(InstallStep):
         start = time.monotonic()
         if config.sudo_password is None:
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message="sudo password not provided (cannot run apt/usermod)",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
@@ -163,7 +174,8 @@ class BootstrapStep(InstallStep):
         playbook = DEFAULT_REPO_ROOT / self.PLAYBOOK_RELATIVE
         if not playbook.exists():
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"playbook not found: {playbook}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
@@ -174,18 +186,20 @@ class BootstrapStep(InstallStep):
             os.write(wfd, config.sudo_password.encode("utf-8") + b"\n")
             os.close(wfd)
 
-            extra_vars = (
-                f"agmind_domain={config.domain} "
-                f"agmind_cf_api_token={config.cf_api_token}"
-            )
+            extra_vars = f"agmind_domain={config.domain} agmind_cf_api_token={config.cf_api_token}"
             cmd = [
                 "ansible-playbook",
                 str(playbook),
-                "--become-password-file", f"/dev/fd/{rfd}",
-                "--tags", self.ANSIBLE_TAGS,
-                "--extra-vars", extra_vars,
-                "-i", "localhost,",
-                "--connection", "local",
+                "--become-password-file",
+                f"/dev/fd/{rfd}",
+                "--tags",
+                self.ANSIBLE_TAGS,
+                "--extra-vars",
+                extra_vars,
+                "-i",
+                "localhost,",
+                "--connection",
+                "local",
             ]
 
             # We need rfd to survive into child. subprocess closes fds by default
@@ -199,7 +213,6 @@ class BootstrapStep(InstallStep):
                 bufsize=1,
                 pass_fds=(rfd,),
             )
-            ansible_re = re.compile(r"^(TASK|PLAY|ok:|changed:|failed:|fatal:|skipping:)")
             if proc.stdout is not None:
                 for raw in proc.stdout:
                     line = raw.rstrip()
@@ -219,12 +232,14 @@ class BootstrapStep(InstallStep):
         elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"ansible-playbook failed with rc={rc}",
                 elapsed=elapsed,
             )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
+            step_id=self.step_id,
+            success=True,
             message="apt prereqs + groups + dirs ready",
             elapsed=elapsed,
         )
@@ -247,10 +262,10 @@ class ImagePullStep(InstallStep):
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
         # Lazy import чтобы не тянуть тяжёлый renderer на загрузке модуля.
-        from agmind.services.renderer import render_to_string
-
         # Render compose в temp dir чтобы вызвать `docker compose pull`.
         import tempfile
+
+        from agmind.services.renderer import render_to_string
 
         try:
             compose_text = render_to_string(
@@ -260,7 +275,8 @@ class ImagePullStep(InstallStep):
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"compose render failed: {exc}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
@@ -275,12 +291,16 @@ class ImagePullStep(InstallStep):
         elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:
             return InstallStepResult(
-                step_id=self.step_id, success=False,
-                message=f"docker compose pull rc={rc}", elapsed=elapsed,
+                step_id=self.step_id,
+                success=False,
+                message=f"docker compose pull rc={rc}",
+                elapsed=elapsed,
             )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
-            message="images pulled", elapsed=elapsed,
+            step_id=self.step_id,
+            success=True,
+            message="images pulled",
+            elapsed=elapsed,
         )
 
 
@@ -316,6 +336,7 @@ class ModelDownloadStep(InstallStep):
     def _fallback_dirs(config: InstallConfig) -> list[Path]:
         """Other locations to check for already-downloaded model."""
         from os.path import expanduser
+
         candidates = [
             Path(expanduser("~/.local/share/agmind/models")),  # XDG user fallback
             # Future: Hugging Face HOME cache directory if user has model there.
@@ -332,7 +353,10 @@ class ModelDownloadStep(InstallStep):
         return out
 
     def _detect_existing(
-        self, models_dir: Path, file_name: str, min_size: int,
+        self,
+        models_dir: Path,
+        file_name: str,
+        min_size: int,
         config: InstallConfig,
     ) -> tuple[Path | None, str]:
         """Return (path, status_msg) — где модель уже есть. None если nowhere."""
@@ -365,16 +389,23 @@ class ModelDownloadStep(InstallStep):
         if existing is not None:
             size_mb = existing.stat().st_size // (1024 * 1024)
             if existing == target:
-                callback(_make_event(
-                    self.step_id, ProgressKind.LOG,
-                    f"{role}: skip download {existing} ({size_mb} MiB) — {status}",
-                ))
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.LOG,
+                        f"{role}: skip download {existing} ({size_mb} MiB) — {status}",
+                    )
+                )
                 return True, f"{role}: reused {size_mb} MiB"
-            callback(_make_event(
-                self.step_id, ProgressKind.LOG,
-                f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
-            ))
+            callback(
+                _make_event(
+                    self.step_id,
+                    ProgressKind.LOG,
+                    f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
+                )
+            )
             import shutil
+
             try:
                 shutil.move(str(existing), str(target))
             except OSError as exc:
@@ -386,8 +417,7 @@ class ModelDownloadStep(InstallStep):
             return True, f"{role}: relocated {size_mb} MiB"
 
         url = f"https://huggingface.co/{repo}/resolve/main/{file_name}"
-        cmd = ["curl", "-fL", "-C", "-", "-o", str(target),
-               "--progress-bar", "--retry", "3", url]
+        cmd = ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url]
         last_pct = [-1]
 
         def parse_curl_pct(line: str) -> None:
@@ -406,11 +436,14 @@ class ModelDownloadStep(InstallStep):
             if speed_m:
                 speed_label = f" @ {speed_m.group(1)}{speed_m.group(2)}/s"
             try:
-                callback(_make_event(
-                    self.step_id, ProgressKind.PROGRESS,
-                    f"{role} download {pct}%{speed_label}",
-                    pct=pct,
-                ))
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.PROGRESS,
+                        f"{role} download {pct}%{speed_label}",
+                        pct=pct,
+                    )
+                )
             except (ValueError, IndexError):
                 pass
 
@@ -435,13 +468,15 @@ class ModelDownloadStep(InstallStep):
             messages.append(msg)
             if not ok:
                 return InstallStepResult(
-                    step_id=self.step_id, success=False,
+                    step_id=self.step_id,
+                    success=False,
                     message=msg,
                     elapsed=timedelta(seconds=time.monotonic() - start),
                 )
 
         return InstallStepResult(
-            step_id=self.step_id, success=True,
+            step_id=self.step_id,
+            success=True,
             message="; ".join(messages),
             elapsed=timedelta(seconds=time.monotonic() - start),
         )
@@ -474,7 +509,8 @@ class DeployStep(InstallStep):
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"deploy crashed: {exc}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
@@ -483,12 +519,16 @@ class DeployStep(InstallStep):
         if not result.success:
             extra = " (rolled back)" if result.rollback_performed else ""
             return InstallStepResult(
-                step_id=self.step_id, success=False,
-                message=f"{result.message}{extra}", elapsed=elapsed,
+                step_id=self.step_id,
+                success=False,
+                message=f"{result.message}{extra}",
+                elapsed=elapsed,
             )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
-            message=result.message, elapsed=elapsed,
+            step_id=self.step_id,
+            success=True,
+            message=result.message,
+            elapsed=elapsed,
         )
 
 
@@ -547,16 +587,21 @@ class EnvWriteStep(InstallStep):
             env_path.chmod(0o644)
         except OSError as exc:
             return InstallStepResult(
-                step_id=self.step_id, success=False,
+                step_id=self.step_id,
+                success=False,
                 message=f"cannot write {env_path}: {exc}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
-        callback(_make_event(
-            self.step_id, ProgressKind.LOG,
-            f"wrote {env_path} with model={config.model_file} ctx={config.ctx_size}",
-        ))
+        callback(
+            _make_event(
+                self.step_id,
+                ProgressKind.LOG,
+                f"wrote {env_path} with model={config.model_file} ctx={config.ctx_size}",
+            )
+        )
         return InstallStepResult(
-            step_id=self.step_id, success=True,
+            step_id=self.step_id,
+            success=True,
             message=f".env written ({len(lines)} vars)",
             elapsed=timedelta(seconds=time.monotonic() - start),
         )

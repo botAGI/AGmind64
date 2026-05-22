@@ -21,15 +21,14 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from agmind.compute.base import Backend, DeviceInfo, LLMHandle
 from agmind.compute.detect import (
     AMDVLK_ICD_FILES,
-    VulkanInfo,
     detect_host,
-    detect_vulkan,
 )
 from agmind.log import logger
 
@@ -52,8 +51,7 @@ class VulkanBackend(Backend):
     def __init__(self, engine: str) -> None:
         if engine not in _SUPPORTED_ENGINES:
             raise ValueError(
-                f"Vulkan backend engine={engine!r} not supported. "
-                f"Allowed: {_SUPPORTED_ENGINES}"
+                f"Vulkan backend engine={engine!r} not supported. Allowed: {_SUPPORTED_ENGINES}"
             )
         self._engine = engine
         _apply_radv_env()
@@ -77,7 +75,7 @@ class VulkanBackend(Backend):
         return host.vulkan.available
 
     @classmethod
-    def make(cls, engine: str = "auto") -> "VulkanBackend":
+    def make(cls, engine: str = "auto") -> VulkanBackend:
         if engine == "auto":
             engine = "llama_cpp"
         backend = cls(engine=engine)
@@ -91,17 +89,11 @@ class VulkanBackend(Backend):
 
         caps: dict[str, Any] = {
             "vulkan_api_version": (
-                ".".join(map(str, vk.api_version))
-                if vk.api_version
-                else "unknown"
+                ".".join(map(str, vk.api_version)) if vk.api_version else "unknown"
             ),
             "driver_name": vk.driver_name,
             "driver_id": vk.driver_id,
-            "mesa_version": (
-                ".".join(map(str, vk.mesa_version))
-                if vk.mesa_version
-                else "unknown"
-            ),
+            "mesa_version": (".".join(map(str, vk.mesa_version)) if vk.mesa_version else "unknown"),
             "cooperative_matrix": vk.has_cooperative_matrix,
             "external_memory_host": vk.has_external_memory_host,
             "is_strix_halo": gpu.is_strix_halo if gpu else False,
@@ -138,6 +130,7 @@ class VulkanBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_vulkan import (
             LlamaCppVulkanEngine,
         )
+
         return LlamaCppVulkanEngine().load(model_path, **kwargs)
 
     def embed(self, texts: Sequence[str], model: str) -> list[list[float]]:
@@ -151,6 +144,7 @@ class VulkanBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_vulkan import (
             LlamaCppVulkanEngine,
         )
+
         return LlamaCppVulkanEngine().embed(texts, model)
 
     def rerank(self, query: str, documents: Sequence[str]) -> list[float]:
@@ -164,6 +158,7 @@ class VulkanBackend(Backend):
         from agmind.compute.backends._engines.llama_cpp_vulkan import (
             LlamaCppVulkanEngine,
         )
+
         return LlamaCppVulkanEngine().rerank(query, documents)
 
     # ---- private helpers ----

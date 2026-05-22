@@ -114,7 +114,7 @@ class InstallConfig:
         """Safe dict for logging — secrets replaced with ***."""
         return {
             "domain": self.domain,
-            "cf_api_token": "*** ({} chars)".format(len(self.cf_api_token)),
+            "cf_api_token": f"*** ({len(self.cf_api_token)} chars)",
             "services": self.services,
             "backend": self.backend,
             "model_repo": self.model_repo,
@@ -152,12 +152,22 @@ class InstallStep(ABC):
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         """Execute step. Should emit ProgressEvent(step_start) first, return result."""
 
-    def _emit(self, callback: ProgressCallback, kind: ProgressKind, text: str = "",
-              progress_pct: int | None = None) -> None:
+    def _emit(
+        self,
+        callback: ProgressCallback,
+        kind: ProgressKind,
+        text: str = "",
+        progress_pct: int | None = None,
+    ) -> None:
         try:
-            callback(ProgressEvent(
-                step_id=self.step_id, kind=kind, text=text, progress_pct=progress_pct,
-            ))
+            callback(
+                ProgressEvent(
+                    step_id=self.step_id,
+                    kind=kind,
+                    text=text,
+                    progress_pct=progress_pct,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             log.debug("progress callback raised: %s (ignored)", exc)
 
@@ -182,15 +192,18 @@ class InstallOrchestrator:
                 elapsed = timedelta(seconds=time.monotonic() - start)
                 log.exception("step %s crashed: %s", step.step_id, exc)
                 result = InstallStepResult(
-                    step_id=step.step_id, success=False,
-                    message=f"unhandled exception: {exc}", elapsed=elapsed,
+                    step_id=step.step_id,
+                    success=False,
+                    message=f"unhandled exception: {exc}",
+                    elapsed=elapsed,
                 )
             results.append(result)
             if not result.success:
                 self._emit_step_error(step, result.message)
                 self.config.wipe_secrets()
                 return InstallResult(
-                    success=False, steps=tuple(results),
+                    success=False,
+                    steps=tuple(results),
                     message=f"failed at step '{step.step_id}': {result.message}",
                 )
             self._emit_step_done(step, result)
@@ -200,32 +213,44 @@ class InstallOrchestrator:
 
         self.config.wipe_secrets()
         return InstallResult(
-            success=True, steps=tuple(results),
+            success=True,
+            steps=tuple(results),
             message=f"install complete ({len(results)} steps)",
         )
 
     def _emit_step_start(self, step: InstallStep) -> None:
         try:
-            self.callback(ProgressEvent(
-                step_id=step.step_id, kind=ProgressKind.STEP_START, text=step.label,
-            ))
+            self.callback(
+                ProgressEvent(
+                    step_id=step.step_id,
+                    kind=ProgressKind.STEP_START,
+                    text=step.label,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             log.debug("step_start callback raised: %s", exc)
 
     def _emit_step_done(self, step: InstallStep, result: InstallStepResult) -> None:
         try:
-            self.callback(ProgressEvent(
-                step_id=step.step_id, kind=ProgressKind.STEP_DONE,
-                text=result.message or step.label,
-            ))
+            self.callback(
+                ProgressEvent(
+                    step_id=step.step_id,
+                    kind=ProgressKind.STEP_DONE,
+                    text=result.message or step.label,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             log.debug("step_done callback raised: %s", exc)
 
     def _emit_step_error(self, step: InstallStep, message: str) -> None:
         try:
-            self.callback(ProgressEvent(
-                step_id=step.step_id, kind=ProgressKind.STEP_ERROR, text=message,
-            ))
+            self.callback(
+                ProgressEvent(
+                    step_id=step.step_id,
+                    kind=ProgressKind.STEP_ERROR,
+                    text=message,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             log.debug("step_error callback raised: %s", exc)
 

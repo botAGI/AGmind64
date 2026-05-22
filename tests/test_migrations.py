@@ -260,7 +260,9 @@ def test_v001_idempotent(tmp_path: Path) -> None:
 # ---------- CLI smoke ----------
 
 
-def test_cli_status_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agmind.cli import migrate_cmd
 
     def fake_runner() -> MigrationRunner:
@@ -278,7 +280,9 @@ def test_cli_status_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsy
     assert "Pending migrations" in out
 
 
-def test_cli_status_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agmind.cli import migrate_cmd
 
     def fake_runner() -> MigrationRunner:
@@ -296,7 +300,9 @@ def test_cli_status_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
     assert len(payload["pending"]) == 1
 
 
-def test_cli_up_and_status_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_up_and_status_roundtrip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agmind.cli import migrate_cmd
 
     user_dir = tmp_path / "user"
@@ -306,8 +312,10 @@ def test_cli_up_and_status_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyP
         return MigrationRunner(
             user_state_dir=user_dir,
             system_state_dir=sys_dir,
-            migrations=[FakeMigration(version=1, description="alpha"),
-                        FakeMigration(version=2, description="beta")],
+            migrations=[
+                FakeMigration(version=1, description="alpha"),
+                FakeMigration(version=2, description="beta"),
+            ],
         )
 
     monkeypatch.setattr(migrate_cmd, "_make_runner", fake_runner)
@@ -321,14 +329,18 @@ def test_cli_up_and_status_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "No pending" in out2
 
 
-def test_cli_down_rejects_negative_steps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_down_rejects_negative_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agmind.cli import migrate_cmd
 
     rc = migrate_cmd.cmd_down(steps=-1)
     assert rc == 2
 
 
-def test_cli_list_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_list_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from agmind.cli import migrate_cmd
 
     def fake_runner() -> MigrationRunner:

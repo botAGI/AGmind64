@@ -19,12 +19,12 @@ UI integration:
 
 from __future__ import annotations
 
-import json
 import platform
 import socket
 import time
+from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass
-from typing import Iterator
+from typing import cast
 
 from agmind.log import logger
 
@@ -85,6 +85,7 @@ def _read_ram_gb() -> float:
     """Read total physical RAM в GiB. Pure stdlib (без psutil)."""
     try:
         from pathlib import Path as _P
+
         for line in _P("/proc/meminfo").read_text().splitlines():
             if line.startswith("MemTotal:"):
                 kb = int(line.split()[1])
@@ -93,8 +94,9 @@ def _read_ram_gb() -> float:
         pass
     # Fallback: psutil if installed
     try:
-        import psutil  # type: ignore[import-not-found]
-        return psutil.virtual_memory().total / 1024**3
+        import psutil
+
+        return float(psutil.virtual_memory().total / 1024**3)
     except ImportError:
         return 0.0
 
@@ -104,7 +106,7 @@ def _get_primary_ipv4() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        return cast(str, s.getsockname()[0])
     except OSError:
         return "127.0.0.1"
     finally:
@@ -120,6 +122,7 @@ def gather_node_info(agmind_version: str = "") -> NodeInfo:
     if not agmind_version:
         try:
             from agmind import __version__
+
             agmind_version = __version__
         except ImportError:
             agmind_version = "unknown"
@@ -151,7 +154,7 @@ def discover(
     Blocks для `timeout` seconds.
     """
     try:
-        from zeroconf import ServiceBrowser, Zeroconf
+        from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
     except ImportError:
         log.warning("zeroconf not installed — cluster discover unavailable")
         return []
@@ -160,16 +163,17 @@ def discover(
     self_addr = _get_primary_ipv4()
     self_host = platform.node()
 
-    class _Listener:
+    class _Listener(ServiceListener):
         def add_service(self, zc, type_, name):  # type: ignore[no-untyped-def]
             info = zc.get_service_info(type_, name, timeout=1500)
             if info is None:
                 return
             txt = {
-                k.decode("utf-8", errors="replace"):
-                    (v.decode("utf-8", errors="replace") if isinstance(v, bytes) else str(v))
+                k.decode("utf-8", errors="replace"): (
+                    v.decode("utf-8", errors="replace") if isinstance(v, bytes) else str(v)
+                )
                 for k, v in (info.properties or {}).items()
-                if isinstance(k, (bytes, bytearray))
+                if isinstance(k, bytes | bytearray)
             }
             addrs = [".".join(str(b) for b in a) for a in info.addresses or []]
             addr = addrs[0] if addrs else ""
@@ -184,16 +188,18 @@ def discover(
                 services = int(txt.get("services", "0"))
             except ValueError:
                 services = 0
-            found.append(DiscoveredPeer(
-                hostname=hostname,
-                address=addr,
-                port=info.port or DEFAULT_AGMIND_PORT,
-                version=txt.get("version", "?"),
-                gpu=txt.get("gpu", "?"),
-                ram_gb=ram,
-                is_strix_halo=txt.get("strix", "0") == "1",
-                services_count=services,
-            ))
+            found.append(
+                DiscoveredPeer(
+                    hostname=hostname,
+                    address=addr,
+                    port=info.port or DEFAULT_AGMIND_PORT,
+                    version=txt.get("version", "?"),
+                    gpu=txt.get("gpu", "?"),
+                    ram_gb=ram,
+                    is_strix_halo=txt.get("strix", "0") == "1",
+                    services_count=services,
+                )
+            )
 
         def update_service(self, zc, type_, name):  # type: ignore[no-untyped-def]
             pass
@@ -222,7 +228,7 @@ def discover(
 def advertise(
     info: NodeInfo,
     port: int = DEFAULT_AGMIND_PORT,
-):
+) -> AbstractContextManager[NodeInfo]:
     """Register this node для mDNS browse'ов. Returns context manager.
 
     Usage:
@@ -233,14 +239,12 @@ def advertise(
     try:
         from zeroconf import ServiceInfo, Zeroconf
     except ImportError as exc:
-        raise RuntimeError(
-            "zeroconf not installed — install via pip install zeroconf"
-        ) from exc
+        raise RuntimeError("zeroconf not installed — install via pip install zeroconf") from exc
 
     name = f"{info.hostname}.{AGMIND_SERVICE_TYPE}"
     # Trim hostname to ≤63 chars for DNS label limit
     if len(name) > 63 + len(AGMIND_SERVICE_TYPE):
-        short_host = info.hostname[:63 - len(AGMIND_SERVICE_TYPE) - 1]
+        short_host = info.hostname[: 63 - len(AGMIND_SERVICE_TYPE) - 1]
         name = f"{short_host}.{AGMIND_SERVICE_TYPE}"
 
     addr_bytes = socket.inet_aton(info.address)
