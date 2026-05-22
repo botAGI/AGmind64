@@ -145,7 +145,7 @@ jobs:
         backend: [vulkan, rocm]
     steps:
       - uses: actions/checkout@v4
-      - name: Run smoke benchmark on ${{ matrix.backend }}
+      - name: Run backend smoke on ${{ matrix.backend }}
         env:
           AGMIND_BACKEND: ${{ matrix.backend }}
         run: |
@@ -153,5 +153,6 @@ jobs:
             --device /dev/dri \
             $( [ "${{ matrix.backend }}" = "rocm" ] && echo "--device /dev/kfd --group-add video --group-add render --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --ipc=host --shm-size=16G" ) \
             -e AGMIND_BACKEND \
+            --entrypoint python3 \
             agmind-${{ matrix.backend }}:ci \
-            pytest -q -m "backend_${{ matrix.backend }} or backend_any"
+            -c "import os; from agmind.compute import get_backend; b = get_backend(); di = b.device_info(); assert di.backend == os.environ['AGMIND_BACKEND'], di; print(di)"

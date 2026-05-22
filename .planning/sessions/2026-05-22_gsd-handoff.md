@@ -195,6 +195,11 @@ Follow-up fix:
   self-hosted runner already has Python 3.12.3 and `uv`, so the workflow now
   skips `setup-python`, uses system `python3`, and invokes
   `$HOME/.local/bin/uv`/`uvx` directly.
+- Run `26297034205` proved all standard gates green:
+  pre-commit/audit/schema/compose/test-cpu/docker cpu+vulkan+rocm. The two
+  Strix Halo smoke jobs failed because the runtime images do not include
+  `pytest` and their entrypoint is `python3 -m agmind`; the smoke should
+  override entrypoint and run a backend `device_info()` check instead.
 
 Clean dev-only parity verification:
 

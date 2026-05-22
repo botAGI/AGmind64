@@ -4,7 +4,7 @@ milestone: v0.6.0
 milestone_name: "AGmind x86 — post-M5 hardening + cloud-artifact reconciliation"
 status: ci-testcpu-followup-local
 last_updated: "2026-05-22"
-last_activity: "2026-05-22 — self-hosted CI rerun proved docker/compose/schema/audit; setup-python toolcache stalls removed by switching jobs to system python3 + uv"
+last_activity: "2026-05-22 — self-hosted CI rerun proved standard gates; Strix smoke now checks runtime backend instead of pytest inside non-dev images"
 progress:
   m1_phases: 7
   m1_completed: 7
@@ -40,11 +40,11 @@ multi-step Textual TUI with EN/RU i18n.
 ## Current position
 
 - **Branch:** `develop`
-- **HEAD:** latest pushed baseline before this workflow follow-up is `1113f2c`
-  — `fix: track amdgpu textfile script executable`; next commit removes
-  `actions/setup-python` from self-hosted jobs.
-- **Remote:** `origin/develop` has the CI repair pair plus test-cpu deps/cache
-  and script mode fixes; setup-python removal is staged for push.
+- **HEAD:** latest pushed baseline before this smoke follow-up is `5d6ddad`
+  — `ci: use system python on self-hosted runner`; next commit fixes Strix
+  runtime smoke to avoid pytest inside non-dev backend images.
+- **Remote:** `origin/develop` has the standard self-hosted gates green; Strix
+  smoke follow-up is staged for push.
 - **Tests:** `886 passed in 25.39s` via `.venv/bin/python -m pytest -q`; clean
   dev-only CI parity now `882 passed, 4 deselected` with coverage
 - **Audit:** 0 findings on 218 files via `.venv/bin/python scripts/audit_forbidden.py`
@@ -66,9 +66,9 @@ this as the current gate before new feature work:
 |------|--------|-------|
 | S0.1 Identify dirty layer | in progress | Mix of formatter churn, pre-commit/ansible-lint tweak, schema export, CI fixes, small wizard/install fixes |
 | S0.2 Verify behavior | done | `pytest -q` = 886 passed; audit = 0 findings; clean dev-only CI parity = 882 passed / 4 deselected |
-| S0.3 Decide split | done | CI repair committed as focused chunks: `ecc88d7`, `4b9a8ea`, `8e74c6c`, `8fbad67`, `1113f2c`, plus pending setup-python removal |
+| S0.3 Decide split | done | CI repair committed as focused chunks through `5d6ddad`, plus pending Strix smoke command fix |
 | S0.4 Planning sync | in progress | This file + session note record the runner evidence |
-| S0.5 GitHub CI rerun | in progress | Runs proved docker/compose/schema/audit; `26296619692` cancelled because `setup-python` toolcache download stalled again; workflow now uses system `python3` + preinstalled `uv` |
+| S0.5 GitHub CI rerun | in progress | Run `26297034205` proved all standard gates; Strix smoke failed only because runtime images lack pytest and need an entrypoint-overridden backend smoke |
 
 **Rule:** do not start M6 feature work until the dirty layer is classified
 and either committed in scoped chunks or intentionally left documented.
@@ -122,9 +122,9 @@ Recommended phase order:
 
 ## Known live gaps
 
-- One CI workflow follow-up still needs push + GitHub rerun: avoid
-  `actions/setup-python` on the self-hosted runner and use system
-  `python3` + preinstalled `uv`/`uvx`.
+- One Strix smoke follow-up still needs push + GitHub rerun: use
+  `python3 -c get_backend().device_info()` inside the runtime images instead
+  of pytest.
 - Dirty worktree must stay reconciled before feature work.
 - `.planning/codebase/*` still reflects older module/test counts.
 - Doctor warnings need host tuning: kernel/GTT pool.
