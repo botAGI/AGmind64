@@ -190,6 +190,11 @@ Follow-up fix:
   `scripts/amdgpu_textfile.sh` was executable on the working tree but tracked
   in Git as mode `100644`; the observability test requires it to checkout as
   executable.
+- Run `26296619692` was cancelled after `actions/setup-python` stalled again,
+  this time while pre-commit was restoring/downloading Python/toolcache. The
+  self-hosted runner already has Python 3.12.3 and `uv`, so the workflow now
+  skips `setup-python`, uses system `python3`, and invokes
+  `$HOME/.local/bin/uv`/`uvx` directly.
 
 Clean dev-only parity verification:
 
