@@ -182,6 +182,10 @@ Follow-up fix:
   in Docker/backend lanes, not in the host pytest lane.
 - `pytest-asyncio` is now explicitly listed in the dev extra. The clean venv
   proved that previous local success had relied on an ambient dependency.
+- `actions/setup-python` pip cache restore was removed from the CI jobs that
+  install via `uv`; run `26294766057` reached the corrected `test-cpu` lane but
+  was cancelled after `setup-python` stalled restoring a 76 MB pip cache at
+  94.5%.
 
 Clean dev-only parity verification:
 

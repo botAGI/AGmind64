@@ -24,7 +24,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
       - name: Install uv (Phase L.A — для editable install)
         run: pip install uv
       - name: Install agmind + dev deps
@@ -74,7 +73,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
       - name: Install uv
         run: pip install uv
       - name: Install agmind + dev
