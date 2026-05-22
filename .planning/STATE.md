@@ -2,9 +2,9 @@
 gsd_state_version: 1.1
 milestone: v0.6.0
 milestone_name: "AGmind x86 — post-M5 hardening + cloud-artifact reconciliation"
-status: ci-gates-repaired-local
+status: ci-testcpu-followup-local
 last_updated: "2026-05-22"
-last_activity: "2026-05-22 — self-hosted CI gates repaired locally; pre-commit/test-cpu/compose/docker base+cpu+vulkan green"
+last_activity: "2026-05-22 — self-hosted CI rerun proved pre-commit/audit/schema/compose/docker cpu+vulkan+rocm; test-cpu follow-up fixed locally"
 progress:
   m1_phases: 7
   m1_completed: 7
@@ -40,14 +40,19 @@ multi-step Textual TUI with EN/RU i18n.
 ## Current position
 
 - **Branch:** `develop`
-- **HEAD:** `80a12c9` — `ci: switch all jobs to self-hosted runner`
-- **Remote:** `origin/develop` matches local HEAD
-- **Tests:** `886 passed in 25.39s` via `.venv/bin/python -m pytest -q`; CI
-  parity `test-cpu` now `882 passed, 4 deselected` with coverage
+- **HEAD:** latest pushed baseline before this follow-up is `4b9a8ea` —
+  `fix: track ansible models role for ci lint`; next commit carries the
+  test-cpu dependency fix.
+- **Remote:** `origin/develop` has the first CI repair pair; this follow-up is
+  staged for push.
+- **Tests:** `886 passed in 25.39s` via `.venv/bin/python -m pytest -q`; clean
+  dev-only CI parity now `882 passed, 4 deselected` with coverage
 - **Audit:** 0 findings on 218 files via `.venv/bin/python scripts/audit_forbidden.py`
 - **Pre-commit:** all hooks pass locally after tooling fixes
 - **Compose validate:** all CI profiles render and pass `docker compose config --quiet`
-- **Docker builds:** base/cpu/vulkan pass locally with daemon `docker build`
+- **Docker builds:** base/cpu/vulkan pass locally with daemon `docker build`;
+  GitHub run `26293422173` also proved cpu/vulkan/rocm Docker builds green on
+  the self-hosted runner
 - **Doctor:** 7 ok / 2 warn / 0 fail on Strix Halo box
 - **Doctor warnings:** kernel below 6.18.4 guidance; GTT pool 62.5 GiB needs GRUB tuning
 - **Dirty worktree:** yes, large cloud-artifact layer across ~101 files
@@ -60,10 +65,10 @@ this as the current gate before new feature work:
 | Gate | Status | Notes |
 |------|--------|-------|
 | S0.1 Identify dirty layer | in progress | Mix of formatter churn, pre-commit/ansible-lint tweak, schema export, CI fixes, small wizard/install fixes |
-| S0.2 Verify behavior | done | `pytest -q` = 886 passed; audit = 0 findings; CI parity gates now green locally |
-| S0.3 Decide split | next | Separate mechanical formatting from real fixes before commit |
-| S0.4 Planning sync | in progress | This file + ROADMAP/BACKLOG/session note |
-| S0.5 GitHub CI rerun | next | Commit/push repaired workflow; ROCm docker build still needs runner evidence |
+| S0.2 Verify behavior | done | `pytest -q` = 886 passed; audit = 0 findings; clean dev-only CI parity = 882 passed / 4 deselected |
+| S0.3 Decide split | done | CI repair committed as focused chunks: `ecc88d7`, `4b9a8ea`, plus pending test-cpu deps follow-up |
+| S0.4 Planning sync | in progress | This file + session note record the runner evidence |
+| S0.5 GitHub CI rerun | in progress | Run `26293422173` proved all jobs except test-cpu; test-cpu fix ready for rerun |
 
 **Rule:** do not start M6 feature work until the dirty layer is classified
 and either committed in scoped chunks or intentionally left documented.
@@ -106,7 +111,8 @@ Recommended phase order:
 2. **M6.A — Planning/codebase refresh:** update `.planning/codebase/*` to
    post-M5 module counts and architecture.
 3. **M6.B — Tooling gate cleanup:** local pre-commit/test-cpu/compose/docker
-   base+cpu+vulkan are green; next evidence is GitHub Actions after commit/push.
+   base+cpu+vulkan are green; GitHub has proved docker cpu/vulkan/rocm and
+   compose; next evidence is the test-cpu dependency follow-up rerun.
 4. **M6.C — Real install E2E:** run `agmind install` dry-run/full path on the
    Strix Halo box and record evidence.
 5. **M6.D — Cluster deploy smoke:** validate generated inventory + second LAN
@@ -116,10 +122,10 @@ Recommended phase order:
 
 ## Known live gaps
 
-- Dirty worktree must be reconciled before feature work.
+- One test-cpu CI follow-up still needs push + GitHub rerun: use `.[dev]` for
+  the host test job and keep native llama builds in Docker/backend lanes.
+- Dirty worktree must stay reconciled before feature work.
 - `.planning/codebase/*` still reflects older module/test counts.
-- ROCm docker build is still unverified after the workflow repair; old run was
-  cancelled after spending 90+ minutes on the stale buildx-based job.
 - Doctor warnings need host tuning: kernel/GTT pool.
 - Grafana dashboards JSON provision remains deferred.
 - Authelia 2FA wizard flow remains deferred.

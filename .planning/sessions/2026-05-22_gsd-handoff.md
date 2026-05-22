@@ -151,3 +151,53 @@ Not yet rerun locally:
   old buildx-based ROCm job before cancellation.
 - post-commit GitHub Actions run; changes are still local and must be committed
   + pushed to exercise the self-hosted runner on the repaired workflow.
+
+## CI follow-up — run `26293422173`
+
+After committing/pushing the first repair pair:
+
+- `ecc88d7` — `ci: repair self-hosted gates after cloud handoff`
+- `4b9a8ea` — `fix: track ansible models role for ci lint`
+
+GitHub run `26293422173` on the self-hosted runner finished with:
+
+- green: `pre-commit`, `audit`, `schema-validate`, `compose-validate`
+- green: `docker-build (cpu)`, `docker-build (vulkan)`, `docker-build (rocm)`
+- failed: `test-cpu`
+- skipped: `test-strix-halo` because it depends on `test-cpu`
+
+`test-cpu` failed before tests started. The install step attempted
+`uv pip install -e ".[cpu,dev]"`; the `cpu` extra includes
+`llama-cpp-python`, which triggered a native CMake build on the host runner.
+The host does not expose `gcc`/`g++`, so CMake failed with:
+
+```text
+Could not find the compiler specified in the environment variable CC: gcc.
+```
+
+Follow-up fix:
+
+- `test-cpu` now installs `.[dev]` only. The CPU/backend contract tests cover
+  the lazy fallback path when `llama_cpp` is absent; native llama builds belong
+  in Docker/backend lanes, not in the host pytest lane.
+- `pytest-asyncio` is now explicitly listed in the dev extra. The clean venv
+  proved that previous local success had relied on an ambient dependency.
+
+Clean dev-only parity verification:
+
+```bash
+uv venv /tmp/agmind-ci-dev-test
+uv pip install --python /tmp/agmind-ci-dev-test/bin/python -e '.[dev]'
+/tmp/agmind-ci-dev-test/bin/ruff check .
+/tmp/agmind-ci-dev-test/bin/ruff format --check .
+/tmp/agmind-ci-dev-test/bin/mypy agmind/
+/tmp/agmind-ci-dev-test/bin/pytest -q --cov=agmind --cov-branch --cov-report=xml:/tmp/agmind-ci-dev-coverage.xml --cov-report=term -m 'backend_any or backend_cpu'
+```
+
+Observed:
+
+- ruff: passed
+- mypy: passed
+- pytest: 882 passed, 4 deselected, coverage XML produced
+
+Next action: commit/push this follow-up and watch the new GitHub Actions run.
