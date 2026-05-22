@@ -1,0 +1,97 @@
+---
+# Скачать GGUF модели per tier.
+# Версии моделей — из templates/models.yaml (будет создан R-llm-models recon).
+# Сейчас минимум: bge-m3 (embed) + bge-reranker-v2-m3 (rerank).
+
+- name: Create models dir
+  ansible.builtin.file:
+    path: "{{ agmind_models_dir }}"
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+
+- name: Detect total system RAM (для tier selection)
+  ansible.builtin.set_fact:
+    agmind_ram_gib: "{{ (ansible_memtotal_mb / 1024) | int }}"
+
+- name: Auto-select model tier per RAM (thresholds per R-llm-models)
+  ansible.builtin.set_fact:
+    agmind_tier_resolved: >-
+      {% if agmind_ram_gib | int >= 144 %}XXL
+      {% elif agmind_ram_gib | int >= 96 %}XL
+      {% elif agmind_ram_gib | int >= 54 %}L
+      {% elif agmind_ram_gib | int >= 27 %}M
+      {% else %}S
+      {% endif %}
+  when: agmind_models_tier == 'auto'
+
+- name: Use explicit tier if set
+  ansible.builtin.set_fact:
+    agmind_tier_resolved: "{{ agmind_models_tier }}"
+  when: agmind_models_tier != 'auto'
+
+- name: Display tier
+  ansible.builtin.debug:
+    msg: "Models tier: {{ agmind_tier_resolved | trim }} (RAM: {{ agmind_ram_gib }} GiB)"
+
+# Embed: BGE-M3 Q8_0 (всегда, ~635 MB)
+- name: Download BGE-M3 Q8_0 GGUF
+  ansible.builtin.get_url:
+    url: https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf
+    dest: "{{ agmind_models_dir }}/{{ agmind_models.embed_default }}"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
+    timeout: 600
+  retries: 3
+
+# Rerank: BGE-Reranker-v2-m3 Q8_0 (всегда, ~636 MB)
+- name: Download BGE-Reranker-v2-m3 Q8_0 GGUF
+  ansible.builtin.get_url:
+    url: https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/resolve/main/bge-reranker-v2-m3-Q8_0.gguf
+    dest: "{{ agmind_models_dir }}/{{ agmind_models.rerank_default }}"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
+    timeout: 600
+  retries: 3
+
+# LLM tier-based download (per templates/models.yaml resolved by agmind.models)
+- name: Load models.yaml inventory
+  ansible.builtin.set_fact:
+    agmind_models_yaml: "{{ lookup('file', playbook_dir + '/../templates/models.yaml') | from_yaml }}"
+
+- name: Resolve LLM for tier {{ agmind_tier_resolved | trim }}
+  ansible.builtin.set_fact:
+    agmind_llm_spec: "{{ agmind_models_yaml.llm_tiers[agmind_tier_resolved | trim].primary }}"
+
+- name: Display LLM choice
+  ansible.builtin.debug:
+    msg: |
+      LLM for tier {{ agmind_tier_resolved | trim }}:
+        {{ agmind_llm_spec.name }} ({{ agmind_llm_spec.hf_repo }})
+        File: {{ agmind_llm_spec.filename }}
+        Quant: {{ agmind_llm_spec.quant }}, size: {{ agmind_llm_spec.size_gb }} GB
+        Verification: {{ agmind_llm_spec.verification }}
+
+- name: Download LLM GGUF (это может занять много минут)
+  ansible.builtin.get_url:
+    url: "https://huggingface.co/{{ agmind_llm_spec.hf_repo }}/resolve/main/{{ agmind_llm_spec.filename }}"
+    dest: "{{ agmind_models_dir }}/{{ agmind_llm_spec.filename }}"
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
+    timeout: 7200
+  retries: 3
+  when: agmind_download_llm | default(false) | bool
+
+- name: Note about manual LLM download
+  ansible.builtin.debug:
+    msg: |
+      LLM auto-download skipped (agmind_download_llm=false).
+      Manually:
+        wget -P {{ agmind_models_dir }} \
+          "https://huggingface.co/{{ agmind_llm_spec.hf_repo }}/resolve/main/{{ agmind_llm_spec.filename }}"
+      Or re-run: ansible-playbook install.yml -t models -e agmind_download_llm=true
+  when: not (agmind_download_llm | default(false) | bool)

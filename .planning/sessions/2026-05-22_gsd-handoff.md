@@ -1,10 +1,10 @@
 # Session 2026-05-22 — GSD handoff after cloud migration
 
-> **Branch:** develop  
-> **HEAD:** `80a12c9` (`origin/develop` matches)  
-> **Status:** dirty worktree, large local cloud-artifact layer  
-> **Tests:** 886 passed  
-> **Audit:** 0 findings  
+> **Branch:** develop
+> **HEAD:** `80a12c9` (`origin/develop` matches)
+> **Status:** dirty worktree, large local cloud-artifact layer
+> **Tests:** 886 passed
+> **Audit:** 0 findings
 > **Doctor:** 7 ok / 2 warn / 0 fail
 
 ## Context

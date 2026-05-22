@@ -58,7 +58,7 @@ dmypy.json
 *.gguf
 *.bin
 *.safetensors
-models/
+/models/
 checkpoints/
 
 # Logs / runtime
