@@ -18,7 +18,7 @@ concurrency:
 jobs:
   # ---- Static checks via pre-commit hooks (single gate для всего consistency) ----
   pre-commit:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,7 +35,7 @@ jobs:
 
   # ---- Forbidden-pattern audit ----
   audit:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,7 +51,7 @@ jobs:
 
   # ---- Schema validation (Phase H'.B) — отдельная job для visibility ----
   schema-validate:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,7 +67,7 @@ jobs:
 
   # ---- Python lint + type + test (CPU backend on Linux runner) ----
   test-cpu:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     needs: [audit, schema-validate]
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +99,7 @@ jobs:
 
   # ---- Docker matrix build ----
   docker-build:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     needs: [audit]
     strategy:
       fail-fast: false
@@ -133,7 +133,7 @@ jobs:
 
   # ---- Compose validation (Phase L.A) ----
   compose-validate:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v4
@@ -159,10 +159,17 @@ jobs:
             docker compose -f "$f" config --quiet
           done
 
-  # ---- Optional: real Strix Halo hardware (self-hosted runner) ----
+  # ---- Real Strix Halo hardware (self-hosted runner — same machine) ----
+  # M5-followup: since все jobs теперь на self-hosted, этот тоже бежит на
+  # каждом push/PR (но fork PRs пропускаются — security: чужой код не должен
+  # запускаться на твоей машине без approval).
   test-strix-halo:
     runs-on: [self-hosted, linux, x64, strix-halo]
-    if: github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: [audit, test-cpu]
     strategy:
       fail-fast: false

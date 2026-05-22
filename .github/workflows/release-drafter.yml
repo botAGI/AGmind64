@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   update_release_draft:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: release-drafter/release-drafter@v6
         env:
