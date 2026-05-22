@@ -4,7 +4,7 @@ milestone: v0.6.0
 milestone_name: "AGmind x86 — post-M5 hardening + cloud-artifact reconciliation"
 status: ci-testcpu-followup-local
 last_updated: "2026-05-22"
-last_activity: "2026-05-22 — self-hosted CI rerun proved pre-commit/audit/schema/compose/docker cpu+vulkan+rocm; test-cpu follow-up also removed setup-python pip cache stall"
+last_activity: "2026-05-22 — self-hosted CI rerun proved pre-commit/audit/schema/compose/docker cpu+vulkan+rocm; test-cpu now reaches pytest and needs executable bit fix"
 progress:
   m1_phases: 7
   m1_completed: 7
@@ -40,11 +40,11 @@ multi-step Textual TUI with EN/RU i18n.
 ## Current position
 
 - **Branch:** `develop`
-- **HEAD:** latest pushed baseline before this cache follow-up is `8e74c6c` —
-  `ci: avoid native llama build in test-cpu`; next commit removes the
-  setup-python pip cache stall.
-- **Remote:** `origin/develop` has the first CI repair pair plus test-cpu deps
-  fix; cache follow-up is staged for push.
+- **HEAD:** latest pushed baseline before this mode follow-up is `8fbad67` —
+  `ci: skip setup-python pip cache on self-hosted`; next commit records the
+  executable bit for `scripts/amdgpu_textfile.sh`.
+- **Remote:** `origin/develop` has the CI repair pair plus test-cpu deps/cache
+  fixes; mode follow-up is staged for push.
 - **Tests:** `886 passed in 25.39s` via `.venv/bin/python -m pytest -q`; clean
   dev-only CI parity now `882 passed, 4 deselected` with coverage
 - **Audit:** 0 findings on 218 files via `.venv/bin/python scripts/audit_forbidden.py`
@@ -66,9 +66,9 @@ this as the current gate before new feature work:
 |------|--------|-------|
 | S0.1 Identify dirty layer | in progress | Mix of formatter churn, pre-commit/ansible-lint tweak, schema export, CI fixes, small wizard/install fixes |
 | S0.2 Verify behavior | done | `pytest -q` = 886 passed; audit = 0 findings; clean dev-only CI parity = 882 passed / 4 deselected |
-| S0.3 Decide split | done | CI repair committed as focused chunks: `ecc88d7`, `4b9a8ea`, plus pending test-cpu deps/cache follow-up |
+| S0.3 Decide split | done | CI repair committed as focused chunks: `ecc88d7`, `4b9a8ea`, `8e74c6c`, `8fbad67`, plus pending script mode follow-up |
 | S0.4 Planning sync | in progress | This file + session note record the runner evidence |
-| S0.5 GitHub CI rerun | in progress | Run `26293422173` proved all jobs except test-cpu; run `26294766057` was cancelled at setup-python cache stall; deps/cache fix ready for rerun |
+| S0.5 GitHub CI rerun | in progress | Run `26293422173` proved all jobs except test-cpu; `26294766057` was cancelled at setup-python cache stall; `26295975745` reached pytest and failed only on missing Git executable bit |
 
 **Rule:** do not start M6 feature work until the dirty layer is classified
 and either committed in scoped chunks or intentionally left documented.
@@ -122,9 +122,8 @@ Recommended phase order:
 
 ## Known live gaps
 
-- One test-cpu CI follow-up still needs push + GitHub rerun: use `.[dev]` for
-  the host test job, avoid setup-python pip cache restore, and keep native
-  llama builds in Docker/backend lanes.
+- One test-cpu CI follow-up still needs push + GitHub rerun: record
+  `scripts/amdgpu_textfile.sh` mode as `100755`.
 - Dirty worktree must stay reconciled before feature work.
 - `.planning/codebase/*` still reflects older module/test counts.
 - Doctor warnings need host tuning: kernel/GTT pool.

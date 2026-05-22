@@ -186,6 +186,10 @@ Follow-up fix:
   install via `uv`; run `26294766057` reached the corrected `test-cpu` lane but
   was cancelled after `setup-python` stalled restoring a 76 MB pip cache at
   94.5%.
+- Run `26295975745` then reached pytest successfully. It failed only because
+  `scripts/amdgpu_textfile.sh` was executable on the working tree but tracked
+  in Git as mode `100644`; the observability test requires it to checkout as
+  executable.
 
 Clean dev-only parity verification:
 
