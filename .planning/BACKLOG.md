@@ -1,11 +1,12 @@
-# AGmind x86 — Backlog (post-M5, 2026-05-22)
+# AGmind x86 — Backlog (post-M5, 2026-05-23)
 
 > **M5 SHIPPED 2026-05-21:** model split + per-service settings + TUI polish round 2
 > + cluster TUI integration. 886 tests · 0 audit findings.
 > Commits: `1e63fb0` (M5.1+M5.2) + `c86b3e0` (M5.3+M5.4).
 >
-> **Current gate 2026-05-22:** reconcile dirty cloud-artifact layer before
-> new feature work. `HEAD=80a12c9`, pytest 886 passed, audit 0, doctor 7 ok / 2 warn.
+> **Current gate 2026-05-23:** M6.C real install E2E after full green
+> self-hosted CI and codebase/planning cleanup. Latest full green CI run:
+> `26297545718` on `33a2050`.
 
 
 Структурированный backlog для next sessions. Сгруппировано по
@@ -17,7 +18,7 @@ Legend:
 - 🟢 **Medium** — UX polish
 - 🔵 **Low** — nice-to-have
 
-## Status snapshot (2026-05-22)
+## Status snapshot (2026-05-23)
 
 - **M1 v0.1.0-dev (Migration alpha):** ✅ SHIPPED
 - **M2 v0.2.0 (Production hardening):** ✅ SHIPPED
@@ -26,27 +27,28 @@ Legend:
 - **M5 v0.5.0 (Model split + TUI polish round 2):** ✅ SHIPPED
 - **M6 v0.6.0 candidate (Hardening + E2E):** current
 
-Test baseline: **886 passed, 0 skipped, 0 failed.** Audit: 0 findings.
+CI baseline: **full self-hosted GitHub Actions green**, including Docker
+cpu/vulkan/rocm and Strix Halo smoke vulkan/rocm. Local dev-only parity:
+882 passed, 4 deselected for `backend_any or backend_cpu`.
 
 ---
 
-## Live queue — M6.S0 Cloud-artifact reconciliation
+## Completed checkpoint — M6.S0/M6.A cleanup
 
 | # | Task | Priority | Notes |
 |---|------|----------|-------|
-| S0.1 | Classify 101-file dirty worktree | 🔴 | Separate formatting churn from semantic fixes |
-| S0.2 | Decide commit grouping | 🔴 | Likely groups: planning sync, schema/tooling, formatter cleanup, small behavior fixes |
-| S0.3 | Validate with project gates after each group | 🔴 | pytest + audit minimum |
-| S0.4 | Make lint/pre-commit policy explicit | 🟡 | `ruff check .` currently not a clean gate |
-| S0.5 | Update `.planning/codebase/*` after M5 | 🟡 | Architecture/index still stale |
+| S0.1 | Remove Claude live artifacts | 🔴 | `.claude/` + `CLAUDE.md` removed and ignored |
+| S0.2 | Refresh `.planning/codebase/*` | 🔴 | Current snapshot + architecture/deps/extensions/invariants/pitfalls |
+| S0.3 | Document agent plugins/tooling needs | 🟡 | `AGENT_TOOLING.md` |
+| S0.4 | Verify cleanup | 🔴 | pre-commit/audit/schema/git status inspected |
 
 ## Live queue — M6 hardening candidates
 
 | # | Task | Priority | Notes |
 |---|------|----------|-------|
 | M6.C | Real `agmind install` E2E on Strix Halo | 🔴 | Record dry-run/full path evidence |
+| M6.B.5 | Keep Dependabot/release-drafter off critical runner queue | 🟡 | Current self-hosted runner is single-lane |
 | M6.D | Cluster deploy smoke with second LAN node | 🟡 | mDNS exists; replication needs evidence |
-| M6.B | Tooling gate cleanup | 🟡 | ruff/pre-commit/ansible-lint/mypy story |
 | M6.E.1 | Grafana dashboards JSON provision | 🟢 | Deferred since M2 |
 | M6.E.2 | Authelia 2FA wizard flow | 🟢 | Service exists; UX/config missing |
 | M6.E.3 | `agmind chat` against running deploy | 🟢 | Small demo-value feature |

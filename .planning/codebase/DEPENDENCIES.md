@@ -1,114 +1,120 @@
-# AGmind internal dependencies
+# AGmind Dependency Map
 
-Scanned 2026-05-19. **No circular imports detected.**
+Last updated: 2026-05-23.
 
-## Import graph (intra-agmind)
+## Internal Tiers
 
-### Tier 0 — foundation (no internal imports)
-- `agmind.log` — logging utilities. **9+ callers** (всё дерево использует).
-- `agmind._env` — stdlib-only .env parser.
-- `agmind.i18n` — minimal i18n (stdlib + JSON).
-- `agmind.config.env` — render_env + write_env (stdlib only).
-- `agmind.compute.base` — ABC (Backend, DeviceInfo, LLMHandle). **8+ callers**.
-- `agmind.compute.config` — ComputeConfig + Profile enum.
+### Tier 0 - foundations
 
-### Tier 1 — detection / utilities
-- `agmind.secrets` ← `agmind.log`
-- `agmind.compute.detect` ← `agmind.log`  — **4 callers** (backends, models, doctor, agmind.compute via __init__).
+These modules should not import high-level project modules:
 
-### Tier 2 — orchestrators / engines
-- `agmind.compute._registry` ← `compute.base`, `compute.config`, `log`
-  - Lazy imports: backends (cpu/vulkan/rocm/npu_stub) on-demand
-- `agmind.compute.backends.{cpu,vulkan,rocm}` ← `compute.base`, `compute.detect`, `log`
-  - Lazy imports: `_engines/*` через `from agmind.compute.backends._engines.X import Y`
-- `agmind.compute.backends.npu_stub` ← `compute.base`
-- `agmind.compute.clients.llama_server` ← `log` (stdlib urllib only)
-- `agmind.compute.backends._engines.llama_cpp_cpu` ← `compute.base`, `log`
-  - Lazy imports: `llama_cpp` (только при load())
-- `agmind.compute.backends._engines.llama_cpp_vulkan/hip` ← `compute.base`, `_engines.llama_cpp_cpu` (для shared helpers), `log`
-- `agmind.compute.backends._engines.llama_server_handle` ← `compute.base`, `compute.clients`, `log`
-- `agmind.compute.backends._engines.http_helper` ← `compute.base`, lazy `compute.config`, `compute.clients`
-- `agmind.services.registry` ← `log` — **2 callers** (services.__init__, models)
-- `agmind.models` ← `log`, `compute.detect`, `services.registry._parse_yaml`
-- `agmind.cluster.peer` ← `log`
-- `agmind.cluster.router` ← `cluster.peer`, `log`
-- `agmind.diagnostics.doctor` ← `compute.detect`, `log`
+- `agmind.log`
+- `agmind._env`
+- `agmind.i18n`
+- `agmind.config.env`
+- `agmind.compute.base`
+- `agmind.compute.config`
+- `agmind.schemas.service`
 
-### Tier 3 — CLI (leaf layer)
-- `agmind.cli.__init__` ← `agmind.__version__`, `log` (lazy typer)
-- `agmind.cli.models_cmd` ← `log`, `models`
-- `agmind.cli.deploy_cmd` ← `log`
-- `agmind.cli.chat_cmd` ← `log`, `compute.clients`
-- `agmind.cli.embed_cmd` ← `compute.clients`
-- `agmind.cli.audit` — wraps `subprocess scripts/audit_forbidden.py`
+### Tier 1 - detection and primitives
 
-### Tier 4 — entry point
-- `agmind.__main__` ← `agmind.cli.app`
+- `agmind.compute.detect` depends on logging and host/system probes.
+- `agmind.secrets` depends on logging and filesystem permissions.
+- `agmind.models` depends on service YAML parsing and compute detection.
+- `agmind.services.capability_bindings` is table-like and should remain light.
 
-## Cycle detection
+### Tier 2 - domain services
 
-**NONE** — graph ациклический. Foundation libs (`agmind.log`,
-`agmind.compute.base`) на самом дне; CLI на вершине.
+- `agmind.compute._registry` discovers backend entry points and imports backend
+  classes lazily.
+- `agmind.compute.backends.*` implement `Backend` and may import heavy runtime
+  engines lazily from `_engines/`.
+- `agmind.compute.clients.llama_server` is the HTTP client for running
+  llama-server containers.
+- `agmind.services.registry`, `renderer`, `compatibility` own service graph
+  loading and compose generation.
+- `agmind.install.*`, `deploy.*`, `ops.*`, `cluster.*`, `diagnostics.*` are
+  workflow/domain modules.
 
-## External dependencies (pyproject.toml)
+### Tier 3 - user surface
 
-### Hard
-- `numpy ≥2.0` — compute foundation
-- `typer ≥0.12` — CLI (soft в практике; lazy в `cli/__init__.py` через try/except)
-- `rich ≥13.7` — terminal output
-- `questionary ≥2.0` — interactive prompts
-- `platformdirs ≥4.2` — XDG paths
-- `pydantic ≥2.7` — data validation
+- `agmind.cli.*` and `agmind.cli.tui.*` are leaf modules. They may import
+  domain services lazily, but domain modules should not import CLI/TUI modules.
+- `agmind.__main__` only delegates to `agmind.cli.app`.
+
+## Heavy Dependency Rules
+
+- `llama_cpp` imports stay inside engine methods.
+- Torch imports stay in backend/runtime lanes, not import-time package paths.
+- PyYAML is allowed when installed; `services.registry` keeps a tiny fallback
+  parser for narrow legacy compatibility.
+- Textual imports stay inside TUI modules.
+- Ansible is invoked by install steps as a subprocess; Ansible modules should
+  not become Python runtime dependencies.
+
+## External Dependencies
+
+### Core install
+
+From `pyproject.toml`:
+
+- `numpy`
+- `typer`
+- `rich`
+- `questionary`
+- `platformdirs`
+- `pydantic`
+- `ansible-core`
+- `structlog`
+- `textual`
+- `pyfiglet`
+- `PyYAML`
+- `huggingface_hub`
+- `zeroconf`
 
 ### Optional extras
-- `cpu`: torch (CPU), onnxruntime, llama-cpp-python, scipy
-- `vulkan`: llama-cpp-python (built с `GGML_VULKAN=ON`), scipy
-- `rocm`: torch (ROCm index), onnxruntime, llama-cpp-python (`GGML_HIP=ON`), scipy
-- `dev`: pytest+cov+benchmark, ruff, mypy, pre-commit, types-PyYAML
 
-## Lazy imports (deferred)
+- `cpu`: `torch`, `onnxruntime`, `llama-cpp-python`, `scipy`
+- `vulkan`: `llama-cpp-python`, `scipy`
+- `rocm`: `torch`, `onnxruntime`, `llama-cpp-python`, `scipy`
+- `dev`: `pytest`, `pytest-asyncio`, `pytest-cov`,
+  `pytest-benchmark`, `ruff`, `mypy`, `pre-commit`, type stubs
 
-- `llama_cpp` — в `_engines/llama_cpp_*.py` через `from llama_cpp import Llama` внутри методов
-- `typer` — в `cli/__init__.py` через `try/except ImportError`
-- `torch` — в engines (только если backend выбран)
-- `onnxruntime` — то же
-- `yaml` — в `services/registry.py::_parse_yaml` с fallback на bundled mini-parser
-- `urllib.request` — в `clients/llama_server.py` (stdlib только)
+## CI Dependencies
 
-## Refactor candidates (most-imported)
+The self-hosted CI assumes:
 
-| Module | Caller count | Notes |
-|--------|--------------|-------|
-| `agmind.log` | 9+ | Well-isolated foundation. **No refactor needed.** |
-| `agmind.compute.base` | 8+ | Stable ABC. Adding LLMHandle methods OK; removing — breaking. |
-| `agmind.compute.detect` | 4 | Возможна extraction в `agmind.hardware` если другие проекты переиспользуют. |
-| `agmind.services.registry` | 2 | `_parse_yaml` зашарен с `agmind.models` — выделить в `agmind.util.yaml`. |
-| `agmind.cluster.peer` | 2 | Тонкий, стабилен. |
+- system `python3` is Python 3.12 compatible
+- `$HOME/.local/bin/uv`
+- `$HOME/.local/bin/uvx`
+- Docker daemon with access to `/dev/dri` and `/dev/kfd` on Strix Halo
+- GitHub runner labels: `self-hosted`, `linux`, `x64`, `strix-halo`
 
-## Architecture patterns
+The workflow intentionally does not use `actions/setup-python` for normal CI
+jobs. The runner already has the needed Python, and setup-python toolcache
+downloads stalled repeatedly.
 
-1. **Lazy heavy deps** — backends/_engines не импортируются на module load,
-   только при `backend.load_llm()`. Это позволяет import `agmind` без
-   llama_cpp/torch установленных.
-2. **Config-driven selection** — Profile enum + env vars drive backend +
-   engine choice. Нет статической coupling backend↔engine.
-3. **HTTP / in-process duality** — `LlamaServerHandle` (HTTP) и
-   `LlamaCpp*Engine` (in-process) реализуют один LLMHandle ABC.
-   Backend выбирает через `try_http_handle()` helper.
-4. **YAML с fallback parser** — `services/registry.py::_parse_yaml` пробует
-   PyYAML, если нет — bundled mini-parser. Это позволяет работать без
-   `pip install pyyaml` (некритично для dev, важно для slim Dockerfile).
-5. **stdlib HTTP** — `clients/llama_server.py` использует только urllib,
-   без requests/httpx. Меньше surface, больше portable.
+## Import Cycle Policy
 
-## High-confidence stable
+Keep the graph pointed upward:
 
-- `agmind.log` — no need to refactor
-- `agmind.compute.base` — ABC contract, не менять без `LLMHandle.chat()` semver bump
-- `agmind.services.registry` — schema stable за исключением field additions
+```text
+foundation -> domain -> orchestration -> CLI/TUI
+```
 
-## Volatile (могут меняться)
+Disallowed directions:
 
-- `agmind.cli.*` — будут добавляться commands в M2 (backup/upgrade/config)
-- `agmind.models.py` — может добавиться model categories beyond LLM tiers (e.g. coder/chat/embed sub-trees)
-- `agmind.cluster.peer.probe_peer` — async версия planned
+- domain module importing CLI/TUI
+- schema/catalog module importing deploy/install
+- backend registry importing heavy engine modules at import time
+- test-only helpers imported by runtime code
+
+## Update Checklist
+
+When adding a dependency:
+
+1. Decide whether it is core, optional extra, or dev-only.
+2. Add a test that proves import without optional heavy deps still works.
+3. Update `pyproject.toml`.
+4. Update this file if the dependency changes a boundary.
+5. Run `pre-commit`, `mypy`, and the relevant pytest marker set.

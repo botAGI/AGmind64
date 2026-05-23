@@ -63,8 +63,11 @@ checkpoints/
 
 # Logs / runtime
 *.log
-.claude/session-logs/
 migration_progress.lock
+
+# Agent-local artifacts
+.claude/
+CLAUDE.md
 
 # Local dev
 local-*

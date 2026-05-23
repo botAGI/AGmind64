@@ -1,211 +1,153 @@
 # AGmind Extension Points
 
-Где добавлять новые engines / services / tiers / strategies — карта
-для contributors.
+Last updated: 2026-05-23.
 
-## E.1 Add new compute backend
+This file describes supported extension seams. It also marks what is not an
+extension point, so new work does not revive cloud/Claude artifacts.
 
-**Когда:** новое железо (ARM x86_64 emulation? Intel iGPU?).
+## Supported Extension Points
 
-**Files to touch:**
-1. Create `agmind/compute/backends/<name>.py` extending `Backend`
-2. Add to `agmind/compute/_registry.py::_load_backends()` (~5 lines)
-3. Add to `_BACKEND_PRIORITY` tuple
-4. Update `agmind/compute/config.py::_ALLOWED_BACKENDS`
-5. Add Dockerfile if needed: `docker/Dockerfile.<name>`
-6. Add to CI matrix `.github/workflows/ci.yml::docker-build.strategy.matrix.backend`
-7. Tests: `tests/compute/test_contract.py` (add marker `backend_<name>`),
-   `pyproject.toml::[tool.pytest.ini_options]::markers`
+### 1. Compute Backends
 
-**Example:** Intel Arc GPU support (когда станет relevant):
-```python
-class IntelArcBackend(Backend):
-    name = "intel"
-    @classmethod
-    def available(cls) -> bool:
-        return Path("/sys/class/drm/card*/device/vendor").exists() and ...
+Mechanism: Python package entry points.
+
+```toml
+[project.entry-points."agmind.backends"]
+my_backend = "agmind_my_backend:MyBackend"
 ```
 
-## E.2 Add new engine inside existing backend
+Contract:
 
-**Когда:** new inference engine (SGLang ROCm, MLC-LLM Vulkan, LightLLM).
+- subclass or implement `agmind.compute.base.Backend`
+- expose `available()`, `make()`, `device_info()`
+- lazy-import heavy native libraries
+- participate in auto-select only if core explicitly adds it to
+  `_BACKEND_PRIORITY`; otherwise use explicit `AGMIND_BACKEND=my_backend`
 
-**Files to touch:**
-1. Create `agmind/compute/backends/_engines/<engine>_<backend>.py`
-2. Update `agmind/compute/backends/<backend>.py::_M2_ENGINES` или
-   `_SUPPORTED_ENGINES`
-3. Update `agmind/compute/config.py::_ALLOWED_ENGINES`
-4. Update routing matrix в `AGMIND_MIGRATION_SPEC.md §1.2.6`
-5. ADR: `docs/adr/NNNN-engine-<name>.md`
+Built-ins:
 
-**Example:** vLLM ROCm M2 engine:
-```python
-# agmind/compute/backends/_engines/vllm_rocm.py
-class VLLMROCmEngine:
-    def load(self, model_path, **kwargs) -> LLMHandle: ...
-    def embed(self, texts, model) -> list[list[float]]: ...
-    def rerank(self, query, docs) -> list[float]: ...
+- `cpu`
+- `vulkan`
+- `rocm`
+- `npu`
+
+### 2. Service Descriptors
+
+Mechanism: one YAML file under `templates/services/`.
+
+Contract:
+
+- validate against `templates/schemas/service.json`
+- include profile membership and runtime image
+- declare `provides`, `consumes`, and `conflicts_with` where relevant
+- use pinned tags; no `:latest`
+- keep secrets out of descriptors
+
+Developer UX:
+
+```bash
+agmind service scaffold <name> --tier <tier>
+agmind service validate
+agmind render compose --profile core
 ```
 
-В `rocm.py`:
-```python
-_M2_ENGINES = frozenset({"vllm", "infinity"})
-# Сейчас raises NotImplementedError; заменить на real impl.
-```
+### 3. Capability Bindings
 
-## E.3 Add new service в stack
+Mechanism: `agmind/services/capability_bindings.py`.
 
-**Когда:** new container (новый vector store, new monitoring agent).
+Use this when a provider service should automatically populate env vars for a
+consumer, for example vector DB or inference endpoints. Keep it table-driven.
 
-**Files to touch:**
-1. `templates/services.yaml` — add entry под correct `profiles:`
-2. Pin image:tag + digest (verify amd64 manifest!)
-3. Update `docs/adr/0002-compute-backend-abstraction.md` если architecture-relevant
-4. Tests `tests/services/test_registry.py::test_each_service_*` auto-cover
+### 4. Compose Renderer Profiles
 
-**Example:** add Caddy as alternative proxy:
-```yaml
-caddy:
-  image: caddy:2.11.3-alpine
-  digest: 86deaf5...
-  profiles: [core-caddy]
-  purpose: Auto-HTTPS reverse proxy alternative
-```
+Mechanism:
 
-User selects через `agmind_proxy: caddy` в Ansible group_vars.
+- descriptor `profiles`
+- renderer profile selection
+- compatibility checks
 
-## E.4 Add new LLM tier / model
+Use this for new bundles such as an alternative vector DB or UI. Do not fork a
+second compose renderer.
 
-**Когда:** new tier (XXXL для 256+ GB?), new model (Llama 5 release).
+### 5. Model Catalog
 
-**Files to touch:**
-1. `templates/models.yaml::llm_tiers` — add tier OR new model в existing
-2. Update `agmind/models.py::_TIER_RAM_THRESHOLDS_GB` if new tier
-3. Update Ansible `roles/models/tasks/main.yml::Auto-select model tier per RAM`
-4. Update `agmind/compute/detect.py::detect_host` если new GPU class
-5. `tests/test_models.py` auto-covers tier matrix
+Mechanism: `templates/models.yaml` and `agmind.models`.
 
-**Antipattern check:** add to `models.yaml::antipatterns` если known issue.
+Use this for new LLM/embed/rerank/VLM options. The install wizard and model
+commands should read from the catalog, not hardcode model lists.
 
-## E.5 Add new routing strategy
+### 6. CLI Commands
 
-**Files to touch:**
-1. `agmind/cluster/router.py::RoutingStrategy` enum — new value
-2. `agmind/cluster/router.py::choose_peer()` — add branch
-3. `tests/cluster/test_router.py` — new test
-4. `docs/CLUSTER.md` — document strategy
+Mechanism: Typer subcommands under `agmind/cli/*_cmd.py` and registration in
+`agmind/cli/__init__.py`.
 
-**Example:** "least-latency" — track p99 latency per peer:
-```python
-class RoutingStrategy:
-    LEAST_LATENCY = "least-latency"
+Rules:
 
-def choose_peer(...):
-    if strategy == LEAST_LATENCY:
-        return min(alive, key=lambda h: h.last_latency_p99).peer
-```
+- CLI is a leaf layer.
+- Import domain modules lazily inside handlers.
+- Keep business logic out of CLI functions.
 
-PeerHealth должен tracking last_latency_p99 — add field.
+### 7. TUI Screens
 
-## E.6 Add new Ansible role
+Mechanism: Textual screens under `agmind/cli/tui/`.
 
-**Когда:** new bootstrap step (e.g., GPU monitoring agent, K8s integration).
+Rules:
 
-**Files to touch:**
-1. Create `ansible/roles/<role>/{tasks,handlers,templates,defaults}/`
-2. Add к `ansible/install.yml` с appropriate tags
-3. Update `tests/test_ansible_layout.py::role` parametrize list
-4. Update `docs/INSTALL.md` если user-facing
+- keep state dataclasses explicit
+- keep render/layout code separate from install/deploy logic
+- cover interactions with Textual Pilot tests when possible
 
-## E.7 Add new CLI command
+### 8. Install Steps
 
-**Files to touch:**
-1. Create `agmind/cli/<command>_cmd.py` (по примеру `models_cmd.py`)
-2. Wire в `agmind/cli/__init__.py::_make_app()` — add `@app.command()` либо
-   sub-app
-3. Tests `tests/test_cli.py` (with `typer.testing.CliRunner` если typer installed)
-4. Docs: `docs/QUICKSTART.md` или `docs/INSTALL.md`
+Mechanism:
 
-## E.8 Add new doctor check
+- `agmind.install.orchestrator.InstallOrchestrator`
+- step helpers in `agmind/install/steps.py`
 
-**Files to touch:**
-1. `agmind/diagnostics/doctor.py` — new `_check_X()` function returning `CheckResult`
-2. Add к `_CHECKS` tuple
-3. `tests/diagnostics/test_doctor.py::test_run_preflight_specific_checks_present`
-   — add name к expected set
+Use this for first-run workflows. Privileged host mutation still belongs to
+Ansible.
 
-## E.9 Add new i18n language
+### 9. Observability
 
-1. Create `agmind/i18n/<lang>.json` с keys равными en.json
-2. Update `agmind/i18n/__init__.py::_LANG_FILES`
-3. Test fallback в `tests/test_i18n.py`
+Mechanism:
 
-## E.10 Add new audit rule
+- `templates/observability/*`
+- service descriptors for Prometheus/Grafana/Loki/Alloy/exporters
+- scripts such as `scripts/amdgpu_textfile.sh`
 
-**Files to touch:**
-1. `scripts/audit_forbidden.py::RULES` — new (id, description, regex)
-2. Add `# audit: allow rule-self-reference` к regex string
-3. ADR if это new prohibited pattern (architectural decision)
-4. `tests/test_audit_script.py` — positive detection test
+Dashboard JSON provision is still backlog work. Add dashboards as templates,
+not generated one-off files.
 
-## E.11 Add new service profile
+### 10. Cluster
 
-**Когда:** logical grouping для opt-in (e.g., "code-server", "n8n").
+Mechanism:
 
-**Files to touch:**
-1. `agmind/services/registry.py::ServiceProfile` enum — new value
-2. `templates/services.yaml` — assign services к new profile
-3. `agmind_profiles` default в `ansible/group_vars/all.yml`
-4. `agmind/services/registry.py::services_for_profile` auto-handles
+- `agmind.cluster.detect`
+- `agmind.cluster.inventory`
+- `agmind.cluster.peer`
+- `agmind.cluster.router`
 
-## E.12 Add new recon report
+Peers are workers for inference; local node remains master/full stack.
 
-**Когда:** новая фича / external dep / architectural decision.
+## Not Extension Points
 
-**Files to touch:**
-1. Create `.planning/research/x86-migration/R-<topic>.md` или `R<N>-<topic>.md`
-2. Frontmatter (recon/date/status/source_agent/related)
-3. TL;DR + sections + sources с URLs + verification markers (verified/unverified/inferred)
-4. Update `docs/MIGRATION_PLAN.md::§8 Ресерчи` table
+- `.claude/` and `CLAUDE.md` are removed and ignored. Do not use them as live
+  project state.
+- `legacy/` migration context should not become an active integration surface.
+- CI should not depend on a cloud toolchain or mutable local artifacts.
+- Runtime Docker images should not be treated as dev images with pytest.
 
-## E.13 Update `AGMIND_MIGRATION_SPEC.md`
+## Future Project Plugins
 
-**When:** finalized architecture decision, разрешено править (informational).
+These are product-level plugin ideas, not required for the current CI/gate
+work:
 
-**Process:**
-1. Edit spec sections
-2. Append к Changelog block в top
-3. ADR cross-reference
-4. Update `.planning/STATE.md::Key decisions log`
+- `agmind backend` packaging helper for third-party `agmind.backends`
+  packages.
+- `agmind plugin list/install` marketplace command for service bundles.
+- Thin Dify tool plugin for RAGFlow/Docling sidecars, following the
+  sidecar-over-heavy-plugin pattern documented in research.
+- Observability plugin bundle for custom exporters and Grafana dashboards.
 
-## E.14 Hook integration points (для AI agents)
-
-- `.claude/agents/` — Claude Code subagent definitions (legacy AGmind had
-  deploy-verifier — можно создать аналог для x86)
-- `.claude/commands/` — slash commands (legacy had shellcheck/stack-status/verify)
-- MCP server integration — not yet, planned M3 (см. BACKLOG.md::N1)
-
-## E.15 New tier defaults
-
-Auto-tier detection thresholds в `agmind/models.py::_TIER_RAM_THRESHOLDS_GB`.
-Если адjust — `tests/test_models.py::test_detect_tier_*` adjustments
-required.
-
----
-
-## Anti-extension points (DON'T extend без discussion)
-
-- `AGMIND_MIGRATION_SPEC.md::§1.3` запреты — adding to "broken на gfx1151"
-  list требует recon + ADR
-- `scripts/audit_forbidden.py::RULES` — frozen invariant
-- `agmind/compute/base.py::LLMHandle` — ABC additions = breaking changes
-- `migration_progress.json::frozen_files` — SHA256 protected
-
-## Tips для contributors
-
-- Run `make audit` перед commit
-- Run `pytest -m backend_any` после Python changes
-- Run `ansible-playbook install.yml --check` после Ansible changes
-- ADR-first для architectural decisions
-- Recon-first для new external deps
-- Tests-first (TDD) для new public API
+Before implementing any of these, write or update an ADR and add a focused
+research note under `.planning/research/`.

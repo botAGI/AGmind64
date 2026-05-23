@@ -2,7 +2,7 @@
 
 **Current milestone:** v0.6.0 candidate — post-M5 hardening and release
 confidence.
-**Current gate:** M6.S0 cloud-artifact reconciliation.
+**Current gate:** M6.C real install E2E.
 **Target stable:** v1.0.0 after real E2E + cluster smoke + docs.
 
 ## Milestone overview
@@ -38,31 +38,31 @@ Current verification baseline:
 
 Latest observed result, 2026-05-22:
 
-- `pytest`: 886 passed
-- audit: 0 findings
-- doctor: 7 ok / 2 warn / 0 fail
+- GitHub Actions run `26297545718`: all CI jobs green, including Docker
+  cpu/vulkan/rocm and Strix Halo runtime smoke vulkan/rocm.
+- Local dev-only parity: 882 passed, 4 deselected for
+  `backend_any or backend_cpu`.
+- Doctor: 7 ok / 2 warn / 0 fail.
 
 ---
 
-## M6.S0 — Cloud-artifact Reconciliation (current)
+## M6.S0 — Cloud-artifact Reconciliation (done)
 
-**Problem:** HEAD is clean in git history, but local worktree contains a large
-uncommitted layer left by prior cloud work. It includes mechanical formatting,
-schema export, tooling tweaks, and small behavior fixes. This must be sorted
-before new feature work.
+**Outcome:** cloud/CI artifact layer was split into focused repair commits and
+proved on the self-hosted runner through full CI and Strix Halo smoke.
 
 | # | Task | DoD |
 |---|------|-----|
-| S0.1 | Inventory dirty files | `git diff --stat`, `git diff -w --stat`, and scoped notes in session journal |
-| S0.2 | Verify current behavior | pytest + audit + doctor captured |
-| S0.3 | Split mechanical vs semantic changes | candidate patch groups listed before commit |
-| S0.4 | Commit or defer groups | each group has one conventional commit or explicit defer note |
-| S0.5 | Refresh GSD docs | STATE/ROADMAP/BACKLOG/session updated |
+| S0.1 | Inventory dirty files | done |
+| S0.2 | Verify current behavior | done |
+| S0.3 | Split mechanical vs semantic changes | done |
+| S0.4 | Commit or defer groups | done |
+| S0.5 | Refresh GSD docs | done in 2026-05-23 codebase cleanup |
 
 **DoD:** worktree either clean or intentionally documented, and next phase can
 start from a stable GSD checkpoint.
 
-## M6.A — Planning + Codebase Refresh
+## M6.A — Planning + Codebase Refresh (done)
 
 **Problem:** `.planning/codebase/*`, `PROJECT.md`, and some backlog sections
 still describe M1-M3/M5 planning history rather than the current post-M5
@@ -70,23 +70,25 @@ codebase.
 
 | # | Task | DoD |
 |---|------|-----|
-| A.1 | Refresh `.planning/codebase/INDEX.md` | module/test counts match `rg --files` |
-| A.2 | Refresh `.planning/codebase/ARCHITECTURE.md` | includes M4/M5 TUI, cluster, model split |
-| A.3 | Refresh `PROJECT.md` | current milestone and shipped features accurate |
-| A.4 | Prune historical backlog noise | shipped M3/M5 tasks marked historical |
+| A.1 | Refresh `.planning/codebase/INDEX.md` | done |
+| A.2 | Refresh codebase architecture/deps/extensions/invariants/pitfalls | done |
+| A.3 | Document agent tooling/plugins | done in `AGENT_TOOLING.md` |
+| A.4 | Prune Claude live artifacts | done: `.claude/` and `CLAUDE.md` removed/ignored |
+| A.5 | Refresh `PROJECT.md` and deeper backlog history | optional follow-up |
 
-## M6.B — Tooling Gate Cleanup
+## M6.B — Tooling Gate Cleanup (standard gates done, runner-noise follow-up)
 
-**Problem:** `pytest` and audit pass, but lint/pre-commit story is muddy.
-`ruff check .` emits broad style findings, while `ruff format --check .` still
-wants 14 files reformatted.
+**Outcome:** standard CI gates are green on the self-hosted runner. Remaining
+tooling issue is queue hygiene: Dependabot/release-drafter should not occupy
+the only Strix runner ahead of required develop CI.
 
 | # | Task | DoD |
 |---|------|-----|
-| B.1 | Decide lint policy | Makefile/pre-commit rules match intended gate |
-| B.2 | Resolve or scope ruff rule explosion | no surprise hundreds of findings in normal dev path |
-| B.3 | Validate ansible-lint bump | pre-commit can run in local venv / self-hosted runner |
-| B.4 | Document exact green commands | README/CLAUDE/STATE agree |
+| B.1 | Decide lint policy | done |
+| B.2 | Resolve or scope ruff/mypy/pre-commit drift | done |
+| B.3 | Validate ansible-lint bump | done |
+| B.4 | Document exact green commands | done in codebase docs/state |
+| B.5 | Keep Dependabot/release-drafter off critical runner queue | follow-up |
 
 ## M6.C — Real Install E2E
 
