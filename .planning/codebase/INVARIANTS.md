@@ -100,7 +100,9 @@ Native `llama-cpp-python` backend builds belong in Docker/backend lanes.
 ### I.18 Runtime image smoke is not pytest
 
 Backend runtime images are production images. Strix smoke checks
-`get_backend().device_info()` inside the image.
+`get_backend().device_info()` inside the image. The smoke job must wait for
+the Docker backend matrix, otherwise it can test stale `agmind-*:ci` tags left
+on the self-hosted runner.
 
 ### I.19 Audit must stay green
 

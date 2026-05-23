@@ -131,6 +131,8 @@ jobs:
   # M5-followup: since все jobs теперь на self-hosted, этот тоже бежит на
   # каждом push/PR (но fork PRs пропускаются — security: чужой код не должен
   # запускаться на твоей машине без approval).
+  # Keep this after docker-build so the smoke checks fresh backend images for
+  # the current commit, not stale tags left on the self-hosted runner.
   test-strix-halo:
     runs-on: [self-hosted, linux, x64, strix-halo]
     if: >-
@@ -138,7 +140,7 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    needs: [audit, test-cpu]
+    needs: [audit, test-cpu, docker-build]
     strategy:
       fail-fast: false
       matrix:

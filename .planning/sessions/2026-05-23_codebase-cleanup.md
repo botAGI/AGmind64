@@ -27,6 +27,12 @@ User asked to:
   - `AGENT_TOOLING.md`
 - Updated `STATE.md`, `ROADMAP.md`, and `BACKLOG.md` to stop describing the
   stale 101-file cloud-artifact layer as current work.
+- Pushed cleanup commit `2a3c21f`; GitHub Actions run `26333098114` completed
+  successfully.
+- Observed that Strix smoke could start before the Docker backend matrix
+  finished, which risks testing stale local `agmind-*:ci` images on the
+  self-hosted runner. Added an explicit `docker-build` dependency for
+  `test-strix-halo`.
 
 ## Current tool decision
 
