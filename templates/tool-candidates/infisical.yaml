@@ -1,0 +1,37 @@
+id: infisical
+name: Infisical
+status: candidate
+category: secrets
+summary: Team secrets management candidate as a lighter enterprise alternative to Vault.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+    - secure
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - proxmox-vm-compose
+    - k3s
+  profiles:
+    - enterprise-secrets
+  storage_profiles:
+    - proxmox-zfs
+    - longhorn
+  secrets_profiles:
+    - infisical
+  ports:
+    - "8080"
+  requires_gpu: false
+risks:
+  - Needs licensing, external database, backup, and OIDC integration review before inclusion.
+next_step: Compare Infisical and Vault, then pick one enterprise secrets service path.
+verification:
+  commands:
+    - agmind render compose --profile enterprise-secrets --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

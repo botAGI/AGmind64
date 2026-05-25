@@ -9,7 +9,7 @@ audit_forbidden.py — поиск платформо-зависимых хард
     python scripts/audit_forbidden.py --fail       # exit 1 при находках (для CI)
     python scripts/audit_forbidden.py --json out.json
 
-Категории = раздел 3 AGMIND_MIGRATION_SPEC.md.
+Категории = `.planning/codebase/INVARIANTS.md` + текущие x86-only guardrails.
 Папка legacy/ исключена из аудита (там этому коду место).
 """
 
@@ -49,23 +49,17 @@ EXCLUDED_DIR_PATTERNS = (
 )
 
 # Meta-файлы которые опт-аутятся целиком — они описывают запреты как
-# rules / decision context / inventory. Расширение Part 1.3 спеки
-# (per-file опт-аут поверх per-line `# audit: allow`). Список конкретный,
+# rules / decision context / inventory. Это per-file опт-аут поверх
+# per-line `# audit: allow`. Список конкретный,
 # не паттерн — чтобы не получить false negatives через wildcard.
 EXCLUDED_PATHS = {
-    # Migration meta-documentation — описывает legacy/migration context.
-    # Естественно упоминают GB10/CUDA/aarch64 как «откуда мигрируем».
-    "AGMIND_MIGRATION_SPEC.md",
+    # Meta docs that intentionally discuss platform support boundaries.
     "README.md",
     "CLAUDE.md",
-    "docs/MIGRATION_PLAN.md",
     "docs/HARDWARE.md",
     "docs/BENCHMARKS.md",
     "docs/QUICKSTART.md",
     "docs/TROUBLESHOOTING.md",
-    # migration_progress.json описывает phase B intent (упоминает "legacy
-    # GB10/CUDA/aarch64 code")
-    "migration_progress.json",
     # Сам audit_forbidden.py: module docstring упоминает что ищем.
     # Self-reference; RULES strings уже опт-аутены через `# audit: allow`.
     "scripts/audit_forbidden.py",
@@ -86,7 +80,6 @@ EXCLUDED_PATHS = {
 # сессий описывают legacy tech.
 EXCLUDED_PREFIXES = (
     "docs/adr/",  # ADR описывают историю решений
-    ".planning/research/x86-migration/",  # recon-отчёты
     ".planning/sessions/",  # session journals
     ".planning/codebase/",  # codebase maps (legit описывают forbidden patterns)
     ".claude/",  # IDE/agent config
@@ -131,9 +124,8 @@ BARE_NAMES = {"Dockerfile", "Makefile", "CMakeLists.txt", ".gitignore", ".env"}
 
 # Каждый regex ниже описывает запрещённый паттерн. Сами по себе строки
 # regex'ов содержат запрещённые слова — это rule-self-reference, которое
-# нужно опт-аутить через `# audit: allow` (см. AGMIND_MIGRATION_SPEC.md
-# Part 1.3 «Опт-аут для конкретной строки»). Эта же логика применяется к
-# AGMIND_MIGRATION_SPEC.md, который перечисляет запреты как rules.
+# нужно опт-аутить через `# audit: allow`. Эта же логика применяется к
+# legacy migration archive, который перечисляет запреты как rules.
 RULES: list[tuple[str, str, re.Pattern]] = [
     (
         "cuda_runtime",
@@ -249,7 +241,7 @@ def iter_files(root: Path) -> Iterable[Path]:
         if not is_text_file(p):
             continue
         # EXCLUDED_PATHS / EXCLUDED_PREFIXES — это конкретные репо-файлы
-        # ("README.md", "docs/MIGRATION_PLAN.md", ...). Резолвим относительно
+        # ("README.md", "docs/HARDWARE.md", ...). Резолвим относительно
         # REPO_ROOT, а не scan_root — иначе при сканировании произвольной
         # subdir любой файл `README.md` внутри неё ошибочно opt-out'нется.
         try:

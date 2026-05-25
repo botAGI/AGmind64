@@ -8,6 +8,7 @@ LlamaServerClient. Discovery — через mDNS (avahi) либо static YAML.
 
 from __future__ import annotations
 
+from agmind.cluster.inspect import ClusterInspectReport, inspect_cluster
 from agmind.cluster.peer import (
     ClusterConfig,
     Peer,
@@ -17,10 +18,12 @@ from agmind.cluster.peer import (
 from agmind.cluster.router import RoutingStrategy, choose_peer
 
 __all__ = [
+    "ClusterInspectReport",
     "ClusterConfig",
     "Peer",
     "PeerHealth",
     "RoutingStrategy",
     "choose_peer",
+    "inspect_cluster",
     "load_cluster_config",
 ]

@@ -15,7 +15,7 @@
   "errors.invalid_engine": "Engine {engine!r} is not supported on backend {backend!r}.",
   "errors.amdvlk_present": "AMDVLK detected — RADV may be silently overridden.",
 
-  "wizard.title": "AGmindx86 Setup Wizard",
+  "wizard.title": "AGmind Setup Wizard",
   "wizard.section.domain": "Domain (Traefik TLS, subdomain recommended)",
   "wizard.section.cf_token": "Cloudflare API token (Zone:DNS:Edit)",
   "wizard.section.backend": "Backend",

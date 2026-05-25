@@ -18,7 +18,9 @@ from agmind.log import logger
 log = logger(__name__)
 
 Tier = Literal["S", "M", "L", "XL", "XXL"]
+ModelKind = Literal["llm", "embed", "rerank"]
 _VALID_TIERS: tuple[Tier, ...] = ("S", "M", "L", "XL", "XXL")
+_VALID_MODEL_KINDS: tuple[ModelKind, ...] = ("llm", "embed", "rerank")
 
 # Tier thresholds — основаны на R10 (effective GTT pool ≈ 94% системной RAM).
 # Выбираем tier по RAM, потому что GTT может не быть настроен (warning у doctor).
@@ -60,6 +62,34 @@ class ModelSpec:
     def local_filename(self) -> str:
         """Filename как стоит на диске (не учитывая mmproj sidecars)."""
         return self.filename
+
+
+@dataclass(frozen=True)
+class CuratedModelEntry:
+    """One short-list model recommendation used by the setup wizard."""
+
+    id: str
+    name: str
+    repo: str
+    file: str
+    size_gib: float
+    params_b: float
+    active_params_b: float | None
+    quant: str
+    suggested_ctx: int
+    description: str
+    kind: ModelKind = "llm"
+    strix_tested: bool = False
+    measured_tg_t_s: float | None = None
+
+    @property
+    def display(self) -> str:
+        suffix = ""
+        if self.measured_tg_t_s is not None:
+            suffix = f"  ·  {self.measured_tg_t_s:.0f} t/s"
+        elif self.strix_tested:
+            suffix = "  ·  tested"
+        return f"{self.name}  [{self.size_gib:.1f} GB]{suffix}"
 
 
 @dataclass(frozen=True)
@@ -135,6 +165,63 @@ def _model_from_dict(name: str, data: dict[str, Any], role: str = "primary") -> 
         server_flags=tuple(str(x) for x in (data.get("server_flags") or ())),
         extras=extras,
     )
+
+
+def _curated_model_from_dict(data: dict[str, Any]) -> CuratedModelEntry:
+    """Build a wizard curated model entry from templates/models.yaml."""
+    raw_kind = str(data.get("kind") or "llm")
+    kind: ModelKind = "llm"
+    if raw_kind in _VALID_MODEL_KINDS:
+        kind = raw_kind
+    active = data.get("active_params_b")
+    measured = data.get("measured_tg_t_s")
+    return CuratedModelEntry(
+        id=str(data.get("id", "")),
+        name=str(data.get("name", "")),
+        repo=str(data.get("repo", "")),
+        file=str(data.get("file", "")),
+        size_gib=float(data.get("size_gib") or 0.0),
+        params_b=float(data.get("params_b") or 0.0),
+        active_params_b=float(active) if active is not None else None,
+        quant=str(data.get("quant", "")),
+        suggested_ctx=int(data.get("suggested_ctx") or 0),
+        description=str(data.get("description", "")),
+        kind=kind,
+        strix_tested=bool(data.get("strix_tested", False)),
+        measured_tg_t_s=float(measured) if measured is not None else None,
+    )
+
+
+def load_curated_model_entries(
+    path: Path | str | None = None,
+) -> tuple[CuratedModelEntry, ...]:
+    """Load setup-wizard curated model entries from templates/models.yaml."""
+    p = Path(path) if path else _DEFAULT_MODELS_YAML
+    raw = _read_yaml(p)
+    wizard = raw.get("wizard_catalog") or {}
+    entries = wizard.get("entries") if isinstance(wizard, dict) else None
+    if not isinstance(entries, list):
+        return ()
+    return tuple(_curated_model_from_dict(entry) for entry in entries if isinstance(entry, dict))
+
+
+def load_model_catalog_defaults(path: Path | str | None = None) -> dict[str, str]:
+    """Load per-kind wizard defaults from templates/models.yaml."""
+    p = Path(path) if path else _DEFAULT_MODELS_YAML
+    raw = _read_yaml(p)
+    wizard = raw.get("wizard_catalog") or {}
+    defaults = wizard.get("defaults") if isinstance(wizard, dict) else None
+    if not isinstance(defaults, dict):
+        return {
+            "llm": "qwen36-a3b-q4km",
+            "embed": "bge-m3-q8",
+            "rerank": "bge-reranker-v2-m3-q8",
+        }
+    return {
+        "llm": str(defaults.get("llm") or "qwen36-a3b-q4km"),
+        "embed": str(defaults.get("embed") or "bge-m3-q8"),
+        "rerank": str(defaults.get("rerank") or "bge-reranker-v2-m3-q8"),
+    }
 
 
 def load_models_registry(path: Path | str | None = None) -> ModelsRegistry | None:

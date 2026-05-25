@@ -1,0 +1,24 @@
+id: ubuntu-compose
+name: Ubuntu Compose
+status: supported
+summary: Existing AGmind lane for one Ubuntu host configured by Ansible and rendered to Docker Compose.
+runtime:
+  kind: compose
+  renderer: agmind render compose
+  profiles:
+    - core
+    - rag
+    - observability
+provisioner:
+  kind: none
+configurator:
+  kind: ansible
+  inventory_source: static-inventory
+  playbooks:
+    - ansible/install.yml
+storage_profile: local-paths
+secrets_profile: env-files
+verification:
+  commands:
+    - agmind render compose --profile core,rag --domain ci.example.com
+    - docker compose config --quiet

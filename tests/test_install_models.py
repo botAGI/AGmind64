@@ -134,11 +134,13 @@ def test_models_for_wizard_kind_embed_only_embed() -> None:
 
 
 def test_models_for_wizard_kind_rerank_returns_only_rerank() -> None:
-    """Если curated rerank нет — list пустой. None entries вида llm не должны просочиться."""
+    """Rerank selector should expose curated reranker entries."""
     out = models_for_wizard(kind="rerank")
+    assert len(out) >= 1, "должна быть хотя бы одна curated rerank model"
     for _, mid in out:
         entry = find_by_id(mid)
         assert entry is not None and entry.kind == "rerank"
+    assert "bge-reranker-v2-m3-q8" in {mid for _, mid in out}
 
 
 def test_models_for_wizard_none_returns_all() -> None:
@@ -147,14 +149,15 @@ def test_models_for_wizard_none_returns_all() -> None:
 
 
 def test_default_model_id_per_kind() -> None:
-    """default_model_id(kind) возвращает curated id для kind или 'custom' для rerank."""
+    """default_model_id(kind) returns a curated id for each model role."""
     from agmind.install.models import default_model_id as _did
 
     assert _did("llm") == "qwen36-a3b-q4km"
     embed_def = _did("embed")
     embed_entry = find_by_id(embed_def)
     assert embed_entry is not None and embed_entry.kind == "embed"
-    # Rerank не имеет curated catalog yet → 'custom'
-    assert _did("rerank") == "custom"
+    rerank_def = _did("rerank")
+    rerank_entry = find_by_id(rerank_def)
+    assert rerank_entry is not None and rerank_entry.kind == "rerank"
     # Backward compat: bare default_model_id() = LLM
     assert _did() == "qwen36-a3b-q4km"

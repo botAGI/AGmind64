@@ -10,7 +10,7 @@ volumes:
 - /var/lib/agmind/mysql:/var/lib/mysql
 env:
   MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-  MYSQL_DATABASE: ragflow
+  MYSQL_DATABASE: rag_flow
 resources:
   cpus: 4.0
   mem_limit: 4g

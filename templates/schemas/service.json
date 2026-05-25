@@ -347,6 +347,6 @@
   ],
   "title": "AGmind Service Descriptor",
   "type": "object",
-  "$id": "https://github.com/botAGI/AGmindx86/schemas/service.json",
+  "$id": "https://github.com/botAGI/AGmind64/schemas/service.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

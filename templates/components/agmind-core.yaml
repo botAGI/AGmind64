@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: agmind-core
+kind: core
+core:
+  upstream: https://github.com/botAGI/AGmind64
+  min_version: 0.6.0
+  recommended_version: 0.6.0
+  current_pin: 0.1.0.dev0
+  update_policy: compatible-minor
+  source: local
+runtime:
+  files:
+    - pyproject.toml
+    - constraints/core.txt
+    - constraints/dev.txt
+    - agmind
+    - scripts
+  python_packages:
+    - agmind
+    - typer
+    - pydantic
+    - textual
+    - ansible-core
+verification:
+  smoke:
+    - .venv/bin/pytest -q -m "backend_any or backend_cpu"
+    - .venv/bin/mypy agmind/
+    - .venv/bin/pre-commit run --all-files --show-diff-on-failure
+  schema_refs:
+    - templates/schemas/component.json

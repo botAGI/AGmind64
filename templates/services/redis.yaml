@@ -6,6 +6,7 @@ tier: storage
 purpose: Dify task queue + plugin cache — Redis 8 (2026-05-09)
 profiles:
 - rag
+- ragflow
 volumes:
 - /var/lib/agmind/redis:/data
 env:

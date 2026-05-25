@@ -1,0 +1,303 @@
+{
+  "$defs": {
+    "ComponentConflicts": {
+      "additionalProperties": false,
+      "description": "Known mutually-exclusive services, components, ports, or capabilities.",
+      "properties": {
+        "services": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Services",
+          "type": "array"
+        },
+        "components": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Components",
+          "type": "array"
+        },
+        "ports": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        }
+      },
+      "title": "ComponentConflicts",
+      "type": "object"
+    },
+    "ComponentCore": {
+      "additionalProperties": false,
+      "description": "Upstream identity and AGmind's recommended version baseline.",
+      "properties": {
+        "upstream": {
+          "minLength": 1,
+          "title": "Upstream",
+          "type": "string"
+        },
+        "min_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Version"
+        },
+        "recommended_version": {
+          "minLength": 1,
+          "title": "Recommended Version",
+          "type": "string"
+        },
+        "current_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Pin"
+        },
+        "update_policy": {
+          "default": "compatible-minor",
+          "enum": [
+            "strict-pin",
+            "compatible-patch",
+            "compatible-minor",
+            "upstream-compatible",
+            "manual-hold"
+          ],
+          "title": "Update Policy",
+          "type": "string"
+        },
+        "hold_reason": {
+          "default": "",
+          "title": "Hold Reason",
+          "type": "string"
+        },
+        "source": {
+          "default": "registry",
+          "enum": [
+            "registry",
+            "github_release",
+            "pypi",
+            "manual",
+            "local"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "upstream",
+        "recommended_version"
+      ],
+      "title": "ComponentCore",
+      "type": "object"
+    },
+    "ComponentRequirements": {
+      "additionalProperties": false,
+      "description": "Capabilities or components required before this component can run.",
+      "properties": {
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "components": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Components",
+          "type": "array"
+        }
+      },
+      "title": "ComponentRequirements",
+      "type": "object"
+    },
+    "ComponentRuntime": {
+      "additionalProperties": false,
+      "description": "Deploy-time artifacts owned by a component.",
+      "properties": {
+        "service_descriptors": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Service Descriptors",
+          "type": "array"
+        },
+        "compose_profiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Compose Profiles",
+          "type": "array"
+        },
+        "ports": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "dockerfiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Dockerfiles",
+          "type": "array"
+        },
+        "files": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "python_packages": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Python Packages",
+          "type": "array"
+        },
+        "ansible_collections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ansible Collections",
+          "type": "array"
+        },
+        "model_catalogs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Catalogs",
+          "type": "array"
+        }
+      },
+      "title": "ComponentRuntime",
+      "type": "object"
+    },
+    "ComponentVerification": {
+      "additionalProperties": false,
+      "description": "Commands and schema references used to validate a component.",
+      "properties": {
+        "smoke": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Smoke",
+          "type": "array"
+        },
+        "tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tests",
+          "type": "array"
+        },
+        "schema_refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Schema Refs",
+          "type": "array"
+        }
+      },
+      "title": "ComponentVerification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Version, runtime, dependency, and verification contract for one component.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "core",
+        "compute",
+        "inference",
+        "app",
+        "stateful",
+        "edge",
+        "ops",
+        "deploy_target",
+        "model",
+        "tool"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "core": {
+      "$ref": "#/$defs/ComponentCore"
+    },
+    "runtime": {
+      "$ref": "#/$defs/ComponentRuntime"
+    },
+    "provides": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Provides",
+      "type": "array"
+    },
+    "requires": {
+      "$ref": "#/$defs/ComponentRequirements"
+    },
+    "conflicts": {
+      "$ref": "#/$defs/ComponentConflicts"
+    },
+    "verification": {
+      "$ref": "#/$defs/ComponentVerification"
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "core"
+  ],
+  "title": "AGmind Component Contract",
+  "type": "object",
+  "$id": "https://github.com/botAGI/AGmind64/schemas/component.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

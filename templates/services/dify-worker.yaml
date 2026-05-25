@@ -19,8 +19,6 @@ resources:
   mem_limit: 4g
 
 # Phase O capabilities
-provides:
-- dify_stack
 consumes:
 - llm_inference
 - embedding_inference

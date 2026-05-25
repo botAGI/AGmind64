@@ -147,8 +147,7 @@ def test_setup_state_has_embed_rerank_defaults() -> None:
     assert state.embed_ctx_size == 8192
     assert state.embed_kv_cache == "f16"
     assert state.embed_parallel == 4
-    assert state.rerank_model_id == "custom"
-    assert state.rerank_file == ""
+    assert state.rerank_model_id == "bge-reranker-v2-m3-q8"
     assert state.rerank_ctx_size == 2048
     assert state.cluster_replicate is False
 
@@ -164,6 +163,13 @@ def test_setup_state_resolve_embed_repo_file_from_catalog() -> None:
 def test_setup_state_resolve_rerank_returns_custom_raw() -> None:
     state = SetupState(rerank_model_id="custom", rerank_repo="r", rerank_file="f.gguf")
     assert state.resolve_rerank_repo_file() == ("r", "f.gguf")
+
+
+def test_setup_state_resolve_rerank_repo_file_from_catalog() -> None:
+    state = SetupState(rerank_model_id="bge-reranker-v2-m3-q8")
+    repo, file_ = state.resolve_rerank_repo_file()
+    assert repo == "gpustack/bge-reranker-v2-m3-GGUF"
+    assert file_ == "bge-reranker-v2-m3-Q8_0.gguf"
 
 
 def test_cluster_peers_cached_empty_when_zeroconf_missing(
@@ -228,6 +234,111 @@ async def test_services_empty_banner_renders_when_no_selection(
         # Banner shown — text contains "NO SERVICES SELECTED"
         rendered = str(banner.render() if callable(banner.render) else banner.renderable)
         assert "NO SERVICES SELECTED" in rendered or "no services" in rendered.lower()
+
+
+@pytest.mark.asyncio
+async def test_services_screen_checking_dify_api_marks_component_closure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
+    initial = SetupState(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=[],
+    )
+    app = AgmindSetupApp(detected=_detected(), initial_state=initial, multi_step=True)
+    async with app.run_test(size=(140, 60)) as pilot:
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")  # Domain -> Model
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")  # Model -> Services
+        await pilot.pause(0.1)
+
+        from textual.widgets import Checkbox
+
+        app.screen.query_one("#svc-dify_api", Checkbox).value = True
+        await pilot.pause(0.1)
+
+        for service in (
+            "dify_api",
+            "dify_web",
+            "dify_worker",
+            "dify_plugin_daemon",
+            "dify_sandbox",
+            "postgres",
+            "redis",
+            "qdrant",
+            "llama_llm",
+            "llama_embed",
+        ):
+            assert app.screen.query_one(f"#svc-{service}", Checkbox).value is True
+        assert app.screen.query_one("#svc-ragflow", Checkbox).value is False
+
+
+@pytest.mark.asyncio
+async def test_services_screen_milvus_replaces_qdrant_for_dify_but_not_ragflow_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
+    initial = SetupState(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=[],
+    )
+    app = AgmindSetupApp(detected=_detected(), initial_state=initial, multi_step=True)
+    async with app.run_test(size=(140, 60)) as pilot:
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")
+        await pilot.pause(0.1)
+
+        from textual.widgets import Checkbox
+
+        app.screen.query_one("#svc-dify_api", Checkbox).value = True
+        await pilot.pause(0.1)
+        assert app.screen.query_one("#svc-qdrant", Checkbox).value is True
+
+        app.screen.query_one("#svc-ragflow", Checkbox).value = True
+        await pilot.pause(0.1)
+        assert app.screen.query_one("#svc-elasticsearch", Checkbox).value is True
+
+        app.screen.query_one("#svc-milvus", Checkbox).value = True
+        await pilot.pause(0.1)
+
+        assert app.screen.query_one("#svc-milvus", Checkbox).value is True
+        assert app.screen.query_one("#svc-qdrant", Checkbox).value is False
+        assert app.screen.query_one("#svc-elasticsearch", Checkbox).value is True
+
+
+def test_confirm_summary_shows_retrieval_topology() -> None:
+    from agmind.cli.tui.wizard_screens import ConfirmScreen
+
+    state = SetupState(
+        services=["dify-api", "ragflow", "milvus", "elasticsearch"],
+        rerank_file="rr.gguf",
+    )
+
+    summary = ConfirmScreen()._summary(state)
+
+    assert "RAG STORAGE PLAN" in summary
+    assert "DIFY VECTOR DB ..... milvus" in summary
+    assert "RAGFLOW DOC ENGINE . elasticsearch" in summary
+    assert "Milvus applies to Dify only" in summary
+
+
+def test_confirm_summary_shows_topology_warnings() -> None:
+    from agmind.cli.tui.wizard_screens import ConfirmScreen
+
+    state = SetupState(
+        services=["dify-api", "milvus", "qdrant", "postgres", "redis"],
+        rerank_file="rr.gguf",
+    )
+
+    summary = ConfirmScreen()._summary(state)
+
+    assert "TOPOLOGY WARNINGS" in summary
+    assert "Dify has multiple vector_db providers selected" in summary
 
 
 @pytest.mark.asyncio

@@ -20,11 +20,3 @@ routing:
   host: dify.agmind.dev
   middleware_chain: chain-llm
   sse: true
-
-# Phase O capabilities
-provides:
-- dify_stack
-consumes:
-- llm_inference
-- embedding_inference
-- vector_db

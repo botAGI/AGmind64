@@ -12,6 +12,48 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: agmind-component-check
+        name: AGmind component contract check
+        entry: .venv/bin/python scripts/component_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/components/|templates/services/|agmind/components/|agmind/services/|scripts/component_check\.py$)
+      - id: agmind-constraints-check
+        name: AGmind dependency constraints check
+        entry: .venv/bin/python scripts/constraints_check.py
+        language: system
+        pass_filenames: false
+        files: ^(constraints/|pyproject\.toml|docker/Dockerfile\.|scripts/constraints_check\.py$)
+      - id: agmind-tool-candidate-check
+        name: AGmind optional tool candidate check
+        entry: .venv/bin/python scripts/tool_candidate_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/tool-candidates/|templates/deploy-targets/|templates/services/|templates/components/|templates/schemas/tool-candidate\.json$|agmind/addons/|agmind/deploy/targets\.py|agmind/services/|agmind/components/|scripts/tool_candidate_check\.py$)
+      - id: agmind-deploy-target-check
+        name: AGmind deployment target check
+        entry: .venv/bin/python scripts/deploy_target_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/deploy-targets/|templates/schemas/deploy-target\.json$|agmind/deploy/targets\.py|agmind/deploy/target_checks\.py|agmind/cli/targets_cmd\.py|scripts/deploy_target_check\.py$)
+      - id: agmind-kubernetes-render-check
+        name: AGmind Kubernetes render check
+        entry: .venv/bin/python scripts/kubernetes_render_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/deploy-targets/|templates/services/|agmind/services/kubernetes_renderer\.py|agmind/services/kubernetes_checks\.py|agmind/cli/render_cmd\.py|scripts/kubernetes_render_check\.py$)
+      - id: agmind-topology-check
+        name: AGmind topology check
+        entry: .venv/bin/python scripts/topology_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/services/|agmind/services/deployment_topology\.py|agmind/services/topology_checks\.py|agmind/services/retrieval_policy\.py|agmind/services/compatibility\.py|agmind/services/renderer\.py|agmind/cli/render_cmd\.py|scripts/topology_check\.py$)
+      - id: agmind-governance-check
+        name: AGmind aggregate governance check
+        entry: .venv/bin/python scripts/governance_check.py
+        language: system
+        pass_filenames: false
+        files: ^(agmind/governance\.py|agmind/cli/governance_cmd\.py|agmind/deploy/target_checks\.py|templates/deploy-targets/|\.github/workflows/kubernetes-proof\.yml|scripts/governance_check\.py|scripts/topology_check\.py|scripts/kubernetes_render_check\.py|scripts/kubernetes_proof_workflow_check\.py)$
 
   # ---- Python: ruff (lint + format) ----
   - repo: https://github.com/astral-sh/ruff-pre-commit

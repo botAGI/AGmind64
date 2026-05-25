@@ -1,0 +1,40 @@
+id: restic-kopia
+name: restic/Kopia backup runner
+status: candidate
+category: backup
+summary: Encrypted backup runner candidate for Compose volumes, models, and config.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+    - recover
+    - secure
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - ubuntu-compose
+    - proxmox-vm-compose
+  profiles:
+    - backup
+  storage_profiles:
+    - local-paths
+    - proxmox-zfs
+    - nfs
+  secrets_profiles:
+    - env-files
+    - sops-age
+  ports: []
+  requires_gpu: false
+risks:
+  - Backup jobs must coordinate service quiesce hooks and retention policy.
+  - Restore must be tested before any backup runner is considered production.
+next_step: Choose restic or Kopia and define volume/model/config backup boundaries with restore tests.
+verification:
+  commands:
+    - agmind backup --help
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

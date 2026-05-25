@@ -82,6 +82,15 @@ def test_filter_by_profile_multiple() -> None:
     assert "elasticsearch" in sel  # from ragflow profile
 
 
+def test_filter_by_profile_ragflow_includes_redis_runtime_dependency() -> None:
+    descriptors = load_descriptors()
+    sel = filter_by_profile(descriptors, ["core", "ragflow"])
+
+    assert "ragflow" in sel
+    assert "redis" in sel
+    assert sel["redis"].profiles == ["rag", "ragflow"]
+
+
 # ---------- render_traefik_labels ----------
 
 

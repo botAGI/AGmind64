@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from dataclasses import asdict, dataclass
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -24,12 +25,32 @@ log = logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVICES_DIR = REPO_ROOT / "templates" / "services"
+COMPONENTS_DIR = REPO_ROOT / "templates" / "components"
 HOLDS_FILE = REPO_ROOT / "templates" / "version_holds.yaml"
 UPGRADE_STATE_DIR = Path.home() / ".local" / "share" / "agmind" / "upgrades"
 
 _IMAGE_LINE_RE = re.compile(
     r"^image:\s*(?P<image>[^\s:]+):(?P<tag>[^\s@]+)(?:@sha256:(?P<digest>[a-f0-9]+))?\s*$"
 )
+
+
+@dataclass(frozen=True)
+class UpgradePlanItem:
+    service: str
+    yaml_path: str
+    image: str
+    old_tag: str
+    new_tag: str
+    old_digest: str | None
+    new_digest: str | None = None
+
+
+@dataclass(frozen=True)
+class UpgradePlan:
+    component: str
+    items: tuple[UpgradePlanItem, ...]
+    policy: str
+    is_component: bool
 
 
 def _load_holds() -> dict[str, dict[str, str]]:
@@ -130,6 +151,24 @@ def _save_upgrade_state(
     return state_file
 
 
+def _save_upgrade_plan_state(plan: UpgradePlan) -> Path:
+    """Persist grouped upgrade plan for rollback."""
+    UPGRADE_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    import json
+    from datetime import datetime
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    state_file = UPGRADE_STATE_DIR / f"{ts}_{plan.component}.json"
+    payload = {
+        "component": plan.component,
+        "policy": plan.policy,
+        "timestamp": ts,
+        "items": [asdict(item) for item in plan.items],
+    }
+    state_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return state_file
+
+
 def _latest_upgrade_state() -> dict[str, Any] | None:
     """Read most recent upgrade state file."""
     if not UPGRADE_STATE_DIR.exists():
@@ -162,41 +201,114 @@ def cmd_check() -> int:
     return rc
 
 
+def build_component_upgrade_plan(
+    component: str,
+    version: str,
+    digest: str | None = None,
+) -> UpgradePlan:
+    """Build an update plan from a component id or raw service name."""
+    from agmind.components.registry import load_component_contracts
+
+    contracts = load_component_contracts(COMPONENTS_DIR)
+    policy: str
+    if component in contracts:
+        contract = contracts[component]
+        service_names = contract.runtime.service_descriptors
+        policy = contract.core.update_policy
+        is_component = True
+    else:
+        service_names = (component,)
+        policy = "service"
+        is_component = False
+
+    items: list[UpgradePlanItem] = []
+    for service_name in service_names:
+        yaml_path = _find_descriptor_for_service(service_name)
+        if yaml_path is None:
+            raise ValueError(f"no descriptor for service {service_name!r}")
+        current = _read_current_pin(yaml_path)
+        if current is None:
+            raise ValueError(f"no image line in {yaml_path}")
+        image, old_tag, old_digest = current
+        items.append(
+            UpgradePlanItem(
+                service=service_name,
+                yaml_path=str(yaml_path),
+                image=image,
+                old_tag=old_tag,
+                new_tag=version,
+                old_digest=old_digest,
+                new_digest=digest,
+            )
+        )
+
+    return UpgradePlan(
+        component=component,
+        items=tuple(items),
+        policy=policy,
+        is_component=is_component,
+    )
+
+
 def cmd_component(
-    service: str, version: str, force: bool = False, digest: str | None = None
+    service: str,
+    version: str,
+    force: bool = False,
+    digest: str | None = None,
+    plan_only: bool = False,
 ) -> int:
-    """Bump pin для одного service в template + save rollback state."""
-    yaml_path = _find_descriptor_for_service(service)
-    if yaml_path is None:
-        print(f"ERROR: no descriptor для service {service!r} в {SERVICES_DIR}", file=sys.stderr)
+    """Bump pin for one service or all descriptors owned by a component."""
+    try:
+        plan = build_component_upgrade_plan(service, version, digest=digest)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    current = _read_current_pin(yaml_path)
-    if current is None:
-        print(f"ERROR: no `image:` line in {yaml_path}", file=sys.stderr)
-        return 1
-    image, old_tag, old_digest = current
-
-    # Check holds
     holds = _load_holds()
-    if image in holds and not force:
-        reason = holds[image].get("reason", "(no reason)")
-        print(f"ERROR: {image} is HELD: {reason}", file=sys.stderr)
+    blocked = [item for item in plan.items if item.image in holds]
+    if blocked and not force:
+        for item in blocked:
+            reason = holds[item.image].get("reason", "(no reason)")
+            print(f"ERROR: {item.image} is HELD: {reason}", file=sys.stderr)
         print("  Use --force to bump anyway.", file=sys.stderr)
         return 1
 
-    if old_tag == version:
-        print(f"{service}: already at {old_tag} (no change)")
+    if plan.is_component:
+        print(f"Upgrade plan for {plan.component} ({plan.policy}):")
+        for item in plan.items:
+            print(f"  {item.service}: {item.image}:{item.old_tag} -> {item.image}:{item.new_tag}")
+        if plan_only:
+            return 0
+        changed_items = [item for item in plan.items if item.old_tag != item.new_tag]
+        if not changed_items:
+            print(f"{plan.component}: already at {version} (no change)")
+            return 0
+        for item in changed_items:
+            _bump_pin_in_yaml(Path(item.yaml_path), item.new_tag, item.new_digest)
+            print(f"  ✓ updated {item.yaml_path}")
+        state_file = _save_upgrade_plan_state(plan)
+        print(f"  ✓ saved upgrade state to {state_file}")
+        print("  Next: `agmind upgrade --apply` to re-deploy")
         return 0
 
-    print(f"Bumping {service}: {image}:{old_tag} → {image}:{version}")
+    item = plan.items[0]
+    if plan_only:
+        print(f"Upgrade plan for {service} ({plan.policy}):")
+        print(f"  {item.service}: {item.image}:{item.old_tag} -> {item.image}:{item.new_tag}")
+        return 0
+    if item.old_tag == version:
+        print(f"{service}: already at {item.old_tag} (no change)")
+        return 0
+
+    yaml_path = Path(item.yaml_path)
+    print(f"Bumping {service}: {item.image}:{item.old_tag} → {item.image}:{version}")
     bumped_old, bumped_new = _bump_pin_in_yaml(yaml_path, version, digest)
     state_file = _save_upgrade_state(
         service,
         yaml_path,
         bumped_old,
         bumped_new,
-        old_digest,
+        item.old_digest,
     )
     print(f"  ✓ updated {yaml_path}")
     print(f"  ✓ saved upgrade state to {state_file}")
@@ -242,6 +354,21 @@ def cmd_rollback() -> int:
         print("ERROR: no upgrade state found (nothing to rollback)", file=sys.stderr)
         return 1
 
+    if "items" in state:
+        component = state["component"]
+        print(f"Rolling back component {component}")
+        for item in state["items"]:
+            yaml_path = Path(item["yaml_path"])
+            if not yaml_path.exists():
+                print(f"ERROR: descriptor missing: {yaml_path}", file=sys.stderr)
+                return 1
+            _bump_pin_in_yaml(yaml_path, item["old_tag"], item.get("old_digest"))
+            print(f"  ✓ restored {item['service']}: {item['old_tag']}")
+
+        _archive_latest_state()
+        print("  Next: `agmind upgrade --apply` to re-deploy with restored pins")
+        return 0
+
     yaml_path = Path(state["yaml_path"])
     service = state["service"]
     old_tag = state["old_tag"]
@@ -261,7 +388,13 @@ def cmd_rollback() -> int:
     _bump_pin_in_yaml(yaml_path, old_tag, old_digest)
     print(f"  ✓ restored {yaml_path}")
 
-    # Move state file aside so next --rollback не двойной revert
+    _archive_latest_state()
+    print("  Next: `agmind upgrade --apply` to re-deploy with restored pin")
+    return 0
+
+
+def _archive_latest_state() -> None:
+    """Move latest state file aside so the next rollback does not double-revert."""
     import shutil as _sh
     from datetime import datetime
 
@@ -272,8 +405,13 @@ def cmd_rollback() -> int:
         archived_dir.mkdir(exist_ok=True)
         _sh.move(str(state_files[0]), str(archived_dir / f"{ts}_{state_files[0].name}"))
 
-    print("  Next: `agmind upgrade --apply` to re-deploy with restored pin")
-    return 0
 
-
-__all__ = ["cmd_check", "cmd_component", "cmd_apply", "cmd_rollback"]
+__all__ = [
+    "UpgradePlan",
+    "UpgradePlanItem",
+    "build_component_upgrade_plan",
+    "cmd_check",
+    "cmd_component",
+    "cmd_apply",
+    "cmd_rollback",
+]

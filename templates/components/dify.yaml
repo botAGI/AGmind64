@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: dify
+kind: app
+core:
+  upstream: https://github.com/langgenius/dify
+  min_version: 1.14.2
+  recommended_version: 1.14.2
+  current_pin: 1.14.2
+  update_policy: strict-pin
+  hold_reason: Dify api, web, worker, sandbox, and plugin daemon update as one stack.
+  source: registry
+runtime:
+  service_descriptors:
+    - dify-api
+    - dify-plugin-daemon
+    - dify-sandbox
+    - dify-web
+    - dify-worker
+  compose_profiles:
+    - rag
+  ports:
+    - dify-api:5001
+    - dify-web:3000
+provides:
+  - dify_stack
+requires:
+  capabilities:
+    - llm_inference
+    - embedding_inference
+    - vector_db
+    - postgres_db
+    - redis_cache
+verification:
+  smoke:
+    - agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-dify.yml
+    - docker compose -f /tmp/agmind-dify.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

@@ -1,0 +1,41 @@
+id: keycloak
+name: Keycloak
+status: candidate
+category: identity
+summary: Enterprise OIDC/SSO identity provider candidate for hardened deployments.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+    - secure
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - proxmox-vm-compose
+    - k3s
+  profiles:
+    - enterprise-security
+  storage_profiles:
+    - proxmox-zfs
+    - longhorn
+  secrets_profiles:
+    - sops-age
+    - external-secrets
+    - vault
+    - infisical
+  ports:
+    - "8080"
+  requires_gpu: false
+risks:
+  - Needs OIDC client model, backup/restore story, and reverse proxy policy before inclusion.
+  - Must not conflict with the existing lightweight Authelia path.
+next_step: Define enterprise identity boundary and migration story from Authelia before descriptor work.
+verification:
+  commands:
+    - agmind render compose --profile enterprise-security --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

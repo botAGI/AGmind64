@@ -43,6 +43,9 @@ patterns rooted when they are intended for top-level artifacts.
 Dependabot PR runs and `release-drafter` jobs repeatedly occupied the only
 self-hosted runner while the develop CI was queued. The next workflow cleanup
 should keep non-critical PR-target automation away from the Strix runner.
+Use `agmind ci status` as the first local check before changing workflow
+concurrency or runner labels; it reports recent Actions runs and runner
+online/busy state through the local `gh` CLI.
 
 ### P8. Ubuntu package names drift
 
@@ -92,14 +95,56 @@ ML plugins fragile. Prefer sidecar services plus a thin tool plugin.
 Prometheus/Loki/Grafana config exists, but real Grafana dashboard JSON is still
 backlog work.
 
+### P17. Proxmox exporter remote scrape needs relabeling
+
+`prometheus-pve-exporter` exposes Proxmox metrics on `/pve`. When it is not
+running directly on the Proxmox host, Prometheus must set `__param_target`
+through relabeling. The opt-in descriptor provides labels for local scrape
+shape, but remote Proxmox deployments still need the example scrape job until
+managed remote scrape provisioning exists.
+
+The exporter also bind-mounts `/etc/agmind/proxmox-exporter/pve.yml`. If that
+file is missing, Compose/Docker can turn the source into a directory and the
+container will fail in a confusing way. Keep the services role guard in place:
+token vars or `agmind_proxmox_exporter_existing_config=true` are required
+before compose up. Keep `scripts/proxmox_exporter_check.py` in the pre-compose
+path so bad placeholders, password auth, and malformed YAML fail before
+containers are touched.
+
+Do not mark a tool candidate `accepted` as a documentation-only act. Accepted
+service-profile candidates are runtime artifacts and must satisfy
+`scripts/tool_candidate_check.py` and `agmind tools validate`
+descriptor/owner/pin/profile/port checks. Keep the CI
+`tool-candidate-validate` job and the broad pre-commit trigger, since service
+or component edits can break accepted candidates without touching
+`templates/tool-candidates/`.
+
+### P18. Deploy target paths drift quietly
+
+Deployment target contracts are easy to make stale because they point at
+provisioner modules and playbooks outside their own directory. Keep
+`agmind targets validate` and `scripts/deploy_target_check.py` in local/CI
+checks for supported and experimental lanes. It already caught the obsolete
+`ansible/playbooks/site.yml` reference; the current playbook source of truth is
+`ansible/install.yml`.
+
+### P19. Aggregate governance must not hide failures
+
+`agmind governance validate` is for convenience. Keep individual check output
+visible in the aggregate report and keep separate CI jobs for visibility. A
+single opaque "governance failed" result makes the operator debug loop worse.
+The pre-commit aggregate hook should stay narrow to aggregate wrapper files;
+the broad hooks for components, deploy targets, tools, and constraints already
+cover catalog drift.
+
 ## Process Traps
 
-### P17. Historical Claude notes are not live instructions
+### P20. Historical Claude notes are not live instructions
 
 Old session/research notes can mention Claude. Live config belongs in
 `.planning/` and current repo docs, not `.claude/`.
 
-### P18. Green local tests are not enough for this project
+### P21. Green local tests are not enough for this project
 
 For CI-affecting work, collect self-hosted evidence:
 
@@ -107,7 +152,7 @@ For CI-affecting work, collect self-hosted evidence:
 - Docker backend matrix
 - Strix runtime smoke
 
-### P19. Do not fix the runner by hiding failures
+### P22. Do not fix the runner by hiding failures
 
 If a job fails because the workflow shape is wrong, fix the workflow. Avoid
 marking required jobs as optional unless there is a clear operator decision.

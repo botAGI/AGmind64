@@ -1,6 +1,5 @@
 # AGmind GGUF model inventory — pinned per tier для Strix Halo (gfx1151).
-# См. agmind/models.py (runtime API), R-llm-models.md (recon),
-# AGMIND_MIGRATION_SPEC.md §1.2.6 (selection rules).
+# См. agmind/models.py (runtime API) and .planning/codebase/DEPENDENCIES.md.
 #
 # Правила:
 #   - НИКАКОГО :latest — pin конкретный quant + filename
@@ -23,6 +22,100 @@ llama_cpp_requirements:
   recommended_build: b9049  # последний verified (hogeheer499 May 2026)
   min_python_pkg: "0.3.23"  # PyPI 2026-05-11
   shaderc_pin: "2025.1"     # 2025.2 breaks build (#15344)
+
+wizard_catalog:
+  defaults:
+    llm: qwen36-a3b-q4km
+    embed: bge-m3-q8
+    rerank: bge-reranker-v2-m3-q8
+  entries:
+    - id: qwen36-a3b-q4km
+      kind: llm
+      name: Qwen3.6-35B-A3B (MoE)
+      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      file: Qwen3.6-35B-A3B-Q4_K_M.gguf
+      size_gib: 21.2
+      params_b: 34.66
+      active_params_b: 3.0
+      quant: Q4_K_M
+      suggested_ctx: 16384
+      description: Chat/reasoning MoE — production sweet spot, Phase H measured.
+      strix_tested: true
+      measured_tg_t_s: 73.5
+    - id: qwen36-a3b-q4_0
+      kind: llm
+      name: Qwen3.6-35B-A3B (MoE)
+      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      file: Qwen3.6-35B-A3B-Q4_0.gguf
+      size_gib: 19.7
+      params_b: 34.66
+      active_params_b: 3.0
+      quant: Q4_0
+      suggested_ctx: 16384
+      description: Same model — faster decode (76 t/s), slightly worse quality vs Q4_K_M.
+      strix_tested: true
+      measured_tg_t_s: 76.5
+    - id: qwen36-a3b-dyn
+      kind: llm
+      name: Qwen3.6-35B-A3B (MoE, DYNAMIC mix)
+      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      file: Qwen3.6-35B-A3B-DYNAMIC.gguf
+      size_gib: 19.0
+      params_b: 34.66
+      active_params_b: 3.0
+      quant: DYNAMIC
+      suggested_ctx: 16384
+      description: Mixed precision — fastest prefill (1100 t/s), 64 t/s decode.
+      strix_tested: true
+      measured_tg_t_s: 64.0
+    - id: llama2-7b-q4_0
+      kind: llm
+      name: Llama-2-7B
+      repo: TheBloke/Llama-2-7B-GGUF
+      file: llama-2-7b.Q4_0.gguf
+      size_gib: 3.83
+      params_b: 7.0
+      active_params_b:
+      quant: Q4_0
+      suggested_ctx: 4096
+      description: Light baseline для smoke / CI; community reference 52 t/s.
+      strix_tested: false
+    - id: llama2-7b-q4km
+      kind: llm
+      name: Llama-2-7B
+      repo: TheBloke/Llama-2-7B-GGUF
+      file: llama-2-7b.Q4_K_M.gguf
+      size_gib: 4.08
+      params_b: 7.0
+      active_params_b:
+      quant: Q4_K_M
+      suggested_ctx: 4096
+      description: Better quality 7B baseline (recommended by TheBloke).
+      strix_tested: false
+    - id: bge-m3-q8
+      kind: embed
+      name: BGE-M3 (multilingual embed)
+      repo: lm-kit/bge-m3-gguf
+      file: bge-m3-Q8_0.gguf
+      size_gib: 0.6
+      params_b: 0.5
+      active_params_b:
+      quant: Q8_0
+      suggested_ctx: 8192
+      description: Dense embedding for RAG (1024-dim, multilingual).
+      strix_tested: false
+    - id: bge-reranker-v2-m3-q8
+      kind: rerank
+      name: BGE Reranker v2 M3
+      repo: gpustack/bge-reranker-v2-m3-GGUF
+      file: bge-reranker-v2-m3-Q8_0.gguf
+      size_gib: 0.635
+      params_b: 0.568
+      active_params_b:
+      quant: Q8_0
+      suggested_ctx: 8192
+      description: Multilingual cross-encoder reranker for RAG ordering.
+      strix_tested: false
 
 llm_tiers:
   S:

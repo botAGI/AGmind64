@@ -1,0 +1,41 @@
+id: longhorn
+name: Longhorn
+status: candidate
+category: storage
+summary: Kubernetes distributed block storage candidate for homelab k3s deployments.
+recommended_version: "1.11.2"
+version_source: https://github.com/longhorn/longhorn/releases/tag/v1.11.2
+admission:
+  scope: deploy-target-addon
+  runtime: kubernetes
+  contracts:
+    - provision
+    - configure
+    - operate
+    - recover
+  component_contract_required: false
+  service_descriptor_required: false
+  image_pin_required: false
+dependencies:
+  deploy_targets:
+    - k3s
+  profiles:
+    - storage
+  storage_profiles:
+    - longhorn
+  secrets_profiles:
+    - sops-age
+    - external-secrets
+  ports: []
+  requires_gpu: false
+risks:
+  - Requires real k3s node-disk, replica count, snapshot, and restore evidence before target promotion.
+  - Must not be implied for single-node Compose or Proxmox VM Compose deployments.
+next_step: Add a k3s storage addon contract with Helm values, disk prerequisites, and restore proof before rendering Longhorn manifests.
+verification:
+  commands:
+    - agmind tools status longhorn
+    - agmind render kubernetes --profile core --target k3s --namespace agmind
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md
+    - .planning/research/homelab-enterprise/R21-k3s-storage-secrets-addons.md

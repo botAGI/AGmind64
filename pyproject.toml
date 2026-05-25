@@ -83,9 +83,9 @@ rocm = "agmind.compute.backends.rocm:ROCmBackend"
 npu = "agmind.compute.backends.npu_stub:NPUStubBackend"
 
 [project.urls]
-Documentation = "https://github.com/botAGI/AGmindx86"
-Repository = "https://github.com/botAGI/AGmindx86"
-"Migration Spec" = "https://github.com/botAGI/AGmindx86/blob/main/AGMIND_MIGRATION_SPEC.md"
+Documentation = "https://github.com/botAGI/AGmind64"
+Repository = "https://github.com/botAGI/AGmind64"
+"Project Planning" = "https://github.com/botAGI/AGmind64/tree/develop/.planning"
 
 [tool.setuptools.packages.find]
 where = ["."]

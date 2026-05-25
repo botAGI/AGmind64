@@ -6,7 +6,7 @@ metadata (tier, owner). Backward compat через `to_legacy_service()`.
 
 Поля validation:
     - name: docker container name convention `^[a-z][a-z0-9-]{1,30}$`
-    - image: запрет `:latest` (Invariant I.2 из AGMIND_MIGRATION_SPEC.md §1.3)
+    - image: запрет `:latest` (Invariant I.2 в `.planning/codebase/INVARIANTS.md`)
     - mem_limit: lowercase Docker format `^\\d+(k|m|g)$`
     - port: `[ip:]host:container` где host/container — port numbers
     - tier: Literal `edge | inference | storage | ops`
@@ -181,7 +181,7 @@ class ServiceDescriptor(BaseModel):
     """Кто отвечает за сервис (Backstage-style metadata)."""
 
     profiles: list[str] = Field(default_factory=list)
-    """Docker compose profiles (core, rag, ragflow, ui, observability, security, full)."""
+    """Docker compose profiles (core, rag, ragflow, ui, observability, proxmox, security, full)."""
 
     # ---- Networking ----
     ports: list[str] = Field(default_factory=list)
@@ -275,7 +275,7 @@ class ServiceDescriptor(BaseModel):
         if _LATEST_RE.search(v):
             raise ValueError(
                 f"image '{v}' uses :latest — pin to semver "
-                "(Invariant I.2 AGMIND_MIGRATION_SPEC.md §1.3)"
+                "(Invariant I.2 .planning/codebase/INVARIANTS.md)"
             )
         if "@sha256:" not in v and ":" not in v:
             raise ValueError(f"image '{v}' has no tag — pin to semver")

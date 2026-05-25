@@ -17,12 +17,9 @@ env:
   DB_PORT: '5432'
   REDIS_HOST: redis
   REDIS_PORT: '6379'
-  VECTOR_STORE: qdrant
-  QDRANT_URL: http://qdrant:6333
 depends_on:
 - postgres
 - redis
-- qdrant
 resources:
   cpus: 4.0
   mem_limit: 4g
@@ -31,8 +28,6 @@ resources:
 # Dify coexists с RAGFlow и может consume его как external KB через
 # witmeng/ragflow-api plugin. Capability dify_external_kb опционально
 # подцепляется if ragflow present.
-provides:
-- dify_stack
 consumes:
 - llm_inference
 - embedding_inference

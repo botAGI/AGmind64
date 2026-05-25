@@ -1,0 +1,5 @@
+default:
+  user: {{ agmind_proxmox_exporter_user | to_json }}
+  token_name: {{ agmind_proxmox_exporter_token_name | to_json }}
+  token_value: {{ agmind_proxmox_exporter_token_value | to_json }}
+  verify_ssl: {{ (agmind_proxmox_exporter_verify_ssl | default(true) | bool) | lower }}

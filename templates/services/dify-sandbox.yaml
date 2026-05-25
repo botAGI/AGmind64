@@ -9,11 +9,3 @@ profiles:
 resources:
   cpus: 2.0
   mem_limit: 1g
-
-# Phase O capabilities
-provides:
-- dify_stack
-consumes:
-- llm_inference
-- embedding_inference
-- vector_db

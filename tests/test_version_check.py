@@ -55,6 +55,13 @@ def test_compare_major() -> None:
     assert vc._compare("1.2.3", "2.0.0") == "major"
 
 
+def test_compare_current_newer_than_probe() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+
+    assert vc._compare("v0.57.0", "v0.55.1") == "newer_than_probe"
+
+
 # ---- compose pin scanner ----
 
 
@@ -76,6 +83,47 @@ def test_scan_extracts_correct_tag() -> None:
     pins = vc.scan_compose_pins(REPO_ROOT / "templates" / "services")
     by_image = {p[0]: p[1] for p in pins}
     assert by_image["infiniflow/ragflow"] == "v0.25.5"
+
+
+def test_scan_pyproject_deps_finds_textual() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+
+    pins = vc.scan_pyproject_deps(REPO_ROOT / "pyproject.toml")
+    by_name = {pin.name: pin for pin in pins}
+    assert by_name["textual"].specifier == ">=0.80"
+    assert by_name["ansible-core"].source == "pyproject"
+
+
+def test_scan_ansible_collections_finds_community_docker() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+
+    pins = vc.scan_ansible_collections(REPO_ROOT / "ansible" / "requirements.yml")
+    by_name = {pin.name: pin for pin in pins}
+    assert by_name["community.docker"].specifier == ">=4.0.0"
+
+
+def test_scan_dockerfile_pip_installs_finds_llama_cpp_python() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+
+    pins = vc.scan_dockerfile_pip_specs(REPO_ROOT / "docker")
+    assert any(pin.name == "llama-cpp-python" and pin.specifier == ">=0.3.23" for pin in pins)
+
+
+def test_scan_constraint_specs_finds_backend_planes() -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import version_check as vc
+
+    pins = vc.scan_constraint_specs(REPO_ROOT / "constraints")
+    by_source_name = {(pin.source, pin.name): pin for pin in pins}
+
+    assert by_source_name[("constraint:core", "typer")].specifier == ">=0.12,<1"
+    assert by_source_name[("constraint:vulkan", "llama-cpp-python")].file == (
+        "constraints/vulkan.txt"
+    )
+    assert by_source_name[("constraint:rocm-gfx1151", "torch")].specifier == ">=2.7,<3"
 
 
 # ---- holds parser ----

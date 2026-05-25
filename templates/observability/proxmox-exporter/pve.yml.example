@@ -1,0 +1,13 @@
+# Copy to /etc/agmind/proxmox-exporter/pve.yml and fill values locally, or let
+# Ansible render it from:
+# - agmind_proxmox_exporter_user
+# - agmind_proxmox_exporter_token_name
+# - agmind_proxmox_exporter_token_value
+# - agmind_proxmox_exporter_verify_ssl
+#
+# Use a Proxmox API token with the read-only PVEAuditor role.
+default:
+  user: prometheus@pve
+  token_name: agmind
+  token_value: <PVE_TOKEN_VALUE>
+  verify_ssl: true

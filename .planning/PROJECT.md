@@ -25,8 +25,9 @@ long-context pp + GDN models + batch embed), CPU fallback.
 hardening, dirty cloud-artifact reconciliation, and real E2E/cluster
 confidence before GA.
 
-**Driver:** AGMIND_MIGRATION_SPEC.md (single source of truth для
-архитектурных решений).
+**Driver:** `.planning/STATE.md` + `.planning/ROADMAP.md` + codebase maps under
+`.planning/codebase/`. Legacy migration archives were retired from the active
+repo on 2026-05-25.
 
 **Shipped:**
 - 3-layer architecture: Ansible (orchestration) + Python `agmind/` (runtime
@@ -46,7 +47,7 @@ confidence before GA.
   per-service settings, cluster peer banner, replicate toggle, help overlay
 - Real Strix Halo benchmark evidence for Qwen3.6-35B-A3B Q4_K_M
 - 886 passing tests, 0 audit findings as of 2026-05-22
-- User docs, ADRs 0000-0012, and recon reports R0-R18
+- User docs, ADRs 0000-0014, and current `.planning/` memory
 
 ## Previous milestones
 
@@ -58,14 +59,15 @@ confidence before GA.
 
 ## Reference documents
 
-- `AGMIND_MIGRATION_SPEC.md` — source of truth архитектуры
-- `docs/MIGRATION_PLAN.md` — phase A-G план миграции
+- `.planning/STATE.md` — current execution state and handoff memory
+- `.planning/REQUIREMENTS.md` — current requirement ledger
+- `.planning/ROADMAP.md` + `.planning/BACKLOG.md` — active delivery plan
+- `.planning/codebase/` — architecture, invariants, dependencies, pitfalls
 - `docs/HARDWARE.md` — host setup (BIOS/kernel/sysctl/Mesa/AMDVLK purge)
 - `docs/BENCHMARKS.md` — reference perf numbers
 - `docs/QUICKSTART.md` + `docs/INSTALL.md` + `docs/CLUSTER.md` — user guides
 - `docs/TROUBLESHOOTING.md` — cookbook
 - `docs/adr/` — ADRs 0000-0012+
-- `.planning/research/x86-migration/` — recon reports R0-R18 + baselines
 
 ## Out of scope (для M1)
 

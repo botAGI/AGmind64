@@ -197,8 +197,7 @@ class SetupState:
     """llama-embed --parallel. Embed = high concurrency (short inputs, batch friendly)."""
 
     # Phase M5.1: separate rerank model selector.
-    # Default 'custom' + empty file = skip download / no curated rerank yet.
-    rerank_model_id: str = "custom"
+    rerank_model_id: str = "bge-reranker-v2-m3-q8"
     """Curated rerank catalog id (CURATED_MODELS, kind=rerank) or 'custom'."""
     rerank_repo: str = ""
     """HF repo id для rerank model."""
@@ -396,6 +395,26 @@ def get_services_by_tier() -> dict[str, list[tuple[str, str]]]:
         if tier not in ordered:
             ordered[tier] = by_tier[tier]
     return ordered
+
+
+def expand_selected_services_for_setup(services: list[str]) -> list[str]:
+    """Expand setup checkbox choices into a deployable service closure."""
+    if not services:
+        return []
+    try:
+        from agmind.components import load_component_contracts
+        from agmind.services.renderer import load_descriptors
+        from agmind.services.selection import resolve_service_selection
+
+        descriptors = load_descriptors()
+        selected = resolve_service_selection(
+            descriptors,
+            services=services,
+            component_contracts=load_component_contracts(),
+        )
+        return sorted(selected)
+    except Exception:
+        return list(dict.fromkeys(services))
 
 
 def get_available_profiles() -> list[tuple[str, str]]:
@@ -748,7 +767,7 @@ class AgmindSetupApp(App[SetupState | None]):
         return SetupState(
             domain=domain,
             cf_api_token=cf_token,
-            services=services,
+            services=expand_selected_services_for_setup(services),
             profiles=[],  # cleared — services field теперь primary
             backend=backend,
             model_tier=self.detected.recommended_tier,
@@ -811,6 +830,19 @@ class AgmindSetupApp(App[SetupState | None]):
         except Exception:
             return None
 
+    def _deployment_topology_report(self, state: SetupState):  # type: ignore[no-untyped-def]
+        """Build the shared deployment topology report for preview/status UI."""
+        if not state.services:
+            return None
+        try:
+            from agmind.services.deployment_topology import (
+                build_deployment_topology_report_for_services,
+            )
+
+            return build_deployment_topology_report_for_services(state.services)
+        except Exception:
+            return None
+
     def _set_status(self, msg: str, kind: str = "") -> None:
         widget = self.query_one("#status-msg", Static)
         widget.update(msg)
@@ -846,27 +878,22 @@ class AgmindSetupApp(App[SetupState | None]):
             self._set_status(f"❌ render failed: {exc}", kind="error")
             return
 
-        # Check for missing dependencies — warn, не блокируй
-        missing_deps = self._check_dependencies(state)
+        # Shared topology report — warnings only, не блокируй.
+        topology = self._deployment_topology_report(state)
         dep_warn = ""
-        if missing_deps:
-            details = "; ".join(
-                f"{name} нуждается в {','.join(deps)}"
-                for name, deps in list(missing_deps.items())[:3]
-            )
+        dependency_warnings = topology.dependency_warnings if topology is not None else ()
+        if dependency_warnings:
+            details = "; ".join(dependency_warnings[:3])
             dep_warn = f" ⚠️ Missing deps: {details}"
 
-        # Phase O.A (revised): compat — informational warnings only.
-        compat = self._check_compatibility(state)
         compat_warn = ""
-        if compat is not None:
-            warn_items = compat.by_severity("warning")
-            if warn_items:
-                compat_warn = " ⚠️ " + "; ".join(i.message for i in warn_items[:2])
+        compatibility_warnings = topology.compatibility_warnings if topology is not None else ()
+        if compatibility_warnings:
+            compat_warn = " ⚠️ " + "; ".join(compatibility_warnings[:2])
 
         lines = preview.splitlines()
         self.preview_text = preview
-        status_kind = "error" if missing_deps else "success"
+        status_kind = "error" if dependency_warnings else "success"
         summary = (
             f"Compose rendered ({len(lines)} lines). "
             f"Services: {len(state.services)}. "
@@ -876,7 +903,7 @@ class AgmindSetupApp(App[SetupState | None]):
         # Phase M3.S.1: Toast для immediate feedback (status-msg остаётся как
         # archive — toast исчезает 4s)
         severity: Literal["information", "warning"] = "information"
-        if missing_deps or compat_warn:
+        if dependency_warnings or compat_warn:
             severity = "warning"
         self.notify(summary + (compat_warn or ""), title="Preview", severity=severity)
 

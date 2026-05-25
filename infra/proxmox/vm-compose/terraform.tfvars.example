@@ -1,0 +1,21 @@
+proxmox_endpoint  = "https://pve.example.test:8006/"
+proxmox_api_token = "<api-token-from-local-secret>"
+proxmox_insecure  = false
+timezone          = "UTC"
+
+nodes = {
+  agmind-master-01 = {
+    role            = "master"
+    node_name       = "pve"
+    vm_id           = 120
+    template_vm_id  = 9000
+    datastore_id    = "local-zfs"
+    network_bridge  = "vmbr0"
+    ipv4_address    = "dhcp"
+    admin_user      = "agmind"
+    ssh_public_keys = ["ssh-ed25519 AAAA_REPLACE_WITH_OPERATOR_PUBLIC_KEY operator@example"]
+    cores           = 8
+    memory_mb       = 32768
+    disk_size       = 128
+  }
+}

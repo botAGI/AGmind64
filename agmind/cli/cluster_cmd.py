@@ -18,6 +18,7 @@ from agmind.cluster.detect import (
 from agmind.cluster.detect import (
     discover as _discover,
 )
+from agmind.cluster.inspect import inspect_cluster as _inspect_cluster
 
 
 def cmd_detect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = False) -> int:
@@ -119,4 +120,55 @@ def cmd_status(as_json: bool = False, timeout: float = DEFAULT_DISCOVERY_TIMEOUT
     return 0
 
 
-__all__ = ["cmd_advertise", "cmd_detect", "cmd_status"]
+def cmd_inspect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = False) -> int:
+    """Inspect local cluster/runtime environment and recommend a deploy target."""
+    report = _inspect_cluster(discover_timeout=timeout)
+    if as_json:
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    print(f"Detected target: {report.detected_target} (confidence {report.confidence:.1f})")
+    if report.target is not None:
+        print(f"Target contract: {report.target.name} [{report.target.status}]")
+        print(
+            "  "
+            f"runtime={report.target.runtime_kind} "
+            f"renderer={report.target.renderer} "
+            f"profiles={','.join(report.target.profiles) or '-'}"
+        )
+        print(
+            "  "
+            f"provisioner={report.target.provisioner_kind} "
+            f"storage={report.target.storage_profile} "
+            f"secrets={report.target.secrets_profile}"
+        )
+    if report.reasons:
+        print("Reasons:")
+        for reason in report.reasons:
+            print(f"  - {reason}")
+    if report.warnings:
+        print("Warnings:")
+        for warning in report.warnings:
+            print(f"  - {warning}")
+    print()
+    print(
+        "Docker: "
+        f"{'yes' if report.docker.available else 'no'}"
+        f" compose={'yes' if report.docker.compose_available else 'no'}"
+    )
+    print(
+        "Kubernetes: "
+        f"{'yes' if report.kubernetes.available else 'no'}"
+        f" k3s={'yes' if report.kubernetes.k3s else 'no'}"
+        f" nodes={report.kubernetes.node_count}"
+    )
+    print(
+        "Proxmox: "
+        f"host={'yes' if report.proxmox.host else 'no'}"
+        f" vm_guest={'yes' if report.proxmox.vm_guest else 'no'}"
+    )
+    print(f"Peers: {len(report.peers)} discovered")
+    return 0
+
+
+__all__ = ["cmd_advertise", "cmd_detect", "cmd_inspect", "cmd_status"]

@@ -1,0 +1,31 @@
+id: proxmox-vm-compose
+name: Proxmox VM Compose
+status: experimental
+summary: Homelab lane where OpenTofu provisions Ubuntu VM nodes on Proxmox, then Ansible runs the current Compose path.
+runtime:
+  kind: compose
+  renderer: agmind render compose
+  profiles:
+    - core
+    - rag
+    - observability
+provisioner:
+  kind: opentofu-proxmox
+  module: infra/proxmox/vm-compose
+  state_backend: local
+  outputs:
+    - ansible_inventory
+    - agmind_hosts
+configurator:
+  kind: ansible
+  inventory_source: opentofu-output
+  playbooks:
+    - ansible/install.yml
+storage_profile: proxmox-zfs
+secrets_profile: sops-age
+verification:
+  commands:
+    - tofu -chdir=infra/proxmox/vm-compose fmt -check
+    - tofu -chdir=infra/proxmox/vm-compose validate
+    - python scripts/proxmox_inventory.py --help
+    - agmind render compose --profile core,rag --domain ci.example.com

@@ -1,0 +1,17 @@
+# AGmind core runtime compatibility envelope.
+#
+# These are not lock-file pins. They cap major or known-risky drift for the
+# dependency plane that all installs share.
+numpy>=2.0,<3
+typer>=0.12,<1
+rich>=13.7,<16
+questionary>=2.0,<3
+platformdirs>=4.2,<5
+pydantic>=2.7,<3
+ansible-core>=2.16,<2.22
+structlog>=24.0,<26
+textual>=0.80,<9
+pyfiglet>=1.0,<2
+PyYAML>=6.0,<7
+huggingface_hub>=0.24,<2
+zeroconf>=0.130,<1

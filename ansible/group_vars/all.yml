@@ -52,6 +52,15 @@ agmind_profiles:
   - observability              # prometheus + grafana + loki + alloy + alertmanager + exporters
 agmind_profile_default: core
 
+# ---- Proxmox exporter (opt-in `proxmox` profile) ----
+# Set existing_config=true when /etc/agmind/proxmox-exporter/pve.yml is
+# managed externally, e.g. SOPS/age or an operator-controlled secret mount.
+agmind_proxmox_exporter_existing_config: false
+agmind_proxmox_exporter_verify_ssl: true
+# agmind_proxmox_exporter_user: "prometheus@pve"
+# agmind_proxmox_exporter_token_name: "agmind"
+# agmind_proxmox_exporter_token_value: "REQUIRED when proxmox profile is enabled"
+
 # ---- Network ----
 agmind_lan_only: true
 agmind_mdns_enabled: true

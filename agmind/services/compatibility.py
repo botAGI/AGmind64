@@ -10,7 +10,10 @@ research user'a (RAGFlow ↔ Dify плагин существует, vector DBs 
 1. `redundant_provider` (warning) — 2+ сервисов с одинаковой capability
    (e.g. qdrant + milvus в одном compose). Не блокирующая — user может
    использовать для разных проектов внутри одного стека.
-2. `missing_capability` (warning) — consumer объявляет consumes=['vector_db']
+2. `ambiguous_dify_vector_provider` (warning) — Dify stack active while 2+
+   Dify vector DB providers are selected. Не блокирующая, but operator should
+   choose one active `VECTOR_STORE` for Dify API/worker.
+3. `missing_capability` (warning) — consumer объявляет consumes=['vector_db']
    но никто не provides — env injection не сработает, но docker compose
    ещё может стартовать (сервис со стандартными defaults).
 
@@ -25,6 +28,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from agmind.schemas import ServiceDescriptor
+from agmind.services.retrieval_policy import DIFY_SERVICES, DIFY_VECTOR_PROVIDERS
+
+OPTIONAL_MISSING_CAPABILITIES = frozenset({"dify_external_kb"})
 
 
 @dataclass(frozen=True)
@@ -32,7 +38,7 @@ class CompatIssue:
     """One detected compatibility problem."""
 
     severity: str  # 'error' (hard conflict) | 'warning' (redundancy) | 'info' (missing)
-    kind: str  # 'conflict' | 'redundant_provider' | 'missing_capability'
+    kind: str  # conflict | redundant_provider | ambiguous_* | missing_capability
     services: tuple[str, ...]
     capability: str | None
     message: str
@@ -100,6 +106,29 @@ def check_service_compatibility(
                 )
             )
 
+    # ---- 2b. Role-specific provider ambiguity ----
+    dify_active = bool(set(selected) & DIFY_SERVICES)
+    dify_vector_providers = tuple(
+        provider
+        for provider in sorted(DIFY_VECTOR_PROVIDERS)
+        if provider in selected and "vector_db" in selected[provider].provides
+    )
+    if dify_active and len(dify_vector_providers) > 1:
+        issues.append(
+            CompatIssue(
+                severity="warning",
+                kind="ambiguous_dify_vector_provider",
+                services=dify_vector_providers,
+                capability="vector_db",
+                message=(
+                    "Dify has multiple vector_db providers selected: "
+                    f"{', '.join(dify_vector_providers)}. "
+                    "Choose one active VECTOR_STORE for the Dify stack; "
+                    "RAGFlow uses search_index separately."
+                ),
+            )
+        )
+
     # ---- 3. Missing capabilities (consumer без provider) ----
     consumed: dict[str, list[str]] = defaultdict(list)
     for name, d in selected.items():
@@ -107,10 +136,11 @@ def check_service_compatibility(
             consumed[cap].append(name)
     for cap, consumers in consumed.items():
         if cap not in providers:
+            optional = cap in OPTIONAL_MISSING_CAPABILITIES
             issues.append(
                 CompatIssue(
-                    severity="warning",
-                    kind="missing_capability",
+                    severity="info" if optional else "warning",
+                    kind="optional_missing_capability" if optional else "missing_capability",
                     services=tuple(sorted(consumers)),
                     capability=cap,
                     message=(
@@ -143,9 +173,42 @@ def resolve_capability_provider(
     return providers[0] if providers else None
 
 
+def resolve_capability_provider_for_consumer(
+    selected: dict[str, ServiceDescriptor],
+    capability: str,
+    consumer: str,
+) -> str | None:
+    """Return a provider that can configure `consumer` for `capability`.
+
+    Capability ownership alone is not always enough: future providers may
+    expose a capability for another tool family before AGmind has env bindings
+    for every consumer. Prefer providers with an explicit binding for the
+    consumer; fall back to deterministic capability ownership when no binding
+    exists.
+    """
+    from agmind.services.capability_bindings import env_for_consumer
+
+    providers = sorted(
+        (name for name, d in selected.items() if capability in d.provides),
+        key=lambda name: _provider_sort_key(capability, consumer, name),
+    )
+    for provider in providers:
+        if env_for_consumer(capability, provider, consumer):
+            return provider
+    return providers[0] if providers else None
+
+
+def _provider_sort_key(capability: str, consumer: str, provider: str) -> tuple[int, str]:
+    if capability == "vector_db" and consumer in DIFY_SERVICES:
+        rank = {name: index for index, name in enumerate(DIFY_VECTOR_PROVIDERS)}
+        return (rank.get(provider, len(rank)), provider)
+    return (0, provider)
+
+
 __all__ = [
     "CompatIssue",
     "CompatReport",
     "check_service_compatibility",
     "resolve_capability_provider",
+    "resolve_capability_provider_for_consumer",
 ]

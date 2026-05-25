@@ -1,6 +1,6 @@
 """Backend registry + auto-select.
 
-См. AGMIND_MIGRATION_SPEC.md §1.2.6 (selection rules) + ADR-0008 (entry_points).
+See ADR-0008 for the entry-point plugin boundary.
 
 Phase H'.E: backends discoverable через setuptools entry_points group
 `agmind.backends`. Third-party плагины делают `pip install agmind-X-backend`,

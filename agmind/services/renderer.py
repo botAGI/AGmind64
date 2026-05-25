@@ -291,7 +291,7 @@ def inject_capability_env(
     Consumers without resolvable provider или no binding entry → empty dict.
     """
     from agmind.services.capability_bindings import env_for_consumer
-    from agmind.services.compatibility import resolve_capability_provider
+    from agmind.services.compatibility import resolve_capability_provider_for_consumer
 
     extra_env: dict[str, dict[str, str]] = {}
     for name, d in selected.items():
@@ -299,13 +299,34 @@ def inject_capability_env(
             continue
         consumer_env: dict[str, str] = {}
         for cap in d.consumes:
-            provider = resolve_capability_provider(selected, cap)
+            provider = resolve_capability_provider_for_consumer(selected, cap, name)
             if provider is None:
                 continue
             consumer_env.update(env_for_consumer(cap, provider, name))
         if consumer_env:
             extra_env[name] = consumer_env
     return extra_env
+
+
+def descriptors_with_capability_env(
+    descriptors: list[ServiceDescriptor],
+) -> list[ServiceDescriptor]:
+    """Return descriptor copies with capability env merged into consumers.
+
+    Descriptor-authored env wins over injected defaults, matching Docker Compose
+    renderer behavior and keeping manual overrides possible.
+    """
+    selected_map = {d.name: d for d in descriptors}
+    capability_env = inject_capability_env(selected_map)
+    resolved: list[ServiceDescriptor] = []
+    for descriptor in descriptors:
+        extra = capability_env.get(descriptor.name)
+        if not extra:
+            resolved.append(descriptor)
+            continue
+        env = {**extra, **descriptor.env}
+        resolved.append(descriptor.model_copy(update={"env": env}))
+    return resolved
 
 
 def render_compose(
@@ -320,20 +341,11 @@ def render_compose(
         traefik_enabled: добавлять Traefik labels из routing config
         network_name: имя shared bridge сети
     """
-    selected_map = {d.name: d for d in descriptors}
-    capability_env = inject_capability_env(selected_map)
+    resolved_descriptors = descriptors_with_capability_env(descriptors)
 
     services_block_local: dict[str, Any] = {}
-    for d in sorted(descriptors, key=lambda x: x.name):
+    for d in sorted(resolved_descriptors, key=lambda x: x.name):
         svc = descriptor_to_compose_service(d, traefik_enabled)
-        extra = capability_env.get(d.name)
-        if extra:
-            env_block = svc.setdefault("environment", {})
-            if isinstance(env_block, list):
-                env_block = dict(item.split("=", 1) for item in env_block if "=" in item)
-            for k, v in extra.items():
-                env_block.setdefault(k, v)
-            svc["environment"] = env_block
         services_block_local[d.name] = svc
     services_block = services_block_local
     compose: dict[str, Any] = {

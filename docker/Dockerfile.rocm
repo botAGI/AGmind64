@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # AGmind ROCm/HIP backend — SECONDARY на AMD Strix Halo (gfx1151).
 # Для GDN-моделей, long-context pp, concurrent batch ≥16, M2 tool calling.
-# См. AGMIND_MIGRATION_SPEC.md §1.2.2.
 #
 # Базовый образ: ROCm 7.2.3-complete (build stage — нужен HIP SDK + LLVM).
 # 6.89 GB, содержит rocm-hip-sdk + rocblas + hipblas + headers + cmake.
@@ -53,12 +52,16 @@ RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip wheel setuptools
 ENV PATH="/opt/venv/bin:${PATH}"
 
+COPY constraints /opt/agmind/constraints
+
 # PyTorch ROCm: ОБЯЗАТЕЛЬНО AMD nightly index для gfx1151. Stock
 # pytorch.org wheels на gfx1151 дают 'HIP error: invalid device function'.
 # URL verified HTTP 200 на 2026-05-19 (last-modified тот же день — actively maintained).
 # Альтернатива: v2-staging/gfx1151/ (bleeding-edge, но cap 64GB memory).
 # ⚠️ Nightly URL может стать недоступным — если build fails, попробовать stable rocm/pytorch.
-RUN pip install --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ --pre \
+RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt \
+        --index-url https://rocm.nightlies.amd.com/v2/gfx1151/ \
+        --pre \
         torch torchaudio torchvision
 
 # llama-cpp-python с GGML_HIP (gfx1151-specific build).
@@ -75,14 +78,16 @@ ENV CMAKE_ARGS="-DGGML_HIP=ON \
     FORCE_CMAKE=1 \
     HIPCXX=/opt/rocm/llvm/bin/clang \
     HIP_PATH=/opt/rocm
-RUN pip install --no-binary llama-cpp-python "llama-cpp-python>=0.3.23"
+RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt \
+        --no-binary llama-cpp-python \
+        "llama-cpp-python>=0.3.23"
 
 # onnxruntime CPU only (onnxruntime-rocm 1.22.x НЕ gfx1151-ready).
-RUN pip install onnxruntime numpy scipy
+RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt onnxruntime numpy scipy
 
 WORKDIR /opt/agmind
 COPY . /opt/agmind
-RUN pip install -e ".[rocm]"
+RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt -e ".[rocm]"
 
 ENV AGMIND_BACKEND=rocm \
     AGMIND_ENGINE=llama_cpp

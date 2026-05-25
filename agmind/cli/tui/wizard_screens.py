@@ -34,6 +34,7 @@ from textual.widgets import (
 )
 
 from agmind.i18n import t
+from agmind.services.retrieval_policy import DIFY_VECTOR_PROVIDERS
 
 # ---- Shared helpers (M5.3) ----
 
@@ -473,12 +474,12 @@ class ServicesScreen(Screen[None]):
         """M5.3.4: re-render banner когда меняется selection count."""
         if not str(event.checkbox.id or "").startswith("svc-"):
             return
-        selected = sum(
-            1
-            for tier_services in self.app.services_by_tier.values()
-            for name, _ in tier_services
-            if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value
-        )
+        if event.value and not getattr(self, "_syncing_service_selection", False):
+            service_name = self._service_name_for_checkbox(event.checkbox.id)
+            if service_name in DIFY_VECTOR_PROVIDERS:
+                self._uncheck_other_vector_providers(service_name)
+            self._sync_expanded_service_selection()
+        selected = self._selected_service_count()
         try:
             banner = self.query_one("#services-empty-banner", Static)
         except Exception:
@@ -490,6 +491,56 @@ class ServicesScreen(Screen[None]):
         else:
             banner.update(f"[dim]{selected} of {total} services selected[/dim]")
             banner.set_classes("hint")
+
+    def _selected_service_count(self) -> int:
+        return sum(
+            1
+            for tier_services in self.app.services_by_tier.values()
+            for name, _ in tier_services
+            if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value
+        )
+
+    def _checked_service_names(self) -> list[str]:
+        services: list[str] = []
+        for tier_services in self.app.services_by_tier.values():
+            for name, _ in tier_services:
+                if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value:
+                    services.append(name)
+        return services
+
+    def _service_name_for_checkbox(self, widget_id: object) -> str | None:
+        raw_id = str(widget_id or "")
+        if not raw_id.startswith("svc-"):
+            return None
+        normalized = raw_id.removeprefix("svc-")
+        for tier_services in self.app.services_by_tier.values():
+            for name, _ in tier_services:
+                if name.replace("-", "_") == normalized:
+                    return str(name)
+        return None
+
+    def _uncheck_other_vector_providers(self, selected_provider: str) -> None:
+        for provider in DIFY_VECTOR_PROVIDERS:
+            if provider == selected_provider:
+                continue
+            try:
+                checkbox = self.query_one(f"#svc-{provider.replace('-', '_')}", Checkbox)
+            except Exception:
+                continue
+            checkbox.value = False
+
+    def _sync_expanded_service_selection(self) -> None:
+        from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
+        expanded = set(expand_selected_services_for_setup(self._checked_service_names()))
+        self._syncing_service_selection = True
+        try:
+            for tier_services in self.app.services_by_tier.values():
+                for name, _ in tier_services:
+                    checkbox = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
+                    checkbox.value = name in expanded
+        finally:
+            self._syncing_service_selection = False
 
     def action_help(self) -> None:
         self.app.push_screen(HelpScreen())
@@ -507,12 +558,15 @@ class ServicesScreen(Screen[None]):
         self._save_and_advance()
 
     def _save_and_advance(self) -> None:
+        from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
         services: list[str] = []
         for tier_services in self.app.services_by_tier.values():
             for name, _ in tier_services:
                 cb = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
                 if cb.value:
                     services.append(name)
+        services = expand_selected_services_for_setup(services)
         self.app.state.services = services
         if not services:
             self.app.notify("Выбери хотя бы один service", severity="error")
@@ -548,7 +602,16 @@ class ConfirmScreen(Screen[None]):
 
     def _summary(self, state) -> str:  # type: ignore[no-untyped-def]
         # Phase M4.7 + M5.1: Fallout pip-boy STATUS REPORT — separate LLM/Embed/Rerank
+        from agmind.services.deployment_topology import (
+            build_deployment_topology_report_for_services,
+        )
+
         line = "─" * 60
+        topology = build_deployment_topology_report_for_services(state.services)
+        topology_lines = topology.block_lines()
+        topology_block = ""
+        if topology_lines:
+            topology_block = "\n".join(f"  {item}" for item in topology_lines) + "\n"
         rerank_block = (
             (
                 f"  RERANK ............. {state.rerank_model_id}\n"
@@ -579,6 +642,8 @@ class ConfirmScreen(Screen[None]):
             f"      PARALLEL ....... {state.embed_parallel}\n"
             f"{line}\n"
             f"{rerank_block}"
+            f"{line}\n"
+            f"{topology_block}"
             f"{line}\n"
             f"  SERVICES SELECTED .. {len(state.services)}\n"
             f"  {', '.join(sorted(state.services))}\n"

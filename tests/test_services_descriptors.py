@@ -1,10 +1,7 @@
-"""Phase H'.B: каждый файл templates/services/*.yaml валидно парсится в ServiceDescriptor.
+"""Каждый файл templates/services/*.yaml валидно парсится в ServiceDescriptor.
 
-Это smoke-тест что миграция (scripts/migrate_services_to_descriptors.py) дала
-консистентный результат: все 32 сервиса соответствуют ServiceDescriptor schema.
-
-После Phase H'.C (когда рендерер переключится на ServiceDescriptor) — этот тест
-станет основным DoD для services layer.
+Это smoke-тест что текущий сервисный каталог консистентен и соответствует
+ServiceDescriptor schema.
 """
 
 from __future__ import annotations
@@ -32,7 +29,7 @@ def _service_files() -> list[Path]:
 def service_files() -> list[Path]:
     files = _service_files()
     if not files:
-        pytest.skip("templates/services/ empty — run scripts/migrate_services_to_descriptors.py")
+        pytest.skip("templates/services/ empty — service descriptor catalog missing")
     return files
 
 

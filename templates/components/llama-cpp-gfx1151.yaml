@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: llama-cpp-gfx1151
+kind: inference
+core:
+  upstream: https://github.com/ggml-org/llama.cpp
+  min_version: b8765
+  recommended_version: server-vulkan-b9049
+  current_pin: server-vulkan-b9049
+  update_policy: manual-hold
+  hold_reason: Strix Halo baseline is measured on b9049; bump only after re-bench.
+  source: registry
+runtime:
+  service_descriptors:
+    - llama-embed
+    - llama-llm
+    - llama-rerank
+  compose_profiles:
+    - core
+  ports:
+    - llama-llm:8080
+    - llama-embed:8081
+    - llama-rerank:8082
+  dockerfiles:
+    - docker/Dockerfile.cpu
+    - docker/Dockerfile.vulkan
+    - docker/Dockerfile.rocm
+  files:
+    - constraints/cpu.txt
+    - constraints/vulkan.txt
+    - constraints/rocm-gfx1151.txt
+provides:
+  - llm_inference
+  - embedding_inference
+  - reranker
+requires:
+  capabilities:
+    - compute.cpu
+verification:
+  smoke:
+    - docker build -f docker/Dockerfile.vulkan --build-arg BASE_IMAGE=agmind-base:ci -t agmind-vulkan:ci .
+    - docker build -f docker/Dockerfile.rocm --build-arg BASE_IMAGE=agmind-base:ci -t agmind-rocm:ci .
+  tests:
+    - test-strix-halo
+  schema_refs:
+    - templates/schemas/service.json

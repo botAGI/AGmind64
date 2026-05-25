@@ -9,7 +9,7 @@
 | AGMIND_DEVICE_ID          | int (≥0)                                      | 0       |
 | AGMIND_BACKEND_PROFILE    | tg / pp / mixed / embed_single / embed_batch  | mixed   |
 
-См. AGMIND_MIGRATION_SPEC.md §1.2.6 (selection rules).
+Backend selection is implemented by `agmind.compute._registry`.
 """
 
 from __future__ import annotations

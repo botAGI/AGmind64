@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: edge-proxy
+kind: edge
+core:
+  upstream: Traefik, Caddy, Nginx, and Authelia release streams
+  recommended_version: 2026-05-23-r20
+  current_pin: 2026-05-23-r20
+  update_policy: compatible-minor
+  source: manual
+runtime:
+  service_descriptors:
+    - authelia
+    - caddy
+    - nginx
+    - traefik
+  compose_profiles:
+    - core
+    - core-caddy
+    - core-nginx
+    - security
+  ports:
+    - http:80
+    - https:443
+    - authelia:9091
+    - traefik-metrics:9100
+provides:
+  - reverse_proxy
+  - tls_termination
+  - auth_gateway
+conflicts:
+  ports:
+    - "80"
+    - "443"
+verification:
+  smoke:
+    - agmind render compose --profile core --domain ci.example.com --output /tmp/agmind-edge.yml
+    - docker compose -f /tmp/agmind-edge.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

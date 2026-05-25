@@ -15,6 +15,7 @@ Profile system:
 - ragflow        — core + RAGFlow + MySQL + Elasticsearch + MinIO
 - ui             — Open WebUI как chat frontend
 - observability  — Prometheus + Grafana + Loki + Alloy + Alertmanager + exporters
+- proxmox        — Proxmox-specific opt-in integrations and exporters
 - security       — Authelia + fail2ban (host-level)
 - full           — все профили вместе
 """
@@ -40,6 +41,7 @@ class ServiceProfile(str, Enum):
     RAGFLOW = "ragflow"
     UI = "ui"
     OBSERVABILITY = "observability"
+    PROXMOX = "proxmox"
     SECURITY = "security"
     FULL = "full"
 
@@ -300,7 +302,7 @@ _IMAGE_LATEST_RE = re.compile(r":latest(?:$|@)")
 def validate_no_latest(services: dict[str, Service]) -> list[str]:
     """Return list of violations: services using :latest tag.
 
-    AGMIND_MIGRATION_SPEC.md §1.3: «Всегда пинить по digest, не по тегу».
+    `.planning/codebase/INVARIANTS.md` I.2: never use mutable `:latest` tags.
     """
     issues: list[str] = []
     for svc in services.values():

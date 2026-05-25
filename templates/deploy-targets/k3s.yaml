@@ -1,0 +1,38 @@
+id: k3s
+name: k3s Homelab
+status: research
+summary: Research Kubernetes homelab lane for lightweight clusters, Longhorn storage, and External Secrets.
+runtime:
+  kind: kubernetes
+  renderer: agmind render kubernetes
+  profiles:
+    - core
+    - rag
+    - observability
+provisioner:
+  kind: external
+  state_backend: external
+configurator:
+  kind: helm
+  inventory_source: kubeconfig
+  charts:
+    - charts/agmind
+  manifests:
+    - k8s/agmind
+storage_profile: longhorn
+secrets_profile: external-secrets
+verification:
+  commands:
+    - agmind render kubernetes --profile core,rag,observability --namespace agmind --output /tmp/agmind-k8s.yaml
+    - scripts/kubernetes_dry_run.py --target k3s --require-cluster --require-amd-gpu --artifact-dir local-kubernetes-proof/k3s
+    - scripts/kubernetes_dry_run.py --verify-artifact-dir local-kubernetes-proof/k3s
+  artifacts:
+    - local-kubernetes-proof/k3s/k3s.yaml
+    - local-kubernetes-proof/k3s/k3s.dry-run.json
+    - local-kubernetes-proof/k3s/proof-command.txt
+    - local-kubernetes-proof/k3s/run-metadata.json
+    - local-kubernetes-proof/k3s/summary.json
+    - local-kubernetes-proof/k3s/checksums.txt
+  expected_warning_codes:
+    - amd-gpu-device-plugin
+    - kubernetes-omitted

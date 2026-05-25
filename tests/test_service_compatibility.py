@@ -78,6 +78,24 @@ def test_redundant_provider_warning() -> None:
     assert any(i.kind == "redundant_provider" and i.capability == "vector_db" for i in warns)
 
 
+def test_dify_multiple_vector_providers_warns_about_ambiguous_backend() -> None:
+    selected = {
+        "dify-api": _desc("dify-api", consumes=["vector_db"]),
+        "qdrant": _desc("qdrant", provides=["vector_db"]),
+        "milvus": _desc("milvus", provides=["vector_db"]),
+    }
+
+    report = check_service_compatibility(selected)
+    warns = report.by_severity("warning")
+
+    assert any(
+        i.kind == "ambiguous_dify_vector_provider"
+        and i.capability == "vector_db"
+        and i.services == ("milvus", "qdrant")
+        for i in warns
+    )
+
+
 def test_missing_capability_warning() -> None:
     selected = {
         "dify-api": _desc("dify-api", consumes=["vector_db"]),
@@ -85,6 +103,23 @@ def test_missing_capability_warning() -> None:
     report = check_service_compatibility(selected)
     warns = report.by_severity("warning")
     assert any(i.kind == "missing_capability" and i.capability == "vector_db" for i in warns)
+
+
+def test_optional_dify_external_kb_gap_is_info_not_warning() -> None:
+    selected = {
+        "dify-api": _desc("dify-api", consumes=["dify_external_kb"]),
+    }
+
+    report = check_service_compatibility(selected)
+
+    assert not any(
+        i.kind == "missing_capability" and i.capability == "dify_external_kb"
+        for i in report.by_severity("warning")
+    )
+    assert any(
+        i.kind == "optional_missing_capability" and i.capability == "dify_external_kb"
+        for i in report.by_severity("info")
+    )
 
 
 def test_capability_providers_map() -> None:
@@ -169,6 +204,32 @@ def test_render_compose_injects_dify_milvus() -> None:
     assert env["MILVUS_URI"] == "http://milvus:19530"
 
 
+def test_inject_capability_env_prefers_provider_with_consumer_binding() -> None:
+    selected = {
+        "aaa-vector": _desc("aaa-vector", provides=["vector_db"]),
+        "milvus": _desc("milvus", provides=["vector_db"]),
+        "dify-api": _desc("dify-api", consumes=["vector_db"]),
+    }
+
+    injected = inject_capability_env(selected)
+
+    assert injected["dify-api"]["VECTOR_STORE"] == "milvus"
+    assert injected["dify-api"]["MILVUS_URI"] == "http://milvus:19530"
+
+
+def test_inject_capability_env_uses_dify_vector_provider_priority() -> None:
+    selected = {
+        "qdrant": _desc("qdrant", provides=["vector_db"]),
+        "weaviate": _desc("weaviate", provides=["vector_db"]),
+        "dify-api": _desc("dify-api", consumes=["vector_db"]),
+    }
+
+    injected = inject_capability_env(selected)
+
+    assert injected["dify-api"]["VECTOR_STORE"] == "weaviate"
+    assert injected["dify-api"]["WEAVIATE_ENDPOINT"] == "http://weaviate:8080"
+
+
 def test_render_compose_does_not_override_manual_env() -> None:
     custom = ServiceDescriptor(
         name="dify-api",
@@ -235,6 +296,22 @@ def test_real_catalog_dify_api_consumes_dify_external_kb() -> None:
     assert "dify_external_kb" in all_d["dify-api"].consumes
 
 
+def test_real_catalog_dify_stack_marker_is_not_provider() -> None:
+    """Dify stack membership lives in component contracts, not service provides."""
+    from agmind.services.renderer import load_descriptors
+
+    all_d = load_descriptors()
+    dify_services = [
+        "dify-api",
+        "dify-web",
+        "dify-worker",
+        "dify-sandbox",
+        "dify-plugin-daemon",
+    ]
+    for service_name in dify_services:
+        assert "dify_stack" not in all_d[service_name].provides
+
+
 def test_real_catalog_ragflow_dify_integration_env_injected() -> None:
     """Когда выбраны и ragflow и dify-api — dify-api получает RAGFLOW_API_ENDPOINT."""
     from agmind.services.renderer import load_descriptors, select_services
@@ -271,6 +348,30 @@ def test_real_catalog_ragflow_uses_elasticsearch_not_milvus() -> None:
     rf = all_d["ragflow"]
     assert "search_index" in rf.consumes
     assert "vector_db" not in rf.consumes
+
+
+def test_real_catalog_dify_api_has_no_hardcoded_qdrant_binding() -> None:
+    """Dify vector store must be selected through vector_db capability bindings."""
+    from agmind.services.renderer import load_descriptors
+
+    all_d = load_descriptors()
+    dify_api = all_d["dify-api"]
+    assert "qdrant" not in dify_api.depends_on
+    assert "VECTOR_STORE" not in dify_api.env
+    assert "QDRANT_URL" not in dify_api.env
+
+
+def test_real_catalog_dify_capability_consumers_are_runtime_services_only() -> None:
+    """Only Dify API/worker consume model and vector providers directly."""
+    from agmind.services.renderer import load_descriptors
+
+    all_d = load_descriptors()
+    provider_caps = {"llm_inference", "embedding_inference", "vector_db"}
+
+    assert provider_caps <= set(all_d["dify-api"].consumes)
+    assert provider_caps <= set(all_d["dify-worker"].consumes)
+    for service_name in ("dify-web", "dify-sandbox", "dify-plugin-daemon"):
+        assert provider_caps.isdisjoint(all_d[service_name].consumes)
 
 
 def test_real_catalog_milvus_does_not_inject_into_ragflow() -> None:

@@ -12,6 +12,18 @@ env:
   DEVICE: cpu
   MINERU_BACKEND: vlm-http-client
   VLM_ENDPOINT: http://llama-llm:8080/v1
+  MYSQL_HOST: mysql
+  MYSQL_PORT: '3306'
+  MYSQL_USER: root
+  MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  MYSQL_DBNAME: rag_flow
+  MINIO_HOST: minio
+  MINIO_PORT: '9000'
+  MINIO_USER: ${MINIO_ROOT_USER}
+  MINIO_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
 depends_on:
 - mysql
 - elasticsearch

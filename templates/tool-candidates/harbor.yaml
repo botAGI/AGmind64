@@ -1,0 +1,41 @@
+id: harbor
+name: Harbor
+status: candidate
+category: registry
+summary: Enterprise registry, image policy, scanning, and artifact distribution candidate.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+    - secure
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - proxmox-vm-compose
+    - k3s
+  profiles:
+    - enterprise-registry
+  storage_profiles:
+    - proxmox-zfs
+    - longhorn
+  secrets_profiles:
+    - sops-age
+    - external-secrets
+    - vault
+    - infisical
+  ports:
+    - "443"
+  requires_gpu: false
+risks:
+  - Large stateful stack; only useful after AGmind image publishing and signing mature.
+  - Must be checked against reverse proxy port ownership and TLS policy.
+next_step: Defer until AGmind has an image publishing/signing workflow worth hosting.
+verification:
+  commands:
+    - agmind render compose --profile enterprise-registry --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

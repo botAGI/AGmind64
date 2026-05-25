@@ -34,15 +34,19 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SERVICES_DIR = REPO_ROOT / "templates" / "services"
+COMPONENTS_DIR = REPO_ROOT / "templates" / "components"
 HOLDS_FILE = REPO_ROOT / "templates" / "version_holds.yaml"
 DOCKERFILES_DIR = REPO_ROOT / "docker"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+CONSTRAINTS_DIR = REPO_ROOT / "constraints"
 
 # ---- semver compare ----
 _VERSION_RE = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[.-]([a-zA-Z0-9.-]+))?")
@@ -175,7 +179,7 @@ def _parse_semver(s: str) -> tuple[int, int, int, str]:
 
 
 def _compare(current: str, latest: str) -> str:
-    """Returns one of: 'up_to_date' / 'patch' / 'minor' / 'major' / 'unknown'.
+    """Returns semver delta status.
 
     Compares только numeric semver tuple (major, minor, patch). Variant
     suffix (e.g. `-alpine` в pin vs plain `2.11.3` upstream) ignored —
@@ -183,8 +187,12 @@ def _compare(current: str, latest: str) -> str:
     """
     c = _parse_semver(current)[:3]
     l = _parse_semver(latest)[:3]
+    if c[0] < 0 or l[0] < 0:
+        return "unknown"
     if c == l:
         return "up_to_date"
+    if c > l:
+        return "newer_than_probe"
     if c[0] != l[0]:
         return "major"
     if c[1] != l[1]:
@@ -215,18 +223,47 @@ class PinReport:
             "patch": "📦",
             "minor": "🔄",
             "major": "⚠️",
+            "newer_than_probe": "↥",
             "hold": "⏸",
             "error": "❌",
         }.get(self.status, "?")
 
 
+@dataclass(frozen=True)
+class DependencyPin:
+    """One non-container dependency discovered by the version scanner."""
+
+    name: str
+    specifier: str
+    source: str
+    file: str
+
+
+@dataclass(frozen=True)
+class ComponentPolicy:
+    """One component-level version/update policy."""
+
+    name: str
+    kind: str
+    current: str
+    recommended: str
+    update_policy: str
+    source: str
+    file: str
+    hold_reason: str = ""
+
+
 # ---- registry probes ----
 
 
-def _http_get_json(url: str, headers: dict[str, str] | None = None, timeout: int = 10) -> dict:
+def _http_get_json(
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout: int = 10,
+) -> dict[str, Any]:
     req = urllib.request.Request(url, headers=headers or {})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        return cast(dict[str, Any], json.loads(resp.read().decode("utf-8")))
 
 
 def _docker_hub_latest(image: str) -> str | None:
@@ -239,7 +276,12 @@ def _docker_hub_latest(image: str) -> str | None:
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    tags = [t["name"] for t in data.get("results", [])]
+    results = data.get("results", [])
+    tags = [
+        str(t.get("name", ""))
+        for t in results
+        if isinstance(t, dict) and isinstance(t.get("name"), str)
+    ]
     # Filter only semver-looking tags
     semver = [
         t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
@@ -265,7 +307,8 @@ def _ghcr_latest(owner: str, image: str) -> str | None:
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    tags = data.get("tags", []) or []
+    raw_tags = data.get("tags", []) or []
+    tags = [tag for tag in raw_tags if isinstance(tag, str)]
     # Filter semver-looking + drop variants / RC / SHA-only
     semver = [
         t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
@@ -288,7 +331,11 @@ def _quay_latest(owner: str, image: str) -> str | None:
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    tags = [t.get("name", "") for t in data.get("tags", []) if isinstance(t, dict)]
+    tags = [
+        str(t.get("name", ""))
+        for t in data.get("tags", [])
+        if isinstance(t, dict) and isinstance(t.get("name"), str)
+    ]
     semver = [
         t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
@@ -310,7 +357,8 @@ def _gcr_latest(project: str, image: str) -> str | None:
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    tags = data.get("tags", []) or []
+    raw_tags = data.get("tags", []) or []
+    tags = [tag for tag in raw_tags if isinstance(tag, str)]
     semver = [
         t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
     ]
@@ -328,7 +376,8 @@ def _github_release_latest(owner: str, repo: str) -> str | None:
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
-    return data.get("tag_name") or data.get("name")
+    tag = data.get("tag_name") or data.get("name")
+    return tag if isinstance(tag, str) else None
 
 
 def probe_latest(image_with_path: str) -> str | None:
@@ -400,10 +449,158 @@ def scan_dockerfile_pins(docker_dir: Path) -> list[tuple[str, str, str]]:
     return out
 
 
+def scan_pyproject_deps(pyproject: Path = PYPROJECT) -> list[DependencyPin]:
+    """Scan [project].dependencies and [project.optional-dependencies]."""
+    if not pyproject.exists():
+        return []
+    import tomllib
+
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    out: list[DependencyPin] = []
+
+    def add_req(req: str) -> None:
+        name = re.split(r"[<>=!~;\[]", req, maxsplit=1)[0].strip()
+        specifier = req[len(name) :].strip() or "*"
+        if not name:
+            return
+        out.append(
+            DependencyPin(
+                name=name,
+                specifier=specifier,
+                source="pyproject",
+                file=str(pyproject.relative_to(REPO_ROOT)),
+            )
+        )
+
+    for req in data.get("project", {}).get("dependencies", []) or []:
+        add_req(req)
+    optional = data.get("project", {}).get("optional-dependencies", {}) or {}
+    for reqs in optional.values():
+        for req in reqs:
+            add_req(req)
+    return out
+
+
+def scan_ansible_collections(
+    path: Path = REPO_ROOT / "ansible" / "requirements.yml",
+) -> list[DependencyPin]:
+    """Scan ansible/requirements.yml collection pins."""
+    if not path.exists():
+        return []
+    try:
+        import yaml
+
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return []
+
+    out: list[DependencyPin] = []
+    for item in data.get("collections", []) or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        specifier = str(item.get("version", "*")).strip() or "*"
+        if not name:
+            continue
+        out.append(
+            DependencyPin(
+                name=name,
+                specifier=specifier,
+                source="ansible-galaxy",
+                file=str(path.relative_to(REPO_ROOT)),
+            )
+        )
+    return out
+
+
+_PIP_SPEC_RE = re.compile(r'"?([A-Za-z0-9_.-]+)(==|>=|<=|~=|>|<)([^"\s]+)"?')
+
+
+def scan_dockerfile_pip_specs(docker_dir: Path = DOCKERFILES_DIR) -> list[DependencyPin]:
+    """Scan pip specs embedded in docker/Dockerfile.*."""
+    out: list[DependencyPin] = []
+    if not docker_dir.exists():
+        return out
+    for path in sorted(docker_dir.glob("Dockerfile*")):
+        text = path.read_text(encoding="utf-8")
+        for match in _PIP_SPEC_RE.finditer(text):
+            name, op, version = match.groups()
+            out.append(
+                DependencyPin(
+                    name=name,
+                    specifier=f"{op}{version}",
+                    source="dockerfile-pip",
+                    file=str(path.relative_to(REPO_ROOT)),
+                )
+            )
+    return out
+
+
+def scan_constraint_specs(constraints_dir: Path = CONSTRAINTS_DIR) -> list[DependencyPin]:
+    """Scan constraints/*.txt compatibility envelopes."""
+    out: list[DependencyPin] = []
+    if not constraints_dir.exists():
+        return out
+    for path in sorted(constraints_dir.glob("*.txt")):
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if not line or line.startswith(("-c ", "--constraint ")):
+                continue
+            name = re.split(r"[<>=!~;\[]", line, maxsplit=1)[0].strip()
+            specifier = line[len(name) :].strip() or "*"
+            if not name:
+                continue
+            out.append(
+                DependencyPin(
+                    name=name,
+                    specifier=specifier,
+                    source=f"constraint:{path.stem}",
+                    file=str(path.relative_to(REPO_ROOT)),
+                )
+            )
+    return out
+
+
+def scan_component_policies(components_dir: Path = COMPONENTS_DIR) -> list[ComponentPolicy]:
+    """Scan templates/components/*.yaml for component-level update policies."""
+    if not components_dir.exists():
+        return []
+    try:
+        import yaml
+    except Exception:
+        return []
+
+    out: list[ComponentPolicy] = []
+    for path in sorted(components_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        core = data.get("core", {}) if isinstance(data, dict) else {}
+        if not isinstance(core, dict):
+            core = {}
+        name = str(data.get("id", path.stem)).strip()
+        if not name:
+            continue
+        out.append(
+            ComponentPolicy(
+                name=name,
+                kind=str(data.get("kind", "")).strip(),
+                current=str(core.get("current_pin") or ""),
+                recommended=str(core.get("recommended_version") or ""),
+                update_policy=str(core.get("update_policy") or ""),
+                source=str(core.get("source") or ""),
+                file=str(path.relative_to(REPO_ROOT)),
+                hold_reason=str(core.get("hold_reason") or ""),
+            )
+        )
+    return out
+
+
 # ---- main check loop ----
 
 
-def build_reports(probe_fn=probe_latest) -> list[PinReport]:
+def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[PinReport]:
     """Compose + dockerfile pins → status reports."""
     holds = load_holds()
     reports: list[PinReport] = []
@@ -515,8 +712,82 @@ def render_markdown(reports: list[PinReport]) -> str:
             "- **📦 patch** — patch-bump доступен (semver Z).",
             "- **🔄 minor** — minor-bump доступен (semver Y).",
             "- **⚠️ major** — major-bump доступен (semver X). Breaking changes — review.",
+            "- **↥ newer_than_probe** — committed pin is newer than probed latest; registry probe may be incomplete.",
             "- **⏸ HOLD** — pin намеренно остановлен, см. `templates/version_holds.yaml` → reason.",
             "- **❌ error** — probe failed (network / registry rate-limit / unknown image).",
+            "- **strict-pin** — component updates must keep the current explicit pin until reviewed.",
+            "- **compatible-patch / compatible-minor** — component can move within the stated compatibility window after verification.",
+            "- **manual-hold** — component is intentionally held until a documented compatibility review.",
+            "- **pinned-by-parent** — version follows a parent stack such as Dify or RAGFlow.",
+            "",
+        ]
+    )
+
+    component_policies = scan_component_policies()
+    if component_policies:
+        lines.extend(
+            [
+                "### Update policies",
+                "",
+                "- **strict-pin** — keep the exact pin until a component owner reviews and verifies the bump.",
+                "- **compatible-patch** — patch updates may be planned automatically but still require local verification.",
+                "- **compatible-minor** — minor updates are acceptable after changelog review and component verification.",
+                "- **manual-hold** — do not bump without a research note or explicit compatibility evidence.",
+                "- **upstream-compatible** — follow upstream's supported compatibility window.",
+                "- **patch-auto** — legacy issue-report term for patch updates that can be planned automatically.",
+                "- **minor-review** — legacy issue-report term for minor updates that need changelog review.",
+                "- **major-hold** — legacy issue-report term for major updates blocked until explicit review.",
+                "- **grouped** — update the whole stack together, not a single service in isolation.",
+                "- **pinned-by-parent** — version follows a parent stack contract.",
+                "- **volatile** — upstream tags are noisy; prefer explicit known-good pins.",
+                "",
+                "### Component update policies",
+                "",
+                "| Component | Kind | Current | Recommended | Policy | Source | Note |",
+                "|-----------|------|---------|-------------|--------|--------|------|",
+            ]
+        )
+        for policy in sorted(component_policies, key=lambda item: (item.kind, item.name)):
+            note = policy.hold_reason or f"`{policy.file}`"
+            current = policy.current or "?"
+            recommended = policy.recommended or "?"
+            source = policy.source or "?"
+            lines.append(
+                f"| `{policy.name}` | {policy.kind} | {current} | {recommended} | "
+                f"`{policy.update_policy}` | {source} | {note} |"
+            )
+        lines.append("")
+
+    dependency_pins = (
+        scan_pyproject_deps()
+        + scan_ansible_collections()
+        + scan_dockerfile_pip_specs()
+        + scan_constraint_specs()
+    )
+    if dependency_pins:
+        lines.extend(
+            [
+                "### Non-container dependency pins",
+                "",
+                "| Name | Specifier | Source | File |",
+                "|------|-----------|--------|------|",
+            ]
+        )
+        for pin in sorted(dependency_pins, key=lambda item: (item.source, item.name, item.file)):
+            lines.append(f"| `{pin.name}` | `{pin.specifier}` | {pin.source} | `{pin.file}` |")
+        lines.append("")
+
+    lines.extend(
+        [
+            "### How to update",
+            "",
+            "1. Run `agmind upgrade --check` and inspect this report.",
+            "2. For a component update, run `agmind upgrade --component <id> --version <target> --plan`.",
+            "3. If the plan is acceptable, run `agmind upgrade --component <id> --version <target> --apply`.",
+            "4. Run `agmind doctor` and the component verification commands listed in `templates/components/<id>.yaml`.",
+            "5. Run `docker compose config --quiet` for the affected rendered profiles.",
+            "6. Commit descriptor, contract, and digest changes only after verification.",
+            "7. If verification fails, run `agmind upgrade --rollback`.",
             "",
             "### How to bump",
             "",

@@ -1,0 +1,38 @@
+id: comfyui
+name: ComfyUI
+status: candidate
+category: creative-ai
+summary: Optional node-based image workflow UI for local creative AI workloads.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - ubuntu-compose
+    - proxmox-vm-compose
+  profiles:
+    - creative-ai
+  storage_profiles:
+    - local-paths
+    - proxmox-zfs
+  secrets_profiles:
+    - env-files
+    - sops-age
+  ports:
+    - "8188"
+  requires_gpu: true
+risks:
+  - GPU runtime, image ownership, and model volume strategy must be verified before descriptor work.
+  - Keep as opt-in creative-ai profile; do not make ComfyUI part of core orchestration.
+next_step: Research image/runtime strategy and Strix Halo Vulkan/ROCm compatibility before adding a service descriptor.
+verification:
+  commands:
+    - agmind render compose --profile creative-ai --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

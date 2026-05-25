@@ -49,7 +49,7 @@ def test_logger_emits_to_configured_stream(capsys: pytest.CaptureFixture[str]) -
     """Verify log записи попадают в configured stream (stderr by default).
 
     Использует capsys вместо caplog: Pytest 9 изменил caplog propagation
-    для non-root loggers (см. migration_progress.json::DEF-PYTEST9-CAPLOG).
+    для non-root loggers.
     """
     setup(level="INFO")
     log = logger("agmind.test.emit")

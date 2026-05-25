@@ -402,7 +402,6 @@ sudo bash install.sh  # requires DGX Spark hardware
 2. **Logs:** `agmind deploy logs <service> --lines 500`
 3. **Status:** `agmind status --json`
 4. **Audit:** `agmind audit` (forbidden patterns)
-5. **Recon reports:** `.planning/research/x86-migration/R*.md` (12+ deep dives)
-6. **ADRs:** `docs/adr/0001-migration-to-x86-strix-halo.md`,
+5. **ADRs:** `docs/adr/0001-migration-to-x86-strix-halo.md`,
    `docs/adr/0002-compute-backend-abstraction.md`
-7. **Spec:** `AGMIND_MIGRATION_SPEC.md` (source of truth)
+6. **Planning memory:** `.planning/STATE.md` + `.planning/codebase/`

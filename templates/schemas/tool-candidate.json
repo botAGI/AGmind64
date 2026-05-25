@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "CandidateAdmission": {
+      "additionalProperties": false,
+      "description": "Contracts that must exist before a candidate becomes a real feature.",
+      "properties": {
+        "scope": {
+          "enum": [
+            "service-profile",
+            "deploy-target-addon",
+            "external-integration"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "compose",
+            "kubernetes",
+            "external",
+            "none"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        },
+        "contracts": {
+          "items": {
+            "enum": [
+              "provision",
+              "configure",
+              "render",
+              "operate",
+              "recover",
+              "secure"
+            ],
+            "type": "string"
+          },
+          "title": "Contracts",
+          "type": "array"
+        },
+        "component_contract_required": {
+          "default": true,
+          "title": "Component Contract Required",
+          "type": "boolean"
+        },
+        "service_descriptor_required": {
+          "default": true,
+          "title": "Service Descriptor Required",
+          "type": "boolean"
+        },
+        "image_pin_required": {
+          "default": true,
+          "title": "Image Pin Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scope",
+        "runtime",
+        "contracts"
+      ],
+      "title": "CandidateAdmission",
+      "type": "object"
+    },
+    "CandidateDependencies": {
+      "additionalProperties": false,
+      "description": "Target, profile, storage, secrets, and port assumptions for a candidate.",
+      "properties": {
+        "deploy_targets": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Deploy Targets",
+          "type": "array"
+        },
+        "profiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        },
+        "storage_profiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Storage Profiles",
+          "type": "array"
+        },
+        "secrets_profiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Secrets Profiles",
+          "type": "array"
+        },
+        "ports": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "requires_gpu": {
+          "default": false,
+          "title": "Requires Gpu",
+          "type": "boolean"
+        }
+      },
+      "title": "CandidateDependencies",
+      "type": "object"
+    },
+    "CandidateVerification": {
+      "additionalProperties": false,
+      "description": "Verification commands and research references for a candidate.",
+      "properties": {
+        "commands": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Commands",
+          "type": "array"
+        },
+        "research_refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Research Refs",
+          "type": "array"
+        }
+      },
+      "title": "CandidateVerification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A vetted optional tool before it becomes a component/service descriptor.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "accepted",
+        "deferred",
+        "rejected"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "creative-ai",
+        "automation",
+        "identity",
+        "secrets",
+        "registry",
+        "backup",
+        "observability",
+        "storage",
+        "homelab"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "recommended_version": {
+      "default": "",
+      "title": "Recommended Version",
+      "type": "string"
+    },
+    "version_source": {
+      "default": "",
+      "title": "Version Source",
+      "type": "string"
+    },
+    "admission": {
+      "$ref": "#/$defs/CandidateAdmission"
+    },
+    "dependencies": {
+      "$ref": "#/$defs/CandidateDependencies"
+    },
+    "risks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "next_step": {
+      "minLength": 1,
+      "title": "Next Step",
+      "type": "string"
+    },
+    "verification": {
+      "$ref": "#/$defs/CandidateVerification"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "category",
+    "summary",
+    "admission",
+    "next_step"
+  ],
+  "title": "AGmind Tool Candidate",
+  "type": "object",
+  "$id": "https://github.com/botAGI/AGmind64/schemas/tool-candidate.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

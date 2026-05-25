@@ -1,0 +1,35 @@
+id: proxmox-exporter
+name: Proxmox exporter
+status: accepted
+category: observability
+summary: Proxmox VE metrics exporter for opt-in homelab infrastructure visibility.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - proxmox-vm-compose
+  profiles:
+    - proxmox
+  storage_profiles:
+    - proxmox-zfs
+  secrets_profiles:
+    - sops-age
+  ports:
+    - "9221"
+  requires_gpu: false
+risks:
+  - Requires Proxmox API token with least-privilege read scope and secret handling.
+  - Remote Proxmox targets need explicit Prometheus relabel config for __param_target.
+next_step: Run real Proxmox API-token smoke validation and decide whether to promote remote scrape config into managed provisioning.
+verification:
+  commands:
+    - agmind render compose --profile core,observability,proxmox --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

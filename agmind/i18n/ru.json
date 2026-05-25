@@ -15,7 +15,7 @@
   "errors.invalid_engine": "Engine {engine!r} не поддерживается backend'ом {backend!r}.",
   "errors.amdvlk_present": "Обнаружен AMDVLK — он может перехватывать RADV.",
 
-  "wizard.title": "AGmindx86 — Мастер установки",
+  "wizard.title": "AGmind — Мастер установки",
   "wizard.section.domain": "Домен (Traefik TLS, рекомендуется subdomain)",
   "wizard.section.cf_token": "Cloudflare API токен (Zone:DNS:Edit)",
   "wizard.section.backend": "Backend",

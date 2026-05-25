@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: model-catalog
+kind: model
+core:
+  upstream: https://huggingface.co/
+  recommended_version: 2026-05-23-r20
+  current_pin: 2026-05-23-r20
+  update_policy: compatible-minor
+  source: manual
+runtime:
+  model_catalogs:
+    - templates/models.yaml
+provides:
+  - model_artifacts
+verification:
+  smoke:
+    - .venv/bin/agmind models list
+    - .venv/bin/pytest tests/test_models_cmd.py -q
+  schema_refs:
+    - templates/schemas/component.json

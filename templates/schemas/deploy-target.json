@@ -1,0 +1,242 @@
+{
+  "$defs": {
+    "DeploymentConfigurator": {
+      "additionalProperties": false,
+      "description": "Configuration layer used after infrastructure exists.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "ansible",
+            "helm",
+            "kustomize",
+            "talosctl",
+            "kubectl",
+            "none"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "inventory_source": {
+          "default": "",
+          "title": "Inventory Source",
+          "type": "string"
+        },
+        "playbooks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Playbooks",
+          "type": "array"
+        },
+        "charts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Charts",
+          "type": "array"
+        },
+        "manifests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Manifests",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "DeploymentConfigurator",
+      "type": "object"
+    },
+    "DeploymentProvisioner": {
+      "additionalProperties": false,
+      "description": "Infrastructure provisioning boundary before host configuration runs.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "opentofu-proxmox",
+            "external"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "module": {
+          "default": "",
+          "title": "Module",
+          "type": "string"
+        },
+        "state_backend": {
+          "default": "local",
+          "enum": [
+            "local",
+            "remote",
+            "external"
+          ],
+          "title": "State Backend",
+          "type": "string"
+        },
+        "outputs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "DeploymentProvisioner",
+      "type": "object"
+    },
+    "DeploymentRuntime": {
+      "additionalProperties": false,
+      "description": "Runtime renderer and profile boundary for a deployment target.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "compose",
+            "kubernetes",
+            "nomad"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "renderer": {
+          "minLength": 1,
+          "title": "Renderer",
+          "type": "string"
+        },
+        "profiles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "renderer"
+      ],
+      "title": "DeploymentRuntime",
+      "type": "object"
+    },
+    "DeploymentVerification": {
+      "additionalProperties": false,
+      "description": "Commands and artifacts used to validate the target lane.",
+      "properties": {
+        "commands": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Commands",
+          "type": "array"
+        },
+        "artifacts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "expected_warning_codes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Warning Codes",
+          "type": "array"
+        }
+      },
+      "title": "DeploymentVerification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deploy lane contract that keeps provisioning separate from service runtime.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "supported",
+        "experimental",
+        "research"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "runtime": {
+      "$ref": "#/$defs/DeploymentRuntime"
+    },
+    "provisioner": {
+      "$ref": "#/$defs/DeploymentProvisioner"
+    },
+    "configurator": {
+      "$ref": "#/$defs/DeploymentConfigurator"
+    },
+    "storage_profile": {
+      "enum": [
+        "local-paths",
+        "proxmox-zfs",
+        "nfs",
+        "longhorn",
+        "ceph",
+        "external"
+      ],
+      "title": "Storage Profile",
+      "type": "string"
+    },
+    "secrets_profile": {
+      "enum": [
+        "env-files",
+        "sops-age",
+        "external-secrets",
+        "vault",
+        "infisical"
+      ],
+      "title": "Secrets Profile",
+      "type": "string"
+    },
+    "verification": {
+      "$ref": "#/$defs/DeploymentVerification"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "status",
+    "summary",
+    "runtime",
+    "provisioner",
+    "configurator",
+    "storage_profile",
+    "secrets_profile"
+  ],
+  "title": "AGmind Deployment Target",
+  "type": "object",
+  "$id": "https://github.com/botAGI/AGmind64/schemas/deploy-target.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

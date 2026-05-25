@@ -353,6 +353,118 @@ def _make_app() -> typer.Typer:
 
         raise typer.Exit(code=cmd_scaffold(name, tier, force=force))  # type: ignore[arg-type]
 
+    # ---- tools subcommand group (optional homelab/enterprise integrations) ----
+    tools_app = typer.Typer(
+        name="tools",
+        help="Inspect optional homelab/enterprise tool candidates",
+        no_args_is_help=True,
+    )
+    app.add_typer(tools_app)
+
+    # ---- ci subcommand group (GitHub Actions/self-hosted runner visibility) ----
+    ci_app = typer.Typer(
+        name="ci",
+        help="Inspect GitHub Actions runs and self-hosted runners",
+        no_args_is_help=True,
+    )
+    app.add_typer(ci_app)
+
+    @ci_app.command("status")
+    def ci_status(
+        repository: str | None = typer.Option(
+            None,
+            "--repo",
+            help="GitHub repository slug owner/name (default: git remote or AGMIND_GITHUB_REPO)",
+        ),
+        run_limit: int = typer.Option(10, "--limit", "-n", min=1, max=100),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show GitHub Actions queue and self-hosted runner state."""
+        from agmind.cli.ci_cmd import cmd_status
+
+        raise typer.Exit(
+            code=cmd_status(repository=repository, run_limit=run_limit, as_json=as_json)
+        )
+
+    @tools_app.command("list")
+    def tools_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List optional tool candidates."""
+        from agmind.cli.tools_cmd import cmd_list
+
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @tools_app.command("status")
+    def tools_status(
+        name: str = typer.Argument(..., help="Tool candidate id"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show one optional tool candidate."""
+        from agmind.cli.tools_cmd import cmd_status
+
+        raise typer.Exit(code=cmd_status(name=name, as_json=as_json))
+
+    @tools_app.command("validate")
+    def tools_validate() -> None:
+        """Validate tool candidates and accepted runtime admission."""
+        from agmind.cli.tools_cmd import cmd_validate
+
+        raise typer.Exit(code=cmd_validate())
+
+    # ---- targets subcommand group (universal deployment lanes) ----
+    targets_app = typer.Typer(
+        name="targets",
+        help="Inspect deployment target contracts",
+        no_args_is_help=True,
+    )
+    app.add_typer(targets_app)
+
+    @targets_app.command("list")
+    def targets_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List deployment targets."""
+        from agmind.cli.targets_cmd import cmd_list
+
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @targets_app.command("status")
+    def targets_status(
+        name: str = typer.Argument(..., help="Deployment target id"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show one deployment target."""
+        from agmind.cli.targets_cmd import cmd_status
+
+        raise typer.Exit(code=cmd_status(name=name, as_json=as_json))
+
+    @targets_app.command("validate")
+    def targets_validate(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Validate deployment target contracts."""
+        from agmind.cli.targets_cmd import cmd_validate
+
+        raise typer.Exit(code=cmd_validate(as_json=as_json))
+
+    # ---- governance subcommand group (aggregate M7 checks) ----
+    governance_app = typer.Typer(
+        name="governance",
+        help="Run aggregate component/deploy/tool/dependency governance checks",
+        no_args_is_help=True,
+    )
+    app.add_typer(governance_app)
+
+    @governance_app.command("validate")
+    def governance_validate(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Run aggregate governance checks."""
+        from agmind.cli.governance_cmd import cmd_validate
+
+        raise typer.Exit(code=cmd_validate(as_json=as_json))
+
     # ---- render subcommand group (Phase H'.C) ----
     render_app = typer.Typer(
         name="render",
@@ -395,6 +507,80 @@ def _make_app() -> typer.Typer:
             traefik=not no_traefik,
             diff=diff,
             domain=domain,
+        )
+        raise typer.Exit(code=rc)
+
+    @render_app.command("kubernetes")
+    def render_kubernetes(
+        profile: str = typer.Option(
+            "core",
+            "--profile",
+            "-p",
+            help="Comma-separated profile names (core,observability,proxmox,...)",
+        ),
+        output: Path | None = typer.Option(
+            None, "--output", "-o", help="Output file (default: stdout)"
+        ),
+        namespace: str = typer.Option(
+            "agmind",
+            "--namespace",
+            "-n",
+            help="Kubernetes namespace for rendered objects",
+        ),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail if selected descriptors contain Docker-only fields",
+        ),
+        no_namespace: bool = typer.Option(
+            False,
+            "--no-namespace",
+            help="Do not emit a Namespace object",
+        ),
+    ) -> None:
+        """Render Kubernetes manifests from ServiceDescriptor catalog."""
+        from agmind.cli.render_cmd import cmd_render_kubernetes
+
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_render_kubernetes(
+            profiles=profiles,
+            output=output,
+            namespace=namespace,
+            strict=strict,
+            include_namespace=not no_namespace,
+        )
+        raise typer.Exit(code=rc)
+
+    @render_app.command("topology")
+    def render_topology(
+        profile: str = typer.Option(
+            "core",
+            "--profile",
+            "-p",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        fail_on_warning: bool = typer.Option(
+            False,
+            "--fail-on-warning",
+            help="Exit 2 when topology warnings are present",
+        ),
+    ) -> None:
+        """Render selected-service topology warnings and RAG storage plan."""
+        from agmind.cli.render_cmd import cmd_render_topology
+
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_render_topology(
+            profiles=profiles,
+            services=service,
+            as_json=as_json,
+            fail_on_warning=fail_on_warning,
         )
         raise typer.Exit(code=rc)
 
@@ -489,6 +675,16 @@ def _make_app() -> typer.Typer:
 
         raise typer.Exit(code=cmd_status(timeout=timeout, as_json=as_json))
 
+    @cluster_app.command("inspect")
+    def cluster_inspect(
+        timeout: float = typer.Option(3.0, "--timeout", "-t"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Inspect local runtime/cluster environment and recommend deploy target."""
+        from agmind.cli.cluster_cmd import cmd_inspect
+
+        raise typer.Exit(code=cmd_inspect(timeout=timeout, as_json=as_json))
+
     # ---- upgrade subcommand group (Phase M3.R) ----
     upgrade_app = typer.Typer(
         name="upgrade",
@@ -528,6 +724,11 @@ def _make_app() -> typer.Typer:
             "--apply",
             help="Re-deploy after bump (uses Phase L.B runner).",
         ),
+        plan: bool = typer.Option(
+            False,
+            "--plan",
+            help="Print component update plan without editing files.",
+        ),
         rollback: bool = typer.Option(
             False,
             "--rollback",
@@ -565,14 +766,15 @@ def _make_app() -> typer.Typer:
                 version=version,
                 force=force,
                 digest=digest,
+                plan_only=plan,
             )
-            if rc != 0 or not apply:
+            if rc != 0 or not apply or plan:
                 raise typer.Exit(code=rc)
             raise typer.Exit(code=cmd_apply())
 
         typer.echo(
             "Usage: agmind upgrade [--check | --component X --version Y "
-            "[--apply] | --apply | --rollback]"
+            "[--plan] [--apply] | --apply | --rollback]"
         )
         raise typer.Exit(code=2)
 

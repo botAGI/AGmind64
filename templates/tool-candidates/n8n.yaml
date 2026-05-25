@@ -1,0 +1,38 @@
+id: n8n
+name: n8n
+status: candidate
+category: automation
+summary: Optional local workflow automation service for agent and integration flows.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - ubuntu-compose
+    - proxmox-vm-compose
+  profiles:
+    - automation
+  storage_profiles:
+    - local-paths
+    - proxmox-zfs
+  secrets_profiles:
+    - env-files
+    - sops-age
+  ports:
+    - "5678"
+  requires_gpu: false
+risks:
+  - License, telemetry defaults, and Postgres ownership must be reviewed before runtime inclusion.
+  - Workflow credentials need an explicit secrets story before enterprise use.
+next_step: Decide license/telemetry defaults and database ownership before adding a service descriptor.
+verification:
+  commands:
+    - agmind render compose --profile automation --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

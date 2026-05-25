@@ -1,0 +1,103 @@
+name: Kubernetes Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      kubectl:
+        description: kubectl binary path/name
+        required: false
+        type: string
+        default: kubectl
+      kube_context:
+        description: Optional kubectl context
+        required: false
+        type: string
+        default: ""
+      namespace:
+        description: Kubernetes namespace to render
+        required: false
+        type: string
+        default: agmind
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  k3s-proof:
+    runs-on: [self-hosted, linux, x64, k3s]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install agmind + dev deps
+        run: |
+          "$HOME/.local/bin/uv" --version
+          "$HOME/.local/bin/uv" venv --python python3 .venv
+          "$HOME/.local/bin/uv" pip install --python .venv/bin/python -c constraints/dev.txt -e ".[dev]"
+
+      - name: Validate strict Kubernetes render
+        run: .venv/bin/python scripts/kubernetes_render_check.py --strict
+
+      - name: Run k3s server-side dry-run proof
+        run: |
+          set -euo pipefail
+          rm -rf local-kubernetes-proof/k3s
+
+          args=(
+            --target k3s
+            --require-cluster
+            --require-amd-gpu
+            --artifact-dir local-kubernetes-proof/k3s
+            --namespace "${{ inputs.namespace }}"
+            --kubectl "${{ inputs.kubectl }}"
+          )
+
+          if [ -n "${{ inputs.kube_context }}" ]; then
+            args+=(--context "${{ inputs.kube_context }}")
+          fi
+
+          .venv/bin/python scripts/kubernetes_dry_run.py "${args[@]}"
+
+      - name: Verify k3s proof bundle
+        if: always()
+        run: |
+          set -o pipefail
+          set +e
+          mkdir -p local-kubernetes-proof/k3s
+          .venv/bin/python scripts/kubernetes_dry_run.py --json --verify-artifact-dir local-kubernetes-proof/k3s | tee local-kubernetes-proof/k3s/verification.json
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Summarize k3s proof bundle
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -d local-kubernetes-proof/k3s ]; then
+            echo "k3s proof bundle directory is missing"
+            exit 0
+          fi
+          find local-kubernetes-proof/k3s -maxdepth 1 -type f -print | sort
+          if [ -f local-kubernetes-proof/k3s/checksums.txt ]; then
+            echo "checksums.txt:"
+            cat local-kubernetes-proof/k3s/checksums.txt
+          fi
+
+      - name: Upload k3s proof bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-proof-k3s
+          path: |
+            local-kubernetes-proof/k3s/k3s.yaml
+            local-kubernetes-proof/k3s/k3s.dry-run.json
+            local-kubernetes-proof/k3s/proof-command.txt
+            local-kubernetes-proof/k3s/run-metadata.json
+            local-kubernetes-proof/k3s/summary.json
+            local-kubernetes-proof/k3s/checksums.txt
+            local-kubernetes-proof/k3s/verification.json
+          if-no-files-found: warn
+          retention-days: 30

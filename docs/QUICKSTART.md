@@ -18,7 +18,7 @@
 
 ```bash
 # 1. Clone repo
-git clone https://github.com/botAGI/AGmindx86 && cd AGmindx86
+git clone https://github.com/botAGI/AGmind64 && cd AGmind64
 
 # 2. Install Ansible deps
 sudo apt update && sudo apt install -y ansible python3-pip
@@ -135,5 +135,4 @@ Quick wins:
 - [INSTALL.md](INSTALL.md) — детальный setup (BIOS, kernel cmdline, sysctl)
 - [HARDWARE.md](HARDWARE.md) — Strix Halo specifics + recipes
 - [BENCHMARKS.md](BENCHMARKS.md) — perf numbers (Vulkan RADV / HIP / CPU)
-- [MIGRATION_PLAN.md](MIGRATION_PLAN.md) — миграция с DGX Spark
 - [adr/](adr/) — Architecture Decision Records

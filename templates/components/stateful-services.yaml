@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: stateful-services
+kind: stateful
+core:
+  upstream: docker registries for AGmind stateful services
+  recommended_version: 2026-05-23-r20
+  current_pin: 2026-05-23-r20
+  update_policy: compatible-minor
+  source: manual
+runtime:
+  service_descriptors:
+    - elasticsearch
+    - milvus
+    - minio
+    - mysql
+    - postgres
+    - qdrant
+    - redis
+    - weaviate
+  compose_profiles:
+    - core
+    - rag
+    - ragflow
+    - rag-milvus
+    - rag-weaviate
+  ports:
+    - elasticsearch:9200
+    - milvus:19530
+    - minio:9000
+    - minio-console:9001
+    - qdrant:6333
+    - qdrant-grpc:6334
+    - weaviate:8090
+provides:
+  - postgres_db
+  - redis_cache
+  - vector_db
+  - search_index
+  - mysql_db
+  - object_storage
+verification:
+  smoke:
+    - agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-stateful.yml
+    - docker compose -f /tmp/agmind-stateful.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

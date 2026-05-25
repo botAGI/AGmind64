@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: observability-stack
+kind: ops
+core:
+  upstream: Prometheus, Grafana, Loki, Alloy, exporters, and Portainer release streams
+  recommended_version: 2026-05-23-r21
+  current_pin: 2026-05-23-r21
+  update_policy: compatible-minor
+  source: manual
+runtime:
+  service_descriptors:
+    - alertmanager
+    - alloy
+    - cadvisor
+    - grafana
+    - loki
+    - node-exporter
+    - portainer
+    - postgres-exporter
+    - prometheus
+    - proxmox-exporter
+    - redis-exporter
+  compose_profiles:
+    - observability
+    - proxmox
+  ports:
+    - alertmanager:9093
+    - cadvisor:8083
+    - grafana:3002
+    - loki:3100
+    - portainer:9443
+    - prometheus:9090
+    - proxmox-exporter:9221
+provides:
+  - metrics
+  - logs
+  - dashboards
+verification:
+  smoke:
+    - agmind render compose --profile core,observability --domain ci.example.com --output /tmp/agmind-obs.yml
+    - agmind render compose --profile core,observability,proxmox --domain ci.example.com --output /tmp/agmind-proxmox.yml
+    - docker compose -f /tmp/agmind-obs.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

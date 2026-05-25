@@ -2,8 +2,8 @@
 
 Engine: только llama_cpp (CPU build).
 
-См. R3-llama-cpp-vulkan-hip.md (build flags), AGMIND_MIGRATION_SPEC.md
-§1.2.3 (CPU section).
+См. `docker/Dockerfile.cpu` для build flags и
+`.planning/codebase/ARCHITECTURE.md` для backend-контракта.
 """
 
 from __future__ import annotations

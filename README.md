@@ -1,7 +1,7 @@
 # AGmind
 
 > **Private LLM/RAG platform для AMD Strix Halo и generic x86_64.**
-> Migration target от NVIDIA GB10/aarch64 — см. [AGMIND_MIGRATION_SPEC.md](AGMIND_MIGRATION_SPEC.md).
+> Active project memory lives in [`.planning/`](.planning/).
 
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 ![Platform](https://img.shields.io/badge/platform-x86_64-blue)
@@ -16,11 +16,11 @@
 
 ## Quick start
 
-### One-command install (Phase N, recommended)
+### One-command install
 
 ```bash
 # Bootstrap (один раз — клонит репо и ставит Python deps):
-git clone <repo-url> agmind && cd agmind
+git clone https://github.com/botAGI/AGmind64 agmind && cd agmind
 uv venv && uv pip install -e ".[dev]"  # либо `python -m venv .venv && pip install -e ".[dev]"`
 
 # End-to-end install — один prompt sudo, дальше всё в TUI:
@@ -41,12 +41,13 @@ agmind install
                  →  Summary с URLs (https://llama.yourdomain.com etc.)
 ```
 
-### Selecting a model
+### Selecting models
 
-Phase N.G даёт curated catalog + custom HF input в wizard:
+The setup wizard has separate selectors for LLM, embedding, and reranker GGUF
+models, plus custom Hugging Face repo/file inputs for each role.
 
 ```bash
-# List of verified models (★ = measured on this hardware):
+# List curated model catalog (★ = measured on this hardware):
 agmind install --list-models
 #
 # ID                     NAME                                    SIZE QUANT    CTX
@@ -57,8 +58,9 @@ agmind install --list-models
 #   llama2-7b-q4_0       Llama-2-7B                             3.8GB Q4_0     4096
 #   llama2-7b-q4km       Llama-2-7B                             4.1GB Q4_K_M   4096
 #   bge-m3-q8            BGE-M3 (multilingual embed)            0.6GB Q8_0     8192
+#   bge-reranker-v2-m3-q8 BGE Reranker v2 M3                    0.6GB Q8_0     8192
 
-# Use curated id (skip wizard):
+# Use curated LLM id (skip wizard):
 agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
   --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0
 
@@ -69,10 +71,68 @@ agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
 ```
 
 В TUI wizard'е "Model" section имеет:
-- **Select** — curated catalog с пометкой ★ для tested + "Custom HuggingFace…"
-- **HF repo / filename** input'ы (заполняются если выбран Custom)
-- **Context size** — 4K / 8K / 16K / 32K / 64K / 128K presets
-- **KV cache** — q8_0 (recommended) / q4_0 (aggressive) / f16 (default llama.cpp)
+- **LLM** — curated chat/reasoning model + context/KV/threads/parallel
+- **Embed** — curated BGE-M3 default + independent context/KV/parallel
+- **Rerank** — curated BGE Reranker v2 M3 default or custom model
+
+### Fresh deploy readiness
+
+Перед чистой установкой на Strix Halo хосте:
+
+```bash
+# Host/GPU preflight. Exit code 1 means warnings; exit code 2 means failures.
+agmind doctor --json
+
+# Detect the local deployment target and visible AGmind LAN peers:
+agmind cluster inspect --timeout 5
+
+# Validate the default Compose lane before touching /opt/agmind:
+agmind render topology --profile core,rag,observability --json
+agmind deploy --profile core,rag,observability \
+  --install-dir /tmp/agmind-fresh-deploy-check \
+  --domain lab.example.com \
+  --no-prompt
+```
+
+For the actual install:
+
+```bash
+agmind install --no-tui \
+  --domain lab.example.com \
+  --cf-token-file token.txt \
+  --model-id qwen36-a3b-q4km \
+  --ctx-size 16384 \
+  --kv-cache q8_0
+```
+
+`agmind install` writes runtime secrets/model env first; a raw
+`agmind render compose | docker compose config` check without that env can show
+blank-variable warnings for passwords and model filenames.
+
+### Two-node cluster detection
+
+AGmind discovers peers through mDNS service `_agmind._tcp.local.`. The second
+device must advertise itself; being on the same LAN is not enough.
+
+On the second Strix Halo device:
+
+```bash
+cd ~/agmind
+uv venv && uv pip install -e ".[dev]"
+agmind cluster advertise --duration 600
+```
+
+On the first device:
+
+```bash
+agmind cluster detect --timeout 10
+agmind cluster status --timeout 10
+agmind cluster inspect --timeout 10
+```
+
+If peers stay empty, check both nodes are on the same VLAN/subnet, `avahi-daemon`
+is running, UDP 5353/mDNS is allowed by the firewall, and both environments have
+the `zeroconf` Python dependency installed.
 
 ### Day-2 ops
 
@@ -83,16 +143,19 @@ agmind doctor
 # Backend / device info:
 agmind status
 
-# Live deployment dashboard (Phase J.2):
+# Deployment target + LAN peer inspection:
+agmind cluster inspect --timeout 5
+
+# Live deployment dashboard:
 agmind status --tui
 
-# Logs / shell / backup / restore (Phase L.E):
+# Logs / shell / backup / restore:
 agmind logs llama-llm -f
 agmind shell traefik --cmd "/bin/sh"
 agmind backup --output ~/agmind-backup.tar.gz
 agmind restore ~/agmind-backup.tar.gz
 
-# State schema migrations (Phase L.D):
+# State schema migrations:
 agmind migrate status
 agmind migrate up
 
@@ -111,8 +174,8 @@ make audit
 | ROCm + Infinity | infinity | embed batch ≥16 | M2 |
 | XDNA 2 NPU | — | not supported on Linux | stub |
 
-Auto-selection через `agmind.compute.get_backend()` per
-[selection rules](AGMIND_MIGRATION_SPEC.md#126-selection-rules--decision-matrix).
+Auto-selection проходит через `agmind.compute.get_backend()` and the backend
+registry in `agmind.compute._registry`.
 
 ## Architecture
 
@@ -129,8 +192,13 @@ agmind/                # Python package
 │       ├── rocm.py
 │       ├── npu_stub.py
 │       └── _engines/  # llama_cpp_{vulkan,hip,cpu}.py, vllm/infinity (M2)
-├── cli/               # typer app: doctor / status / version / audit
+├── cli/               # typer app: install / deploy / render / cluster / doctor
+├── services/          # service descriptor loading, topology, compose/k8s render
+├── deploy/            # dry-run/apply/rollback/snapshots/target contracts
+├── cluster/           # peer discovery, inventory, target inspection
+├── components/        # component ownership and version governance
 ├── diagnostics/       # preflight + health
+├── models.py          # YAML-backed curated model catalog
 ├── i18n/              # en + ru
 ├── config/            # .env render + write
 ├── secrets.py         # credentials.txt с chmod 600
@@ -138,38 +206,17 @@ agmind/                # Python package
 
 docker/                # Dockerfile.{base,cpu,vulkan,rocm} + digest pins
 scripts/audit_forbidden.py  # CI/pre-commit gate
-docs/                  # MIGRATION_PLAN.md, HARDWARE.md, BENCHMARKS.md, adr/
-legacy/gb10/           # Old DGX Spark Bash installer (rollback up to 2027-Q1)
+docs/                  # BENCHMARKS.md, TROUBLESHOOTING.md, adr/
+.planning/             # durable GSD project memory and current roadmap
 ```
 
 ## Documentation
 
-- [`AGMIND_MIGRATION_SPEC.md`](AGMIND_MIGRATION_SPEC.md) — рабочая спека миграции (single source of truth)
-- [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) — план A→G фаз + OQ для апрува
-- [`docs/HARDWARE.md`](docs/HARDWARE.md) — Strix Halo host setup (BIOS, kernel, sysctl)
+- [`.planning/STATE.md`](.planning/STATE.md) — current milestone/state memory
+- [`.planning/BACKLOG.md`](.planning/BACKLOG.md) — active and historical backlog
+- [`.planning/codebase/`](.planning/codebase/) — compact codebase map for agents
 - [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — baseline numbers + run instructions
-- [`docs/adr/`](docs/adr/) — Architecture Decision Records (0001 migration, 0002 compute, 0003+ TBD)
-- [`.planning/research/x86-migration/`](.planning/research/x86-migration/) — recon-отчёты R0-R11
-
-## Migration status (как Phase G open M1)
-
-- ✅ Phase A: Inventory & Plan — done
-- ✅ Phase B: Legacy quarantine — *virtual через EXCLUDED_DIRS audit-script*; physical `git mv` после установки git binary
-- ✅ Phase C: `agmind/compute/` skeleton + CPU backend + contract tests
-- ✅ Phase D: Vulkan + ROCm backends (engine: llama_cpp; vLLM/Infinity = M2)
-- ✅ Phase E: CLI + diagnostics + secrets + config + i18n
-- ✅ Phase F: 4 Dockerfile + CI workflow + pre-commit
-- ⏳ Phase G: README + BENCHMARKS skeleton; real-hardware bench pending после
-  установки vulkaninfo/rocminfo на dev машине
-
-## Rollback (старый DGX Spark installer)
-
-Старый AGmind (Bash installer для DGX Spark / GB10) deprecated, остаётся
-до 2027-Q1 в `legacy/gb10/` (после физической перестановки через `git mv`).
-До этого виртуально quarantined через `EXCLUDED_DIRS` в `scripts/audit_forbidden.py`.
-
-См. [`legacy/gb10/README.md`](legacy/gb10/README.md.draft) (draft до Phase B
-физической миграции).
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records
 
 ## License
 

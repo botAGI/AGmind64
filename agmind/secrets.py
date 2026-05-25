@@ -1,7 +1,7 @@
 """Credentials management — credentials.txt с chmod 600.
 
-Никогда не выводит секреты в stdout / логи. См. AGMIND_MIGRATION_SPEC.md
-§ Security.
+Никогда не выводит секреты в stdout / логи. См. текущие security-инварианты
+в `.planning/codebase/INVARIANTS.md`.
 """
 
 from __future__ import annotations

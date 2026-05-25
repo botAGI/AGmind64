@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # AGmind Vulkan backend — PRIMARY на AMD Strix Halo (gfx1151).
-# См. AGMIND_MIGRATION_SPEC.md §1.2.1 (Vulkan RADV mandatory).
+# Vulkan/RADV is the default Strix Halo lane for token generation.
 #
 # Запуск:
 #   docker run --rm \
@@ -10,6 +10,8 @@
 #     agmind-vulkan:latest
 ARG BASE_IMAGE=agmind-base:latest
 FROM ${BASE_IMAGE}
+
+COPY constraints /opt/agmind/constraints
 
 # Vulkan runtime + Mesa userspace (RADV) + GL stack для loader + build tools.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -42,19 +44,21 @@ ENV AMD_VULKAN_ICD=RADV \
     GGML_VK_VISIBLE_DEVICES=0
 
 # PyTorch CPU-only (Vulkan inference — через llama-cpp-python, не torch)
-RUN pip install \
+RUN pip install -c /opt/agmind/constraints/vulkan.txt \
         --index-url https://download.pytorch.org/whl/cpu \
         torch
 
 # llama-cpp-python с GGML_VULKAN
 ENV CMAKE_ARGS="-DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release" \
     FORCE_CMAKE=1
-RUN pip install --no-binary llama-cpp-python "llama-cpp-python>=0.3.23"
+RUN pip install -c /opt/agmind/constraints/vulkan.txt \
+        --no-binary llama-cpp-python \
+        "llama-cpp-python>=0.3.23"
 
-RUN pip install onnxruntime numpy scipy
+RUN pip install -c /opt/agmind/constraints/vulkan.txt onnxruntime numpy scipy
 
 COPY . /opt/agmind
-RUN pip install -e ".[vulkan]"
+RUN pip install -c /opt/agmind/constraints/vulkan.txt -e ".[vulkan]"
 
 ENV AGMIND_BACKEND=vulkan \
     AGMIND_ENGINE=llama_cpp

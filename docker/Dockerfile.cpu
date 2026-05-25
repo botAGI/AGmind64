@@ -3,17 +3,19 @@
 ARG BASE_IMAGE=agmind-base:latest
 FROM ${BASE_IMAGE}
 
+COPY constraints /opt/agmind/constraints
+
 # PyTorch CPU-only + llama-cpp-python CPU build + onnxruntime CPU
-RUN pip install \
+RUN pip install -c /opt/agmind/constraints/cpu.txt \
         --index-url https://download.pytorch.org/whl/cpu \
         torch torchvision torchaudio \
-    && pip install \
+    && pip install -c /opt/agmind/constraints/cpu.txt \
         onnxruntime \
         "llama-cpp-python>=0.3.23" \
         numpy scipy
 
 COPY . /opt/agmind
-RUN pip install -e ".[cpu]"
+RUN pip install -c /opt/agmind/constraints/cpu.txt -e ".[cpu]"
 
 ENV AGMIND_BACKEND=cpu
 

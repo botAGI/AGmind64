@@ -174,6 +174,107 @@ def test_component_saves_upgrade_state(tmp_repo: Path) -> None:
     assert state["new_tag"] == "1.0.1"
 
 
+def _make_component_contract(
+    components_dir: Path,
+    component_id: str,
+    service_names: list[str],
+    policy: str = "strict-pin",
+) -> Path:
+    components_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"id: {component_id}",
+        "kind: app",
+        "core:",
+        f"  upstream: example/{component_id}",
+        "  recommended_version: '1.14.2'",
+        f"  update_policy: {policy}",
+        "runtime:",
+        "  service_descriptors:",
+    ]
+    lines.extend(f"    - {service_name}" for service_name in service_names)
+    path = components_dir / f"{component_id}.yaml"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_component_plan_for_grouped_stack_lists_all_descriptors(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-web", "langgenius/dify-web", "1.14.2")
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(components, "dify", ["dify-api", "dify-web"])
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    plan = upgrade_cmd.build_component_upgrade_plan("dify", "1.14.3")
+
+    assert [item.service for item in plan.items] == ["dify-api", "dify-web"]
+    assert all(item.new_tag == "1.14.3" for item in plan.items)
+    assert plan.policy == "strict-pin"
+
+
+def test_component_apply_saves_grouped_state(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-web", "langgenius/dify-web", "1.14.2")
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(components, "dify", ["dify-api", "dify-web"])
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    rc = upgrade_cmd.cmd_component("dify", "1.14.3", plan_only=False)
+
+    assert rc == 0
+    assert "1.14.3" in (services / "dify-api.yaml").read_text()
+    assert "1.14.3" in (services / "dify-web.yaml").read_text()
+    state_files = list(upgrade_cmd.UPGRADE_STATE_DIR.glob("*.json"))
+    state = json.loads(state_files[0].read_text())
+    assert state["component"] == "dify"
+    assert len(state["items"]) == 2
+
+
+def test_component_plan_only_does_not_edit_files(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-web", "langgenius/dify-web", "1.14.2")
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(components, "dify", ["dify-api", "dify-web"])
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    rc = upgrade_cmd.cmd_component("dify", "1.14.3", plan_only=True)
+
+    assert rc == 0
+    assert "1.14.2" in (services / "dify-api.yaml").read_text()
+    assert "1.14.2" in (services / "dify-web.yaml").read_text()
+    assert not upgrade_cmd.UPGRADE_STATE_DIR.exists()
+
+
+def test_grouped_rollback_restores_all_files(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-web", "langgenius/dify-web", "1.14.2")
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(components, "dify", ["dify-api", "dify-web"])
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    upgrade_cmd.cmd_component("dify", "1.14.3", plan_only=False)
+    rc = upgrade_cmd.cmd_rollback()
+
+    assert rc == 0
+    assert "1.14.2" in (services / "dify-api.yaml").read_text()
+    assert "1.14.2" in (services / "dify-web.yaml").read_text()
+
+
 # ---------- cmd_rollback ----------
 
 

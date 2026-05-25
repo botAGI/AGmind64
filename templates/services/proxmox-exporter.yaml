@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: proxmox-exporter
+image: prompve/prometheus-pve-exporter:3.9.0
+digest: sha256:78a58df7a31c9fbee94962cd06422672668529de6421892df9aed4b6cee0757f
+tier: ops
+purpose: Proxmox VE metrics exporter for Prometheus
+owner: observability-stack
+profiles:
+  - proxmox
+ports:
+  - 127.0.0.1:9221:9221
+volumes:
+  - /etc/agmind/proxmox-exporter/pve.yml:/etc/pve.yml:ro
+command:
+  - /etc/pve.yml
+  - "9221"
+  - 0.0.0.0
+resources:
+  cpus: 0.5
+  mem_limit: 256m
+observability:
+  prometheus_scrape: true
+  metrics_path: /pve
+  metrics_port: 9221
+  loki_scrape: false

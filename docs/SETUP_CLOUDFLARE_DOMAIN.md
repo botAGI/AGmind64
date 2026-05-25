@@ -64,7 +64,7 @@ Token читается через secret mount при старте Traefik.
 В Phase H'.C я заполнил `routing.host` плейсхолдером `agmind.dev` для 8 сервисов. Заменить на твой домен — одна команда:
 
 ```bash
-cd ~/AGmindx86
+cd ~/AGmind64
 # YOUR_DOMAIN — замени на свой (без https://, без trailing slash)
 YOUR_DOMAIN='agmind.example'
 

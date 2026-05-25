@@ -107,7 +107,7 @@ class InstallProgressScreen(Screen[InstallResult]):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Static(
-            f"AGmindx86 · Install\n"
+            f"AGmind · Install\n"
             f"domain={self.config.domain}  ·  services={len(self.config.services)}",
             id="install-title",
         )

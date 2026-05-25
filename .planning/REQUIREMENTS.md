@@ -122,8 +122,8 @@ REQ-IDs categorized. Status: ✅ shipped | 🟡 partial | ❌ deferred to M2/M3.
 
 | ID | Requirement | Status |
 |----|-------------|:------:|
-| DOC-01 | AGMIND_MIGRATION_SPEC.md source of truth | ✅ |
-| DOC-02 | MIGRATION_PLAN.md (phase A-G) | ✅ |
+| DOC-01 | `.planning/` + `.planning/codebase/` are active source of truth | ✅ |
+| DOC-02 | Legacy migration plan retired from active docs | ✅ |
 | DOC-03 | HARDWARE.md (Strix Halo setup) | ✅ |
 | DOC-04 | BENCHMARKS.md (skeleton + reference numbers) | 🟡 | reference only, нет real local runs |
 | DOC-05 | QUICKSTART.md (5 min setup) | ✅ |

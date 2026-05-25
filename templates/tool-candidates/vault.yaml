@@ -1,0 +1,38 @@
+id: vault
+name: Vault
+status: candidate
+category: secrets
+summary: Enterprise secrets and policy service candidate for team-operated deployments.
+admission:
+  scope: service-profile
+  runtime: compose
+  contracts:
+    - render
+    - operate
+    - secure
+  component_contract_required: true
+  service_descriptor_required: true
+  image_pin_required: true
+dependencies:
+  deploy_targets:
+    - proxmox-vm-compose
+    - k3s
+  profiles:
+    - enterprise-secrets
+  storage_profiles:
+    - proxmox-zfs
+    - longhorn
+  secrets_profiles:
+    - vault
+  ports:
+    - "8200"
+  requires_gpu: false
+risks:
+  - Unseal, HA, backup, and operator access procedures are mandatory before inclusion.
+  - Adds operational weight; SOPS age remains the low-ops baseline.
+next_step: Compare Vault and Infisical operating models before selecting an enterprise default.
+verification:
+  commands:
+    - agmind render compose --profile enterprise-secrets --domain ci.example.com
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

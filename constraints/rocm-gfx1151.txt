@@ -1,0 +1,14 @@
+# AGmind ROCm gfx1151 backend runtime/build compatibility envelope.
+# Dockerfile.rocm still chooses the AMD gfx1151 nightly index explicitly.
+-c core.txt
+
+pip>=24,<26
+setuptools>=68,<90
+wheel>=0.43,<1
+torch>=2.7,<3
+torchvision>=0.22,<1
+torchaudio>=2.7,<3
+onnxruntime>=1.22,<2
+llama-cpp-python>=0.3.23,<0.4
+scipy>=1.14,<2
+numpy>=2.0,<3

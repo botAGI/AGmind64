@@ -6,7 +6,7 @@
 
 AMD Strix Halo (Ryzen AI Max+ 395, gfx1151) — APU с unified memory. Ubuntu 24.04 stock ROCm 5.7 **НЕ поддерживает** gfx1151. Минимальная версия с native gfx1151 support — **ROCm 7.1.1** (релиз 26 ноября 2025). Latest stable на дату написания — **ROCm 7.2.3** (30 апреля 2026).
 
-Vulkan (RADV) — primary inference path в AGmindx86. ROCm — secondary, для embed_batch/PP workloads (ADR-0002, ADR-0004).
+Vulkan (RADV) — primary inference path в AGmind. ROCm — secondary, для embed_batch/PP workloads (ADR-0002, ADR-0004).
 
 ## Pre-checks
 
@@ -81,7 +81,7 @@ rocm-smi
 # amd-smi — НЕ ИСПОЛЬЗОВАТЬ
 # Сломан на gfx1151 (ROCm/ROCm#6035, открыт 15 Mar 2026, статус: triage без фикса).
 # Все метрики возвращают N/A кроме EDGE temp.
-# AGmindx86 использует scripts/amdgpu_textfile.sh вместо amd-smi (R13).
+# AGmind использует scripts/amdgpu_textfile.sh вместо amd-smi.
 ```
 
 ## Real install log (2026-05-19, our Strix Halo):
@@ -121,7 +121,7 @@ sudo setfacl -m u:$USER:rw /dev/kfd /dev/dri/renderD128
 ## Verify в AGmind
 
 ```bash
-cd ~/AGmindx86
+cd ~/AGmind64
 .venv/bin/agmind status
 # Should show: rocm в available backends
 .venv/bin/pytest tests/compute/test_contract.py -v -k rocm
@@ -153,7 +153,7 @@ CMAKE_ARGS=-DGGML_HIP=ON \
            -DGGML_HIP_MMQ_MFMA=ON
 ```
 
-Это R-recon R3 тема — флаги взяты из spec'а до Phase H', потребуют verify на реальном железе после установки ROCm 7.2.3.
+Эти флаги требуют verify на реальном железе после установки ROCm 7.2.3.
 
 ## Альтернатива: ROCm nightly для bleeding-edge
 
@@ -176,7 +176,7 @@ pip install --index-url https://rocm.nightlies.amd.com/v2-staging/gfx1151/ --pre
 - [kyuz0/amd-strix-halo-toolboxes](https://github.com/kyuz0/amd-strix-halo-toolboxes)
 - [Hardware Corner: Strix Halo ROCm firmware fix](https://www.hardware-corner.net/strix-halo-rocm-firmware-fix/)
 
-## Что AGmindx86 спецификации зафиксировано
+## Что текущая конфигурация фиксирует
 
 - `ansible/group_vars/all.yml::agmind_rocm_min` — теперь **7.2.0** (минимум для gfx1151 + stable)
 - `ansible/group_vars/all.yml::agmind_firmware_min` — **20260110**

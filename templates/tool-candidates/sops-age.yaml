@@ -1,0 +1,36 @@
+id: sops-age
+name: SOPS age
+status: candidate
+category: secrets
+summary: Low-ops encrypted file workflow for homelab and GitOps-friendly secrets.
+admission:
+  scope: external-integration
+  runtime: external
+  contracts:
+    - secure
+  component_contract_required: false
+  service_descriptor_required: false
+  image_pin_required: false
+dependencies:
+  deploy_targets:
+    - ubuntu-compose
+    - proxmox-vm-compose
+    - k3s
+  profiles:
+    - secrets
+  storage_profiles:
+    - local-paths
+    - proxmox-zfs
+    - longhorn
+  secrets_profiles:
+    - sops-age
+  ports: []
+  requires_gpu: false
+risks:
+  - Key location, rotation, and operator recovery process must be documented before default use.
+next_step: Add SOPS age file layout, key handling docs, and CI-safe decrypt checks.
+verification:
+  commands:
+    - python scripts/audit_forbidden.py --fail
+  research_refs:
+    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md

@@ -21,6 +21,74 @@
   when: agmind_cf_api_token is defined and agmind_cf_api_token | length > 0
   no_log: true   # ВАЖНО: токен НЕ должен попасть в Ansible stdout / logs
 
+- name: Validate Proxmox exporter token settings
+  ansible.builtin.assert:
+    that:
+      - agmind_proxmox_exporter_user | default('') | length > 0
+      - agmind_proxmox_exporter_token_name | default('') | length > 0
+      - agmind_proxmox_exporter_token_value | default('') | length > 0
+    fail_msg: >-
+      proxmox profile requires agmind_proxmox_exporter_user,
+      agmind_proxmox_exporter_token_name, and
+      agmind_proxmox_exporter_token_value, or set
+      agmind_proxmox_exporter_existing_config=true after provisioning
+      {{ agmind_config_dir }}/proxmox-exporter/pve.yml yourself.
+  when:
+    - "'proxmox' in agmind_profiles"
+    - not (agmind_proxmox_exporter_existing_config | default(false) | bool)
+  no_log: true
+
+- name: Ensure Proxmox exporter config directory exists
+  ansible.builtin.file:
+    path: "{{ agmind_config_dir }}/proxmox-exporter"
+    state: directory
+    owner: root
+    group: "{{ agmind_group }}"
+    mode: "0750"
+  when:
+    - "'proxmox' in agmind_profiles"
+
+- name: Check existing Proxmox exporter config
+  ansible.builtin.stat:
+    path: "{{ agmind_config_dir }}/proxmox-exporter/pve.yml"
+  register: agmind_proxmox_exporter_existing_config_stat
+  when:
+    - "'proxmox' in agmind_profiles"
+    - agmind_proxmox_exporter_existing_config | default(false) | bool
+
+- name: Validate existing Proxmox exporter config file
+  ansible.builtin.assert:
+    that:
+      - agmind_proxmox_exporter_existing_config_stat.stat.exists
+      - not agmind_proxmox_exporter_existing_config_stat.stat.isdir
+    fail_msg: >-
+      agmind_proxmox_exporter_existing_config=true requires an existing file at
+      {{ agmind_config_dir }}/proxmox-exporter/pve.yml before compose up.
+  when:
+    - "'proxmox' in agmind_profiles"
+    - agmind_proxmox_exporter_existing_config | default(false) | bool
+
+- name: Render Proxmox exporter token config
+  ansible.builtin.template:
+    src: proxmox-pve.yml.j2
+    dest: "{{ agmind_config_dir }}/proxmox-exporter/pve.yml"
+    owner: root
+    group: "{{ agmind_group }}"
+    mode: "0640"
+  when:
+    - "'proxmox' in agmind_profiles"
+    - not (agmind_proxmox_exporter_existing_config | default(false) | bool)
+  no_log: true
+
+- name: Validate Proxmox exporter config
+  ansible.builtin.command:
+    cmd: >-
+      {{ agmind_venv }}/bin/python -m agmind.deploy.proxmox_exporter
+      --config {{ agmind_config_dir }}/proxmox-exporter/pve.yml
+  changed_when: false
+  when:
+    - "'proxmox' in agmind_profiles"
+
 - name: Ensure templates/services exists в install dir
   ansible.builtin.file:
     path: "{{ agmind_install_dir }}/templates/services"

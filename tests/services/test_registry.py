@@ -28,7 +28,16 @@ pytestmark = pytest.mark.backend_any
 
 def test_service_profile_values_stable() -> None:
     """Profile values — stable API; смена ломает Ansible playbooks + tests."""
-    expected = {"core", "rag", "ragflow", "ui", "observability", "security", "full"}
+    expected = {
+        "core",
+        "rag",
+        "ragflow",
+        "ui",
+        "observability",
+        "proxmox",
+        "security",
+        "full",
+    }
     assert {p.value for p in ServiceProfile} == expected
 
 
@@ -159,6 +168,15 @@ def test_services_for_profile_full_is_union() -> None:
     full_names = {s.name for s in full}
     assert {s.name for s in core}.issubset(full_names)
     assert {s.name for s in rag}.issubset(full_names)
+
+
+def test_services_for_profile_proxmox_is_opt_in() -> None:
+    proxmox = services_for_profile(ServiceProfile.PROXMOX)
+    names = {s.name for s in proxmox}
+    assert "proxmox-exporter" in names
+    assert "proxmox-exporter" not in {
+        s.name for s in services_for_profile(ServiceProfile.OBSERVABILITY)
+    }
 
 
 def test_services_for_profile_invalid_string() -> None:

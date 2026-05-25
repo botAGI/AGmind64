@@ -138,9 +138,76 @@ def test_validate_rejects_no_services_or_profiles() -> None:
     assert any("service" in e.lower() for e in errors)
 
 
+def test_setup_app_deployment_topology_report_uses_shared_policy() -> None:
+    app = AgmindSetupApp(
+        detected=DetectedHardware(
+            ram_gb=128,
+            gpu_name="x",
+            is_strix_halo=True,
+            vulkan_present=True,
+            rocm_present=True,
+            docker_present=True,
+            recommended_tier="XL",
+        )
+    )
+    state = SetupState(
+        domain="x.example",
+        cf_api_token="x" * 30,
+        services=["dify-api", "milvus", "qdrant", "postgres", "redis"],
+    )
+
+    report = app._deployment_topology_report(state)
+
+    assert "DIFY VECTOR DB ..... milvus (ambiguous: qdrant also selected)" in report.retrieval_lines
+    assert any(
+        "Dify has multiple vector_db providers selected" in warning
+        for warning in report.compatibility_warnings
+    )
+
+
 def test_state_explicit_services_overrides_default() -> None:
     s = SetupState(services=["traefik", "llama-llm"])
     assert s.services == ["traefik", "llama-llm"]
+
+
+def test_expand_selected_services_for_setup_expands_dify_api() -> None:
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
+    services = expand_selected_services_for_setup(["dify-api"])
+
+    assert "dify-api" in services
+    assert "dify-web" in services
+    assert "dify-worker" in services
+    assert "dify-plugin-daemon" in services
+    assert "dify-sandbox" in services
+    assert "postgres" in services
+    assert "redis" in services
+    assert "qdrant" in services
+    assert "llama-llm" in services
+    assert "llama-embed" in services
+    assert "ragflow" not in services
+
+
+def test_expand_selected_services_for_setup_uses_milvus_without_qdrant() -> None:
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
+    services = expand_selected_services_for_setup(["dify-api", "milvus"])
+
+    assert "dify-api" in services
+    assert "milvus" in services
+    assert "qdrant" not in services
+
+
+def test_expand_selected_services_for_setup_keeps_ragflow_search_index_separate() -> None:
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
+    services = expand_selected_services_for_setup(["dify-api", "ragflow", "milvus"])
+
+    assert "dify-api" in services
+    assert "milvus" in services
+    assert "ragflow" in services
+    assert "elasticsearch" in services
+    assert "qdrant" not in services
 
 
 # ---------- Phase M3.S.1: inline Input validators ----------

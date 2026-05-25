@@ -143,7 +143,7 @@ ansible --version  # ≥ 2.16
 ### 2.2 Clone repo
 
 ```bash
-git clone https://github.com/botAGI/AGmindx86 /opt/agmind-repo
+git clone https://github.com/botAGI/AGmind64 /opt/agmind-repo
 cd /opt/agmind-repo
 ```
 
@@ -261,7 +261,7 @@ Credentials в `/opt/agmind/.env` (chmod 600).
 ### `ragflow` profile
 
 RAGFlow на CPU 10-50× медленнее CUDA. Use для cyrillic-heavy scans если
-docling недостаточен. См. [docs/MIGRATION_PLAN.md](MIGRATION_PLAN.md) § R11.
+docling недостаточен.
 
 ### `observability` profile
 
