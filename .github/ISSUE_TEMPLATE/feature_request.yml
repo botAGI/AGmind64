@@ -26,7 +26,7 @@ body:
         - Update System
         - CLI (agmind)
         - Docker Compose / Services
-        - GPU / vLLM / TEI
+        - GPU / Vulkan / ROCm / llama.cpp
         - Monitoring
         - Security
         - Backup / DR

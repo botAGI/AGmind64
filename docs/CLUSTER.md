@@ -24,7 +24,7 @@ RAG (Dify, Qdrant, etc), workers добавляют inference capacity.
 │  - qdrant (vector store)              │
 │  - Dify + postgres + redis            │
 │  - docling-serve-cpu                  │
-│  - nginx (entrypoint)                 │
+│  - Traefik (edge entrypoint)          │
 │  - Prometheus / Grafana / Loki        │
 │                                       │
 │  Cluster coordinator:                 │
@@ -151,7 +151,8 @@ curl http://localhost:8080/health
 Change:
 ```bash
 sudo sed -i 's/strategy: round-robin/strategy: least-loaded/' /etc/agmind/cluster.yaml
-agmind deploy restart   # nginx reloads cluster config
+# CLI helpers read cluster.yaml on each run. Restart any long-running consumer
+# process explicitly if you wire one to agmind.cluster routing.
 ```
 
 ## Health checks

@@ -310,8 +310,15 @@ class ImagePullStep(InstallStep):
             tmpdir = Path(tmp)
             (tmpdir / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
             cmd = ["docker", "compose", "pull", "--policy", "missing", "--quiet"]
+            compose_env = parse_env_file(config.install_dir / ".env")
             # docker compose pull stderr содержит per-layer progress; stream его.
-            rc, _ = _stream_subprocess(cmd, callback, self.step_id, cwd=tmpdir)
+            rc, _ = _stream_subprocess(
+                cmd,
+                callback,
+                self.step_id,
+                cwd=tmpdir,
+                env=compose_env,
+            )
 
         elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:
@@ -646,9 +653,9 @@ def default_steps() -> list[InstallStep]:
     return [
         DoctorStep(),
         BootstrapStep(),
+        EnvWriteStep(),  # before ImagePullStep — compose parses ${VAR:?} guards
         ImagePullStep(),
         ModelDownloadStep(),
-        EnvWriteStep(),  # before DeployStep — compose читает .env
         DeployStep(),
     ]
 

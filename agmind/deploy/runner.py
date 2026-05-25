@@ -7,6 +7,7 @@ automatic rollback если healthcheck не прошёл за timeout.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import time
@@ -94,6 +95,38 @@ def _compose_service_names(compose_text: str) -> list[str]:
     return [str(name) for name in services]
 
 
+def _compose_ps_containers(stdout: str) -> list[dict[str, object]]:
+    """Normalize docker compose ps JSON output across Compose versions."""
+    text = stdout.strip()
+    if not text:
+        return []
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+
+    if isinstance(parsed, list):
+        return [item for item in parsed if isinstance(item, dict)]
+    if isinstance(parsed, dict):
+        return [parsed]
+
+    containers: list[dict[str, object]] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            containers.append(item)
+        elif isinstance(item, list):
+            containers.extend(entry for entry in item if isinstance(entry, dict))
+    return containers
+
+
 def _wait_healthy(install_dir: Path, timeout: int) -> tuple[bool, list[str]]:
     """Wait until все сервисы помечены healthy (или running без healthcheck).
 
@@ -111,21 +144,11 @@ def _wait_healthy(install_dir: Path, timeout: int) -> tuple[bool, list[str]]:
             time.sleep(2)
             continue
 
-        # docker compose ps --format json возвращает one-line-per-container JSONL
-        import json
-
         unhealthy: list[str] = []
-        for line in stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                container = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            name = container.get("Service", container.get("Name", ""))
-            health = container.get("Health", "")
-            state = container.get("State", "")
+        for container in _compose_ps_containers(stdout):
+            name = str(container.get("Service") or container.get("Name") or "")
+            health = str(container.get("Health") or "")
+            state = str(container.get("State") or "")
             # healthy / starting / unhealthy / "" (no healthcheck declared)
             if health == "unhealthy":
                 unhealthy.append(name)

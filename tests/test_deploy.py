@@ -304,3 +304,38 @@ def test_deploy_apply_starts_rendered_services_by_name(
 
     assert result.success
     assert calls == [["up", "-d", "--remove-orphans", "--quiet-pull", "llama-llm", "qdrant"]]
+
+
+def test_wait_healthy_accepts_compose_json_array(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Docker Compose v2 commonly emits one JSON array for ps --format json."""
+
+    def fake_run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
+        assert args == ["ps", "--format", "json"]
+        assert cwd == tmp_path
+        return (
+            0,
+            json.dumps(
+                [
+                    {
+                        "Service": "llama-llm",
+                        "State": "running",
+                        "Health": "healthy",
+                    },
+                    {
+                        "Service": "qdrant",
+                        "State": "running",
+                        "Health": "",
+                    },
+                ]
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(runner, "_run_compose", fake_run_compose)
+
+    healthy, unhealthy = runner._wait_healthy(tmp_path, timeout=1)
+
+    assert healthy
+    assert unhealthy == []

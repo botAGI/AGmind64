@@ -1,11 +1,11 @@
 name: "\u2753 Question"
-description: Ask a question about AGMind
+description: Ask a question about AGmind
 labels: ["question"]
 body:
   - type: markdown
     attributes:
       value: |
-        For general discussions, use [Discussions](https://github.com/botAGI/AGmind/discussions) instead.
+        For general discussions, use [Discussions](https://github.com/botAGI/AGmind64/discussions) instead.
 
   - type: textarea
     id: question

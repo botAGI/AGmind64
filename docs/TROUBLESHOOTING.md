@@ -289,10 +289,10 @@ sudo systemctl enable --now avahi-daemon
 avahi-resolve -n agmind-dify.local
 ```
 
-### Symptom: nginx 502 Bad Gateway
+### Symptom: Traefik 502 Bad Gateway
 
 ```bash
-agmind deploy logs nginx
+agmind deploy logs traefik
 # upstream connect refused
 ```
 
@@ -303,8 +303,9 @@ agmind deploy logs nginx
 agmind deploy status
 docker compose -f /opt/agmind/docker-compose.yml ps dify-api
 
-# Network connectivity inside Docker?
-docker exec agmind-nginx wget -O- http://dify-api:5001/health
+# Target service health from inside its container
+docker compose -f /opt/agmind/docker-compose.yml exec dify-api \
+  wget -qO- http://localhost:5001/health
 ```
 
 ## Section 7: Cluster
@@ -368,7 +369,7 @@ Other workers dead → check их status.
 |---------|----------|
 | llama-llm/embed/rerank | `agmind deploy logs llama-llm` |
 | Dify API | `agmind deploy logs dify-api` |
-| nginx | `agmind deploy logs nginx` |
+| Traefik | `agmind deploy logs traefik` |
 | Postgres | `agmind deploy logs postgres` |
 | Grafana | http://localhost:3002 (Loki datasource) |
 | Audit trail | `agmind audit --json` |

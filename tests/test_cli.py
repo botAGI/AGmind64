@@ -145,6 +145,86 @@ def test_governance_validate_command() -> None:
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_deploy_status_subcommand_routes_to_compose_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    calls: list[str] = []
+
+    def fake_status() -> int:
+        calls.append("status")
+        return 0
+
+    monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_status", fake_status)
+
+    cli_app = typer.main.get_command(_make_app())
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["deploy", "status"])
+
+    assert result.exit_code == 0
+    assert calls == ["status"]
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_deploy_logs_subcommand_routes_to_compose_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    calls: dict[str, object] = {}
+
+    def fake_logs(
+        service: str | None = None,
+        *,
+        follow: bool = False,
+        lines: int = 100,
+    ) -> int:
+        calls.update({"service": service, "follow": follow, "lines": lines})
+        return 0
+
+    monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_logs", fake_logs)
+
+    cli_app = typer.main.get_command(_make_app())
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["deploy", "logs", "llama-llm", "--lines", "123", "-f"])
+
+    assert result.exit_code == 0
+    assert calls == {"service": "llama-llm", "follow": True, "lines": 123}
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_deploy_restart_subcommand_routes_to_compose_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    calls: list[str | None] = []
+
+    def fake_restart(service: str | None = None) -> int:
+        calls.append(service)
+        return 0
+
+    monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_restart", fake_restart)
+
+    cli_app = typer.main.get_command(_make_app())
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["deploy", "restart", "llama-llm"])
+
+    assert result.exit_code == 0
+    assert calls == ["llama-llm"]
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_ci_status_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
     import typer
     from click.testing import CliRunner

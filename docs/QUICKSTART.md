@@ -84,7 +84,7 @@ agmind rerank "Strix Halo benchmarks" \
 
 | Profile | Что включается |
 |---------|----------------|
-| `core` | llama-llm, llama-embed, llama-rerank, qdrant, nginx (минимум для inference) |
+| `core` | traefik, llama-llm, llama-embed, llama-rerank, qdrant (минимум для inference) |
 | `rag` | + Dify (api/worker/web/plugin-daemon/sandbox), postgres, redis, docling |
 | `ragflow` | RAGFlow + mysql + elasticsearch + minio (M2 fallback, opt-in) |
 | `ui` | Open WebUI (chat frontend) |

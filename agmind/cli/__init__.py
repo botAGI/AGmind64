@@ -192,6 +192,68 @@ def _make_app() -> typer.Typer:
         )
         raise typer.Exit(code=rc)
 
+    @deploy_app.command("up")
+    def deploy_up(
+        profile: str | None = typer.Option(None, "--profile", "-p"),
+        detach: bool = typer.Option(True, "--detach/--no-detach"),
+    ) -> None:
+        """Backward-compatible docker compose up wrapper."""
+        from agmind.cli.deploy_cmd import cmd_up
+
+        raise typer.Exit(code=cmd_up(profile=profile, detach=detach))
+
+    @deploy_app.command("down")
+    def deploy_down(
+        volumes: bool = typer.Option(False, "--volumes", help="Also remove named volumes."),
+    ) -> None:
+        """Backward-compatible docker compose down wrapper."""
+        from agmind.cli.deploy_cmd import cmd_down
+
+        raise typer.Exit(code=cmd_down(volumes=volumes))
+
+    @deploy_app.command("status")
+    def deploy_status() -> None:
+        """Backward-compatible docker compose ps wrapper."""
+        from agmind.cli.deploy_cmd import cmd_status
+
+        raise typer.Exit(code=cmd_status())
+
+    @deploy_app.command("ps")
+    def deploy_ps(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Backward-compatible docker compose ps wrapper."""
+        from agmind.cli.deploy_cmd import cmd_ps
+
+        raise typer.Exit(code=cmd_ps(as_json=as_json))
+
+    @deploy_app.command("logs")
+    def deploy_logs(
+        service: str | None = typer.Argument(None, help="Service name."),
+        follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+        lines: int = typer.Option(100, "--lines", help="Initial backlog lines."),
+    ) -> None:
+        """Backward-compatible docker compose logs wrapper."""
+        from agmind.cli.deploy_cmd import cmd_logs
+
+        raise typer.Exit(code=cmd_logs(service=service, follow=follow, lines=lines))
+
+    @deploy_app.command("restart")
+    def deploy_restart(
+        service: str | None = typer.Argument(None, help="Service name."),
+    ) -> None:
+        """Backward-compatible docker compose restart wrapper."""
+        from agmind.cli.deploy_cmd import cmd_restart
+
+        raise typer.Exit(code=cmd_restart(service=service))
+
+    @deploy_app.command("pull")
+    def deploy_pull() -> None:
+        """Backward-compatible docker compose pull wrapper."""
+        from agmind.cli.deploy_cmd import cmd_pull
+
+        raise typer.Exit(code=cmd_pull())
+
     # ---- rollback (top-level command) ----
     @app.command()
     def rollback(

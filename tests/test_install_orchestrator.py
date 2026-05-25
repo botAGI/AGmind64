@@ -217,7 +217,7 @@ def test_default_steps_list_is_stable() -> None:
 
     s = default_steps()
     ids = [step.step_id for step in s]
-    assert ids == ["doctor", "bootstrap", "image_pull", "model_pull", "env_write", "deploy"]
+    assert ids == ["doctor", "bootstrap", "env_write", "image_pull", "model_pull", "deploy"]
 
 
 def test_env_write_step_writes_file(tmp_path: object) -> None:
@@ -416,6 +416,76 @@ def test_model_download_step_handles_empty_embed_rerank(tmp_path: object) -> Non
     assert "llm: no model" in result.message
     assert "embed: no model" in result.message
     assert "rerank: no model" in result.message
+
+
+def test_image_pull_step_uses_runtime_env_from_install_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Compose pull parses ${VAR:?} guards and must see install .env values."""
+    from agmind.install import steps
+    from agmind.install.steps import ImagePullStep
+
+    install_dir = tmp_path / "opt"
+    install_dir.mkdir()
+    (install_dir / ".env").write_text(
+        "\n".join(
+            [
+                "POSTGRES_PASSWORD=existing-postgres",
+                "REDIS_PASSWORD=existing-redis",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["postgres"],
+        install_dir=install_dir,
+    )
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        "agmind.services.renderer.render_to_string",
+        lambda **_kwargs: (
+            "services:\n"
+            "  postgres:\n"
+            "    image: postgres:17.6-alpine\n"
+            "    environment:\n"
+            "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}\n"
+        ),
+    )
+
+    def fake_stream_subprocess(
+        cmd: list[str],
+        callback: ProgressCallback,
+        step_id: str,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+        stdin_payload: bytes | None = None,
+        extra_emit: object | None = None,
+    ) -> tuple[int, list[str]]:
+        calls.append(
+            {
+                "cmd": cmd,
+                "cwd": cwd,
+                "env": env,
+                "stdin_payload": stdin_payload,
+                "extra_emit": extra_emit,
+            }
+        )
+        return 0, []
+
+    monkeypatch.setattr(steps, "_stream_subprocess", fake_stream_subprocess)
+
+    result = ImagePullStep().run(lambda _event: None, cfg)
+
+    assert result.success
+    assert calls[0]["cmd"] == ["docker", "compose", "pull", "--policy", "missing", "--quiet"]
+    assert calls[0]["env"] == {
+        "POSTGRES_PASSWORD": "existing-postgres",
+        "REDIS_PASSWORD": "existing-redis",
+    }
 
 
 def test_default_steps_all_have_label() -> None:

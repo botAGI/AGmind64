@@ -36,7 +36,7 @@
 │    │ Dify (api/web/worker/plugin) │   │
 │    │ postgres / redis             │   │
 │    │ docling-serve-cpu            │   │
-│    │ nginx (reverse proxy)        │   │
+│    │ Traefik (reverse proxy/TLS)  │   │
 │    │ [observability: P/G/L/A]     │   │
 │    └──────────────────────────────┘   │
 │                                       │
