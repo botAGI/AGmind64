@@ -57,8 +57,13 @@ RUN pip install -c /opt/agmind/constraints/vulkan.txt \
 
 RUN pip install -c /opt/agmind/constraints/vulkan.txt onnxruntime numpy scipy
 
+RUN pip install -c /opt/agmind/constraints/vulkan.txt \
+        -r /opt/agmind/constraints/core.txt
+
 COPY . /opt/agmind
-RUN pip install -c /opt/agmind/constraints/vulkan.txt -e ".[vulkan]"
+RUN pip install --no-build-isolation --no-deps \
+        -c /opt/agmind/constraints/vulkan.txt \
+        -e ".[vulkan]"
 
 ENV AGMIND_BACKEND=vulkan \
     AGMIND_ENGINE=llama_cpp

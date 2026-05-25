@@ -14,8 +14,13 @@ RUN pip install -c /opt/agmind/constraints/cpu.txt \
         "llama-cpp-python>=0.3.23,<0.4" \
         numpy scipy
 
+RUN pip install -c /opt/agmind/constraints/cpu.txt \
+        -r /opt/agmind/constraints/core.txt
+
 COPY . /opt/agmind
-RUN pip install -c /opt/agmind/constraints/cpu.txt -e ".[cpu]"
+RUN pip install --no-build-isolation --no-deps \
+        -c /opt/agmind/constraints/cpu.txt \
+        -e ".[cpu]"
 
 ENV AGMIND_BACKEND=cpu
 

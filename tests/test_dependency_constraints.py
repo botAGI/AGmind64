@@ -81,3 +81,43 @@ def test_backend_dockerfiles_use_matching_constraints() -> None:
         text = (REPO_ROOT / "docker" / dockerfile).read_text(encoding="utf-8")
         assert "COPY constraints /opt/agmind/constraints" in text
         assert f"-c /opt/agmind/constraints/{plane}.txt" in text
+
+
+def test_backend_dockerfiles_install_core_before_editable_no_deps() -> None:
+    expected = {
+        "Dockerfile.cpu": ("cpu", "cpu"),
+        "Dockerfile.vulkan": ("vulkan", "vulkan"),
+        "Dockerfile.rocm": ("rocm-gfx1151", "rocm"),
+    }
+
+    for dockerfile, (plane, extra) in expected.items():
+        text = (REPO_ROOT / "docker" / dockerfile).read_text(encoding="utf-8")
+        normalized = " ".join(text.replace("\\\n", " ").split())
+
+        assert (
+            f"pip install -c /opt/agmind/constraints/{plane}.txt "
+            "-r /opt/agmind/constraints/core.txt"
+        ) in normalized
+        editable_install = (
+            "pip install --no-build-isolation --no-deps "
+            f'-c /opt/agmind/constraints/{plane}.txt -e ".[{extra}]"'
+        )
+        assert editable_install in normalized
+
+
+def test_dockerignore_excludes_local_build_artifacts() -> None:
+    dockerignore = REPO_ROOT / ".dockerignore"
+    patterns = {
+        line.strip()
+        for line in dockerignore.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+    assert {
+        ".git/",
+        ".venv/",
+        "*.egg-info/",
+        ".planning/",
+        "docs/superpowers/",
+        "coverage.xml",
+    }.issubset(patterns)

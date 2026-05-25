@@ -88,9 +88,14 @@ RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt \
 # onnxruntime CPU only (onnxruntime-rocm 1.22.x НЕ gfx1151-ready).
 RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt onnxruntime numpy scipy
 
+RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt \
+        -r /opt/agmind/constraints/core.txt
+
 WORKDIR /opt/agmind
 COPY . /opt/agmind
-RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt -e ".[rocm]"
+RUN pip install --no-build-isolation --no-deps \
+        -c /opt/agmind/constraints/rocm-gfx1151.txt \
+        -e ".[rocm]"
 
 ENV AGMIND_BACKEND=rocm \
     AGMIND_ENGINE=llama_cpp
