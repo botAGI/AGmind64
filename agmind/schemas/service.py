@@ -6,7 +6,7 @@ metadata (tier, owner). Backward compat через `to_legacy_service()`.
 
 Поля validation:
     - name: docker container name convention `^[a-z][a-z0-9-]{1,30}$`
-    - image: запрет `:latest` (Invariant I.2 в `.planning/codebase/INVARIANTS.md`)
+    - image: запрет `:latest` (pinned image invariant)
     - mem_limit: lowercase Docker format `^\\d+(k|m|g)$`
     - port: `[ip:]host:container` где host/container — port numbers
     - tier: Literal `edge | inference | storage | ops`
@@ -273,10 +273,7 @@ class ServiceDescriptor(BaseModel):
     @classmethod
     def _check_image(cls, v: str) -> str:
         if _LATEST_RE.search(v):
-            raise ValueError(
-                f"image '{v}' uses :latest — pin to semver "
-                "(Invariant I.2 .planning/codebase/INVARIANTS.md)"
-            )
+            raise ValueError(f"image '{v}' uses :latest — pin to semver (pinned image invariant)")
         if "@sha256:" not in v and ":" not in v:
             raise ValueError(f"image '{v}' has no tag — pin to semver")
         return v

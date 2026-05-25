@@ -12,7 +12,7 @@ volumes:
 - /etc/agmind/grafana:/etc/grafana/provisioning:ro
 - /var/lib/agmind/grafana:/var/lib/grafana
 env:
-  GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+  GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
   GF_PATHS_PROVISIONING: /etc/grafana/provisioning
 depends_on:
 - prometheus

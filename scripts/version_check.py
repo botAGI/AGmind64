@@ -785,7 +785,7 @@ def render_markdown(reports: list[PinReport]) -> str:
             "2. For a component update, run `agmind upgrade --component <id> --version <target> --plan`.",
             "3. If the plan is acceptable, run `agmind upgrade --component <id> --version <target> --apply`.",
             "4. Run `agmind doctor` and the component verification commands listed in `templates/components/<id>.yaml`.",
-            "5. Run `docker compose config --quiet` for the affected rendered profiles.",
+            "5. Run `docker compose --env-file /opt/agmind/.env -f <rendered-compose.yml> config --quiet` for the affected rendered profiles.",
             "6. Commit descriptor, contract, and digest changes only after verification.",
             "7. If verification fails, run `agmind upgrade --rollback`.",
             "",

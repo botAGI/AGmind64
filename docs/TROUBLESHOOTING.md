@@ -404,4 +404,3 @@ sudo bash install.sh  # requires DGX Spark hardware
 4. **Audit:** `agmind audit` (forbidden patterns)
 5. **ADRs:** `docs/adr/0001-migration-to-x86-strix-halo.md`,
    `docs/adr/0002-compute-backend-abstraction.md`
-6. **Planning memory:** `.planning/STATE.md` + `.planning/codebase/`

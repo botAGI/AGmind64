@@ -51,7 +51,7 @@ class ROCmBackend(Backend):
         if engine in _M2_ENGINES:
             raise NotImplementedError(
                 f"ROCm backend engine={engine!r} is planned for M2 upgrade. "
-                "See .planning/codebase/ARCHITECTURE.md and ADR-0002 §«Update 2026-05-19». "
+                "See docs/adr/0002-compute-backend-abstraction.md §«Update 2026-05-19». "
                 "For M1 use engine='llama_cpp'."
             )
         if engine not in _SUPPORTED_ENGINES:

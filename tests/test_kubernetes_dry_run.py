@@ -1142,8 +1142,8 @@ def test_kubernetes_dry_run_artifact_records_render_warning_details(tmp_path: Pa
     )
     assert any(
         item["code"] == "kubernetes-omitted"
-        and item["service"] == "llama-rerank"
-        and "rerank model file" in item["message"]
+        and item["service"] == "portainer"
+        and "Compose-only Docker management service" in item["message"]
         and item["expected"] is True
         for item in target_payload["warnings"]
     )

@@ -30,6 +30,6 @@ requires:
 verification:
   smoke:
     - agmind render compose --profile core,ragflow --domain ci.example.com --output /tmp/agmind-ragflow.yml
-    - docker compose -f /tmp/agmind-ragflow.yml config --quiet
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ragflow.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

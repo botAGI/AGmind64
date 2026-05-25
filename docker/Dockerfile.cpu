@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # AGmind CPU backend — fallback для x86_64 без AMD GPU.
-ARG BASE_IMAGE=agmind-base:latest
+ARG BASE_IMAGE=agmind-base:dev
 FROM ${BASE_IMAGE}
 
 COPY constraints /opt/agmind/constraints
@@ -11,7 +11,7 @@ RUN pip install -c /opt/agmind/constraints/cpu.txt \
         torch torchvision torchaudio \
     && pip install -c /opt/agmind/constraints/cpu.txt \
         onnxruntime \
-        "llama-cpp-python>=0.3.23" \
+        "llama-cpp-python>=0.3.23,<0.4" \
         numpy scipy
 
 COPY . /opt/agmind

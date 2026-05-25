@@ -15,6 +15,8 @@ from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 
+from agmind._env import parse_env_file, shell_quote
+from agmind.config.env import write_env
 from agmind.install.orchestrator import (
     DEFAULT_REPO_ROOT,
     InstallConfig,
@@ -24,8 +26,31 @@ from agmind.install.orchestrator import (
     ProgressEvent,
     ProgressKind,
 )
+from agmind.secrets import generate_secret
 
 # ---------- helpers ----------
+
+
+_RUNTIME_SECRET_KEYS = (
+    "POSTGRES_PASSWORD",
+    "GRAFANA_PASSWORD",
+    "MYSQL_ROOT_PASSWORD",
+    "MINIO_ROOT_PASSWORD",
+    "REDIS_PASSWORD",
+)
+
+
+def _env_line(key: str, value: str) -> str:
+    return f"{key}={shell_quote(value) if value else ''}"
+
+
+def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
+    values: dict[str, str] = {
+        "MINIO_ROOT_USER": existing_env.get("MINIO_ROOT_USER") or "agmind",
+    }
+    for key in _RUNTIME_SECRET_KEYS:
+        values[key] = existing_env.get(key) or generate_secret(32)
+    return values
 
 
 def _stream_subprocess(
@@ -549,6 +574,7 @@ class EnvWriteStep(InstallStep):
         start = time.monotonic()
         env_path = config.install_dir / ".env"
         config.install_dir.mkdir(parents=True, exist_ok=True)
+        runtime_env = _runtime_env(parse_env_file(env_path))
 
         # Phase M5.2: separate LLM/Embed/Rerank env vars так чтобы templates
         # параметризовали каждый llama-* service независимо. Legacy AGMIND_CTX_SIZE
@@ -556,35 +582,42 @@ class EnvWriteStep(InstallStep):
         # llama-llm.yaml имеет ${AGMIND_CTX_SIZE:-fallback}).
         lines = [
             "# AGmind runtime env — written by `agmind install` Phase M5.2.",
-            "# Hand-edit allowed, but `agmind install` rerun перепишет.",
-            f"AGMIND_DOMAIN={config.domain}",
+            "# Hand-edit allowed; existing runtime secrets are preserved on rerun.",
+            _env_line("AGMIND_DOMAIN", config.domain),
             "",
             "# ---- LLM (token generation) ----",
-            f"AGMIND_MODEL_FILE={config.model_file or ''}",
-            f"AGMIND_LLM_CTX_SIZE={config.ctx_size}",
-            f"AGMIND_LLM_KV_CACHE={config.kv_cache_type}",
-            f"AGMIND_LLM_THREADS={config.threads}",
-            f"AGMIND_LLM_PARALLEL={config.parallel_slots}",
+            _env_line("AGMIND_MODEL_FILE", config.model_file or ""),
+            _env_line("AGMIND_LLM_CTX_SIZE", str(config.ctx_size)),
+            _env_line("AGMIND_LLM_KV_CACHE", config.kv_cache_type),
+            _env_line("AGMIND_LLM_THREADS", str(config.threads)),
+            _env_line("AGMIND_LLM_PARALLEL", str(config.parallel_slots)),
             "",
             "# Legacy aliases (pre-M5.2 templates) — same values as LLM block.",
-            f"AGMIND_CTX_SIZE={config.ctx_size}",
-            f"AGMIND_KV_CACHE={config.kv_cache_type}",
-            f"AGMIND_THREADS={config.threads}",
-            f"AGMIND_PARALLEL={config.parallel_slots}",
+            _env_line("AGMIND_CTX_SIZE", str(config.ctx_size)),
+            _env_line("AGMIND_KV_CACHE", config.kv_cache_type),
+            _env_line("AGMIND_THREADS", str(config.threads)),
+            _env_line("AGMIND_PARALLEL", str(config.parallel_slots)),
             "",
             "# ---- Embed (dense embeddings for RAG) ----",
-            f"AGMIND_EMBED_FILE={config.embed_file or ''}",
-            f"AGMIND_EMBED_CTX_SIZE={config.embed_ctx_size}",
-            f"AGMIND_EMBED_KV_CACHE={config.embed_kv_cache}",
-            f"AGMIND_EMBED_PARALLEL={config.embed_parallel}",
+            _env_line("AGMIND_EMBED_FILE", config.embed_file or ""),
+            _env_line("AGMIND_EMBED_CTX_SIZE", str(config.embed_ctx_size)),
+            _env_line("AGMIND_EMBED_KV_CACHE", config.embed_kv_cache),
+            _env_line("AGMIND_EMBED_PARALLEL", str(config.embed_parallel)),
             "",
             "# ---- Rerank (cross-encoder ordering) ----",
-            f"AGMIND_RERANK_FILE={config.rerank_file or ''}",
-            f"AGMIND_RERANK_CTX_SIZE={config.rerank_ctx_size}",
+            _env_line("AGMIND_RERANK_FILE", config.rerank_file or ""),
+            _env_line("AGMIND_RERANK_CTX_SIZE", str(config.rerank_ctx_size)),
+            "",
+            "# ---- Runtime service credentials (Compose requires non-empty values) ----",
+            _env_line("POSTGRES_PASSWORD", runtime_env["POSTGRES_PASSWORD"]),
+            _env_line("GRAFANA_PASSWORD", runtime_env["GRAFANA_PASSWORD"]),
+            _env_line("MYSQL_ROOT_PASSWORD", runtime_env["MYSQL_ROOT_PASSWORD"]),
+            _env_line("MINIO_ROOT_USER", runtime_env["MINIO_ROOT_USER"]),
+            _env_line("MINIO_ROOT_PASSWORD", runtime_env["MINIO_ROOT_PASSWORD"]),
+            _env_line("REDIS_PASSWORD", runtime_env["REDIS_PASSWORD"]),
         ]
         try:
-            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            env_path.chmod(0o644)
+            write_env(env_path, "\n".join(lines) + "\n", mode=0o600)
         except OSError as exc:
             return InstallStepResult(
                 step_id=self.step_id,

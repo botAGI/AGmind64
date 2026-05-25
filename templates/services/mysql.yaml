@@ -9,7 +9,7 @@ profiles:
 volumes:
 - /var/lib/agmind/mysql:/var/lib/mysql
 env:
-  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
   MYSQL_DATABASE: rag_flow
 resources:
   cpus: 4.0

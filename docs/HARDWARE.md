@@ -25,9 +25,9 @@ Sapphire Rapids с AVX-512 — CPU-only inference, без AMD GPU.
 |-----------|-----|-------------|
 | Kernel | 6.17.0-19 HWE | 6.18.4+ mainline |
 | Mesa (для Vulkan) | 25.2.8 | 26.0+ через `ppa:kisak/kisak-mesa` |
-| linux-firmware | 20260110+ | latest |
+| linux-firmware | 20260110+ | 20260110+ or vendor-pinned newer build |
 | ROCm (если используется HIP backend) | 7.2.0 | 7.2.3 stable |
-| amdgpu-dkms | matches ROCm | latest |
+| amdgpu-dkms | matches ROCm | use the package that matches the selected ROCm release |
 
 ```bash
 # kernel HWE на Ubuntu 24.04:
@@ -233,7 +233,7 @@ docker run -d \
   -e AMD_VULKAN_ICD=RADV \
   -e VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json \
   -v /var/lib/agmind/models:/models:ro \
-  agmind/vulkan:latest
+  agmind/vulkan:dev
 
 # ROCm backend (для PyTorch / batch / GDN-моделей):
 docker run -d \
@@ -246,7 +246,7 @@ docker run -d \
   --ipc=host \
   --shm-size=16G \
   --restart=unless-stopped \
-  agmind/rocm:latest
+  agmind/rocm:dev
 ```
 
 **Note:** `--privileged` НЕ нужен. Rootless Docker НЕ поддерживается

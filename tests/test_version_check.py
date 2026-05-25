@@ -91,7 +91,7 @@ def test_scan_pyproject_deps_finds_textual() -> None:
 
     pins = vc.scan_pyproject_deps(REPO_ROOT / "pyproject.toml")
     by_name = {pin.name: pin for pin in pins}
-    assert by_name["textual"].specifier == ">=0.80"
+    assert by_name["textual"].specifier == ">=0.80,<9"
     assert by_name["ansible-core"].source == "pyproject"
 
 
@@ -109,7 +109,7 @@ def test_scan_dockerfile_pip_installs_finds_llama_cpp_python() -> None:
     import version_check as vc
 
     pins = vc.scan_dockerfile_pip_specs(REPO_ROOT / "docker")
-    assert any(pin.name == "llama-cpp-python" and pin.specifier == ">=0.3.23" for pin in pins)
+    assert any(pin.name == "llama-cpp-python" and pin.specifier == ">=0.3.23,<0.4" for pin in pins)
 
 
 def test_scan_constraint_specs_finds_backend_planes() -> None:

@@ -37,5 +37,5 @@ verification:
     - agmind tools status longhorn
     - agmind render kubernetes --profile core --target k3s --namespace agmind
   research_refs:
-    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md
-    - .planning/research/homelab-enterprise/R21-k3s-storage-secrets-addons.md
+    - docs/adr/0014-deploy-targets-and-provisioning-boundary.md
+    - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

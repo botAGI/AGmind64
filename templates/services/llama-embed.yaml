@@ -23,20 +23,20 @@ command:
 - --port
 - '8080'
 - --model
-- /models/${AGMIND_EMBED_FILE}
+- /models/${AGMIND_EMBED_FILE:-bge-m3-Q8_0.gguf}
 - --embeddings
 - --pooling
 - cls
 - -ngl
 - '999'
 - --ctx-size
-- ${AGMIND_EMBED_CTX_SIZE}
+- ${AGMIND_EMBED_CTX_SIZE:-8192}
 - --cache-type-k
-- ${AGMIND_EMBED_KV_CACHE}
+- ${AGMIND_EMBED_KV_CACHE:-f16}
 - --cache-type-v
-- ${AGMIND_EMBED_KV_CACHE}
+- ${AGMIND_EMBED_KV_CACHE:-f16}
 - --parallel
-- ${AGMIND_EMBED_PARALLEL}
+- ${AGMIND_EMBED_PARALLEL:-4}
 devices:
 - /dev/dri
 group_add:

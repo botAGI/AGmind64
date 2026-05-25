@@ -302,7 +302,7 @@ _IMAGE_LATEST_RE = re.compile(r":latest(?:$|@)")
 def validate_no_latest(services: dict[str, Service]) -> list[str]:
     """Return list of violations: services using :latest tag.
 
-    `.planning/codebase/INVARIANTS.md` I.2: never use mutable `:latest` tags.
+    Repository invariant: never use mutable `:latest` tags.
     """
     issues: list[str] = []
     for svc in services.values():

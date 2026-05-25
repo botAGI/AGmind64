@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
+from agmind._env import parse_env_file
 from agmind.install.orchestrator import (
     InstallConfig,
     InstallOrchestrator,
@@ -241,6 +243,58 @@ def test_env_write_step_writes_file(tmp_path: object) -> None:
     assert "AGMIND_MODEL_FILE=model.gguf" in text
     assert "AGMIND_CTX_SIZE=32768" in text
     assert "AGMIND_KV_CACHE=q4_0" in text
+    parsed = parse_env_file(env_file)
+    for key in (
+        "POSTGRES_PASSWORD",
+        "GRAFANA_PASSWORD",
+        "MYSQL_ROOT_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "REDIS_PASSWORD",
+    ):
+        assert parsed[key]
+    assert parsed["MINIO_ROOT_USER"] == "agmind"
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+
+
+def test_env_write_step_preserves_existing_runtime_service_secrets(tmp_path: object) -> None:
+    """Rerunning install must not rotate database/object-store passwords."""
+    from agmind.install.steps import EnvWriteStep
+
+    install_dir = tmp_path / "opt"  # type: ignore[operator]
+    install_dir.mkdir()
+    env_file = install_dir / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "POSTGRES_PASSWORD=existing-postgres",
+                "GRAFANA_PASSWORD=existing-grafana",
+                "MYSQL_ROOT_PASSWORD=existing-mysql",
+                "MINIO_ROOT_USER=existing-minio",
+                "MINIO_ROOT_PASSWORD=existing-minio-password",
+                "REDIS_PASSWORD=existing-redis",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm"],
+        install_dir=install_dir,
+    )
+    events: list[ProgressEvent] = []
+    result = EnvWriteStep().run(events.append, cfg)
+
+    assert result.success
+    parsed = parse_env_file(env_file)
+    assert parsed["POSTGRES_PASSWORD"] == "existing-postgres"
+    assert parsed["GRAFANA_PASSWORD"] == "existing-grafana"
+    assert parsed["MYSQL_ROOT_PASSWORD"] == "existing-mysql"
+    assert parsed["MINIO_ROOT_USER"] == "existing-minio"
+    assert parsed["MINIO_ROOT_PASSWORD"] == "existing-minio-password"
+    assert parsed["REDIS_PASSWORD"] == "existing-redis"
 
 
 def test_install_config_carries_ctx_kv(tmp_path: object) -> None:

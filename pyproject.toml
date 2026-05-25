@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68,<90", "wheel>=0.43,<1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -22,51 +22,53 @@ classifiers = [
 ]
 
 dependencies = [
-  "numpy>=2.0",
-  "typer>=0.12",
-  "rich>=13.7",
-  "questionary>=2.0",
-  "platformdirs>=4.2",
-  "pydantic>=2.7",
+  "numpy>=2.0,<3",
+  "typer>=0.12,<1",
+  "rich>=13.7,<16",
+  "questionary>=2.0,<3",
+  "platformdirs>=4.2,<5",
+  "pydantic>=2.7,<3",
   # Phase N: `agmind install` orchestrator вызывает ansible-playbook для
   # bootstrap step (apt / usermod / mkdir). Без ansible-core install не запустится.
-  "ansible-core>=2.16",
-  "structlog>=24.0",
-  "textual>=0.80",
-  "pyfiglet>=1.0",
-  "PyYAML>=6.0",
-  "huggingface_hub>=0.24",
+  "ansible-core>=2.16,<2.22",
+  "structlog>=24.0,<26",
+  "textual>=0.80,<9",
+  "pyfiglet>=1.0,<2",
+  "PyYAML>=6.0,<7",
+  "huggingface_hub>=0.24,<2",
   # M4.U: cluster auto-detect via mDNS (Avahi-compatible). Pure Python.
-  "zeroconf>=0.130",
+  "zeroconf>=0.130,<1",
 ]
 
 [project.optional-dependencies]
 cpu = [
-  "torch",
-  "onnxruntime",
-  "llama-cpp-python",
-  "scipy",
+  "torch>=2.7,<3",
+  "onnxruntime>=1.22,<2",
+  "llama-cpp-python>=0.3.23,<0.4",
+  "scipy>=1.14,<2",
 ]
 vulkan = [
-  "llama-cpp-python",  # build with CMAKE_ARGS=-DGGML_VULKAN=ON
-  "scipy",
+  "torch>=2.7,<3",
+  "onnxruntime>=1.22,<2",
+  "llama-cpp-python>=0.3.23,<0.4",  # build with CMAKE_ARGS=-DGGML_VULKAN=ON
+  "scipy>=1.14,<2",
 ]
 rocm = [
-  "torch",             # install from rocm index-url
-  "onnxruntime",
-  "llama-cpp-python",  # build with CMAKE_ARGS=-DGGML_HIP=ON
-  "scipy",
+  "torch>=2.7,<3",     # install from rocm index-url
+  "onnxruntime>=1.22,<2",
+  "llama-cpp-python>=0.3.23,<0.4",  # build with CMAKE_ARGS=-DGGML_HIP=ON
+  "scipy>=1.14,<2",
 ]
 dev = [
-  "pytest>=8.0",
-  "pytest-asyncio>=1.0",
-  "pytest-cov>=5.0",
-  "pytest-benchmark>=4.0",
+  "pytest>=8.0,<10",
+  "pytest-asyncio>=1.0,<2",
+  "pytest-cov>=5.0,<8",
+  "pytest-benchmark>=4.0,<6",
   "ruff==0.15.13",
-  "mypy>=1.10",
-  "pre-commit>=4.0",
-  "types-PyYAML",
-  "types-psutil",
+  "mypy>=1.10,<3",
+  "pre-commit>=4.0,<5",
+  "types-PyYAML>=6.0,<7",
+  "types-psutil>=7.0,<8",
 ]
 
 [project.scripts]
@@ -85,7 +87,6 @@ npu = "agmind.compute.backends.npu_stub:NPUStubBackend"
 [project.urls]
 Documentation = "https://github.com/botAGI/AGmind64"
 Repository = "https://github.com/botAGI/AGmind64"
-"Project Planning" = "https://github.com/botAGI/AGmind64/tree/develop/.planning"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -55,6 +55,6 @@ python ../../../scripts/proxmox_inventory.py \
 - OpenTofu provider requirements:
   https://opentofu.org/docs/language/providers/requirements/
 - bpg/proxmox provider:
-  https://search.opentofu.org/provider/bpg/proxmox/latest
+  https://search.opentofu.org/provider/bpg/proxmox/v0.93.0
 - bpg/proxmox cloud-init guide:
-  https://search.opentofu.org/provider/bpg/proxmox/latest/docs/guides/cloud-init
+  https://search.opentofu.org/provider/bpg/proxmox/v0.93.0/docs/guides/cloud-init

@@ -1,7 +1,7 @@
 """XDNA 2 NPU stub — Ryzen AI SW под Linux не принимает Strix Halo.
 
-См. https://github.com/amd/RyzenAI-SW/issues/366 и текущий backend-контракт
-в `.planning/codebase/ARCHITECTURE.md`.
+См. https://github.com/amd/RyzenAI-SW/issues/366 и ADR-0002 для
+backend-контракта.
 
 Stub существует для symmetry — get_backend("npu") возвращает понятный
 NotImplementedError, не таинственный AttributeError.

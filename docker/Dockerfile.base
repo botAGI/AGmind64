@@ -27,7 +27,10 @@ ENV CFLAGS="-O2 -march=x86-64-v3 -mtune=generic" \
 WORKDIR /opt/agmind
 
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --upgrade pip setuptools wheel
+    /opt/venv/bin/pip install --upgrade \
+        "pip>=24,<26" \
+        "setuptools>=68,<90" \
+        "wheel>=0.43,<1"
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # Healthcheck (overridden в специализированных образах)

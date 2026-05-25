@@ -81,9 +81,9 @@ def test_kubernetes_render_check_reports_research_target() -> None:
     assert target.target_id == "k3s"
     assert target.renderer == "agmind render kubernetes"
     assert target.ok is True
-    assert target.object_count == 34
-    assert target.deployment_count == 21
-    assert target.service_count == 12
+    assert target.object_count == 36
+    assert target.deployment_count == 22
+    assert target.service_count == 13
     assert target.warning_count == 4
     assert target.warning_summary["blocker"] == 0
     assert target.warning_summary["warning"] == 4
@@ -172,9 +172,9 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
 
     assert payload["ok"] is True
     assert payload["targets"][0]["target_id"] == "k3s"
-    assert payload["targets"][0]["object_count"] == 34
-    assert payload["targets"][0]["deployment_count"] == 21
-    assert payload["targets"][0]["service_count"] == 12
+    assert payload["targets"][0]["object_count"] == 36
+    assert payload["targets"][0]["deployment_count"] == 22
+    assert payload["targets"][0]["service_count"] == 13
     assert payload["targets"][0]["warning_count"] == 4
     assert payload["targets"][0]["warning_summary"]["blocker"] == 0
     assert payload["targets"][0]["warning_summary"]["warning"] == 4
@@ -205,7 +205,7 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
     )
     assert not any(
         item["code"] == "env-interpolation"
-        and item["service"] == "llama-rerank"
+        and item["service"] == "portainer"
         and "AGMIND_RERANK_FILE" in item["message"]
         for item in payload["targets"][0]["warnings"]
     )
@@ -214,8 +214,8 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
     )
     assert any(
         item["code"] == "kubernetes-omitted"
-        and item["service"] == "llama-rerank"
-        and "rerank model file" in item["message"]
+        and item["service"] == "portainer"
+        and "Compose-only Docker management service" in item["message"]
         for item in payload["targets"][0]["warnings"]
     )
     warning = next(
@@ -264,7 +264,7 @@ def test_kubernetes_render_check_script_json_runs() -> None:
     )
     assert any(
         item["code"] == "kubernetes-omitted"
-        and item["service"] == "llama-rerank"
+        and item["service"] == "portainer"
         and item["severity"] == "warning"
         for item in payload["targets"][0]["warnings"]
     )

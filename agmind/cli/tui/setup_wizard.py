@@ -2,7 +2,7 @@
 
 Заменяет задротские CLI команды:
     agmind render compose --profile core,observability --domain X.com --output /opt/agmind/docker-compose.yml
-    docker compose -f /opt/agmind/docker-compose.yml config --quiet
+    docker compose --env-file /opt/agmind/.env -f /opt/agmind/docker-compose.yml config --quiet
     agmind deploy --apply --domain X.com --profile core,observability --no-prompt
 
 на ОДНУ команду:

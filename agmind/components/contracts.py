@@ -137,8 +137,7 @@ class ComponentContract(BaseModel):
     def _check_id(cls, value: str) -> str:
         if not _ID_RE.match(value):
             raise ValueError(
-                f"id '{value}' invalid: expected lowercase slug matching "
-                "^[a-z][a-z0-9-]{1,62}$"
+                f"id '{value}' invalid: expected lowercase slug matching ^[a-z][a-z0-9-]{{1,62}}$"
             )
         return value
 

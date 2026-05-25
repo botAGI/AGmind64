@@ -18,7 +18,7 @@
 #     --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
 #     --ipc=host --shm-size=16G \
 #     -e AGMIND_BACKEND=rocm \
-#     agmind-rocm:latest
+#     agmind-rocm:dev
 # (rootless Docker не работает с ROCm на cgroups v2 — ROCm/#2860.)
 FROM --platform=linux/amd64 rocm/dev-ubuntu-24.04:7.2.3-complete@sha256:ec1b59bf75ec1122e7a091c0be82301ba12458b038499ef96a5c115876bd78d2
 
@@ -49,7 +49,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --upgrade pip wheel setuptools
+    /opt/venv/bin/pip install --upgrade \
+        "pip>=24,<26" \
+        "wheel>=0.43,<1" \
+        "setuptools>=68,<90"
 ENV PATH="/opt/venv/bin:${PATH}"
 
 COPY constraints /opt/agmind/constraints
@@ -80,7 +83,7 @@ ENV CMAKE_ARGS="-DGGML_HIP=ON \
     HIP_PATH=/opt/rocm
 RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt \
         --no-binary llama-cpp-python \
-        "llama-cpp-python>=0.3.23"
+        "llama-cpp-python>=0.3.23,<0.4"
 
 # onnxruntime CPU only (onnxruntime-rocm 1.22.x НЕ gfx1151-ready).
 RUN pip install -c /opt/agmind/constraints/rocm-gfx1151.txt onnxruntime numpy scipy

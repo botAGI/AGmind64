@@ -1,7 +1,7 @@
 """Snapshot manager (Phase L.B): save/restore deployment state перед каждым apply.
 
 Структура snapshot directory:
-    /var/lib/agmind/snapshots/2026-05-19T18:30:42Z/
+    /var/lib/agmind/snapshots/2026-05-19T18-30-42.123456Z/
     ├── compose.yml         — текущий рендеренный compose
     ├── meta.json           — timestamp, agmind_version, profile, reason
     ├── env.snapshot        — /opt/agmind/.env (если есть)
@@ -96,7 +96,8 @@ class SnapshotManager:
             env_file: путь к .env файлу для copy
             agmind_version: version string
         """
-        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+        now = datetime.now(UTC)
+        ts = now.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
         snap_path = self.snapshots_dir / ts
         snap_path.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +116,7 @@ class SnapshotManager:
         # meta
         meta = {
             "id": ts,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": now.isoformat(),
             "profile": profile,
             "reason": reason,
             "agmind_version": agmind_version,

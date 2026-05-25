@@ -257,4 +257,4 @@ Env override остаётся:
 
 - `AGMIND_MIGRATION_SPEC.md` Part 1.2, 1.4, 5.3
 - `docs/MIGRATION_PLAN.md` §2 (hot path), §4 (фазы C, D)
-- `.planning/research/x86-migration/R-karpathy-method.md` (simplicity first)
+- Local migration research notes (simplicity-first backend boundary)

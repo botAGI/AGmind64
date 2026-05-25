@@ -37,4 +37,4 @@ verification:
   commands:
     - agmind backup --help
   research_refs:
-    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md
+    - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

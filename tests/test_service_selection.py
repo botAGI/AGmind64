@@ -118,13 +118,17 @@ def test_service_selection_ragflow_renders_explicit_runtime_dependencies() -> No
     assert ragflow_env["MYSQL_HOST"] == "mysql"
     assert ragflow_env["MYSQL_PORT"] == "3306"
     assert ragflow_env["MYSQL_DBNAME"] == "rag_flow"
-    assert ragflow_env["MYSQL_PASSWORD"] == "${MYSQL_ROOT_PASSWORD}"
+    assert (
+        ragflow_env["MYSQL_PASSWORD"] == "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}"
+    )
     assert ragflow_env["MINIO_HOST"] == "minio"
     assert ragflow_env["MINIO_PORT"] == "9000"
-    assert ragflow_env["MINIO_USER"] == "${MINIO_ROOT_USER}"
-    assert ragflow_env["MINIO_PASSWORD"] == "${MINIO_ROOT_PASSWORD}"
+    assert ragflow_env["MINIO_USER"] == "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+    assert (
+        ragflow_env["MINIO_PASSWORD"] == "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+    )
     assert ragflow_env["REDIS_HOST"] == "redis"
     assert ragflow_env["REDIS_PORT"] == "6379"
-    assert ragflow_env["REDIS_PASSWORD"] == "${REDIS_PASSWORD}"
+    assert ragflow_env["REDIS_PASSWORD"] == "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
     assert ragflow_env["DOC_ENGINE"] == "elasticsearch"
     assert ragflow_env["ES_HOST"] == "elasticsearch"

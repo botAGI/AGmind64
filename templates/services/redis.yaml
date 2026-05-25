@@ -10,7 +10,7 @@ profiles:
 volumes:
 - /var/lib/agmind/redis:/data
 env:
-  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 resources:
   cpus: 2.0
   mem_limit: 2g

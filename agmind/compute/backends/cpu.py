@@ -2,8 +2,7 @@
 
 Engine: только llama_cpp (CPU build).
 
-См. `docker/Dockerfile.cpu` для build flags и
-`.planning/codebase/ARCHITECTURE.md` для backend-контракта.
+См. `docker/Dockerfile.cpu` для build flags и ADR-0002 для backend-контракта.
 """
 
 from __future__ import annotations

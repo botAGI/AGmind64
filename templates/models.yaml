@@ -1,5 +1,5 @@
 # AGmind GGUF model inventory — pinned per tier для Strix Halo (gfx1151).
-# См. agmind/models.py (runtime API) and .planning/codebase/DEPENDENCIES.md.
+# См. agmind/models.py (runtime API) and constraints/*.txt for dependency pins.
 #
 # Правила:
 #   - НИКАКОГО :latest — pin конкретный quant + filename

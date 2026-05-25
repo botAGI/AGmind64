@@ -9,8 +9,8 @@ audit_forbidden.py — поиск платформо-зависимых хард
     python scripts/audit_forbidden.py --fail       # exit 1 при находках (для CI)
     python scripts/audit_forbidden.py --json out.json
 
-Категории = `.planning/codebase/INVARIANTS.md` + текущие x86-only guardrails.
-Папка legacy/ исключена из аудита (там этому коду место).
+Категории = текущие x86-only guardrails и repository policy checks.
+Папки legacy/ и agent-local notes исключены из аудита.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ EXCLUDED_DIRS = {
     ".pytest_cache",
     ".ruff_cache",
     "site-packages",
+    ".planning",
+    "superpowers",
 }
 
 # DEF-AUDIT-GITIGNORE: generated artifacts которые .gitignore исключает,
@@ -67,21 +69,11 @@ EXCLUDED_PATHS = {
     # fixtures для positive-detection тестов. По семантике = полный
     # `# audit: allow` на файл.
     "tests/test_audit_script.py",
-    # GSD planning meta-docs — описывают проект, требования, состояние,
-    # roadmap. Естественно упоминают legacy/migration context.
-    ".planning/PROJECT.md",
-    ".planning/REQUIREMENTS.md",
-    ".planning/STATE.md",
-    ".planning/ROADMAP.md",
-    ".planning/BACKLOG.md",
 }
 
-# Каталоги опт-аутенные как «рабочие notes» — recon-отчёты и журналы
-# сессий описывают legacy tech.
+# Каталоги опт-аутенные как «рабочие notes» или historical decisions.
 EXCLUDED_PREFIXES = (
     "docs/adr/",  # ADR описывают историю решений
-    ".planning/sessions/",  # session journals
-    ".planning/codebase/",  # codebase maps (legit описывают forbidden patterns)
     ".claude/",  # IDE/agent config
 )
 

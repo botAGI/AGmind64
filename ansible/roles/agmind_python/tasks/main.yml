@@ -7,13 +7,13 @@
     creates: "{{ agmind_install_dir }}/venv/bin/python"
   become_user: "{{ agmind_user }}"
 
-- name: Upgrade pip in venv
+- name: Ensure pip tooling in venv
   ansible.builtin.pip:
     name:
-      - pip
-      - setuptools
-      - wheel
-    state: latest  # noqa package-latest — pip self-upgrade ok
+      - "pip>=24,<26"
+      - "setuptools>=68,<90"
+      - "wheel>=0.43,<1"
+    state: present
     virtualenv: "{{ agmind_install_dir }}/venv"
   become_user: "{{ agmind_user }}"
 

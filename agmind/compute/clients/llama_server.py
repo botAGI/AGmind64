@@ -12,8 +12,8 @@ OpenAI:
 Stdlib only — без httpx/aiohttp. urllib.request + json + ssl.
 Streaming через SSE парсится вручную (минимальная зависимость).
 
-См. `templates/services/llama-*.yaml` и `.planning/codebase/ARCHITECTURE.md`
-для llama.cpp service/runtime контракта.
+См. `templates/services/llama-*.yaml` и ADR-0002 для llama.cpp
+service/runtime контракта.
 """
 
 from __future__ import annotations

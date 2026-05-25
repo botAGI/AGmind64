@@ -237,9 +237,17 @@ jobs:
           done
       - name: Validate rendered compose через docker compose config
         run: |
+          cat > /tmp/agmind-compose-ci.env <<'EOF'
+          POSTGRES_PASSWORD=ci-postgres-password
+          GRAFANA_PASSWORD=ci-grafana-password
+          MYSQL_ROOT_PASSWORD=ci-mysql-root-password
+          MINIO_ROOT_USER=ci-minio
+          MINIO_ROOT_PASSWORD=ci-minio-password
+          REDIS_PASSWORD=ci-redis-password
+          EOF
           for f in /tmp/compose-*.yml; do
             echo "=== Validating $f ==="
-            docker compose -f "$f" config --quiet
+            docker compose --env-file /tmp/agmind-compose-ci.env -f "$f" config --quiet
           done
 
   # ---- Real Strix Halo hardware (self-hosted runner — same machine) ----

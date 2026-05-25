@@ -1,7 +1,7 @@
 """AGmind — private LLM/RAG platform for AMD Strix Halo and x86_64.
 
 Compute backends (Vulkan/ROCm/CPU) live behind the `agmind.compute`
-abstraction. Current project memory is kept under `.planning/`.
+abstraction.
 """
 
 from __future__ import annotations

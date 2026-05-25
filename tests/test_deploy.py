@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from agmind.deploy import runner
 from agmind.deploy.diff import ComposeDiff, compute_diff, format_diff
 from agmind.deploy.snapshot import SnapshotManager
 
@@ -50,10 +52,7 @@ def test_meta_json_has_required_fields(snapshot_mgr: SnapshotManager) -> None:
 
 
 def test_list_returns_newest_first(snapshot_mgr: SnapshotManager) -> None:
-    import time
-
     snapshot_mgr.save(compose_text="", profile="p1")
-    time.sleep(1.1)  # IDs are timestamp-based to second granularity
     snapshot_mgr.save(compose_text="", profile="p2")
 
     snaps = snapshot_mgr.list()
@@ -81,11 +80,8 @@ def test_get_missing_id_returns_none(snapshot_mgr: SnapshotManager) -> None:
 
 
 def test_prune_keeps_only_retention_count(snapshot_mgr: SnapshotManager) -> None:
-    import time
-
     for i in range(5):
         snapshot_mgr.save(compose_text="", profile=f"p{i}")
-        time.sleep(1.1)  # ensure distinct timestamps
 
     # retention=3, so only 3 newest remain after auto-prune in save()
     snaps = snapshot_mgr.list()
@@ -184,3 +180,90 @@ def test_format_diff_verbose_includes_raw() -> None:
     diff = compute_diff(current, new)
     out = format_diff(diff, verbose=True)
     assert "Full unified diff" in out
+
+
+# ---------- runner compose guard ----------
+
+
+def test_runner_run_compose_uses_env_file_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("POSTGRES_PASSWORD=x\n", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def fake_run(
+        cmd: list[str],
+        cwd: Path,
+        capture_output: bool,
+        text: bool,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(
+            {
+                "cmd": cmd,
+                "cwd": cwd,
+                "capture_output": capture_output,
+                "text": text,
+                "check": check,
+            }
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner._run_compose(["config", "--quiet"], cwd=tmp_path) == (0, "", "")
+    assert calls == [
+        {
+            "cmd": [
+                "docker",
+                "compose",
+                "--env-file",
+                str(env_file),
+                "config",
+                "--quiet",
+            ],
+            "cwd": tmp_path,
+            "capture_output": True,
+            "text": True,
+            "check": False,
+        }
+    ]
+
+
+def test_deploy_apply_validates_compose_before_replacing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compose_file = tmp_path / "docker-compose.yml"
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: (
+            "services:\n"
+            "  postgres:\n"
+            "    image: postgres:17.6-alpine\n"
+            "    environment:\n"
+            "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}\n"
+        ),
+    )
+
+    def fake_run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
+        calls.append(args)
+        return 1, "", "POSTGRES_PASSWORD is required"
+
+    monkeypatch.setattr(runner, "_run_compose", fake_run_compose)
+
+    result = runner.deploy(
+        profiles=["core", "rag"],
+        install_dir=tmp_path,
+        domain="ci.example.com",
+        apply=True,
+    )
+
+    assert not result.success
+    assert "docker compose config failed" in result.message
+    assert "POSTGRES_PASSWORD is required" in result.message
+    assert not compose_file.exists()
+    assert calls and calls[0][0] == "-f"

@@ -27,6 +27,7 @@ def _compose_file() -> Path:
 
 def _run_compose(*args: str, check: bool = True) -> int:
     """Run `docker compose ...` в install dir."""
+    install_dir = _install_dir()
     compose = _compose_file()
     if not compose.exists():
         print(
@@ -36,9 +37,11 @@ def _run_compose(*args: str, check: bool = True) -> int:
         )
         return 2
 
-    cmd = ["docker", "compose", "-f", str(compose), *args]
+    env_file = install_dir / ".env"
+    env_args = ["--env-file", str(env_file)] if env_file.exists() else []
+    cmd = ["docker", "compose", *env_args, "-f", str(compose), *args]
     log.info("$ %s", " ".join(cmd))
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, cwd=install_dir, check=False)
     if check and result.returncode != 0:
         return result.returncode
     return result.returncode

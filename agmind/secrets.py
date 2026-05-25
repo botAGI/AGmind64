@@ -1,7 +1,7 @@
 """Credentials management — credentials.txt с chmod 600.
 
-Никогда не выводит секреты в stdout / логи. См. текущие security-инварианты
-в `.planning/codebase/INVARIANTS.md`.
+Никогда не выводит секреты в stdout / логи. Runtime secret handling is covered
+by repository security checks and deployment docs.
 """
 
 from __future__ import annotations

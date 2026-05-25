@@ -1,100 +1,62 @@
 # AGmind
 
-> **Private LLM/RAG platform для AMD Strix Halo и generic x86_64.**
-> Active project memory lives in [`.planning/`](.planning/).
+English | [Русская версия](README.ru.md)
 
-![Status](https://img.shields.io/badge/status-alpha-orange)
-![Platform](https://img.shields.io/badge/platform-x86_64-blue)
-![Backend](https://img.shields.io/badge/backend-Vulkan%20%7C%20ROCm%20%7C%20CPU-green)
-![License](https://img.shields.io/badge/license-Apache_2.0-blue)
+Private LLM/RAG platform for AMD Strix Halo and generic x86_64 hosts. The
+primary lane is Docker Compose on Ubuntu, with optional Proxmox VM provisioning
+and Kubernetes targets kept behind explicit deploy-target contracts.
 
-## Reference hardware
+## What AGmind Is
 
-- **AMD Ryzen AI Max+ 395 "Strix Halo"** — Zen 5 (16C/32T) + Radeon 8060S
-  (gfx1151, RDNA 3.5, 40 CU) + 128 GB unified LPDDR5X
-- Secondary: любой x86_64 Linux с / без AMD GPU (CPU fallback гарантирован)
+AGmind installs and operates a local AI stack: llama.cpp services for LLM,
+embedding, and reranking; RAG/storage services; observability; and deployment
+governance checks. It is tuned for AMD Ryzen AI Max+ "Strix Halo" systems with
+Radeon 8060S/gfx1151, while keeping a CPU fallback for ordinary x86_64 Linux.
 
-## Quick start
-
-### One-command install
+Core commands live behind the `agmind` CLI:
 
 ```bash
-# Bootstrap (один раз — клонит репо и ставит Python deps):
-git clone https://github.com/botAGI/AGmind64 agmind && cd agmind
-uv venv && uv pip install -e ".[dev]"  # либо `python -m venv .venv && pip install -e ".[dev]"`
+agmind install
+agmind doctor
+agmind status
+agmind render topology --profile core,rag,observability --json
+agmind deploy --profile core,rag,observability --domain lab.example.com --no-prompt
+agmind cluster inspect --timeout 10
+```
 
-# End-to-end install — один prompt sudo, дальше всё в TUI:
+## Current Readiness Snapshot
+
+Last local readiness pass: 2026-05-25.
+
+- Default fresh deploy target: `ubuntu-compose`.
+- Deployment target contracts: `ubuntu-compose`, `proxmox-vm-compose`, and
+  `k3s` are registered and validated.
+- Version governance checks pass for constraints, components, deploy targets,
+  and tool candidates.
+- `scripts/version_check.py` writes 31 component entries. Current manual-review
+  items are major candidates for RagFlow and MySQL, expected holds for selected
+  pinned services, and several registry probes that returned no remote version.
+- Deploy-facing mutable image tags and unbounded Ansible package upgrade state
+  have been removed from the current deploy/docs surfaces.
+- Compose runtime secrets are required at config time; `agmind install` writes
+  `/opt/agmind/.env` with mode `0600` and preserves generated values on rerun.
+- Local cluster status sees this node as `beelinknode-GTR-Pro` on
+  `192.168.1.151`; mDNS peer discovery currently returns no AGmind peers.
+- A LAN neighbor was visible at `192.168.1.58`, but ping and TCP probes on
+  `22`, `41423`, `8080`, `8081`, `8082`, and `8006` did not respond. Treat the
+  second node as connected to the LAN but not yet advertising AGmind.
+
+## Quick Start
+
+```bash
+git clone https://github.com/botAGI/AGmind64 agmind
+cd agmind
+uv venv
+uv pip install -e ".[dev]"
 agmind install
 ```
 
-`agmind install` запускает unified flow:
-
-```
-[sudo password]  →  TUI wizard (domain / CF token / services / model / context)
-                 →  InstallProgressScreen с live log:
-                       [✓] Preflight diagnostics          12s · 7 ok / 2 warn
-                       [✓] System bootstrap (sudo/apt)    1m 48s · ansible OK
-                       [✓] Docker image pull              2m 14s · all cached
-                       [✓] Model download (Qwen3.6 Q4_K_M) 18m · 21 GB
-                       [✓] Write runtime .env             <1s
-                       [✓] Deploy compose + healthcheck   45s · 11/11 healthy
-                 →  Summary с URLs (https://llama.yourdomain.com etc.)
-```
-
-### Selecting models
-
-The setup wizard has separate selectors for LLM, embedding, and reranker GGUF
-models, plus custom Hugging Face repo/file inputs for each role.
-
-```bash
-# List curated model catalog (★ = measured on this hardware):
-agmind install --list-models
-#
-# ID                     NAME                                    SIZE QUANT    CTX
-# ------------------------------------------------------------------------------------------
-# ★ qwen36-a3b-q4km      Qwen3.6-35B-A3B (MoE)                 21.2GB Q4_K_M   16384
-# ★ qwen36-a3b-q4_0      Qwen3.6-35B-A3B (MoE)                 19.7GB Q4_0     16384
-# ★ qwen36-a3b-dyn       Qwen3.6-35B-A3B (MoE, DYNAMIC mix)    19.0GB DYNAMIC  16384
-#   llama2-7b-q4_0       Llama-2-7B                             3.8GB Q4_0     4096
-#   llama2-7b-q4km       Llama-2-7B                             4.1GB Q4_K_M   4096
-#   bge-m3-q8            BGE-M3 (multilingual embed)            0.6GB Q8_0     8192
-#   bge-reranker-v2-m3-q8 BGE Reranker v2 M3                    0.6GB Q8_0     8192
-
-# Use curated LLM id (skip wizard):
-agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
-  --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0
-
-# Use custom HuggingFace repo / file:
-agmind install --no-tui --domain lab.example.com --cf-token-file token.txt \
-  --model-repo user/CustomGGUF --model-file model.Q5_K_M.gguf \
-  --ctx-size 32768 --kv-cache q4_0
-```
-
-В TUI wizard'е "Model" section имеет:
-- **LLM** — curated chat/reasoning model + context/KV/threads/parallel
-- **Embed** — curated BGE-M3 default + independent context/KV/parallel
-- **Rerank** — curated BGE Reranker v2 M3 default or custom model
-
-### Fresh deploy readiness
-
-Перед чистой установкой на Strix Halo хосте:
-
-```bash
-# Host/GPU preflight. Exit code 1 means warnings; exit code 2 means failures.
-agmind doctor --json
-
-# Detect the local deployment target and visible AGmind LAN peers:
-agmind cluster inspect --timeout 5
-
-# Validate the default Compose lane before touching /opt/agmind:
-agmind render topology --profile core,rag,observability --json
-agmind deploy --profile core,rag,observability \
-  --install-dir /tmp/agmind-fresh-deploy-check \
-  --domain lab.example.com \
-  --no-prompt
-```
-
-For the actual install:
+Non-interactive Strix Halo install:
 
 ```bash
 agmind install --no-tui \
@@ -105,24 +67,82 @@ agmind install --no-tui \
   --kv-cache q8_0
 ```
 
-`agmind install` writes runtime secrets/model env first; a raw
-`agmind render compose | docker compose config` check without that env can show
-blank-variable warnings for passwords and model filenames.
+Model catalog:
 
-### Two-node cluster detection
+```bash
+agmind install --list-models
+```
 
-AGmind discovers peers through mDNS service `_agmind._tcp.local.`. The second
-device must advertise itself; being on the same LAN is not enough.
+## Fresh Deploy Test Plan
 
-On the second Strix Halo device:
+Run these before touching `/opt/agmind` on a clean host:
+
+```bash
+agmind doctor --json
+agmind cluster inspect --timeout 10
+agmind render topology --profile core,rag,observability --json
+cat > /tmp/agmind-compose-check.env <<'EOF'
+POSTGRES_PASSWORD=check-postgres-password
+GRAFANA_PASSWORD=check-grafana-password
+MYSQL_ROOT_PASSWORD=check-mysql-root-password
+MINIO_ROOT_USER=check-minio
+MINIO_ROOT_PASSWORD=check-minio-password
+REDIS_PASSWORD=check-redis-password
+EOF
+agmind render compose \
+  --profile core,rag,observability \
+  --domain lab.example.com \
+  --output /tmp/agmind-fresh-deploy-check.yml
+docker compose \
+  --env-file /tmp/agmind-compose-check.env \
+  -f /tmp/agmind-fresh-deploy-check.yml \
+  config --quiet
+agmind deploy --profile core,rag,observability \
+  --install-dir /tmp/agmind-fresh-deploy-check \
+  --domain lab.example.com \
+  --no-prompt
+```
+
+Repository checks for a fresh deploy branch:
+
+```bash
+python scripts/constraints_check.py
+python scripts/component_check.py
+python scripts/deploy_target_check.py
+python scripts/tool_candidate_check.py
+python scripts/version_check.py \
+  --json /tmp/agmind-version-report.json \
+  --output /tmp/agmind-version-report.md
+python scripts/audit_forbidden.py --fail
+python scripts/governance_check.py
+```
+
+Focused test modules:
+
+```bash
+pytest -q tests/test_cluster_detect.py tests/test_cluster_inspect.py tests/test_cluster_inventory.py
+pytest -q tests/test_deploy_targets.py tests/test_deploy_conflicts.py tests/test_service_selection.py tests/test_deployment_topology.py
+```
+
+`agmind doctor` can exit with code `1` when it finds warnings. Code `2` means a
+blocking failure.
+
+## Two-Node Cluster Detection
+
+AGmind discovers peers with the mDNS service `_agmind._tcp.local.`. A device on
+the same LAN will not appear until it advertises AGmind or runs a compatible
+service record.
+
+On the second node:
 
 ```bash
 cd ~/agmind
-uv venv && uv pip install -e ".[dev]"
+uv venv
+uv pip install -e ".[dev]"
 agmind cluster advertise --duration 600
 ```
 
-On the first device:
+On the first node:
 
 ```bash
 agmind cluster detect --timeout 10
@@ -130,94 +150,127 @@ agmind cluster status --timeout 10
 agmind cluster inspect --timeout 10
 ```
 
-If peers stay empty, check both nodes are on the same VLAN/subnet, `avahi-daemon`
-is running, UDP 5353/mDNS is allowed by the firewall, and both environments have
-the `zeroconf` Python dependency installed.
+If discovery is empty:
 
-### Day-2 ops
+- Confirm both nodes are on the same subnet/VLAN.
+- Start or install `avahi-daemon` on Linux hosts.
+- Allow UDP 5353/mDNS through the firewall.
+- Confirm the Python environment includes `zeroconf`.
+- Check reachability with `ip neigh show`, `ping <node-ip>`, and targeted TCP
+  probes for SSH or the service port you expect.
+
+## Enable Proxmox
+
+AGmind has two Proxmox paths: the Compose runtime can scrape an existing
+Proxmox VE cluster through `proxmox-exporter`, and the experimental
+`proxmox-vm-compose` target can provision Ubuntu VM shells before Ansible and
+Compose take over.
+
+Enable the Proxmox exporter for an existing Compose host:
 
 ```bash
-# Preflight check:
+sudo install -d -m 0750 /etc/agmind/proxmox-exporter
+sudo cp templates/observability/proxmox-exporter/pve.yml.example \
+  /etc/agmind/proxmox-exporter/pve.yml
+sudoedit /etc/agmind/proxmox-exporter/pve.yml
+python -m agmind.deploy.proxmox_exporter \
+  --config /etc/agmind/proxmox-exporter/pve.yml
+agmind render compose \
+  --profile core,observability,proxmox \
+  --domain lab.example.com \
+  --output /tmp/agmind-proxmox.yml
+docker compose \
+  --env-file /opt/agmind/.env \
+  -f /tmp/agmind-proxmox.yml \
+  config --quiet
+```
+
+Equivalent Ansible variables:
+
+```yaml
+agmind_proxmox_exporter_existing_config: false
+agmind_proxmox_exporter_verify_ssl: true
+agmind_proxmox_exporter_user: "prometheus@pve"
+agmind_proxmox_exporter_token_name: "agmind"
+agmind_proxmox_exporter_token_value: "REDACTED"
+```
+
+Provision Proxmox VM shells with OpenTofu:
+
+```bash
+cd infra/proxmox/vm-compose
+cp terraform.tfvars.example terraform.tfvars
+$EDITOR terraform.tfvars
+tofu init
+tofu plan
+tofu apply
+tofu output -json > /tmp/agmind-proxmox-output.json
+python ../../../scripts/proxmox_inventory.py \
+  --input /tmp/agmind-proxmox-output.json \
+  --output ../../../ansible/inventory/proxmox.generated.yml
+```
+
+Keep `terraform.tfvars`, state files, and plan files local; this module ignores
+them by design.
+
+## Version And Pinning Policy
+
+- Do not use mutable floating image tags for runtime or deploy examples.
+- Service image pins live in `templates/services/*.yaml`.
+- Python dependency planes live in `constraints/*.txt`.
+- Intentional version holds live in `templates/version_holds.yaml`.
+- Use `scripts/version_check.py` to review patch, minor, and major candidates.
+- Major candidates require manual review before pin changes.
+
+Current manual-review items from the local report:
+
+- RagFlow has a major candidate from `v0.25.5` to `v1.0`.
+- MySQL has a major candidate from `8.0.46-oraclelinux9` to `9.7.0`.
+- Selected services are intentionally held, including Elasticsearch, llama.cpp,
+  Dify API, Dify plugin daemon, PostgreSQL, and Redis.
+
+## Day-2 Operations
+
+```bash
 agmind doctor
-
-# Backend / device info:
 agmind status
-
-# Deployment target + LAN peer inspection:
-agmind cluster inspect --timeout 5
-
-# Live deployment dashboard:
+agmind cluster inspect --timeout 10
 agmind status --tui
-
-# Logs / shell / backup / restore:
 agmind logs llama-llm -f
 agmind shell traefik --cmd "/bin/sh"
 agmind backup --output ~/agmind-backup.tar.gz
 agmind restore ~/agmind-backup.tar.gz
-
-# State schema migrations:
 agmind migrate status
 agmind migrate up
-
-# Audit (запрет CUDA/aarch64/etc в основном дереве):
 make audit
 ```
 
-## Compute backends
+## Architecture Map
 
-| Backend | Engine | Reference perf (gfx1151, Q4 30B) | Status |
-|---------|--------|----------------------------------|--------|
-| **Vulkan RADV** | llama_cpp | tg ~97 t/s, pp ~1321 t/s | M1 primary |
-| **ROCm/HIP 7.2** | llama_cpp | tg ~64 t/s, pp ~986 t/s | M1 secondary (long-ctx pp) |
-| **CPU (Zen 5)** | llama_cpp | tg ~3-5 t/s, embed 120-200 docs/sec | M1 fallback |
-| ROCm + vLLM-patched | vllm | tool-calling / specdec | M2 |
-| ROCm + Infinity | infinity | embed batch ≥16 | M2 |
-| XDNA 2 NPU | — | not supported on Linux | stub |
-
-Auto-selection проходит через `agmind.compute.get_backend()` and the backend
-registry in `agmind.compute._registry`.
-
-## Architecture
-
-```
-agmind/                # Python package
-├── compute/           # Runtime backend abstraction (ABC + engines)
-│   ├── base.py        # Backend, DeviceInfo, LLMHandle
-│   ├── detect.py      # vulkaninfo / rocminfo / sysfs
-│   ├── config.py      # AGMIND_* env vars
-│   ├── _registry.py   # auto-select + factory
-│   └── backends/
-│       ├── cpu.py
-│       ├── vulkan.py
-│       ├── rocm.py
-│       ├── npu_stub.py
-│       └── _engines/  # llama_cpp_{vulkan,hip,cpu}.py, vllm/infinity (M2)
-├── cli/               # typer app: install / deploy / render / cluster / doctor
-├── services/          # service descriptor loading, topology, compose/k8s render
-├── deploy/            # dry-run/apply/rollback/snapshots/target contracts
-├── cluster/           # peer discovery, inventory, target inspection
-├── components/        # component ownership and version governance
-├── diagnostics/       # preflight + health
-├── models.py          # YAML-backed curated model catalog
-├── i18n/              # en + ru
-├── config/            # .env render + write
-├── secrets.py         # credentials.txt с chmod 600
-└── log.py             # structured logging
-
-docker/                # Dockerfile.{base,cpu,vulkan,rocm} + digest pins
-scripts/audit_forbidden.py  # CI/pre-commit gate
-docs/                  # BENCHMARKS.md, TROUBLESHOOTING.md, adr/
-.planning/             # durable GSD project memory and current roadmap
+```text
+agmind/                Python package and CLI
+agmind/compute/        Runtime backend detection and selection
+agmind/cluster/        mDNS discovery, inventory, and target inspection
+agmind/deploy/         Dry-run, apply, rollback, targets, Proxmox helpers
+agmind/services/       Service descriptors, topology, Compose/Kubernetes render
+templates/services/    Pinned service descriptors
+templates/deploy-targets/  ubuntu-compose, proxmox-vm-compose, k3s
+constraints/           Python dependency planes
+ansible/               Host bootstrap and service configuration
+infra/proxmox/         OpenTofu Proxmox VM skeleton
+docker/                Backend Dockerfiles
+docs/                  Operations notes, benchmarks, plans, ADRs
 ```
 
 ## Documentation
 
-- [`.planning/STATE.md`](.planning/STATE.md) — current milestone/state memory
-- [`.planning/BACKLOG.md`](.planning/BACKLOG.md) — active and historical backlog
-- [`.planning/codebase/`](.planning/codebase/) — compact codebase map for agents
-- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — baseline numbers + run instructions
-- [`docs/adr/`](docs/adr/) — Architecture Decision Records
+- [`docs/HARDWARE.md`](docs/HARDWARE.md) - Strix Halo host setup.
+- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) - benchmark methodology and results.
+- [`docs/CLUSTER.md`](docs/CLUSTER.md) - cluster and inventory notes.
+- [`infra/proxmox/vm-compose/README.md`](infra/proxmox/vm-compose/README.md) -
+  Proxmox VM provisioning target.
+- [`docs/adr/`](docs/adr/) - architecture decision records.
 
 ## License
 
-Apache-2.0. См. [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).

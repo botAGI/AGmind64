@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 import yaml
 
@@ -89,6 +91,13 @@ def test_filter_by_profile_ragflow_includes_redis_runtime_dependency() -> None:
     assert "ragflow" in sel
     assert "redis" in sel
     assert sel["redis"].profiles == ["rag", "ragflow"]
+
+
+def test_rendered_compose_has_no_unguarded_interpolation() -> None:
+    """Raw `${VAR}` makes Docker Compose substitute blanks in production validation."""
+    rendered = render_to_string(profiles=["full"], domain="ci.example.com")
+
+    assert re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", rendered) == []
 
 
 # ---------- render_traefik_labels ----------

@@ -8,6 +8,7 @@ automatic rollback если healthcheck не прошёл за timeout.
 from __future__ import annotations
 
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -42,7 +43,9 @@ class DeployResult:
 
 def _run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
     """Run `docker compose` command. Returns (returncode, stdout, stderr)."""
-    cmd = ["docker", "compose", *args]
+    env_file = cwd / ".env"
+    env_args = ["--env-file", str(env_file)] if env_file.exists() else []
+    cmd = ["docker", "compose", *env_args, *args]
     log.debug("running: %s (cwd=%s)", " ".join(cmd), cwd)
     result = subprocess.run(
         cmd,
@@ -52,6 +55,32 @@ def _run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
         check=False,
     )
     return result.returncode, result.stdout, result.stderr
+
+
+def _validate_compose_config(compose_text: str, install_dir: Path) -> tuple[int, str]:
+    """Validate rendered compose before replacing the deployed compose file."""
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        prefix=".agmind-compose-",
+        suffix=".yml",
+        dir=install_dir,
+        delete=False,
+    )
+    tmp_path = Path(handle.name)
+    try:
+        with handle:
+            handle.write(compose_text)
+        rc, _stdout, stderr = _run_compose(
+            ["-f", str(tmp_path), "config", "--quiet"],
+            cwd=install_dir,
+        )
+        return rc, stderr
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _wait_healthy(install_dir: Path, timeout: int) -> tuple[bool, list[str]]:
@@ -173,6 +202,21 @@ def deploy(
             success=True,
             diff=diff,
             message=f"{diff.total_changes} pending change(s) — re-run with --apply to deploy",
+        )
+
+    # Validate interpolation, required env, and Compose syntax before replacing
+    # the deployed file. This keeps a missing .env from leaving a broken compose
+    # file behind on fresh hosts.
+    _emit("validate", "validating rendered compose with docker compose config")
+    rc, stderr = _validate_compose_config(new_compose, install_dir)
+    if rc != 0:
+        msg = stderr.strip() or "docker compose config failed"
+        log.error("docker compose config failed (rc=%d): %s", rc, msg)
+        _emit("error", f"docker compose config failed: {msg[-200:]}")
+        return DeployResult(
+            success=False,
+            diff=diff,
+            message=f"docker compose config failed: {msg[-500:]}",
         )
 
     # 3. Snapshot текущее состояние (только если что-то deployed)

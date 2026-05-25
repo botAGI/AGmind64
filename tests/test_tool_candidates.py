@@ -46,9 +46,7 @@ def _write_candidate(path: Path, *, candidate_id: str = "comfyui") -> Path:
         "next_step": "Research image/runtime strategy and Strix Halo backend matrix.",
         "verification": {
             "commands": ["agmind render compose --profile creative-ai --domain ci.example.com"],
-            "research_refs": [
-                ".planning/research/homelab-enterprise/R19-universal-deploy-tooling.md"
-            ],
+            "research_refs": ["docs/adr/0014-deploy-targets-and-provisioning-boundary.md"],
         },
     }
     path.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")

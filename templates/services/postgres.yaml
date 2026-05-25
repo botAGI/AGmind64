@@ -9,7 +9,7 @@ profiles:
 volumes:
 - /var/lib/agmind/postgres:/var/lib/postgresql/data
 env:
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
   POSTGRES_DB: dify
   POSTGRES_USER: dify
   PGDATA: /var/lib/postgresql/data/pgdata

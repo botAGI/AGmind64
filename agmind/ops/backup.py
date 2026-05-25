@@ -2,7 +2,7 @@
 
 Что бэкапится по default:
     /opt/agmind/docker-compose.yml         — rendered compose
-    /opt/agmind/.env                       — env (без secrets если cf token в файле)
+    /opt/agmind/.env                       — runtime env and generated service secrets
     /opt/agmind/templates/services/        — descriptor snapshot (если есть)
     ~/.local/share/agmind/setup-state.json — wizard state (без CF token)
     ~/.local/share/agmind/schema.json      — migrations applied (Phase L.D)

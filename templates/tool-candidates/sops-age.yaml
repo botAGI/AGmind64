@@ -33,4 +33,4 @@ verification:
   commands:
     - python scripts/audit_forbidden.py --fail
   research_refs:
-    - .planning/research/homelab-enterprise/R19-universal-deploy-tooling.md
+    - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

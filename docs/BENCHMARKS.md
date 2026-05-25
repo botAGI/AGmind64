@@ -62,7 +62,7 @@ docker run --rm \
   --device=/dev/dri --group-add video --group-add render \
   --security-opt seccomp=unconfined \
   -v /var/lib/agmind/models:/models:ro \
-  agmind-vulkan:latest \
+  agmind-vulkan:dev \
   llama-bench -m /models/llama-2-7b.Q4_0.gguf \
     --backend vulkan -ngl 99 \
     --flash-attn 1 --no-mmap \
@@ -78,7 +78,7 @@ docker run --rm \
   --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
   --ipc=host --shm-size=16G \
   -v /var/lib/agmind/models:/models:ro \
-  agmind-rocm:latest \
+  agmind-rocm:dev \
   llama-bench -m /models/llama-2-7b.Q4_0.gguf \
     --backend hip -ngl 99 \
     --flash-attn 1 --no-mmap \
@@ -90,7 +90,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v /var/lib/agmind/models:/models:ro \
-  agmind-cpu:latest \
+  agmind-cpu:dev \
   llama-bench -m /models/llama-2-7b.Q4_0.gguf \
     --backend cpu \
     --threads 16 -p 512 -n 128
@@ -217,5 +217,5 @@ ROCm: NOT installed (rocminfo missing)
 ```bash
 make docker-vulkan
 docker run --rm --device=/dev/dri --group-add video --group-add render \
-  agmind-vulkan:latest python -m agmind status --json
+  agmind-vulkan:dev python -m agmind status --json
 ```

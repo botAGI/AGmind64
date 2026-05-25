@@ -42,8 +42,8 @@ def _write_target(path: Path, *, target_id: str = "ubuntu-compose") -> Path:
         "secrets_profile": "env-files",
         "verification": {
             "commands": [
-                "agmind render compose --profile core,rag --domain ci.example.com",
-                "docker compose config --quiet",
+                "agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-ubuntu-compose.yml",
+                "docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ubuntu-compose.yml config --quiet",
             ]
         },
     }
@@ -106,8 +106,8 @@ def _supported_compose_target() -> DeploymentTarget:
             "secrets_profile": "env-files",
             "verification": {
                 "commands": [
-                    "agmind render compose --profile core,rag --domain ci.example.com",
-                    "docker compose config --quiet",
+                    "agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-ubuntu-compose.yml",
+                    "docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ubuntu-compose.yml config --quiet",
                 ]
             },
         }
@@ -128,8 +128,8 @@ def test_deployment_target_parses_boundary_contract(tmp_path: Path) -> None:
     assert target.storage_profile == "local-paths"
     assert target.secrets_profile == "env-files"
     assert target.verification.commands == (
-        "agmind render compose --profile core,rag --domain ci.example.com",
-        "docker compose config --quiet",
+        "agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-ubuntu-compose.yml",
+        "docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ubuntu-compose.yml config --quiet",
     )
     assert target.verification.expected_warning_codes == ()
 

@@ -160,6 +160,5 @@ Baseline-числа будут зафиксированы в `docs/BENCHMARKS.md
 
 - `AGMIND_MIGRATION_SPEC.md`
 - `docs/MIGRATION_PLAN.md`
-- `.planning/research/x86-migration/*` (audit baseline, hot path,
-  recon-отчёты)
+- Local migration research notes (kept outside Git after repository cleanup)
 - `legacy/gb10/docs/adr/0001-arm64-only.md` (старое решение, superseded)

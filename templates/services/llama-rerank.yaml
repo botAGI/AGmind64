@@ -13,9 +13,7 @@ env:
   AMD_VULKAN_ICD: RADV
   VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
   # Phase M5.1: rerank model + per-service settings (separate from LLM / embed).
-  # Empty AGMIND_RERANK_FILE → service start будет fail; убери из services list
-  # если rerank не нужен.
-  AGMIND_RERANK_FILE: ${AGMIND_RERANK_FILE:-}
+  AGMIND_RERANK_FILE: ${AGMIND_RERANK_FILE:-bge-reranker-v2-m3-Q8_0.gguf}
   AGMIND_RERANK_CTX_SIZE: ${AGMIND_RERANK_CTX_SIZE:-2048}
 command:
 - --host
@@ -23,14 +21,14 @@ command:
 - --port
 - '8080'
 - --model
-- /models/${AGMIND_RERANK_FILE}
+- /models/${AGMIND_RERANK_FILE:-bge-reranker-v2-m3-Q8_0.gguf}
 - --reranking
 - --pooling
 - rank
 - -ngl
 - '999'
 - --ctx-size
-- ${AGMIND_RERANK_CTX_SIZE}
+- ${AGMIND_RERANK_CTX_SIZE:-2048}
 devices:
 - /dev/dri
 group_add:

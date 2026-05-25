@@ -7,8 +7,8 @@
 #     --device=/dev/dri --group-add video --group-add render \
 #     --security-opt seccomp=unconfined \
 #     -e AGMIND_BACKEND=vulkan \
-#     agmind-vulkan:latest
-ARG BASE_IMAGE=agmind-base:latest
+#     agmind-vulkan:dev
+ARG BASE_IMAGE=agmind-base:dev
 FROM ${BASE_IMAGE}
 
 COPY constraints /opt/agmind/constraints
@@ -53,7 +53,7 @@ ENV CMAKE_ARGS="-DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release" \
     FORCE_CMAKE=1
 RUN pip install -c /opt/agmind/constraints/vulkan.txt \
         --no-binary llama-cpp-python \
-        "llama-cpp-python>=0.3.23"
+        "llama-cpp-python>=0.3.23,<0.4"
 
 RUN pip install -c /opt/agmind/constraints/vulkan.txt onnxruntime numpy scipy
 

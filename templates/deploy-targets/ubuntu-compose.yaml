@@ -20,5 +20,5 @@ storage_profile: local-paths
 secrets_profile: env-files
 verification:
   commands:
-    - agmind render compose --profile core,rag --domain ci.example.com
-    - docker compose config --quiet
+    - agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-ubuntu-compose.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ubuntu-compose.yml config --quiet
