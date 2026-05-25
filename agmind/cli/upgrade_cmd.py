@@ -321,12 +321,11 @@ def cmd_apply(install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int 
     from agmind.deploy.runner import deploy
 
     print(f"Re-deploying from {install_dir}")
-    # Read profile из existing compose? Use sensible default.
-    # User должен запускать `agmind deploy --apply` сам если хочет custom profiles.
-    # Здесь — minimal: re-render по последнему saved состоянию.
+    # Upgrade apply uses the supported Compose baseline. Custom profile sets
+    # should be redeployed explicitly through `agmind deploy --apply`.
     try:
         result = deploy(
-            profiles=[],
+            profiles=["core", "rag", "observability"],
             install_dir=install_dir,
             domain=None,
             apply=True,

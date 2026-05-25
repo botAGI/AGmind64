@@ -267,3 +267,40 @@ def test_deploy_apply_validates_compose_before_replacing_file(
     assert "POSTGRES_PASSWORD is required" in result.message
     assert not compose_file.exists()
     assert calls and calls[0][0] == "-f"
+
+
+def test_deploy_apply_starts_rendered_services_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = (
+        "services:\n"
+        "  llama-llm:\n"
+        "    image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049\n"
+        "    profiles:\n"
+        "      - core\n"
+        "  qdrant:\n"
+        "    image: qdrant/qdrant:v1.18.0\n"
+        "    profiles:\n"
+        "      - core\n"
+    )
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_args: (True, []))
+
+    def fake_run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
+        calls.append(args)
+        return 0, "", ""
+
+    monkeypatch.setattr(runner, "_run_compose", fake_run_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=tmp_path,
+        domain="ci.example.com",
+        apply=True,
+    )
+
+    assert result.success
+    assert calls == [["up", "-d", "--remove-orphans", "--quiet-pull", "llama-llm", "qdrant"]]

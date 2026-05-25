@@ -14,6 +14,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
 from agmind.log import logger
@@ -83,6 +85,15 @@ def _validate_compose_config(compose_text: str, install_dir: Path) -> tuple[int,
             pass
 
 
+def _compose_service_names(compose_text: str) -> list[str]:
+    """Return rendered service names in Compose order."""
+    data = yaml.safe_load(compose_text) or {}
+    services = data.get("services") if isinstance(data, dict) else None
+    if not isinstance(services, dict):
+        return []
+    return [str(name) for name in services]
+
+
 def _wait_healthy(install_dir: Path, timeout: int) -> tuple[bool, list[str]]:
     """Wait until все сервисы помечены healthy (или running без healthcheck).
 
@@ -141,6 +152,7 @@ def deploy(
     no_prompt: bool = False,
     healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
     snapshot_reason: str = "",
+    services: list[str] | None = None,
     progress: ProgressCallback | None = None,
 ) -> DeployResult:
     """Main deploy orchestrator.
@@ -153,6 +165,8 @@ def deploy(
         no_prompt: пропустить interactive confirmation (для CI / Ansible)
         healthcheck_timeout: сколько ждать healthy state (sec)
         snapshot_reason: human-readable reason для snapshot meta
+        services: explicit service names; when set, service selection takes
+            precedence over profile selection in the renderer
 
     Returns DeployResult.
     """
@@ -172,6 +186,7 @@ def deploy(
     try:
         new_compose = render_to_string(
             profiles=profiles,
+            services=services,
             traefik_enabled=True,
             domain=domain,
         )
@@ -242,10 +257,14 @@ def deploy(
     _emit("render", f"wrote {compose_file}")
 
     # 5. docker compose up -d --remove-orphans
-    _emit("compose_up", "running: docker compose up -d --remove-orphans")
-    log.info("running docker compose up -d --remove-orphans")
+    service_names = _compose_service_names(new_compose)
+    _emit(
+        "compose_up",
+        f"running: docker compose up -d --remove-orphans ({len(service_names)} services)",
+    )
+    log.info("running docker compose up -d --remove-orphans for %d services", len(service_names))
     rc, stdout, stderr = _run_compose(
-        ["up", "-d", "--remove-orphans", "--quiet-pull"],
+        ["up", "-d", "--remove-orphans", "--quiet-pull", *service_names],
         cwd=install_dir,
     )
     if rc != 0:
@@ -352,8 +371,9 @@ def _rollback_to_snapshot(snapshot: Snapshot, install_dir: Path) -> bool:
             shutil.copytree(snapshot.descriptors_dir, target)
 
         # Re-apply the rolled-back compose
+        service_names = _compose_service_names(compose_file.read_text(encoding="utf-8"))
         rc, _, stderr = _run_compose(
-            ["up", "-d", "--remove-orphans"],
+            ["up", "-d", "--remove-orphans", *service_names],
             cwd=install_dir,
         )
         if rc != 0:

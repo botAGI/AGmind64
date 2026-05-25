@@ -275,6 +275,30 @@ def test_grouped_rollback_restores_all_files(
     assert "1.14.2" in (services / "dify-web.yaml").read_text()
 
 
+# ---------- cmd_apply ----------
+
+
+def test_apply_redeploys_supported_compose_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.deploy.runner import DeployResult
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+
+    rc = upgrade_cmd.cmd_apply(install_dir=tmp_path, healthcheck_timeout=7)
+
+    assert rc == 0
+    assert calls["profiles"] == ["core", "rag", "observability"]
+    assert calls["install_dir"] == tmp_path
+    assert calls["healthcheck_timeout"] == 7
+
+
 # ---------- cmd_rollback ----------
 
 

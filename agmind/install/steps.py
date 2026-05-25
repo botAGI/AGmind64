@@ -531,6 +531,7 @@ class DeployStep(InstallStep):
                 apply=True,
                 no_prompt=True,
                 progress=deploy_progress,
+                services=config.services,
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(

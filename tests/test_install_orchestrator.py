@@ -297,6 +297,29 @@ def test_env_write_step_preserves_existing_runtime_service_secrets(tmp_path: obj
     assert parsed["REDIS_PASSWORD"] == "existing-redis"
 
 
+def test_env_write_step_writes_each_runtime_key_once(tmp_path: object) -> None:
+    """Duplicate .env keys make production config reviews ambiguous."""
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm"],
+        install_dir=tmp_path / "opt",  # type: ignore[operator]
+    )
+    events: list[ProgressEvent] = []
+    result = EnvWriteStep().run(events.append, cfg)
+
+    assert result.success
+    keys = [
+        line.split("=", 1)[0]
+        for line in (cfg.install_dir / ".env").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    assert duplicates == []
+
+
 def test_install_config_carries_ctx_kv(tmp_path: object) -> None:
     cfg = _make_config(tmp_path)  # type: ignore[arg-type]
     assert cfg.ctx_size == 16384
@@ -400,6 +423,34 @@ def test_default_steps_all_have_label() -> None:
 
     for step in default_steps():
         assert step.label, f"step {step.step_id} missing label"
+
+
+def test_deploy_step_uses_selected_services(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.deploy.runner import DeployResult
+    from agmind.install.steps import DeployStep
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm", "qdrant"],
+        install_dir=tmp_path / "opt",
+    )
+    events: list[ProgressEvent] = []
+
+    result = DeployStep().run(events.append, cfg)
+
+    assert result.success
+    assert calls["profiles"] == []
+    assert calls["services"] == ["llama-llm", "qdrant"]
 
 
 # ---------- DoctorStep — runs real preflight (always present) ----------
