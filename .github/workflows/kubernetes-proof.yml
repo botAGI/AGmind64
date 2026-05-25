@@ -31,7 +31,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, k3s]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install agmind + dev deps
         run: |
@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload k3s proof bundle
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kubernetes-proof-k3s
           path: |

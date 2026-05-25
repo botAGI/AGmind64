@@ -20,7 +20,7 @@ jobs:
   pre-commit:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind + dev deps
         run: |
           "$HOME/.local/bin/uv" --version
@@ -33,11 +33,11 @@ jobs:
   audit:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run forbidden-pattern audit
         run: python3 scripts/audit_forbidden.py --fail --json audit-report.json
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: audit-report
           path: audit-report.json
@@ -46,7 +46,7 @@ jobs:
   schema-validate:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate all service descriptors
         run: |
           "$HOME/.local/bin/uvx" check-jsonschema \
@@ -67,7 +67,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -81,7 +81,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -95,7 +95,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -108,7 +108,7 @@ jobs:
   constraints-validate:
     runs-on: [self-hosted, linux, x64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate dependency constraint planes
         run: python3 scripts/constraints_check.py
 
@@ -117,7 +117,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -131,7 +131,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate, deploy-target-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -145,7 +145,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [deploy-target-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -159,7 +159,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -173,7 +173,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [audit, schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, kubernetes-render-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind + dev
         run: |
           "$HOME/.local/bin/uv" --version
@@ -189,7 +189,7 @@ jobs:
             --cov=agmind --cov-branch \
             --cov-report=xml --cov-report=term \
             -m "backend_any or backend_cpu"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-cpu
@@ -204,7 +204,7 @@ jobs:
       matrix:
         backend: [cpu, vulkan, rocm]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build base image
         run: docker build -f docker/Dockerfile.base -t agmind-base:ci .
@@ -222,7 +222,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -269,7 +269,7 @@ jobs:
       matrix:
         backend: [vulkan, rocm]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run backend smoke on ${{ matrix.backend }}
         env:
           AGMIND_BACKEND: ${{ matrix.backend }}
