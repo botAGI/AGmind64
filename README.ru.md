@@ -41,6 +41,9 @@ agmind cluster inspect --timeout 10
 - Runtime-секреты Compose обязательны уже на `config`; `agmind install` пишет
   `/opt/agmind/.env` с mode `0600` и сохраняет generated values при повторном
   запуске.
+- Профиль `full` намеренно блокируется deploy conflict checks, пока
+  альтернативные edge-proxy не разделены; сначала используй `core,observability`,
+  затем добавляй `rag`, когда готовы модели и секреты.
 - Локальный cluster status видит эту ноду как `beelinknode-GTR-Pro` на
   `192.168.1.151`; mDNS peer discovery сейчас не возвращает AGmind peers.
 - В LAN neighbor был виден адрес `192.168.1.58`, но ping и TCP probes на `22`,
@@ -77,6 +80,10 @@ agmind install --list-models
 ## План Проверки Свежего Деплоя
 
 Перед изменением `/opt/agmind` на чистом хосте запусти:
+
+Начинай с `core,observability` или `core,rag,observability`. Не используй
+`--profile full` для первого теста хоста: он выбирает Caddy, Nginx и Traefik
+вместе, а deploy теперь останавливает этот конфликт host ports 80/443 до Docker.
 
 ```bash
 agmind doctor --json

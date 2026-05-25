@@ -269,6 +269,32 @@ def test_deploy_apply_validates_compose_before_replacing_file(
     assert calls and calls[0][0] == "-f"
 
 
+def test_deploy_blocks_deploy_level_conflicts_before_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = False
+
+    def fake_render_to_string(**_kwargs: object) -> str:
+        nonlocal rendered
+        rendered = True
+        return "services: {}\n"
+
+    monkeypatch.setattr(runner, "render_to_string", fake_render_to_string)
+
+    result = runner.deploy(
+        profiles=["full"],
+        install_dir=tmp_path,
+        domain="ci.example.com",
+        apply=False,
+    )
+
+    assert not result.success
+    assert "deploy conflict" in result.message
+    assert "Host port 80 is published by" in result.message
+    assert "Host port 443 is published by" in result.message
+    assert not rendered
+
+
 def test_deploy_apply_starts_rendered_services_by_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

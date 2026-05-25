@@ -40,6 +40,9 @@ Last local readiness pass: 2026-05-25.
   have been removed from the current deploy/docs surfaces.
 - Compose runtime secrets are required at config time; `agmind install` writes
   `/opt/agmind/.env` with mode `0600` and preserves generated values on rerun.
+- The `full` profile is intentionally blocked by deploy conflict checks until
+  the alternative edge proxies are split; use `core,observability` first, then
+  add `rag` after models and secrets are ready.
 - Local cluster status sees this node as `beelinknode-GTR-Pro` on
   `192.168.1.151`; mDNS peer discovery currently returns no AGmind peers.
 - A LAN neighbor was visible at `192.168.1.58`, but ping and TCP probes on
@@ -76,6 +79,10 @@ agmind install --list-models
 ## Fresh Deploy Test Plan
 
 Run these before touching `/opt/agmind` on a clean host:
+
+Start with `core,observability` or `core,rag,observability`. Do not use
+`--profile full` for the first host test: it selects Caddy, Nginx, and Traefik
+together, and deploy now stops that 80/443 host-port collision before Docker.
 
 ```bash
 agmind doctor --json

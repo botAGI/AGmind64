@@ -17,10 +17,11 @@ from pathlib import Path
 
 import yaml
 
+from agmind.components.checks import check_deploy_conflicts
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
 from agmind.log import logger
-from agmind.services.renderer import render_to_string
+from agmind.services.renderer import load_descriptors, render_to_string, select_services
 
 # Progress callback: (step_id, message) — used by TUI DeployProgressScreen
 # step_id one of: 'render', 'diff', 'snapshot', 'compose_up', 'healthcheck',
@@ -203,7 +204,25 @@ def deploy(
             except Exception as exc:  # noqa: BLE001
                 log.debug("progress callback raised: %s (ignored)", exc)
 
-    # 1. Render new compose
+    # 1. Validate deploy-level conflicts before rendering/diffing. Compose config
+    # validates syntax and interpolation, but not mutually exclusive host ports.
+    _emit("validate", "checking deploy-level service conflicts")
+    try:
+        descriptors = load_descriptors()
+        selected = select_services(descriptors, profiles=profiles, services=services)
+        conflict_report = check_deploy_conflicts(selected)
+    except Exception as exc:
+        _emit("error", f"deploy conflict check failed: {exc}")
+        return DeployResult(success=False, message=f"deploy conflict check failed: {exc}")
+
+    if conflict_report.has_errors:
+        messages = [issue.message for issue in conflict_report.issues if issue.severity == "error"]
+        msg = "deploy conflict(s): " + "; ".join(messages)
+        log.error("%s", msg)
+        _emit("error", msg)
+        return DeployResult(success=False, message=msg)
+
+    # 2. Render new compose
     _emit("render", f"rendering compose for profiles={profiles}, domain={domain}")
     log.info("rendering compose for profiles=%s, domain=%s", profiles, domain)
     try:
@@ -217,7 +236,7 @@ def deploy(
         _emit("error", f"render failed: {exc}")
         return DeployResult(success=False, message=f"render failed: {exc}")
 
-    # 2. Compute diff vs current
+    # 3. Compute diff vs current
     _emit("diff", "computing diff vs current deployment")
     diff = compute_diff_from_files(compose_file, new_compose)
 
