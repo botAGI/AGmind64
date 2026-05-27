@@ -339,6 +339,14 @@ def test_read_metadata_on_non_agmind_archive(tmp_path: Path) -> None:
         read_metadata(out)
 
 
+def test_read_metadata_rejects_invalid_tarball(tmp_path: Path) -> None:
+    backup = tmp_path / "broken.tar.gz"
+    backup.write_bytes(b"not a tarball")
+
+    with pytest.raises(ValueError, match="invalid backup archive"):
+        read_metadata(backup)
+
+
 def test_read_metadata_rejects_symlink_member(tmp_path: Path) -> None:
     backup = tmp_path / "malicious.tar.gz"
     payload = json.dumps(
@@ -905,6 +913,21 @@ def test_restore_cli_prompts_and_passes_sudo_password(
     assert calls["backup_path"] == backup_path
     assert calls["sudo_password"] == "pw"
     assert "env" in calls["source_labels"]
+
+
+def test_restore_cli_reports_invalid_archive_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from agmind.cli import ops_cmd
+
+    backup_path = tmp_path / "broken.tar.gz"
+    backup_path.write_bytes(b"not a tarball")
+
+    assert ops_cmd.cmd_restore(backup_path=backup_path, yes=True) == 1
+    err = capsys.readouterr().err
+    assert "invalid backup archive" in err
+    assert "Traceback" not in err
 
 
 def test_running_compose_services_ignores_subprocess_oserror(

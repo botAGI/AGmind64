@@ -294,30 +294,35 @@ def create_backup(
 
 def read_metadata(backup_path: Path) -> dict[str, object]:
     """Open backup file, read agmind-backup.json metadata. Raises on missing."""
-    with tarfile.open(backup_path, "r:gz") as tar:
-        try:
-            member = tar.getmember(METADATA_FILENAME)
-        except KeyError as exc:
-            raise ValueError(
-                f"{backup_path} is not an agmind backup (no {METADATA_FILENAME})"
-            ) from exc
-        if not member.isfile():
-            raise ValueError(f"unsupported metadata member type in backup archive: {member.name}")
-        f = tar.extractfile(member)
-        if f is None:
-            raise ValueError(f"cannot extract {METADATA_FILENAME} from {backup_path}")
-        payload = json.loads(f.read().decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError(f"{METADATA_FILENAME} metadata payload must be an object")
-        format_version = payload.get("format_version")
-        if format_version != BACKUP_FORMAT_VERSION:
-            raise ValueError(
-                "unsupported backup format version: "
-                f"{format_version!r} (expected {BACKUP_FORMAT_VERSION})"
-            )
-        _metadata_string_list(payload, "included")
-        _metadata_string_list(payload, "missing", required=False)
-        return dict(payload)
+    try:
+        with tarfile.open(backup_path, "r:gz") as tar:
+            try:
+                member = tar.getmember(METADATA_FILENAME)
+            except KeyError as exc:
+                raise ValueError(
+                    f"{backup_path} is not an agmind backup (no {METADATA_FILENAME})"
+                ) from exc
+            if not member.isfile():
+                raise ValueError(
+                    f"unsupported metadata member type in backup archive: {member.name}"
+                )
+            f = tar.extractfile(member)
+            if f is None:
+                raise ValueError(f"cannot extract {METADATA_FILENAME} from {backup_path}")
+            payload = json.loads(f.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError(f"{METADATA_FILENAME} metadata payload must be an object")
+            format_version = payload.get("format_version")
+            if format_version != BACKUP_FORMAT_VERSION:
+                raise ValueError(
+                    "unsupported backup format version: "
+                    f"{format_version!r} (expected {BACKUP_FORMAT_VERSION})"
+                )
+            _metadata_string_list(payload, "included")
+            _metadata_string_list(payload, "missing", required=False)
+            return dict(payload)
+    except tarfile.TarError as exc:
+        raise ValueError(f"invalid backup archive: {backup_path} ({exc})") from exc
 
 
 def restore_backup(
