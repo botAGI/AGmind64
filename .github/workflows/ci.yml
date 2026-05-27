@@ -252,6 +252,8 @@ jobs:
           MINIO_ROOT_USER=ci-minio
           MINIO_ROOT_PASSWORD=ci-minio-password
           REDIS_PASSWORD=ci-redis-password
+          HOMARR_SECRET_ENCRYPTION_KEY=ci-homarr-secret-encryption-key
+          N8N_ENCRYPTION_KEY=ci-n8n-encryption-key
           EOF
           for f in /tmp/compose-*.yml; do
             echo "=== Validating $f ==="
