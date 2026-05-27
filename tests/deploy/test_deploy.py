@@ -607,6 +607,55 @@ def test_deploy_apply_reports_snapshot_failure_before_replacing_file(
     assert (install_dir / "docker-compose.yml").read_text(encoding="utf-8") == "services: {}\n"
 
 
+def test_deploy_apply_reports_snapshot_env_prep_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    compose_file = install_dir / "docker-compose.yml"
+    compose_file.write_text("services: {}\n", encoding="utf-8")
+    (install_dir / ".env").write_text("LOCAL=placeholder\n", encoding="utf-8")
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args, **_kwargs: (0, ""))
+
+    def fail_read_text_maybe_sudo(path: Path, sudo_password: str | None = None) -> str:
+        if path.name == ".env":
+            raise OSError("env sudo read denied")
+        return path.read_text(encoding="utf-8")
+
+    class FailingSnapshotManager:
+        def __init__(self, sudo_password: str | None = None) -> None:
+            self.sudo_password = sudo_password
+
+        def save(self, **_kwargs: object) -> object:
+            raise AssertionError("snapshot save should not run after env prep failure")
+
+    def fail_write_text_maybe_sudo(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("compose file should not be replaced after env prep failure")
+
+    monkeypatch.setattr(runner, "_read_text_maybe_sudo", fail_read_text_maybe_sudo)
+    monkeypatch.setattr(runner, "SnapshotManager", FailingSnapshotManager)
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", fail_write_text_maybe_sudo)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        sudo_password="pw",
+        services=["postgres"],
+    )
+
+    assert result.success is False
+    assert result.snapshot is None
+    assert "snapshot prep failed" in result.message
+    assert "env sudo read denied" in result.message
+    assert compose_file.read_text(encoding="utf-8") == "services: {}\n"
+
+
 def test_deploy_apply_reports_install_dir_prepare_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

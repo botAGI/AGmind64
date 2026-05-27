@@ -568,39 +568,54 @@ def deploy(
         snapshot_env_tmp: Path | None = None
         version_env_file_for_snapshot: Path | None = None
         snapshot_version_env_tmp: Path | None = None
-        env_path = install_dir / ".env"
-        if env_path.exists():
-            if sudo_password is None:
-                env_file_for_snapshot = env_path
-            else:
-                with tempfile.NamedTemporaryFile(
-                    "w",
-                    encoding="utf-8",
-                    prefix=".agmind-env-snapshot-",
-                    delete=False,
-                ) as handle:
-                    snapshot_env_tmp = Path(handle.name)
-                    handle.write(_read_text_maybe_sudo(env_path, sudo_password=sudo_password))
-                snapshot_env_tmp.chmod(0o600)
-                env_file_for_snapshot = snapshot_env_tmp
-        version_env_path = install_dir / "version.env"
-        if version_env_path.exists():
-            if sudo_password is None:
-                version_env_file_for_snapshot = version_env_path
-            else:
-                with tempfile.NamedTemporaryFile(
-                    "w",
-                    encoding="utf-8",
-                    prefix=".agmind-version-env-snapshot-",
-                    delete=False,
-                ) as handle:
-                    snapshot_version_env_tmp = Path(handle.name)
-                    handle.write(
-                        _read_text_maybe_sudo(version_env_path, sudo_password=sudo_password)
-                    )
-                snapshot_version_env_tmp.chmod(0o644)
-                version_env_file_for_snapshot = snapshot_version_env_tmp
         try:
+            try:
+                env_path = install_dir / ".env"
+                if env_path.exists():
+                    if sudo_password is None:
+                        env_file_for_snapshot = env_path
+                    else:
+                        with tempfile.NamedTemporaryFile(
+                            "w",
+                            encoding="utf-8",
+                            prefix=".agmind-env-snapshot-",
+                            delete=False,
+                        ) as handle:
+                            snapshot_env_tmp = Path(handle.name)
+                            handle.write(
+                                _read_text_maybe_sudo(env_path, sudo_password=sudo_password)
+                            )
+                        snapshot_env_tmp.chmod(0o600)
+                        env_file_for_snapshot = snapshot_env_tmp
+                version_env_path = install_dir / "version.env"
+                if version_env_path.exists():
+                    if sudo_password is None:
+                        version_env_file_for_snapshot = version_env_path
+                    else:
+                        with tempfile.NamedTemporaryFile(
+                            "w",
+                            encoding="utf-8",
+                            prefix=".agmind-version-env-snapshot-",
+                            delete=False,
+                        ) as handle:
+                            snapshot_version_env_tmp = Path(handle.name)
+                            handle.write(
+                                _read_text_maybe_sudo(
+                                    version_env_path,
+                                    sudo_password=sudo_password,
+                                )
+                            )
+                        snapshot_version_env_tmp.chmod(0o644)
+                        version_env_file_for_snapshot = snapshot_version_env_tmp
+            except OSError as exc:
+                log.error("snapshot prep failed: %s", exc)
+                _emit("error", f"snapshot prep failed: {exc}")
+                return DeployResult(
+                    success=False,
+                    diff=diff,
+                    message=f"snapshot prep failed: {exc}",
+                )
+
             try:
                 snapshot = snap_mgr.save(
                     compose_text=_read_text_maybe_sudo(compose_file, sudo_password=sudo_password),
