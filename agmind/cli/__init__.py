@@ -1182,79 +1182,35 @@ def _make_app() -> typer.Typer:
             kv_cache_type=kv_cache or "q8_0",
         )
         if from_state is not None:
-            try:
-                from_state.stat()
-            except OSError as exc:
-                typer.echo(f"ERROR: cannot read --from-state {from_state}: {exc}", err=True)
-                raise typer.Exit(code=2) from exc
-            try:
-                loaded = SetupState.from_json(from_state)
-            except Exception as exc:  # noqa: BLE001
-                typer.echo(f"ERROR: cannot load --from-state {from_state}: {exc}", err=True)
-                raise typer.Exit(code=2) from exc
-            else:
-                initial = loaded
-                if not initial.services and initial.profiles:
-                    from agmind.services.renderer import (
-                        load_descriptors,
-                        select_services,
-                        unknown_profiles,
-                    )
+            from agmind.cli.install_state import (
+                StateResolveError,
+                load_setup_state_from_file,
+            )
 
-                    descriptors = load_descriptors()
-                    missing_profiles = unknown_profiles(descriptors, initial.profiles)
-                    if missing_profiles:
-                        typer.echo(
-                            "ERROR: unknown selected profiles in --from-state: "
-                            + ", ".join(missing_profiles),
-                            err=True,
-                        )
-                        raise typer.Exit(code=2)
-                    selected_services = sorted(
-                        select_services(descriptors, profiles=initial.profiles)
-                    )
-                    if not selected_services:
-                        profile_text = ", ".join(initial.profiles)
-                        typer.echo(
-                            f"ERROR: no services match profiles in --from-state: {profile_text}",
-                            err=True,
-                        )
-                        raise typer.Exit(code=2)
-                    initial.services = selected_services
-                    initial.profiles = []
-                if initial.services:
-                    from agmind.services.renderer import load_descriptors
+            try:
+                initial = load_setup_state_from_file(from_state)
+            except StateResolveError as exc:
+                typer.echo(f"ERROR: {exc.message}", err=True)
+                raise typer.Exit(code=exc.code) from exc
 
-                    descriptors = load_descriptors()
-                    missing_services = sorted(set(initial.services).difference(descriptors))
-                    if missing_services:
-                        typer.echo(
-                            "ERROR: unknown selected services in --from-state: "
-                            + ", ".join(missing_services),
-                            err=True,
-                        )
-                        raise typer.Exit(code=2)
-                if not initial.services and not initial.profiles:
-                    typer.echo("ERROR: no selected services in --from-state", err=True)
-                    raise typer.Exit(code=2)
-                if domain:
-                    initial.domain = domain
-                if cf_token_file:
-                    initial.cf_api_token = _read_option_text_file(
-                        cf_token_file,
-                        "--cf-token-file",
-                        require_mode=0o600,
-                    )
-                if model_id:
-                    initial.model_id = model_id
-                if model_repo:
-                    initial.model_repo = model_repo
-                if model_file:
-                    initial.model_file = model_file
-                if ctx_size:
-                    initial.ctx_size = ctx_size
-                if kv_cache:
-                    initial.kv_cache_type = kv_cache
+            if domain:
+                initial.domain = domain
+            if cf_token_file:
+                initial.cf_api_token = _read_option_text_file(
+                    cf_token_file,
+                    "--cf-token-file",
+                    require_mode=0o600,
+                )
+            if model_id:
+                initial.model_id = model_id
+            if model_repo:
+                initial.model_repo = model_repo
+            if model_file:
+                initial.model_file = model_file
+            if ctx_size:
+                initial.ctx_size = ctx_size
+            if kv_cache:
+                initial.kv_cache_type = kv_cache
         if not no_tui:
             # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
             ms = False if legacy_wizard else None  # None = default (multi-step)

@@ -1,0 +1,63 @@
+"""Tests for agmind.cli.install_state.load_setup_state_from_file."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from agmind.cli.install_state import StateResolveError, load_setup_state_from_file
+
+pytestmark = pytest.mark.backend_any
+
+
+def _write_state(path: Path, payload: dict[str, object]) -> Path:
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_missing_file_raises_read_error(tmp_path: Path) -> None:
+    with pytest.raises(StateResolveError, match="cannot read --from-state"):
+        load_setup_state_from_file(tmp_path / "nope.json")
+
+
+def test_unparseable_file_raises_load_error(tmp_path: Path) -> None:
+    bad = tmp_path / "state.json"
+    bad.write_text("{not json", encoding="utf-8")
+    with pytest.raises(StateResolveError, match="cannot load --from-state"):
+        load_setup_state_from_file(bad)
+
+
+def test_unknown_service_raises(tmp_path: Path) -> None:
+    state = _write_state(
+        tmp_path / "s.json", {"domain": "lab.example.com", "services": ["traefik", "nope-svc"]}
+    )
+    with pytest.raises(StateResolveError, match="unknown selected services in --from-state: nope-svc"):
+        load_setup_state_from_file(state)
+
+
+def test_unknown_profile_raises(tmp_path: Path) -> None:
+    state = _write_state(
+        tmp_path / "s.json",
+        {"domain": "lab.example.com", "services": [], "profiles": ["does-not-exist"]},
+    )
+    with pytest.raises(StateResolveError, match="unknown selected profiles in --from-state"):
+        load_setup_state_from_file(state)
+
+
+def test_empty_selection_raises(tmp_path: Path) -> None:
+    state = _write_state(
+        tmp_path / "s.json", {"domain": "lab.example.com", "services": [], "profiles": []}
+    )
+    with pytest.raises(StateResolveError, match="no selected services in --from-state"):
+        load_setup_state_from_file(state)
+
+
+def test_profiles_expand_to_services(tmp_path: Path) -> None:
+    state = _write_state(
+        tmp_path / "s.json", {"domain": "lab.example.com", "services": [], "profiles": ["core"]}
+    )
+    resolved = load_setup_state_from_file(state)
+    assert resolved.services, "core profile should expand to a non-empty service set"
+    assert resolved.profiles == []
