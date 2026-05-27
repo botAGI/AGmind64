@@ -1011,8 +1011,7 @@ def test_verify_install_reports_version_manifest_mode_drift(
 def test_verify_install_cli_json(monkeypatch: pytest.MonkeyPatch) -> None:
     import json
 
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _HAS_TYPER, _make_app
     from agmind.install.verify import (
@@ -1041,7 +1040,7 @@ def test_verify_install_cli_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("agmind.cli.verify_cmd.verify_install", lambda **_kwargs: report)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     result = CliRunner().invoke(cli_app, ["verify", "install", "--json", "--skip-ansible"])
 
     assert result.exit_code == 0

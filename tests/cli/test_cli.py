@@ -37,12 +37,11 @@ def test_make_app_builds_typer_instance() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_make_app_has_doctor_command() -> None:
-    import typer
-    from click.testing import CliRunner  # type: ignore[import-untyped]
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["--help"])
     assert result.exit_code == 0
@@ -51,8 +50,7 @@ def test_make_app_has_doctor_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_doctor_runs_preflight_exactly_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
     from agmind.diagnostics.doctor import CheckResult, DoctorReport
@@ -65,7 +63,7 @@ def test_doctor_runs_preflight_exactly_once(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr("agmind.diagnostics.doctor.run_preflight", fake_run_preflight)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     result = CliRunner().invoke(cli_app, ["doctor"])
 
     assert calls["n"] == 1
@@ -86,8 +84,7 @@ def test_doctor_exit_codes(
     statuses: list[str],
     expected_code: int,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
     from agmind.diagnostics.doctor import CheckResult, DoctorReport
@@ -97,7 +94,7 @@ def test_doctor_exit_codes(
 
     monkeypatch.setattr("agmind.diagnostics.doctor.run_preflight", fake_run_preflight)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     result = CliRunner().invoke(cli_app, ["doctor"])
 
     assert result.exit_code == expected_code
@@ -108,8 +105,7 @@ def test_deploy_command_accepts_repeated_explicit_services(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -121,7 +117,7 @@ def test_deploy_command_accepts_repeated_explicit_services(
 
     monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_deploy", fake_cmd_deploy)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -147,8 +143,7 @@ def test_deploy_command_accepts_repeated_explicit_services(
 def test_render_compose_accepts_repeated_explicit_services(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -160,7 +155,7 @@ def test_render_compose_accepts_repeated_explicit_services(
 
     monkeypatch.setattr("agmind.cli.render_cmd.cmd_render_compose", fake_cmd_render_compose)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -189,8 +184,7 @@ def test_setup_runs_full_install_flow_in_tui_by_default(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
     from agmind.cli.tui.setup_wizard import SetupState
@@ -213,7 +207,7 @@ def test_setup_runs_full_install_flow_in_tui_by_default(
 
     monkeypatch.setattr("agmind.cli.tui.setup_wizard.run_setup_wizard", fake_run_setup_wizard)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -236,13 +230,12 @@ def test_setup_runs_full_install_flow_in_tui_by_default(
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_setup_reports_missing_cf_token_file_without_traceback(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
     missing = tmp_path / "missing-cf-token"  # type: ignore[operator]
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
 
     result = runner.invoke(
@@ -266,15 +259,14 @@ def test_setup_reports_missing_cf_token_file_without_traceback(tmp_path: object)
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_setup_rejects_world_readable_cf_token_file(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
     token_file = tmp_path / "cf-token"  # type: ignore[operator]
     token_file.write_text("super-secret-token", encoding="utf-8")
     token_file.chmod(0o644)
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
 
     result = runner.invoke(
@@ -299,13 +291,12 @@ def test_setup_rejects_world_readable_cf_token_file(tmp_path: object) -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_setup_reports_missing_from_state_without_traceback(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
     missing = tmp_path / "missing-state.json"  # type: ignore[operator]
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
 
     result = runner.invoke(
@@ -329,14 +320,13 @@ def test_setup_reports_missing_from_state_without_traceback(tmp_path: object) ->
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_setup_reports_invalid_from_state_without_using_defaults(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
     state_file = tmp_path / "setup-state.json"  # type: ignore[operator]
     state_file.write_text("{not-json", encoding="utf-8")
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
 
     result = runner.invoke(
@@ -364,8 +354,7 @@ def test_install_no_tui_prints_runtime_credentials_path(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
     from agmind.install.orchestrator import InstallResult
@@ -386,7 +375,7 @@ def test_install_no_tui_prints_runtime_credentials_path(
 
     monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -412,8 +401,7 @@ def test_install_no_tui_prints_runtime_credentials_path(
 def test_install_no_tui_requires_cf_token_before_sudo_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -426,7 +414,7 @@ def test_install_no_tui_requires_cf_token_before_sudo_prompt(
         lambda: (_ for _ in ()).throw(AssertionError("install steps should not be built")),
     )
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -451,8 +439,7 @@ def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -469,7 +456,7 @@ def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
         lambda: (_ for _ in ()).throw(AssertionError("install steps should not be built")),
     )
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -492,8 +479,7 @@ def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -517,7 +503,7 @@ def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> N
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -544,8 +530,7 @@ def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> N
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_state_rejects_unknown_service(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -567,7 +552,7 @@ def test_install_dry_run_from_state_rejects_unknown_service(tmp_path: object) ->
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -592,8 +577,7 @@ def test_install_dry_run_from_state_rejects_unknown_service(tmp_path: object) ->
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_legacy_profile_state_expands_services(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -615,7 +599,7 @@ def test_install_dry_run_from_legacy_profile_state_expands_services(tmp_path: ob
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -649,8 +633,7 @@ def test_install_dry_run_from_legacy_profile_state_expands_services(tmp_path: ob
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_unknown_legacy_profile_fails(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -672,7 +655,7 @@ def test_install_dry_run_from_unknown_legacy_profile_fails(tmp_path: object) -> 
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -698,8 +681,7 @@ def test_install_dry_run_from_unknown_legacy_profile_fails(tmp_path: object) -> 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_mixed_unknown_legacy_profile_fails(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -721,7 +703,7 @@ def test_install_dry_run_from_mixed_unknown_legacy_profile_fails(tmp_path: objec
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -746,8 +728,7 @@ def test_install_dry_run_from_mixed_unknown_legacy_profile_fails(tmp_path: objec
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_empty_state_fails_before_config_dump(tmp_path: object) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -769,7 +750,7 @@ def test_install_dry_run_from_empty_state_fails_before_config_dump(tmp_path: obj
     token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
     token_file.chmod(0o600)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -794,12 +775,11 @@ def test_install_dry_run_from_empty_state_fails_before_config_dump(tmp_path: obj
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_ops_smoke_backup_root_owned_dry_run_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["ops", "smoke", "backup-root-owned", "--dry-run"])
 
@@ -811,13 +791,12 @@ def test_ops_smoke_backup_root_owned_dry_run_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_app_version_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind import __version__
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["version"])
     assert result.exit_code == 0
@@ -826,12 +805,11 @@ def test_app_version_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_tools_validate_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["tools", "validate"])
     assert result.exit_code == 0
@@ -840,12 +818,11 @@ def test_tools_validate_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_targets_validate_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["targets", "validate"])
     assert result.exit_code == 0
@@ -856,12 +833,11 @@ def test_targets_validate_command() -> None:
 def test_targets_validate_json_command() -> None:
     import json
 
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["targets", "validate", "--json"])
     assert result.exit_code == 0
@@ -872,8 +848,7 @@ def test_targets_validate_json_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_cluster_inspect_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
     from agmind.cluster.inspect import CommandResult, inspect_cluster
@@ -885,7 +860,7 @@ def test_cluster_inspect_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr("agmind.cli.cluster_cmd._inspect_cluster", lambda discover_timeout: report)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["cluster", "inspect", "--json", "--timeout", "0.1"])
     assert result.exit_code == 0
@@ -894,12 +869,11 @@ def test_cluster_inspect_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_governance_validate_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["governance", "validate"])
     assert result.exit_code == 0
@@ -910,8 +884,7 @@ def test_governance_validate_command() -> None:
 def test_deploy_status_subcommand_routes_to_compose_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -923,7 +896,7 @@ def test_deploy_status_subcommand_routes_to_compose_status(
 
     monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_status", fake_status)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["deploy", "status"])
 
@@ -935,8 +908,7 @@ def test_deploy_status_subcommand_routes_to_compose_status(
 def test_deploy_logs_subcommand_routes_to_compose_logs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -953,7 +925,7 @@ def test_deploy_logs_subcommand_routes_to_compose_logs(
 
     monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_logs", fake_logs)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["deploy", "logs", "llama-llm", "--lines", "123", "-f"])
 
@@ -965,8 +937,7 @@ def test_deploy_logs_subcommand_routes_to_compose_logs(
 def test_deploy_restart_subcommand_routes_to_compose_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -978,7 +949,7 @@ def test_deploy_restart_subcommand_routes_to_compose_restart(
 
     monkeypatch.setattr("agmind.cli.deploy_cmd.cmd_restart", fake_restart)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["deploy", "restart", "llama-llm"])
 
@@ -988,8 +959,7 @@ def test_deploy_restart_subcommand_routes_to_compose_restart(
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_ci_status_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.ci.monitor import CIMonitorReport
     from agmind.cli import _make_app
@@ -999,7 +969,7 @@ def test_ci_status_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda repository, run_limit: CIMonitorReport(repository="botAGI/AGmind64"),
     )
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(cli_app, ["ci", "status", "--json", "--repo", "botAGI/AGmind64"])
     assert result.exit_code == 0
@@ -1008,12 +978,11 @@ def test_ci_status_command_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_kubernetes_command() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1026,12 +995,11 @@ def test_render_kubernetes_command() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_kubernetes_target_applies_excluded_services() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1049,8 +1017,7 @@ def test_render_kubernetes_target_applies_excluded_services() -> None:
 def test_render_kubernetes_accepts_repeated_explicit_services(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -1065,7 +1032,7 @@ def test_render_kubernetes_accepts_repeated_explicit_services(
         fake_cmd_render_kubernetes,
     )
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1091,12 +1058,11 @@ def test_render_kubernetes_accepts_repeated_explicit_services(
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_topology_command_reports_ambiguous_vector_provider() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1127,12 +1093,11 @@ def test_render_topology_command_reports_ambiguous_vector_provider() -> None:
 def test_render_topology_command_json_uses_structured_payload() -> None:
     import json
 
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1175,12 +1140,11 @@ def test_render_topology_command_json_uses_structured_payload() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_topology_fail_on_warning_exits_nonzero_with_report() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1210,12 +1174,11 @@ def test_render_topology_fail_on_warning_exits_nonzero_with_report() -> None:
 def test_render_topology_fail_on_warning_keeps_json_payload() -> None:
     import json
 
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1247,12 +1210,11 @@ def test_render_topology_fail_on_warning_keeps_json_payload() -> None:
 def test_render_topology_fail_on_warning_allows_info_only_json_payload() -> None:
     import json
 
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1276,12 +1238,11 @@ def test_render_topology_fail_on_warning_allows_info_only_json_payload() -> None
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_topology_fail_on_warning_allows_clean_selection() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1302,12 +1263,11 @@ def test_render_topology_fail_on_warning_allows_clean_selection() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_topology_rejects_unknown_explicit_service() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1328,12 +1288,11 @@ def test_render_topology_rejects_unknown_explicit_service() -> None:
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_render_topology_rejects_unknown_profile() -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,
@@ -1355,8 +1314,7 @@ def test_render_topology_rejects_unknown_profile() -> None:
 def test_upgrade_plan_does_not_apply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import typer
-    from click.testing import CliRunner
+    from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
@@ -1373,7 +1331,7 @@ def test_upgrade_plan_does_not_apply(
     monkeypatch.setattr("agmind.cli.upgrade_cmd.cmd_component", fake_component)
     monkeypatch.setattr("agmind.cli.upgrade_cmd.cmd_apply", fake_apply)
 
-    cli_app = typer.main.get_command(_make_app())
+    cli_app = _make_app()
     runner = CliRunner()
     result = runner.invoke(
         cli_app,

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,27 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in list(os.environ.keys()):
         if key.startswith("AGMIND_"):
             monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging() -> Iterator[None]:
+    """Restore root logging handlers after each test.
+
+    `agmind.core.logging.setup()` calls `logging.basicConfig(stream=sys.stderr,
+    force=True)`, which snapshots the *current* `sys.stderr`. When that runs
+    inside a CliRunner invocation, the installed handler binds to a transient
+    capture buffer that is closed once the invocation ends. Left in place it
+    corrupts later tests' captured stderr. Snapshot/restore keeps that leak from
+    crossing the test boundary.
+    """
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    try:
+        yield
+    finally:
+        root.handlers[:] = saved_handlers
+        root.setLevel(saved_level)
 
 
 @pytest.fixture
