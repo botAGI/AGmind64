@@ -422,6 +422,8 @@ def safe_model_target(models_dir: Path, file_name: str) -> Path:
     """Return a model path constrained to one basename inside models_dir."""
     if not file_name or "\x00" in file_name:
         raise ValueError("model file name is empty or contains NUL")
+    if any(ord(char) < 32 or ord(char) == 127 for char in file_name):
+        raise ValueError("model file name contains control characters")
 
     posix = PurePosixPath(file_name)
     if posix.is_absolute() or ".." in posix.parts:

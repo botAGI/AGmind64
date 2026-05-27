@@ -247,6 +247,8 @@ def test_model_path_default() -> None:
         "/tmp/model.gguf",
         "",
         "bad\x00model.gguf",
+        "bad\nmodel.gguf",
+        "bad\x1fmodel.gguf",
     ],
 )
 def test_safe_model_target_rejects_path_escape(tmp_path: Path, file_name: str) -> None:
