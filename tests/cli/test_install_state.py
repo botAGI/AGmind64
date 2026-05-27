@@ -33,7 +33,9 @@ def test_unknown_service_raises(tmp_path: Path) -> None:
     state = _write_state(
         tmp_path / "s.json", {"domain": "lab.example.com", "services": ["traefik", "nope-svc"]}
     )
-    with pytest.raises(StateResolveError, match="unknown selected services in --from-state: nope-svc"):
+    with pytest.raises(
+        StateResolveError, match="unknown selected services in --from-state: nope-svc"
+    ):
         load_setup_state_from_file(state)
 
 
