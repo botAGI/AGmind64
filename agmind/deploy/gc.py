@@ -250,7 +250,12 @@ def gc_models(
         return GcReport(target="models", error=f"{models_dir} does not exist")
 
     if used_filenames is None:
-        used_filenames = _scan_used_models()
+        try:
+            used_filenames = _scan_used_models()
+        except ValueError as exc:
+            # Never delete on incomplete knowledge: a single unparseable
+            # descriptor would drop its models from the used-set.
+            return GcReport(target="models", error=f"model scan failed, not deleting: {exc}")
 
     candidates: list[Path] = []
     for path in models_dir.iterdir():
@@ -309,8 +314,8 @@ def _scan_used_models() -> set[str]:
 
                 data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
                 used.update(_extract_model_filenames(data))
-            except Exception:
-                continue
+            except Exception as exc:
+                raise ValueError(f"cannot parse model source {yaml_path}: {exc}") from exc
 
     # Legacy models.yaml catalog
     models_yaml = repo_root / "templates" / "models.yaml"
@@ -321,8 +326,8 @@ def _scan_used_models() -> set[str]:
             data = yaml.safe_load(models_yaml.read_text(encoding="utf-8"))
 
             used.update(_extract_model_filenames(data))
-        except Exception:
-            pass
+        except Exception as exc:
+            raise ValueError(f"cannot parse model source {models_yaml}: {exc}") from exc
 
     return used
 

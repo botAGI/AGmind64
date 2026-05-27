@@ -123,6 +123,37 @@ command:
     assert {"active-llm.gguf", "active-embed.safetensors", "active-rerank.bin"} <= used
 
 
+def test_scan_used_models_raises_on_malformed_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    services_dir = repo_root / "templates" / "services"
+    services_dir.mkdir(parents=True)
+    (services_dir / "broken.yaml").write_text("name: broken\n  bad: : :\n", encoding="utf-8")
+    monkeypatch.setattr("agmind.deploy.gc.__file__", str(repo_root / "agmind" / "deploy" / "gc.py"))
+
+    with pytest.raises(ValueError, match="broken.yaml"):
+        _scan_used_models()
+
+
+def test_gc_models_refuses_to_delete_when_scan_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orphan = tmp_path / "orphan.gguf"
+    orphan.write_bytes(b"weights")
+
+    def boom() -> set[str]:
+        raise ValueError("cannot parse model source broken.yaml")
+
+    monkeypatch.setattr("agmind.deploy.gc._scan_used_models", boom)
+
+    report = gc_models(models_dir=tmp_path, used_filenames=None)
+
+    assert report.error is not None
+    assert report.items_removed == 0
+    assert orphan.exists(), "models must not be deleted when the used-set is incomplete"
+
+
 # ---------- format_gc_report ----------
 
 
