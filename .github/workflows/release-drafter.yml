@@ -15,7 +15,9 @@ permissions:
 
 jobs:
   update_release_draft:
-    runs-on: [self-hosted, linux, x64]
+    # GitHub-API-only job: keep it off the single-lane self-hosted runner so it
+    # never blocks the critical CI/test/deploy queue (backlog M6.B.5).
+    runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v6
         env:
