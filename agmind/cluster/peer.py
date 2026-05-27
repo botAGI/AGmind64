@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

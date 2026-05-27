@@ -16,7 +16,7 @@ from agmind.compute.backends._engines.llama_cpp_cpu import (
     _LlamaCppHandle,
     _safe_embed,
 )
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

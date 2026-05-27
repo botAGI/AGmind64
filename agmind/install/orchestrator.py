@@ -22,12 +22,13 @@ from datetime import timedelta
 from enum import Enum
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 DEFAULT_MODELS_DIR = Path("/var/lib/agmind/models")
+DEFAULT_CONFIG_DIR = Path("/etc/agmind")
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -93,6 +94,7 @@ class InstallConfig:
     model_file: str | None = None  # e.g. "Qwen3.6-35B-A3B-Q4_K_M.gguf"
     install_dir: Path = DEFAULT_INSTALL_DIR
     models_dir: Path = DEFAULT_MODELS_DIR
+    config_dir: Path = DEFAULT_CONFIG_DIR
     sudo_password: str | None = None  # secret — очищается после bootstrap
     # Phase N.G: LLM inference settings passed to llama-llm via env vars
     # (compose template reads AGMIND_MODEL_FILE / AGMIND_LLM_CTX_SIZE / AGMIND_LLM_KV_CACHE).
@@ -125,6 +127,7 @@ class InstallConfig:
             "rerank_file": self.rerank_file,
             "install_dir": str(self.install_dir),
             "models_dir": str(self.models_dir),
+            "config_dir": str(self.config_dir),
             "ctx_size": self.ctx_size,
             "kv_cache_type": self.kv_cache_type,
             "threads": self.threads,
@@ -187,16 +190,17 @@ class InstallOrchestrator:
             start = time.monotonic()
             self._emit_step_start(step)
             try:
-                result = step.run(self.callback, self.config)
+                result = step.run(self._emit_progress, self.config)
             except Exception as exc:  # noqa: BLE001
                 elapsed = timedelta(seconds=time.monotonic() - start)
-                log.exception("step %s crashed: %s", step.step_id, exc)
+                log.error("step %s crashed: %s", step.step_id, self._redact_text(str(exc)))
                 result = InstallStepResult(
                     step_id=step.step_id,
                     success=False,
-                    message=f"unhandled exception: {exc}",
+                    message=f"unhandled exception: {self._redact_text(str(exc))}",
                     elapsed=elapsed,
                 )
+            result = self._redact_result(result)
             results.append(result)
             if not result.success:
                 self._emit_step_error(step, result.message)
@@ -207,10 +211,6 @@ class InstallOrchestrator:
                     message=f"failed at step '{step.step_id}': {result.message}",
                 )
             self._emit_step_done(step, result)
-            # После bootstrap (sudo) — можем стереть sudo password.
-            if step.step_id == "bootstrap":
-                self.config.sudo_password = None
-
         self.config.wipe_secrets()
         return InstallResult(
             success=True,
@@ -218,47 +218,74 @@ class InstallOrchestrator:
             message=f"install complete ({len(results)} steps)",
         )
 
-    def _emit_step_start(self, step: InstallStep) -> None:
+    def _redact_text(self, text: str) -> str:
+        redacted = text
+        for secret in (self.config.cf_api_token, self.config.sudo_password):
+            if secret:
+                redacted = redacted.replace(secret, "***")
+        return redacted
+
+    def _redact_event(self, event: ProgressEvent) -> ProgressEvent:
+        text = self._redact_text(event.text)
+        if text == event.text:
+            return event
+        return ProgressEvent(
+            step_id=event.step_id,
+            kind=event.kind,
+            text=text,
+            progress_pct=event.progress_pct,
+        )
+
+    def _redact_result(self, result: InstallStepResult) -> InstallStepResult:
+        message = self._redact_text(result.message)
+        if message == result.message:
+            return result
+        return InstallStepResult(
+            step_id=result.step_id,
+            success=result.success,
+            message=message,
+            elapsed=result.elapsed,
+        )
+
+    def _emit_progress(self, event: ProgressEvent) -> None:
         try:
-            self.callback(
-                ProgressEvent(
-                    step_id=step.step_id,
-                    kind=ProgressKind.STEP_START,
-                    text=step.label,
-                )
-            )
+            self.callback(self._redact_event(event))
         except Exception as exc:  # noqa: BLE001
-            log.debug("step_start callback raised: %s", exc)
+            log.debug("progress callback raised: %s", exc)
+
+    def _emit_step_start(self, step: InstallStep) -> None:
+        self._emit_progress(
+            ProgressEvent(
+                step_id=step.step_id,
+                kind=ProgressKind.STEP_START,
+                text=step.label,
+            )
+        )
 
     def _emit_step_done(self, step: InstallStep, result: InstallStepResult) -> None:
-        try:
-            self.callback(
-                ProgressEvent(
-                    step_id=step.step_id,
-                    kind=ProgressKind.STEP_DONE,
-                    text=result.message or step.label,
-                )
+        self._emit_progress(
+            ProgressEvent(
+                step_id=step.step_id,
+                kind=ProgressKind.STEP_DONE,
+                text=result.message or step.label,
             )
-        except Exception as exc:  # noqa: BLE001
-            log.debug("step_done callback raised: %s", exc)
+        )
 
     def _emit_step_error(self, step: InstallStep, message: str) -> None:
-        try:
-            self.callback(
-                ProgressEvent(
-                    step_id=step.step_id,
-                    kind=ProgressKind.STEP_ERROR,
-                    text=message,
-                )
+        self._emit_progress(
+            ProgressEvent(
+                step_id=step.step_id,
+                kind=ProgressKind.STEP_ERROR,
+                text=message,
             )
-        except Exception as exc:  # noqa: BLE001
-            log.debug("step_error callback raised: %s", exc)
+        )
 
 
 # Re-export для удобства concrete step modules.
 __all__ = [
     "DEFAULT_INSTALL_DIR",
     "DEFAULT_MODELS_DIR",
+    "DEFAULT_CONFIG_DIR",
     "DEFAULT_REPO_ROOT",
     "InstallConfig",
     "InstallOrchestrator",

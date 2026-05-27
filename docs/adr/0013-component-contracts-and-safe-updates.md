@@ -55,13 +55,13 @@ outside the service capability graph.
 - `agmind.components.contracts` defines the Pydantic contract model.
 - `agmind.components.registry` loads `templates/components/*.yaml`.
 - `agmind.components.checks` validates deploy-level conflicts.
-- `scripts/component_check.py` checks component loading, service ownership,
+- `scripts/checks/component_check.py` checks component loading, service ownership,
   component-to-service references, and selected profile port conflicts.
 - `.pre-commit-config.yaml` runs the component check when component, service,
   or service/component code changes.
 - `.github/workflows/ci.yml` runs component validation on the self-hosted
   runner before CPU tests and compose validation.
-- `scripts/version_check.py` includes component policies and non-container
+- `scripts/checks/version_check.py` includes component policies and non-container
   dependency pins in the weekly update report.
 - `agmind upgrade --component <id>` can plan grouped updates, apply descriptor
   bumps, and rollback grouped state.

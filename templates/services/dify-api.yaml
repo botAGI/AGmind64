@@ -31,5 +31,6 @@ resources:
 consumes:
 - llm_inference
 - embedding_inference
+- reranker
 - vector_db
 - dify_external_kb

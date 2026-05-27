@@ -9,6 +9,12 @@ runtime:
     - core
     - rag
     - observability
+  excluded_services:
+    - dozzle
+    - homarr
+    - netdata
+    - portainer
+    - watchtower
 provisioner:
   kind: external
   state_backend: external
@@ -23,9 +29,9 @@ storage_profile: longhorn
 secrets_profile: external-secrets
 verification:
   commands:
-    - agmind render kubernetes --profile core,rag,observability --namespace agmind --output /tmp/agmind-k8s.yaml
-    - scripts/kubernetes_dry_run.py --target k3s --require-cluster --require-amd-gpu --artifact-dir local-kubernetes-proof/k3s
-    - scripts/kubernetes_dry_run.py --verify-artifact-dir local-kubernetes-proof/k3s
+    - agmind render kubernetes --target k3s --namespace agmind --output /tmp/agmind-k8s.yaml
+    - scripts/proof/kubernetes_dry_run.py --target k3s --require-cluster --require-amd-gpu --artifact-dir local-kubernetes-proof/k3s
+    - scripts/proof/kubernetes_dry_run.py --verify-artifact-dir local-kubernetes-proof/k3s
   artifacts:
     - local-kubernetes-proof/k3s/k3s.yaml
     - local-kubernetes-proof/k3s/k3s.dry-run.json
@@ -33,6 +39,10 @@ verification:
     - local-kubernetes-proof/k3s/run-metadata.json
     - local-kubernetes-proof/k3s/summary.json
     - local-kubernetes-proof/k3s/checksums.txt
-  expected_warning_codes:
-    - amd-gpu-device-plugin
-    - kubernetes-omitted
+  expected_warnings:
+    - service: llama-embed
+      code: amd-gpu-device-plugin
+    - service: llama-llm
+      code: amd-gpu-device-plugin
+    - service: llama-rerank
+      code: amd-gpu-device-plugin

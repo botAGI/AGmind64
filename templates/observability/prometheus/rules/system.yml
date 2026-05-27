@@ -1,7 +1,7 @@
 # System / host / GPU alerts (Phase H'.D, R13).
 #
 # AMD Strix Halo gfx1151 metrics приходят через `amdgpu_textfile` collector
-# (scripts/amdgpu_textfile.sh) — node-exporter textfile reader, потому что
+# (scripts/ops/amdgpu_textfile.sh) — node-exporter textfile reader, потому что
 # нет официального exporter для gfx1151 (см. deep-dive 03 §4, R-recon R13).
 
 groups:

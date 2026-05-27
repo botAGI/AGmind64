@@ -162,6 +162,12 @@ class InstallProgressScreen(Screen[InstallResult]):
                 widget.update(self._step_line(s))
                 break
 
+    def _final_operator_hint(self) -> str:
+        return (
+            f"Runtime credentials: {self.config.install_dir / '.env'} (chmod 600)\n"
+            "Values are not printed in the installer summary."
+        )
+
     def on_mount(self) -> None:
         self._run_install()
 
@@ -216,6 +222,7 @@ class InstallProgressScreen(Screen[InstallResult]):
     def _finalize(self) -> None:
         result = self.result
         status = self.query_one("#status-line", Static)
+        log_widget = self.query_one("#install-log", RichLog)
         close_btn = self.query_one("#install-close-btn", Button)
         cancel_btn = self.query_one("#install-cancel-btn", Button)
 
@@ -225,9 +232,11 @@ class InstallProgressScreen(Screen[InstallResult]):
         elif result.success:
             status.update(f"✅ {result.message}")
             status.set_classes("status-line success")
+            log_widget.write(f"[green]{self._final_operator_hint()}[/green]")
         else:
             status.update(f"❌ {result.message}")
             status.set_classes("status-line error")
+            log_widget.write(f"[yellow]{self._final_operator_hint()}[/yellow]")
 
         close_btn.disabled = False
         cancel_btn.disabled = True

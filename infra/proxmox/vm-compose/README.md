@@ -39,7 +39,7 @@ playbook:
 
 ```bash
 tofu output -json > /tmp/agmind-proxmox-output.json
-python ../../../scripts/proxmox_inventory.py \
+python ../../../scripts/ops/proxmox_inventory.py \
   --input /tmp/agmind-proxmox-output.json \
   --output ../../../ansible/inventory/proxmox.generated.yml
 ```
@@ -48,7 +48,7 @@ python ../../../scripts/proxmox_inventory.py \
 
 - `agmind_hosts`: VM metadata keyed by inventory hostname.
 - `ansible_inventory`: inventory-shaped object consumed by
-  `scripts/proxmox_inventory.py`.
+  `scripts/ops/proxmox_inventory.py`.
 
 ## References
 

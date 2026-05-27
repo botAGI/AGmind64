@@ -101,7 +101,7 @@ Phase G дала basic observability profile (Prometheus + Grafana + Loki + Allo
 
 ### R13 — gfx1151 GPU textfile collector
 
-`scripts/amdgpu_textfile.sh` (~95 строк bash):
+`scripts/ops/amdgpu_textfile.sh` (~95 строк bash):
 - Читает `/sys/class/drm/card*/device/hwmon/temp1_input`, `power1_average`, `freq1_input`
 - Читает `mem_info_{vram,gtt}_{used,total}` напрямую из sysfs
 - `LC_ALL=C awk` (иначе русская локаль ставит запятые → ломает Prometheus parser)

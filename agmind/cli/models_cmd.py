@@ -1,6 +1,6 @@
 """`agmind models` subcommand — manage GGUF inventory.
 
-См. templates/models.yaml + agmind/models.py.
+См. templates/models.yaml + agmind/models/.
 """
 
 from __future__ import annotations
@@ -11,13 +11,22 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlretrieve
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
 
 def _models_dir() -> Path:
     return Path(os.environ.get("AGMIND_MODELS_DIR", "/var/lib/agmind/models"))
+
+
+def _prepare_models_dir(models_dir: Path) -> bool:
+    try:
+        models_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"ERROR: failed to prepare models dir {models_dir}: {exc}", file=sys.stderr)
+        return False
+    return True
 
 
 def cmd_list(as_json: bool = False) -> int:
@@ -130,7 +139,8 @@ def cmd_download(
         targets.append((f"llm-{tier}", llm))
 
     models_dir = _models_dir()
-    models_dir.mkdir(parents=True, exist_ok=True)
+    if not _prepare_models_dir(models_dir):
+        return 1
 
     for label, spec in targets:
         if spec is None:
@@ -138,9 +148,15 @@ def cmd_download(
             continue
         local = model_path(spec, models_dir)
         if local.exists() and not force:
-            print(
-                f"  [{label}] {local.name} already present ({local.stat().st_size / 1024**3:.2f} GB)"
-            )
+            try:
+                size_gb = local.stat().st_size / 1024**3
+            except OSError as exc:
+                print(
+                    f"  [{label}] FAILED: failed to inspect existing model {local}: {exc}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(f"  [{label}] {local.name} already present ({size_gb:.2f} GB)")
             continue
         print(f"  [{label}] downloading {spec.hf_url}  ({spec.size_gb} GB) → {local}")
         try:
@@ -179,11 +195,16 @@ def cmd_verify(tier: str | None = None) -> int:
         if spec is None:
             continue
         local = model_path(spec, _models_dir())
-        if not local.exists():
-            print(f"  [{label}] MISSING: {local}")
+        try:
+            if not local.exists():
+                print(f"  [{label}] MISSING: {local}")
+                issues += 1
+                continue
+            size_gb = local.stat().st_size / 1024**3
+        except OSError as exc:
+            print(f"  [{label}] ERROR: cannot inspect {local}: {exc}")
             issues += 1
             continue
-        size_gb = local.stat().st_size / 1024**3
         expected = spec.size_gb
         # Tolerance ±10%
         if expected > 0 and abs(size_gb - expected) / expected > 0.1:
@@ -239,17 +260,22 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
 
     if file is not None:
         local = _models_dir() / file
-        if not local.exists():
-            # Try absolute path
-            local = Path(file)
-        if not local.exists():
-            print(f"ERROR: file not found: {file}", file=sys.stderr)
-            return 2
-        size_gib = local.stat().st_size / 1024**3
+        try:
+            if not local.exists():
+                # Try absolute path
+                local = Path(file)
+            if not local.exists():
+                print(f"ERROR: file not found: {file}", file=sys.stderr)
+                return 2
+            stat_result = local.stat()
+        except OSError as exc:
+            print(f"ERROR: failed to inspect {local}: {exc}", file=sys.stderr)
+            return 1
+        size_gib = stat_result.st_size / 1024**3
         print(f"{local.name}")
         print(f"  Path:    {local}")
-        print(f"  Size:    {size_gib:.2f} GiB ({local.stat().st_size:,} bytes)")
-        mtime = local.stat().st_mtime
+        print(f"  Size:    {size_gib:.2f} GiB ({stat_result.st_size:,} bytes)")
+        mtime = stat_result.st_mtime
         from datetime import datetime as _dt
 
         print(f"  Modified: {_dt.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')}")
@@ -289,10 +315,15 @@ def cmd_pull(
         return 2
 
     models_dir = _models_dir()
-    models_dir.mkdir(parents=True, exist_ok=True)
+    if not _prepare_models_dir(models_dir):
+        return 1
     target = models_dir / file
     if target.exists() and not force:
-        size_gib = target.stat().st_size / 1024**3
+        try:
+            size_gib = target.stat().st_size / 1024**3
+        except OSError as exc:
+            print(f"ERROR: failed to inspect existing model {target}: {exc}", file=sys.stderr)
+            return 1
         print(f"✓ already present: {target} ({size_gib:.2f} GiB) — use --force to re-download")
         return 0
 
@@ -303,14 +334,22 @@ def cmd_pull(
     url = f"https://huggingface.co/{repo}/resolve/main/{file}"
     print(f"Downloading {url}")
     print(f"  → {target}")
-    rc = subprocess.run(
-        ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url],
-        check=False,
-    ).returncode
+    try:
+        rc = subprocess.run(
+            ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url],
+            check=False,
+        ).returncode
+    except OSError as exc:
+        print(f"ERROR: curl failed: {exc}", file=sys.stderr)
+        return 1
     if rc != 0:
         print(f"ERROR: curl rc={rc}", file=sys.stderr)
         return 1
-    size_gib = target.stat().st_size / 1024**3
+    try:
+        size_gib = target.stat().st_size / 1024**3
+    except OSError as exc:
+        print(f"ERROR: failed to inspect downloaded model {target}: {exc}", file=sys.stderr)
+        return 1
     print(f"✓ downloaded {size_gib:.2f} GiB → {target}")
     return 0
 
@@ -357,8 +396,16 @@ def cmd_rm(model_id: str | None = None, file: str | None = None, force: bool = F
         except OSError:
             pass
 
-    size_gib = target.stat().st_size / 1024**3
-    target.unlink()
+    try:
+        size_gib = target.stat().st_size / 1024**3
+    except OSError as exc:
+        print(f"ERROR: failed to inspect model {target}: {exc}", file=sys.stderr)
+        return 1
+    try:
+        target.unlink()
+    except OSError as exc:
+        print(f"ERROR: failed to remove {target}: {exc}", file=sys.stderr)
+        return 1
     print(f"✓ removed {target} ({size_gib:.2f} GiB freed)")
     return 0
 
@@ -373,32 +420,47 @@ def cmd_list_local(as_json: bool = False) -> int:
         print(f"models dir not present: {models_dir}")
         return 0
 
-    files = sorted(p for p in models_dir.iterdir() if p.suffix in (".gguf", ".safetensors", ".bin"))
+    try:
+        files = sorted(
+            p for p in models_dir.iterdir() if p.suffix in (".gguf", ".safetensors", ".bin")
+        )
+    except OSError as exc:
+        print(f"ERROR: failed to list models in {models_dir}: {exc}", file=sys.stderr)
+        return 1
     if not files:
         print(f"models dir empty: {models_dir}")
         return 0
+
+    records = []
+    for f in files:
+        try:
+            stat_result = f.stat()
+        except OSError as exc:
+            print(f"ERROR: failed to inspect model file {f}: {exc}", file=sys.stderr)
+            return 1
+        records.append((f, stat_result))
 
     if as_json:
         out = [
             {
                 "name": f.name,
-                "size_bytes": f.stat().st_size,
-                "size_gib": f.stat().st_size / 1024**3,
-                "modified": _dt.fromtimestamp(f.stat().st_mtime).isoformat(),
+                "size_bytes": stat_result.st_size,
+                "size_gib": stat_result.st_size / 1024**3,
+                "modified": _dt.fromtimestamp(stat_result.st_mtime).isoformat(),
                 "path": str(f),
             }
-            for f in files
+            for f, stat_result in records
         ]
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return 0
 
-    total_gib = sum(f.stat().st_size for f in files) / 1024**3
+    total_gib = sum(stat_result.st_size for _, stat_result in records) / 1024**3
     print(f"Local models in {models_dir}:")
     print(f"{'SIZE':>10}  {'MODIFIED':<20}  NAME")
     print("-" * 70)
-    for f in files:
-        size_gib = f.stat().st_size / 1024**3
-        mtime = _dt.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    for f, stat_result in records:
+        size_gib = stat_result.st_size / 1024**3
+        mtime = _dt.fromtimestamp(stat_result.st_mtime).strftime("%Y-%m-%d %H:%M")
         print(f"  {size_gib:>6.2f} GB  {mtime:<20}  {f.name}")
     print("-" * 70)
     print(f"  Total: {len(files)} files, {total_gib:.2f} GiB")

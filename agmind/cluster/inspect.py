@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import socket
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -58,6 +59,18 @@ class ProxmoxInspect:
 
 
 @dataclass(frozen=True)
+class LanNeighbor:
+    """A directly visible LAN neighbor from the local ARP/neighbor table."""
+
+    address: str
+    mac: str
+    interface: str
+    state: str
+    agmind_port_open: bool = False
+    ssh_port_open: bool = False
+
+
+@dataclass(frozen=True)
 class DeploymentTargetInspect:
     """Deploy target contract summary attached to an inspection recommendation."""
 
@@ -84,6 +97,7 @@ class ClusterInspectReport:
     docker: DockerInspect
     kubernetes: KubernetesInspect
     proxmox: ProxmoxInspect
+    lan_neighbors: tuple[LanNeighbor, ...] = ()
     peers: tuple[DiscoveredPeer, ...] = ()
     target: DeploymentTargetInspect | None = None
 
@@ -95,6 +109,7 @@ class ClusterInspectReport:
 CommandRunner = Callable[[tuple[str, ...]], CommandResult]
 PathExists = Callable[[str], bool]
 PeerDiscovery = Callable[[], list[DiscoveredPeer]]
+PortProbe = Callable[[str, int, float], bool]
 
 
 def inspect_cluster(
@@ -102,6 +117,7 @@ def inspect_cluster(
     run: CommandRunner | None = None,
     path_exists: PathExists | None = None,
     discover_peers: PeerDiscovery | None = None,
+    port_probe: PortProbe | None = None,
     discover_timeout: float = DEFAULT_DISCOVERY_TIMEOUT,
     targets: Mapping[str, DeploymentTarget] | None = None,
 ) -> ClusterInspectReport:
@@ -115,12 +131,18 @@ def inspect_cluster(
     kubernetes = _inspect_kubernetes(runner)
     proxmox = _inspect_proxmox(runner, exists)
     peers = tuple(peer_probe())
+    lan_neighbors = _inspect_lan_neighbors(runner, port_probe or _probe_tcp_port)
     detected_target, confidence, reasons, warnings = _recommend_target(
         docker=docker,
         kubernetes=kubernetes,
         proxmox=proxmox,
         peer_count=len(peers),
+        lan_neighbor_count=len(lan_neighbors),
     )
+    if lan_neighbors and not peers:
+        warnings.append(
+            "AGmind mDNS peers are empty, but LAN neighbor candidates are visible; run `agmind cluster advertise` on the other node or open TCP 41423."
+        )
     target = _target_inspect(detected_target, target_catalog, warnings)
 
     return ClusterInspectReport(
@@ -131,6 +153,7 @@ def inspect_cluster(
         docker=docker,
         kubernetes=kubernetes,
         proxmox=proxmox,
+        lan_neighbors=lan_neighbors,
         peers=peers,
         target=target,
     )
@@ -187,12 +210,92 @@ def _inspect_proxmox(run: CommandRunner, path_exists: PathExists) -> ProxmoxInsp
     )
 
 
+def _inspect_lan_neighbors(run: CommandRunner, port_probe: PortProbe) -> tuple[LanNeighbor, ...]:
+    result = run(("ip", "neigh", "show"))
+    if result.returncode != 0:
+        return ()
+
+    gateways = _default_gateways(run)
+    neighbors: list[LanNeighbor] = []
+    for address, interface, mac, state in _parse_ip_neighbors(result.stdout):
+        if address in gateways:
+            continue
+        neighbors.append(
+            LanNeighbor(
+                address=address,
+                mac=mac,
+                interface=interface,
+                state=state,
+                agmind_port_open=port_probe(address, 41423, 0.3),
+                ssh_port_open=port_probe(address, 22, 0.3),
+            )
+        )
+    return tuple(neighbors)
+
+
+def _default_gateways(run: CommandRunner) -> set[str]:
+    result = run(("ip", "route", "show", "default"))
+    if result.returncode != 0:
+        return set()
+    gateways: set[str] = set()
+    for raw in result.stdout.splitlines():
+        parts = raw.split()
+        if "via" not in parts:
+            continue
+        try:
+            gateways.add(parts[parts.index("via") + 1])
+        except IndexError:
+            continue
+    return gateways
+
+
+def _parse_ip_neighbors(stdout: str) -> tuple[tuple[str, str, str, str], ...]:
+    out: list[tuple[str, str, str, str]] = []
+    ignored_states = {"FAILED", "INCOMPLETE", "NOARP"}
+    for raw in stdout.splitlines():
+        parts = raw.split()
+        if len(parts) < 2:
+            continue
+        address = parts[0]
+        if ":" in address:
+            continue
+        state = parts[-1].upper()
+        if state in ignored_states:
+            continue
+        try:
+            dev_index = parts.index("dev")
+            interface = parts[dev_index + 1]
+        except (ValueError, IndexError):
+            interface = ""
+        try:
+            mac_index = parts.index("lladdr")
+            mac = parts[mac_index + 1]
+        except (ValueError, IndexError):
+            mac = ""
+        if not mac:
+            continue
+        out.append((address, interface, mac, state))
+    return tuple(out)
+
+
+def _probe_tcp_port(address: str, port: int, timeout: float) -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        return sock.connect_ex((address, port)) == 0
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
 def _recommend_target(
     *,
     docker: DockerInspect,
     kubernetes: KubernetesInspect,
     proxmox: ProxmoxInspect,
     peer_count: int,
+    lan_neighbor_count: int,
 ) -> tuple[str, float, list[str], list[str]]:
     reasons: list[str] = []
     warnings: list[str] = []
@@ -218,6 +321,8 @@ def _recommend_target(
             reasons.append("host appears to be a Proxmox/KVM guest")
         if peer_count:
             reasons.append(f"{peer_count} AGmind LAN peer(s) discovered")
+        elif lan_neighbor_count:
+            reasons.append(f"{lan_neighbor_count} LAN neighbor candidate(s) visible")
         return "ubuntu-compose", 0.7, reasons, warnings
 
     warnings.append(
@@ -372,6 +477,7 @@ __all__ = [
     "DeploymentTargetInspect",
     "DockerInspect",
     "KubernetesInspect",
+    "LanNeighbor",
     "ProxmoxInspect",
     "inspect_cluster",
 ]

@@ -16,6 +16,34 @@
 
 ## TL;DR — single-node install
 
+Recommended TUI path for a clean manual install:
+
+```bash
+# 1. Clone repo
+git clone https://github.com/botAGI/AGmind64 && cd AGmind64
+
+# 2. Install local CLI deps
+uv venv
+uv pip install -e ".[dev]"
+
+# 3. Optional non-destructive proof if Docker Compose 2.24+ is already installed
+agmind verify install --domain lab.example.com
+
+# 4. Interactive one-command install in TUI
+# Bootstrap installs/repairs official Docker Engine + docker-compose-plugin.
+agmind setup
+```
+
+The TUI path runs the wizard, privileged bootstrap, runtime `.env` write,
+`docker compose config --quiet` for the exact selected stack, image pulls,
+model pulls, deploy, health checks, rollback-aware failure handling, and a final
+hint to `/opt/agmind/.env` without printing secret values.
+If Docker is preinstalled manually, use the official Docker Engine packages
+(`docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`,
+`docker-compose-plugin`) rather than the distro `docker.io` package.
+
+Legacy/manual Ansible path:
+
 ```bash
 # 1. Clone repo
 git clone https://github.com/botAGI/AGmind64 && cd AGmind64
@@ -129,6 +157,17 @@ Quick wins:
 - `agmind doctor` показывает все warnings с конкретными fix-командами
 - `agmind deploy logs <service>` — tail контейнерных логов
 - `agmind status --json` — текущий backend selection с capabilities
+
+## Backup / restore
+
+```bash
+agmind backup --ask-sudo-password --output ~/agmind-backup.tar.gz
+agmind restore --ask-sudo-password ~/agmind-backup.tar.gz
+```
+
+This backs up AGmind config/state and deploy snapshots, not GGUF models or
+Docker volume data. Keep service data under `/var/lib/agmind` protected by
+separate storage snapshots.
 
 ## Что дальше
 

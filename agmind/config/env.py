@@ -48,6 +48,10 @@ def write_env(
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.chmod(tmp, mode)
-    tmp.replace(p)
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.chmod(tmp, mode)
+        tmp.replace(p)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise

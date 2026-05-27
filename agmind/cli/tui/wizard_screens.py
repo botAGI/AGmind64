@@ -131,6 +131,18 @@ class DomainScreen(Screen[None]):
                 password=True,
                 validators=[TokenLengthValidator()],
             )
+            if getattr(self.app, "require_sudo_password", False):
+                yield Label("Sudo password", classes="section")
+                yield Static(
+                    "[dim](bootstrap only — hidden input, never saved to state)[/dim]",
+                    classes="hint",
+                )
+                yield Input(
+                    placeholder="sudo password",
+                    id="sudo-password-input",
+                    value=getattr(self.app.state, "sudo_password", ""),
+                    password=True,
+                )
             # M5.4.2: cluster replicate checkbox (приходит вместе с peers banner)
             if peers:
                 from agmind.cli.tui.setup_wizard import AGCheckbox
@@ -160,6 +172,8 @@ class DomainScreen(Screen[None]):
     def _save_and_advance(self) -> None:
         self.app.state.domain = self.query_one("#domain-input", Input).value.strip()
         self.app.state.cf_api_token = self.query_one("#cf-token-input", Input).value.strip()
+        if getattr(self.app, "require_sudo_password", False):
+            self.app.state.sudo_password = self.query_one("#sudo-password-input", Input).value
         # M5.4: persist cluster-replicate checkbox если он есть на экране
         try:
             cb = self.query_one("#cluster-replicate-checkbox", Checkbox)
@@ -172,6 +186,9 @@ class DomainScreen(Screen[None]):
             return
         if self.app.state.cf_api_token and len(self.app.state.cf_api_token) < 20:
             self.app.notify("CF token < 20 chars", severity="error")
+            return
+        if getattr(self.app, "require_sudo_password", False) and not self.app.state.sudo_password:
+            self.app.notify("Sudo password нужен для bootstrap step", severity="error")
             return
         self.app.push_screen(ModelScreen())
 
@@ -418,7 +435,7 @@ class ModelScreen(Screen[None]):
 
 
 class ServicesScreen(Screen[None]):
-    """Step 3: per-tier service selection."""
+    """Step 3: service selection split into installer-facing departments."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("alt+b", "back", "Back"),
@@ -426,21 +443,40 @@ class ServicesScreen(Screen[None]):
         Binding("f1", "help", "Help"),
     ]
 
+    def __init__(self, department_index: int = 0) -> None:
+        super().__init__()
+        self.department_index = department_index
+        self._syncing_service_selection = False
+
+    @property
+    def current_department_key(self) -> str:
+        departments = self._departments()
+        if not departments:
+            return ""
+        index = max(0, min(self.department_index, len(departments) - 1))
+        return departments[index][0]
+
     def compose(self) -> ComposeResult:
         from agmind.cli.tui.setup_wizard import (
+            _SERVICE_DEPARTMENT_HINTS,
+            _SERVICE_DEPARTMENT_LABELS,
             _TIER_LABELS,
             AGCheckbox,
         )
 
         yield Header(show_clock=False)
-        services_by_tier = self.app.services_by_tier
-        total = sum(len(svcs) for svcs in services_by_tier.values())
+        departments = self._departments()
+        total = sum(len(services) for _, services in departments)
+        current_key, current_services = departments[self.department_index]
+        department_label = _SERVICE_DEPARTMENT_LABELS.get(
+            current_key,
+            _TIER_LABELS.get(current_key, current_key),
+        )
         yield StepHeader(
             3,
             4,
-            t("wizard.section.services", default=f"Services ({total} available)").format(
-                total=total
-            ),
+            t("wizard.section.services", default="Services").format(total=total)
+            + f" {self.department_index + 1}/{len(departments)}",
         )
         # M5.3.4: empty-state banner shown ONLY когда 0 selected (initial reactive)
         selected_count = len(self.app.state.services)
@@ -452,19 +488,20 @@ class ServicesScreen(Screen[None]):
             classes="empty-banner" if selected_count == 0 else "hint",
         )
         with VerticalScroll(id="service-checkboxes"):
-            for tier, services in services_by_tier.items():
-                tier_label = _TIER_LABELS.get(tier, tier)
-                with Container(classes="tier-group"):
-                    yield Label(
-                        f"{tier_label}  ·  {len(services)} services",
-                        classes="tier-section",
+            with Container(classes="tier-group"):
+                yield Label(
+                    f"{department_label}  ·  {len(current_services)} services",
+                    classes="tier-section",
+                )
+                hint = _SERVICE_DEPARTMENT_HINTS.get(current_key)
+                if hint:
+                    yield Static(f"[dim]{hint}[/dim]", classes="hint")
+                for name, _purpose in current_services:
+                    yield AGCheckbox(
+                        name,
+                        id=f"svc-{name.replace('-', '_')}",
+                        value=(name in self.app.state.services),
                     )
-                    for name, _purpose in services:
-                        yield AGCheckbox(
-                            name,
-                            id=f"svc-{name.replace('-', '_')}",
-                            value=(name in self.app.state.services),
-                        )
         with Horizontal(id="nav-row"):
             yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
             yield Button(t("wizard.btn.next"), id="next-btn", variant="primary")
@@ -474,17 +511,34 @@ class ServicesScreen(Screen[None]):
         """M5.3.4: re-render banner когда меняется selection count."""
         if not str(event.checkbox.id or "").startswith("svc-"):
             return
-        if event.value and not getattr(self, "_syncing_service_selection", False):
+        if not self._syncing_service_selection:
+            self._sync_state_from_visible_checkboxes()
             service_name = self._service_name_for_checkbox(event.checkbox.id)
-            if service_name in DIFY_VECTOR_PROVIDERS:
+            if event.value and service_name in DIFY_VECTOR_PROVIDERS:
                 self._uncheck_other_vector_providers(service_name)
             self._sync_expanded_service_selection()
+        self._update_selection_banner()
+
+    def _departments(self) -> list[tuple[str, list[tuple[str, str]]]]:
+        return list(self.app.services_by_tier.items())
+
+    def _current_department_services(self) -> list[tuple[str, str]]:
+        departments = self._departments()
+        if not departments:
+            return []
+        index = max(0, min(self.department_index, len(departments) - 1))
+        return departments[index][1]
+
+    def _visible_service_names(self) -> list[str]:
+        return [name for name, _ in self._current_department_services()]
+
+    def _update_selection_banner(self) -> None:
         selected = self._selected_service_count()
         try:
             banner = self.query_one("#services-empty-banner", Static)
         except Exception:
             return
-        total = sum(len(svcs) for svcs in self.app.services_by_tier.values())
+        total = sum(len(services) for _, services in self._departments())
         if selected == 0:
             banner.update("[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]")
             banner.set_classes("empty-banner")
@@ -493,20 +547,21 @@ class ServicesScreen(Screen[None]):
             banner.set_classes("hint")
 
     def _selected_service_count(self) -> int:
-        return sum(
-            1
-            for tier_services in self.app.services_by_tier.values()
-            for name, _ in tier_services
-            if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value
-        )
+        return len(set(self.app.state.services))
 
     def _checked_service_names(self) -> list[str]:
-        services: list[str] = []
-        for tier_services in self.app.services_by_tier.values():
-            for name, _ in tier_services:
-                if self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox).value:
-                    services.append(name)
-        return services
+        self._sync_state_from_visible_checkboxes()
+        return sorted(set(self.app.state.services))
+
+    def _sync_state_from_visible_checkboxes(self) -> None:
+        selected = set(self.app.state.services)
+        for name in self._visible_service_names():
+            checkbox = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
+            if checkbox.value:
+                selected.add(name)
+            else:
+                selected.discard(name)
+        self.app.state.services = sorted(selected)
 
     def _service_name_for_checkbox(self, widget_id: object) -> str | None:
         raw_id = str(widget_id or "")
@@ -520,25 +575,32 @@ class ServicesScreen(Screen[None]):
         return None
 
     def _uncheck_other_vector_providers(self, selected_provider: str) -> None:
-        for provider in DIFY_VECTOR_PROVIDERS:
-            if provider == selected_provider:
-                continue
-            try:
-                checkbox = self.query_one(f"#svc-{provider.replace('-', '_')}", Checkbox)
-            except Exception:
-                continue
-            checkbox.value = False
+        selected = set(self.app.state.services)
+        self._syncing_service_selection = True
+        try:
+            for provider in DIFY_VECTOR_PROVIDERS:
+                if provider == selected_provider:
+                    continue
+                selected.discard(provider)
+                try:
+                    checkbox = self.query_one(f"#svc-{provider.replace('-', '_')}", Checkbox)
+                except Exception:
+                    continue
+                checkbox.value = False
+        finally:
+            self._syncing_service_selection = False
+        self.app.state.services = sorted(selected)
 
     def _sync_expanded_service_selection(self) -> None:
         from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
 
         expanded = set(expand_selected_services_for_setup(self._checked_service_names()))
+        self.app.state.services = sorted(expanded)
         self._syncing_service_selection = True
         try:
-            for tier_services in self.app.services_by_tier.values():
-                for name, _ in tier_services:
-                    checkbox = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
-                    checkbox.value = name in expanded
+            for name in self._visible_service_names():
+                checkbox = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
+                checkbox.value = name in expanded
         finally:
             self._syncing_service_selection = False
 
@@ -560,14 +622,12 @@ class ServicesScreen(Screen[None]):
     def _save_and_advance(self) -> None:
         from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
 
-        services: list[str] = []
-        for tier_services in self.app.services_by_tier.values():
-            for name, _ in tier_services:
-                cb = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
-                if cb.value:
-                    services.append(name)
-        services = expand_selected_services_for_setup(services)
+        services = expand_selected_services_for_setup(self._checked_service_names())
         self.app.state.services = services
+        departments = self._departments()
+        if self.department_index < len(departments) - 1:
+            self.app.push_screen(ServicesScreen(self.department_index + 1))
+            return
         if not services:
             self.app.notify("Выбери хотя бы один service", severity="error")
             return

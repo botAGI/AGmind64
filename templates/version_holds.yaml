@@ -6,7 +6,7 @@
 #     hold_until: ISO-date (optional — auto-clear после)
 #     max_version: "v1.x"  (optional cap — bump до этого OK, выше — нет)
 #
-# Используется scripts/version_check.py чтобы pad'нуть statuses:
+# Используется scripts/checks/version_check.py чтобы pad'нуть statuses:
 #   ⏸ HOLD <reason>
 #   🔒 X-pinned (if dependency requires)
 #
@@ -18,8 +18,8 @@ ghcr.io/ggml-org/llama.cpp:
   reason: "Phase H bench reference build (b9049). Bump после re-bench на новой версии."
   hold_until: 2026-08-01
 
-# Dify pin: 1.14.2 — current latest per github.com/langgenius/dify/releases.
-# Plugin Daemon co-bump обязателен (см. AGmind issue#63 legacy precedent).
+# Dify pin: plugin daemon co-bump required; verify against upstream releases
+# before changing any Dify image in isolation.
 langgenius/dify-api:
   reason: "Plugin Daemon co-bump required; bump только после verify в dify-plugin-daemon."
 

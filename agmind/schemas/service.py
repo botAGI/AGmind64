@@ -15,9 +15,10 @@ metadata (tier, owner). Backward compat через `to_legacy_service()`.
 from __future__ import annotations
 
 import re
+from ipaddress import ip_address
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
     from agmind.services.registry import Service
@@ -38,6 +39,18 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 _MEM_LIMIT_RE = re.compile(r"^\d+(k|m|g)$")
 _PORT_RE = re.compile(r"^(\d{1,3}(\.\d{1,3}){3}:)?\d{1,5}:\d{1,5}$")
 _LATEST_RE = re.compile(r":latest(?:$|@)")
+_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}\Z")
+
+
+def _is_sha256_digest(value: str) -> bool:
+    return bool(_SHA256_DIGEST_RE.match(value))
+
+
+def _image_has_tag(image: str) -> bool:
+    image_without_digest = image.split("@", 1)[0]
+    last_slash = image_without_digest.rfind("/")
+    last_colon = image_without_digest.rfind(":")
+    return last_colon > last_slash and last_colon < len(image_without_digest) - 1
 
 
 class HealthCheck(BaseModel):
@@ -274,9 +287,39 @@ class ServiceDescriptor(BaseModel):
     def _check_image(cls, v: str) -> str:
         if _LATEST_RE.search(v):
             raise ValueError(f"image '{v}' uses :latest — pin to semver (pinned image invariant)")
-        if "@sha256:" not in v and ":" not in v:
+        if "@" in v:
+            image_name, digest = v.rsplit("@", 1)
+            if any(char.isspace() for char in image_name):
+                raise ValueError(f"image '{v}' contains whitespace — pin to exact image reference")
+            if image_name.endswith(":"):
+                raise ValueError(f"image '{v}' has no tag — pin to semver")
+            if not image_name or not _is_sha256_digest(digest):
+                raise ValueError(
+                    f"image '{v}' has invalid sha256 digest — expected sha256:<64 hex chars>"
+                )
+            return v
+        if any(char.isspace() for char in v):
+            raise ValueError(f"image '{v}' contains whitespace — pin to exact image reference")
+        if not _image_has_tag(v):
             raise ValueError(f"image '{v}' has no tag — pin to semver")
         return v
+
+    @field_validator("digest")
+    @classmethod
+    def _check_digest(cls, v: str | None) -> str | None:
+        if not v:
+            return v
+        if not _is_sha256_digest(v):
+            raise ValueError(f"digest '{v}' invalid: expected sha256 digest with 64 hex chars")
+        return v
+
+    @model_validator(mode="after")
+    def _check_single_digest_source(self) -> ServiceDescriptor:
+        if "@" in self.image and self.digest:
+            raise ValueError(
+                "duplicate digest: use either image@sha256:<digest> or digest field, not both"
+            )
+        return self
 
     @field_validator("ports")
     @classmethod
@@ -287,6 +330,19 @@ class ServiceDescriptor(BaseModel):
                     f"port '{p}' invalid: expected '[ip:]host:container' format "
                     "(e.g. '127.0.0.1:8080:8080' or '8080:8080')"
                 )
+            parts = p.split(":")
+            if len(parts) == 3:
+                bind_ip, host_port, container_port = parts
+                try:
+                    ip_address(bind_ip)
+                except ValueError as exc:
+                    raise ValueError(f"port '{p}' invalid: bind IP is not valid") from exc
+            else:
+                host_port, container_port = parts
+            for label, raw_port in (("host", host_port), ("container", container_port)):
+                port = int(raw_port)
+                if port < 1 or port > 65535:
+                    raise ValueError(f"port '{p}' invalid: {label} port must be 1..65535")
         return v
 
     @field_validator("depends_on")

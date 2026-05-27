@@ -49,7 +49,7 @@ Legacy AGmind решил это weekly GitHub Action который сканир
   таблицу удобнее чем 25 open PRs
 - ➕ Mirror legacy AGmind UX точно как user попросил
 - ➕ Tests cover regex / scanner / compare логику — refactor safe
-- ➖ Поддерживать парсеры в `scripts/version_check.py` руками. Mitigation:
+- ➖ Поддерживать парсеры в `scripts/checks/version_check.py` руками. Mitigation:
   100 LOC + unit tests, легко.
 - ➖ Probe rate limits (Docker Hub anonymous = 100/6h; GitHub anon = 60/h).
   Mitigation: only ~25 pin'ов; fits в anonymous budget.
@@ -61,10 +61,10 @@ Legacy AGmind решил это weekly GitHub Action который сканир
 ### Структура
 
 ```
-scripts/version_check.py         # main scanner + report renderer
+scripts/checks/version_check.py         # main scanner + report renderer
 templates/version_holds.yaml      # HOLD config (image → reason)
 .github/workflows/version-check.yml  # weekly cron + issue update
-tests/test_version_check.py       # 11 unit tests (regex, compare, end-to-end)
+tests/governance/test_version_check.py       # 11 unit tests (regex, compare, end-to-end)
 ```
 
 ### scanner pipeline
@@ -161,7 +161,7 @@ ghcr.io/ggml-org/llama.cpp:
 
 ### Что нужно сделать
 
-- [x] P.1: `scripts/version_check.py` сканер + report
+- [x] P.1: `scripts/checks/version_check.py` сканер + report
 - [x] P.2: registry probes (Docker Hub + GHCR anonymous)
 - [x] P.3: `templates/version_holds.yaml` + parser
 - [x] P.4: `.github/workflows/version-check.yml` cron + issue management
@@ -173,7 +173,7 @@ ghcr.io/ggml-org/llama.cpp:
 
 ## Откат
 
-- `scripts/version_check.py` — изолированный, не импортируется production
+- `scripts/checks/version_check.py` — изолированный, не импортируется production
   кодом. `git rm` безболезненно.
 - GH Action отключается через `disabled: true` в workflow YAML, или
   удалением файла.

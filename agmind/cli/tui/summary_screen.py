@@ -92,12 +92,17 @@ class SummaryScreen(Screen[None]):
         state_path: Path,
         token_path: Path,
         install_dir: Path,
+        services: list[str] | None = None,
         deploy_result: DeployResult | None = None,
     ) -> None:
         super().__init__()
+        if isinstance(services, DeployResult) and deploy_result is None:
+            deploy_result = services
+            services = None
         self.mode = mode
         self.domain = domain
         self.profiles = profiles
+        self.services = services or []
         self.backend = backend
         self.model_tier = model_tier
         self.state_path = state_path
@@ -143,18 +148,30 @@ class SummaryScreen(Screen[None]):
         yield Footer()
 
     def _config_summary(self) -> str:
+        selection_line = (
+            f"  Services:     {', '.join(self.services)}"
+            if self.services
+            else f"  Profiles:     {', '.join(self.profiles)}"
+        )
         return (
             f"  Domain:       {self.domain}\n"
-            f"  Profiles:     {', '.join(self.profiles)}\n"
+            f"{selection_line}\n"
             f"  Backend:      {self.backend}\n"
             f"  Model tier:   {self.model_tier}\n"
             f"  Install dir:  {self.install_dir}\n"
+            f"  Runtime env:  {self.install_dir / '.env'} (chmod 600)\n"
             f"  State:        {self.state_path}\n"
-            f"  Token:        {self.token_path} (chmod 600)"
+            f"  Token:        {self.token_path} (chmod 600)\n"
+            "  Credentials are not printed in summary; read the env file on host."
         )
 
     def _next_steps_text(self) -> str:
         profiles_csv = ",".join(self.profiles)
+        selection_flags = (
+            " \\\n".join(f"        --service {service}" for service in self.services)
+            if self.services
+            else f"        --profile {profiles_csv}"
+        )
         if self.mode == "deploy_success":
             return (
                 "━━━━━━ What to do next ━━━━━━\n"
@@ -163,7 +180,7 @@ class SummaryScreen(Screen[None]):
                 f"      agmind status\n"
                 "\n"
                 "  • View logs of any service:\n"
-                f"      docker logs agmind-llama-llm -f\n"
+                f"      agmind logs llama-llm --follow\n"
                 "\n"
                 "  • Open services in browser:\n"
                 f"      https://grafana.{self.domain}\n"
@@ -171,20 +188,19 @@ class SummaryScreen(Screen[None]):
                 f"      https://llama.{self.domain}\n"
                 "\n"
                 "  • Update config — re-run wizard:\n"
-                "      agmind setup --deploy"
+                "      agmind setup"
             )
         elif self.mode == "deploy_failure":
             return (
                 "━━━━━━ Troubleshoot ━━━━━━\n"
                 "\n"
                 "  • Check what failed in scrollback above\n"
-                "  • View container logs:\n"
-                "      docker ps -a\n"
-                "      docker logs <container-name>\n"
+                "  • View recent service logs:\n"
+                "      agmind logs --tail 200\n"
                 "  • Rollback to previous state:\n"
                 "      agmind rollback\n"
                 "  • Or try smaller profile first:\n"
-                "      agmind setup --deploy   # выбери только 'core'"
+                "      agmind setup   # выбери только 'core'"
             )
         else:
             # next_steps mode
@@ -195,19 +211,19 @@ class SummaryScreen(Screen[None]):
                 "\n"
                 f"      agmind deploy --apply \\\n"
                 f"        --domain {self.domain} \\\n"
-                f"        --profile {profiles_csv} \\\n"
+                f"{selection_flags} \\\n"
                 f"        --install-dir {self.install_dir} \\\n"
                 "        --no-prompt\n"
                 "\n"
-                "  Option B — full deploy через Ansible (systemd + secrets):\n"
+                "  Option B — full install через AGmind CLI (systemd + secrets):\n"
                 "\n"
-                "      sudo ansible-playbook ansible/install.yml --extra-vars \\\n"
-                f'        "agmind_domain={self.domain} \\\n'
-                f"         agmind_cf_api_token=$(cat {self.token_path}) \\\n"
-                f'         agmind_profiles=[{profiles_csv}]"\n'
+                "      agmind install --no-tui \\\n"
+                f"        --from-state {self.state_path} \\\n"
+                f"        --domain {self.domain} \\\n"
+                f"        --cf-token-file {self.token_path}\n"
                 "\n"
                 "  Option C — повторить wizard с auto-deploy:\n"
-                "      agmind setup --deploy"
+                "      agmind setup"
             )
 
     def _deploy_result_text(self) -> str:

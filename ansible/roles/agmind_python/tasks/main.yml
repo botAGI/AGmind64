@@ -37,7 +37,7 @@
 
 - name: Symlink audit_forbidden.py for CI / pre-commit
   ansible.builtin.file:
-    src: "{{ playbook_dir }}/../scripts/audit_forbidden.py"
+    src: "{{ playbook_dir }}/../scripts/checks/audit_forbidden.py"
     dest: "{{ agmind_install_dir }}/audit_forbidden.py"
     state: link
     force: true

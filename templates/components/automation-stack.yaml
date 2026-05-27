@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: automation-stack
+kind: app
+core:
+  upstream: https://github.com/n8n-io/n8n
+  min_version: 2.22.3
+  recommended_version: 2.22.3
+  current_pin: 2.22.3
+  update_policy: compatible-patch
+  source: registry
+runtime:
+  service_descriptors:
+    - n8n
+  compose_profiles:
+    - automation
+  ports:
+    - n8n:5678
+provides:
+  - automation_stack
+  - workflow_automation
+requires:
+  capabilities: []
+verification:
+  smoke:
+    - agmind render compose --profile automation --domain ci.example.com --output /tmp/agmind-n8n.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-n8n.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

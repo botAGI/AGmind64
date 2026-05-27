@@ -14,7 +14,7 @@ from typing import Final
 
 from agmind.compute.base import Backend
 from agmind.compute.config import ComputeConfig, Profile, read_config
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

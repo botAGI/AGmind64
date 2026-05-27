@@ -10,6 +10,12 @@ volumes:
 - /etc/agmind/alloy:/etc/alloy:ro
 - /var/log:/var/log:ro
 - /var/lib/docker/containers:/var/lib/docker/containers:ro
+- /var/lib/agmind/alloy:/var/lib/alloy/data
+command:
+- run
+- --server.http.listen-addr=0.0.0.0:12345
+- --storage.path=/var/lib/alloy/data
+- /etc/alloy/config.alloy
 depends_on:
 - loki
 resources:

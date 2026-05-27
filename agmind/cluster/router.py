@@ -15,7 +15,7 @@ import random
 from enum import Enum
 
 from agmind.cluster.peer import Peer, PeerHealth
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

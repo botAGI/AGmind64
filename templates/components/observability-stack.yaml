@@ -2,9 +2,9 @@
 id: observability-stack
 kind: ops
 core:
-  upstream: Prometheus, Grafana, Loki, Alloy, exporters, and Portainer release streams
-  recommended_version: 2026-05-23-r21
-  current_pin: 2026-05-23-r21
+  upstream: Prometheus, Grafana, Loki, Alloy, exporters, Portainer, Uptime Kuma, Homarr, Watchtower, Dozzle, and Netdata release streams
+  recommended_version: 2026-05-26-r22
+  current_pin: 2026-05-26-r22
   update_policy: compatible-minor
   source: manual
 runtime:
@@ -12,29 +12,40 @@ runtime:
     - alertmanager
     - alloy
     - cadvisor
+    - dozzle
     - grafana
+    - homarr
     - loki
+    - netdata
     - node-exporter
     - portainer
     - postgres-exporter
     - prometheus
     - proxmox-exporter
     - redis-exporter
+    - uptime-kuma
+    - watchtower
   compose_profiles:
     - observability
     - proxmox
   ports:
     - alertmanager:9093
     - cadvisor:8083
+    - dozzle:8084
     - grafana:3002
+    - homarr:7575
     - loki:3100
+    - netdata:19999
     - portainer:9443
     - prometheus:9090
     - proxmox-exporter:9221
+    - uptime-kuma:3003
 provides:
   - metrics
   - logs
   - dashboards
+  - service_health_dashboard
+  - container_update_monitor
 verification:
   smoke:
     - agmind render compose --profile core,observability --domain ci.example.com --output /tmp/agmind-obs.yml

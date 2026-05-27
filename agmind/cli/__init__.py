@@ -4,7 +4,7 @@
     agmind doctor      — preflight diagnostics
     agmind status      — backend / engine info
     agmind version     — pkg version + git rev
-    agmind audit       — wrapper над scripts/audit_forbidden.py
+    agmind audit       — wrapper над scripts/checks/audit_forbidden.py
 
 Установка typer/click — soft dependency. Если typer не установлен,
 `app()` падает с понятной инструкцией.
@@ -13,11 +13,12 @@
 from __future__ import annotations
 
 import json
+import stat
 import sys
 from pathlib import Path
 
 from agmind import __version__
-from agmind.log import setup as setup_logging
+from agmind.core.logging import setup as setup_logging
 
 # Lazy import typer чтобы import agmind.cli не валился без typer.
 try:
@@ -36,6 +37,31 @@ def _make_app() -> typer.Typer:
         no_args_is_help=True,
         add_completion=False,
     )
+
+    def _read_option_text_file(
+        path: Path,
+        option_name: str,
+        *,
+        require_mode: int | None = None,
+    ) -> str:
+        try:
+            if require_mode is not None:
+                mode = stat.S_IMODE(path.stat().st_mode)
+                if mode != require_mode:
+                    typer.echo(
+                        f"ERROR: {option_name} {path} has mode {oct(mode)}, "
+                        f"must be chmod {require_mode:o}",
+                        err=True,
+                    )
+                    raise typer.Exit(code=2)
+        except OSError as exc:
+            typer.echo(f"ERROR: cannot read {option_name} {path}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            typer.echo(f"ERROR: cannot read {option_name} {path}: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
 
     @app.callback()
     def _global_options(
@@ -119,7 +145,7 @@ def _make_app() -> typer.Typer:
         import subprocess
 
         result = subprocess.run(
-            ["python3", "scripts/audit_forbidden.py", "--fail"],
+            ["python3", "scripts/checks/audit_forbidden.py", "--fail"],
             check=False,
         )
         raise typer.Exit(code=result.returncode)
@@ -140,7 +166,13 @@ def _make_app() -> typer.Typer:
             "core,observability",
             "--profile",
             "-p",
-            help="Comma-separated profiles to deploy",
+            help="Comma-separated profiles to deploy (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
         ),
         install_dir: Path = typer.Option(
             Path("/opt/agmind"),
@@ -168,6 +200,11 @@ def _make_app() -> typer.Typer:
             "--healthcheck-timeout",
             help="Seconds to wait for healthy state",
         ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
         verbose: bool = typer.Option(
             False,
             "--verbose",
@@ -183,12 +220,14 @@ def _make_app() -> typer.Typer:
         profiles = [p.strip() for p in profile.split(",") if p.strip()]
         rc = cmd_deploy(
             profiles=profiles,
+            services=service,
             install_dir=install_dir,
             domain=domain,
             apply=apply,
             no_prompt=no_prompt,
             healthcheck_timeout=healthcheck_timeout,
             verbose=verbose,
+            ask_sudo_password=ask_sudo_password,
         )
         raise typer.Exit(code=rc)
 
@@ -231,6 +270,11 @@ def _make_app() -> typer.Typer:
     def deploy_logs(
         service: str | None = typer.Argument(None, help="Service name."),
         follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
         lines: int = typer.Option(100, "--lines", help="Initial backlog lines."),
     ) -> None:
         """Backward-compatible docker compose logs wrapper."""
@@ -261,6 +305,11 @@ def _make_app() -> typer.Typer:
             None,
             help="Snapshot ID (omit for latest)",
         ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
         install_dir: Path = typer.Option(
             Path("/opt/agmind"),
             "--install-dir",
@@ -270,7 +319,9 @@ def _make_app() -> typer.Typer:
         """Restore deployment from snapshot."""
         from agmind.cli.deploy_cmd import cmd_rollback
 
-        raise typer.Exit(code=cmd_rollback(snapshot_id, install_dir))
+        raise typer.Exit(
+            code=cmd_rollback(snapshot_id, install_dir, ask_sudo_password=ask_sudo_password)
+        )
 
     # ---- snapshots list (top-level) ----
     snapshots_app = typer.Typer(
@@ -320,7 +371,72 @@ def _make_app() -> typer.Typer:
         )
         sys.stdout.write(format_gc_report(reports))
 
-    # ---- setup TUI wizard (Phase J) ----
+    # ---- verify subcommand group (fresh-install/product gates) ----
+    verify_app = typer.Typer(
+        name="verify",
+        help="Run non-destructive product readiness gates.",
+        no_args_is_help=True,
+    )
+    app.add_typer(verify_app)
+
+    @verify_app.command("install")
+    def verify_install_cmd(
+        domain: str = typer.Option(
+            "lab.example.com",
+            "--domain",
+            help="Domain used for render/config validation.",
+        ),
+        scenario: list[str] | None = typer.Option(
+            None,
+            "--scenario",
+            "-s",
+            help="Fresh-install scenario to run; can be repeated.",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        skip_ansible: bool = typer.Option(
+            False,
+            "--skip-ansible",
+            help="Skip ansible-galaxy and ansible-playbook syntax checks.",
+        ),
+        skip_compose: bool = typer.Option(
+            False,
+            "--skip-compose",
+            help="Skip docker compose config validation.",
+        ),
+        skip_galaxy: bool = typer.Option(
+            False,
+            "--skip-galaxy",
+            help="Skip ansible-galaxy collection install before syntax check.",
+        ),
+        timeout_seconds: int = typer.Option(
+            240,
+            "--timeout",
+            min=1,
+            help="Per-command timeout in seconds.",
+        ),
+        work_dir: Path | None = typer.Option(
+            None,
+            "--work-dir",
+            help="Keep verification artifacts under this directory.",
+        ),
+    ) -> None:
+        """Prove `agmind setup` inputs can render/deploy cleanly without applying."""
+        from agmind.cli.verify_cmd import cmd_install
+
+        raise typer.Exit(
+            code=cmd_install(
+                domain=domain,
+                scenarios=scenario,
+                as_json=as_json,
+                skip_ansible=skip_ansible,
+                skip_compose=skip_compose,
+                skip_galaxy=skip_galaxy,
+                timeout_seconds=timeout_seconds,
+                work_dir=work_dir,
+            )
+        )
+
+    # ---- setup TUI wizard (full install entrypoint) ----
     @app.command()
     def setup(
         from_state: Path | None = typer.Option(
@@ -328,47 +444,51 @@ def _make_app() -> typer.Typer:
             "--from-state",
             help="Load saved state from JSON (non-interactive mode)",
         ),
-        deploy: bool = typer.Option(
+        domain: str | None = typer.Option(
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
+            help="Public domain для Traefik TLS (skip prompt if set).",
+        ),
+        cf_token_file: Path | None = typer.Option(
+            None,
+            "--cf-token-file",
+            help="File с Cloudflare API token (skip prompt if set, chmod 600).",
+        ),
+        model_id: str = typer.Option(
+            "",
+            "--model-id",
+            help="Curated model id (см. `agmind install --list-models`) или 'custom'.",
+        ),
+        model_repo: str = typer.Option("", "--model-repo", help="HF repo для custom LLM."),
+        model_file: str = typer.Option("", "--model-file", help="GGUF filename для LLM."),
+        ctx_size: int = typer.Option(0, "--ctx-size", help="Context size override."),
+        kv_cache: str = typer.Option("", "--kv-cache", help="KV cache quant override."),
+        list_models: bool = typer.Option(False, "--list-models", help="Print model catalog."),
+        lang: str = typer.Option("", "--lang", help="UI language (en|ru)."),
+        legacy_wizard: bool = typer.Option(False, "--legacy-wizard", help="Use legacy wizard."),
+        no_tui: bool = typer.Option(False, "--no-tui", help="Headless install for CI."),
+        dry_run: bool = typer.Option(
             False,
-            "--deploy",
-            help="Сразу запустить `agmind deploy --apply` после wizard exit",
+            "--dry-run",
+            help="Только wizard/config, без bootstrap/pull/deploy.",
         ),
     ) -> None:
-        """Interactive setup wizard (TUI). Wizard собирает config + token.
-
-        После Apply config сохраняется в ~/.local/share/agmind/. Реальный
-        deploy запускается отдельной командой (показывается в финальном box).
-        Используй `--deploy` чтобы сразу применить после wizard.
-        """
-        from agmind.cli.tui import run_setup_wizard
-        from agmind.cli.tui.setup_wizard import STATE_PATH, SetupState
-
-        initial: SetupState | None = None
-        if from_state is not None and from_state.exists():
-            try:
-                initial = SetupState.from_json(from_state)
-            except Exception as exc:  # noqa: BLE001
-                typer.echo(f"WARNING: failed to load state from {from_state}: {exc}")
-
-        # auto_deploy=True если флаг --deploy: Apply внутри TUI запускает
-        # DeployProgressScreen с live прогрессом (вместо shell post-exit deploy).
-        result = run_setup_wizard(initial_state=initial, auto_deploy=deploy)
-        if result is None:
-            typer.echo("Setup cancelled.")
-            raise typer.Exit(code=1)
-
-        # Phase J.1.6: всё показывается внутри TUI (SummaryScreen). Здесь —
-        # минимальный shell echo + exit code на основе deploy_result если был.
-        # User уже видел full summary в TUI.
-        deploy_result = getattr(result, "_deploy_result", None)
-        if deploy_result is not None:
-            # Auto-deploy mode — exit code reflects result
-            typer.echo(f"\n{'✓' if deploy_result.success else '✗'} {deploy_result.message}")
-            raise typer.Exit(code=0 if deploy_result.success else 1)
-        # Wizard-only mode — user уже видел next-steps в TUI SummaryScreen
-        typer.echo(
-            f"\n✓ Config saved to {STATE_PATH}. "
-            f"Use `agmind setup --deploy` to apply, или см. инструкции в TUI summary."
+        """End-to-end setup: wizard → bootstrap → pulls → deploy, all in TUI by default."""
+        install(
+            domain=domain,
+            cf_token_file=cf_token_file,
+            model_id=model_id,
+            model_repo=model_repo,
+            model_file=model_file,
+            ctx_size=ctx_size,
+            kv_cache=kv_cache,
+            list_models=list_models,
+            lang=lang,
+            legacy_wizard=legacy_wizard,
+            no_tui=no_tui,
+            dry_run=dry_run,
+            from_state=from_state,
         )
 
     # ---- service subcommand group (Phase H'.E) ----
@@ -541,7 +661,13 @@ def _make_app() -> typer.Typer:
             "core",
             "--profile",
             "-p",
-            help="Comma-separated profile names (core,rag,full,...)",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
         ),
         output: Path | None = typer.Option(
             None, "--output", "-o", help="Output file (default: stdout)"
@@ -565,6 +691,7 @@ def _make_app() -> typer.Typer:
         profiles = [p.strip() for p in profile.split(",") if p.strip()]
         rc = cmd_render_compose(
             profiles=profiles,
+            services=service,
             output=output,
             traefik=not no_traefik,
             diff=diff,
@@ -578,7 +705,13 @@ def _make_app() -> typer.Typer:
             "core",
             "--profile",
             "-p",
-            help="Comma-separated profile names (core,observability,proxmox,...)",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
         ),
         output: Path | None = typer.Option(
             None, "--output", "-o", help="Output file (default: stdout)"
@@ -594,6 +727,11 @@ def _make_app() -> typer.Typer:
             "--strict",
             help="Fail if selected descriptors contain Docker-only fields",
         ),
+        target: str | None = typer.Option(
+            None,
+            "--target",
+            help="Deployment target id; uses target profiles and exclusions",
+        ),
         no_namespace: bool = typer.Option(
             False,
             "--no-namespace",
@@ -606,10 +744,12 @@ def _make_app() -> typer.Typer:
         profiles = [p.strip() for p in profile.split(",") if p.strip()]
         rc = cmd_render_kubernetes(
             profiles=profiles,
+            services=service,
             output=output,
             namespace=namespace,
             strict=strict,
             include_namespace=not no_namespace,
+            target_id=target,
         )
         raise typer.Exit(code=rc)
 
@@ -645,44 +785,6 @@ def _make_app() -> typer.Typer:
             fail_on_warning=fail_on_warning,
         )
         raise typer.Exit(code=rc)
-
-    # ---- setup alias for install (Phase M4.2 — legacy UX parity) ----
-    @app.command(name="setup")
-    def setup_alias(
-        domain: str | None = typer.Option(None, "--domain", envvar="AGMIND_DOMAIN"),
-        cf_token_file: Path | None = typer.Option(None, "--cf-token-file"),
-        model_id: str = typer.Option("", "--model-id"),
-        lang: str = typer.Option("", "--lang"),
-        legacy_wizard: bool = typer.Option(False, "--legacy-wizard"),
-        dry_run: bool = typer.Option(False, "--dry-run"),
-    ) -> None:
-        """Alias for `agmind install` (legacy AGmind UX parity)."""
-        # Use direct invocation since typer commands are nested closures
-        if lang:
-            import os as _os
-
-            _os.environ["AGMIND_LANG"] = lang.strip().lower()
-
-        if dry_run:
-            typer.echo("agmind setup is alias для `agmind install`. Use `agmind install --help`.")
-            raise typer.Exit(code=0)
-
-        # Re-launch via subprocess — самый простой re-dispatch
-        import subprocess
-        import sys as _sys
-
-        cmd = [_sys.executable, "-m", "agmind", "install"]
-        if domain:
-            cmd.extend(["--domain", domain])
-        if cf_token_file:
-            cmd.extend(["--cf-token-file", str(cf_token_file)])
-        if model_id:
-            cmd.extend(["--model-id", model_id])
-        if lang:
-            cmd.extend(["--lang", lang])
-        if legacy_wizard:
-            cmd.append("--legacy-wizard")
-        raise typer.Exit(code=subprocess.run(cmd, check=False).returncode)
 
     # ---- cluster subcommand group (Phase M4.U.1 — mDNS auto-detect) ----
     cluster_app = typer.Typer(
@@ -1021,11 +1123,17 @@ def _make_app() -> typer.Typer:
             "--dry-run",
             help="Только preflight + wizard, без bootstrap/pull/deploy.",
         ),
+        from_state: Path | None = typer.Option(
+            None,
+            "--from-state",
+            help="Load saved setup state JSON before opening wizard.",
+        ),
     ) -> None:
-        """Phase N: end-to-end install (preflight → bootstrap → pull → deploy).
+        """Phase N: end-to-end install (wizard → bootstrap → pull → deploy).
 
-        Запрашивает sudo password один раз для bootstrap step (apt, usermod,
-        mkdir в /var/lib и /opt). После bootstrap всё остальное идёт от user.
+        В TUI sudo password собирается скрытым input внутри wizard и нужен
+        только для bootstrap step. В `--no-tui` режиме пароль запрашивается
+        обычным terminal prompt.
         """
         import getpass
 
@@ -1059,26 +1167,96 @@ def _make_app() -> typer.Typer:
             typer.echo("\n★ = measured on Strix Halo (Phase H verified)")
             raise typer.Exit(code=0)
 
-        # 1. Sudo password — раньше чем что-либо.
-        try:
-            sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
-        except (EOFError, KeyboardInterrupt):
-            typer.echo("\naborted: sudo password не введён", err=True)
-            raise typer.Exit(code=2)
-        if not sudo_pw:
-            typer.echo("aborted: empty sudo password", err=True)
-            raise typer.Exit(code=2)
-
-        # 2. Wizard для domain/token/services (или skip если no_tui).
+        # 1. Wizard для domain/token/services/sudo (или skip если no_tui).
         initial = SetupState(
             domain=domain or "",
-            cf_api_token=cf_token_file.read_text().strip() if cf_token_file else "",
+            cf_api_token=_read_option_text_file(
+                cf_token_file,
+                "--cf-token-file",
+                require_mode=0o600,
+            )
+            if cf_token_file
+            else "",
             model_id=model_id or "qwen36-a3b-q4km",
             model_repo=model_repo,
             model_file=model_file,
             ctx_size=ctx_size or 16384,
             kv_cache_type=kv_cache or "q8_0",
         )
+        if from_state is not None:
+            try:
+                from_state.stat()
+            except OSError as exc:
+                typer.echo(f"ERROR: cannot read --from-state {from_state}: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
+            try:
+                loaded = SetupState.from_json(from_state)
+            except Exception as exc:  # noqa: BLE001
+                typer.echo(f"ERROR: cannot load --from-state {from_state}: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
+            else:
+                initial = loaded
+                if not initial.services and initial.profiles:
+                    from agmind.services.renderer import (
+                        load_descriptors,
+                        select_services,
+                        unknown_profiles,
+                    )
+
+                    descriptors = load_descriptors()
+                    missing_profiles = unknown_profiles(descriptors, initial.profiles)
+                    if missing_profiles:
+                        typer.echo(
+                            "ERROR: unknown selected profiles in --from-state: "
+                            + ", ".join(missing_profiles),
+                            err=True,
+                        )
+                        raise typer.Exit(code=2)
+                    selected_services = sorted(
+                        select_services(descriptors, profiles=initial.profiles)
+                    )
+                    if not selected_services:
+                        profile_text = ", ".join(initial.profiles)
+                        typer.echo(
+                            f"ERROR: no services match profiles in --from-state: {profile_text}",
+                            err=True,
+                        )
+                        raise typer.Exit(code=2)
+                    initial.services = selected_services
+                    initial.profiles = []
+                if initial.services:
+                    from agmind.services.renderer import load_descriptors
+
+                    descriptors = load_descriptors()
+                    missing_services = sorted(set(initial.services).difference(descriptors))
+                    if missing_services:
+                        typer.echo(
+                            "ERROR: unknown selected services in --from-state: "
+                            + ", ".join(missing_services),
+                            err=True,
+                        )
+                        raise typer.Exit(code=2)
+                if not initial.services and not initial.profiles:
+                    typer.echo("ERROR: no selected services in --from-state", err=True)
+                    raise typer.Exit(code=2)
+                if domain:
+                    initial.domain = domain
+                if cf_token_file:
+                    initial.cf_api_token = _read_option_text_file(
+                        cf_token_file,
+                        "--cf-token-file",
+                        require_mode=0o600,
+                    )
+                if model_id:
+                    initial.model_id = model_id
+                if model_repo:
+                    initial.model_repo = model_repo
+                if model_file:
+                    initial.model_file = model_file
+                if ctx_size:
+                    initial.ctx_size = ctx_size
+                if kv_cache:
+                    initial.kv_cache_type = kv_cache
         if not no_tui:
             # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
             ms = False if legacy_wizard else None  # None = default (multi-step)
@@ -1086,12 +1264,46 @@ def _make_app() -> typer.Typer:
                 initial_state=initial,
                 auto_deploy=False,
                 multi_step=ms,
+                install_mode=not dry_run,
+                require_sudo_password=not dry_run,
             )
             if wizard_state is None:
                 typer.echo("aborted: wizard cancelled", err=True)
                 raise typer.Exit(code=1)
+            if not dry_run:
+                install_result = getattr(wizard_state, "_install_result", None)
+                if install_result is None:
+                    typer.echo("aborted: install did not return a result", err=True)
+                    raise typer.Exit(code=1)
+                typer.echo(f"\n{'✓' if install_result.success else '✗'} {install_result.message}")
+                raise typer.Exit(code=0 if install_result.success else 1)
         else:
             wizard_state = initial
+            if not dry_run:
+                validation_errors: list[str] = []
+                if not wizard_state.domain or "." not in wizard_state.domain:
+                    validation_errors.append(
+                        "domain должен содержать '.' (e.g. lab.yourcompany.com)"
+                    )
+                if len(wizard_state.cf_api_token) < 20:
+                    validation_errors.append(
+                        "CF API token < 20 chars — provide --cf-token-file with chmod 600"
+                    )
+                if not wizard_state.services and not wizard_state.profiles:
+                    validation_errors.append("Выбери хотя бы один service")
+                if validation_errors:
+                    for error in validation_errors:
+                        typer.echo(f"ERROR: {error}", err=True)
+                    raise typer.Exit(code=2)
+                try:
+                    sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
+                except (EOFError, KeyboardInterrupt):
+                    typer.echo("\naborted: sudo password не введён", err=True)
+                    raise typer.Exit(code=2)
+                if not sudo_pw:
+                    typer.echo("aborted: empty sudo password", err=True)
+                    raise typer.Exit(code=2)
+                wizard_state.sudo_password = sudo_pw
 
         # 3. Resolve final model repo/file (curated or custom) — для каждого role.
         final_repo, final_file = wizard_state.resolve_model_repo_file()
@@ -1108,6 +1320,7 @@ def _make_app() -> typer.Typer:
             cf_api_token=wizard_state.cf_api_token,
             services=wizard_state.services,
             backend=wizard_state.backend,
+            install_dir=Path(wizard_state.install_dir),
             model_repo=final_repo if final_file else None,
             model_file=final_file if final_file else None,
             ctx_size=ctx_size or wizard_state.ctx_size,
@@ -1122,7 +1335,7 @@ def _make_app() -> typer.Typer:
             rerank_repo=rerank_repo if rerank_file else None,
             rerank_file=rerank_file if rerank_file else None,
             rerank_ctx_size=wizard_state.rerank_ctx_size,
-            sudo_password=sudo_pw,
+            sudo_password=wizard_state.sudo_password,
         )
 
         if dry_run:
@@ -1148,6 +1361,8 @@ def _make_app() -> typer.Typer:
 
             orchestrator = InstallOrchestrator(config=config, steps=steps, callback=cli_cb)
             result = orchestrator.run()
+            typer.echo(f"Runtime credentials: {config.install_dir / '.env'} (chmod 600)")
+            typer.echo("Values are not printed in the installer summary.")
             raise typer.Exit(code=0 if result.success else 1)
 
         from textual.app import App
@@ -1172,11 +1387,24 @@ def _make_app() -> typer.Typer:
         ),
         tail: int = typer.Option(200, "--tail", help="Initial backlog lines."),
         follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
     ) -> None:
         """Stream docker compose logs."""
         from agmind.cli.ops_cmd import cmd_logs
 
-        raise typer.Exit(code=cmd_logs(service, install_dir, tail, follow))
+        raise typer.Exit(
+            code=cmd_logs(
+                service,
+                install_dir,
+                tail,
+                follow,
+                ask_sudo_password=ask_sudo_password,
+            )
+        )
 
     @app.command()
     def shell(
@@ -1188,15 +1416,27 @@ def _make_app() -> typer.Typer:
         workdir: str | None = typer.Option(
             None, "--workdir", "-w", help="Working dir внутри container."
         ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
     ) -> None:
         """Open shell inside running service container (docker compose exec)."""
-        # shlex.split чтобы поддержать `--cmd "python -m foo"`
         import shlex
 
         from agmind.cli.ops_cmd import cmd_shell
 
         cmd_list = shlex.split(cmd) if cmd else None
-        raise typer.Exit(code=cmd_shell(service, install_dir, cmd_list, workdir))
+        raise typer.Exit(
+            code=cmd_shell(
+                service,
+                install_dir,
+                cmd_list,
+                workdir,
+                ask_sudo_password=ask_sudo_password,
+            )
+        )
 
     @app.command()
     def backup(
@@ -1206,21 +1446,74 @@ def _make_app() -> typer.Typer:
             "-o",
             help="Path для .tar.gz (e.g. agmind-2026-05-20.tar.gz).",
         ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
     ) -> None:
         """Create tar.gz backup of compose / .env / state / snapshots (Phase L.E)."""
         from agmind.cli.ops_cmd import cmd_backup
 
-        raise typer.Exit(code=cmd_backup(output))
+        raise typer.Exit(code=cmd_backup(output, ask_sudo_password=ask_sudo_password))
 
     @app.command()
     def restore(
         backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
         yes: bool = typer.Option(False, "-y", "--yes", help="Skip interactive confirmation."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
     ) -> None:
         """Restore deployment from `agmind backup` archive (Phase L.E)."""
         from agmind.cli.ops_cmd import cmd_restore
 
-        raise typer.Exit(code=cmd_restore(backup_file, yes=yes))
+        raise typer.Exit(
+            code=cmd_restore(backup_file, yes=yes, ask_sudo_password=ask_sudo_password)
+        )
+
+    ops_app = typer.Typer(
+        name="ops",
+        help="Run day-2 operator helpers.",
+        no_args_is_help=True,
+    )
+    ops_smoke_app = typer.Typer(
+        name="smoke",
+        help="Run non-destructive operator smoke checks.",
+        no_args_is_help=True,
+    )
+    ops_app.add_typer(ops_smoke_app)
+    app.add_typer(ops_app)
+
+    @ops_smoke_app.command("backup-root-owned")
+    def ops_smoke_backup_root_owned(
+        root: Path = typer.Option(
+            Path("/tmp/agmind-root-owned-smoke"),
+            "--root",
+            help="Temporary smoke root under /tmp.",
+        ),
+        output: Path = typer.Option(
+            Path("/tmp/agmind-root-owned-smoke.tar.gz"),
+            "--output",
+            "-o",
+            help="Backup archive path under /tmp.",
+        ),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print plan without sudo."),
+        keep: bool = typer.Option(False, "--keep", help="Keep temporary smoke tree."),
+    ) -> None:
+        """Smoke backup/restore against root-owned temporary paths."""
+        from agmind.cli.ops_cmd import cmd_root_owned_backup_smoke
+
+        raise typer.Exit(
+            code=cmd_root_owned_backup_smoke(
+                root=root,
+                output=output,
+                dry_run=dry_run,
+                keep=keep,
+            )
+        )
 
     # ---- migrate subcommand group (Phase L.D) ----
     migrate_app = typer.Typer(

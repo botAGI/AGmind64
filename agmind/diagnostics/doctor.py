@@ -7,14 +7,18 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from agmind.compute.detect import detect_host
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
+
+MIN_COMPOSE_VERSION = (2, 24, 0)
 
 
 @dataclass(frozen=True)
@@ -270,6 +274,84 @@ def _check_rocm_tooling() -> CheckResult:
     )
 
 
+def _check_docker_compose() -> CheckResult:
+    """Docker Engine + Compose plugin required for the TUI install path."""
+    fix_hint = (
+        "Install official Docker Engine packages: sudo apt install docker-ce "
+        "docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+    )
+    if not shutil.which("docker"):
+        return CheckResult(
+            name="docker-compose",
+            status="warn",
+            message="docker command not found; bootstrap can install Docker Engine",
+            fix_hint=fix_hint,
+        )
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "version", "--short"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return CheckResult(
+            name="docker-compose",
+            status="warn",
+            message=f"docker compose version failed: {exc}",
+            fix_hint=fix_hint,
+        )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        return CheckResult(
+            name="docker-compose",
+            status="warn",
+            message=f"docker compose plugin unavailable: {detail or result.returncode}",
+            fix_hint=fix_hint,
+        )
+
+    version = _parse_version(result.stdout)
+    if version is None:
+        return CheckResult(
+            name="docker-compose",
+            status="warn",
+            message=f"Cannot parse Docker Compose version: {result.stdout.strip()!r}",
+            fix_hint="Run: docker compose version --short",
+        )
+    if version < MIN_COMPOSE_VERSION:
+        return CheckResult(
+            name="docker-compose",
+            status="warn",
+            message=(
+                "Docker Compose "
+                f"{_format_version(version)} is below required 2.24.0+ "
+                "for the self-hosted AI stack; bootstrap should update it."
+            ),
+            fix_hint=fix_hint,
+        )
+    return CheckResult(
+        name="docker-compose",
+        status="ok",
+        message=f"Docker Compose {_format_version(version)}",
+    )
+
+
+def _parse_version(text: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", text)
+    if not match:
+        return None
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3) or 0),
+    )
+
+
+def _format_version(version: tuple[int, int, int]) -> str:
+    return ".".join(str(part) for part in version)
+
+
 def _check_user_groups() -> CheckResult:
     """User должен быть в render + video для /dev/kfd, /dev/dri access."""
     import grp
@@ -302,7 +384,15 @@ def _check_user_groups() -> CheckResult:
 
 
 def _check_devices() -> CheckResult:
-    """/dev/kfd + /dev/dri/renderD128 должны существовать."""
+    """Validate GPU device nodes only when an AMD GPU is detected."""
+    host = detect_host()
+    if host.gpu is None:
+        return CheckResult(
+            name="devices",
+            status="skip",
+            message="CPU fallback: GPU devices are not required",
+        )
+
     devices = ["/dev/dri"]
     if shutil.which("rocminfo"):
         devices.append("/dev/kfd")
@@ -331,6 +421,7 @@ _CHECKS = (
     _check_amdvlk_absent,
     _check_vulkan_tooling,
     _check_rocm_tooling,
+    _check_docker_compose,
 )
 
 

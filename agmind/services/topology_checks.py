@@ -13,7 +13,12 @@ from agmind.services.deployment_topology import (
     TopologyWarning,
     build_deployment_topology_report,
 )
-from agmind.services.renderer import DEFAULT_SERVICES_DIR, load_descriptors, select_services
+from agmind.services.renderer import (
+    DEFAULT_SERVICES_DIR,
+    load_descriptors,
+    select_services,
+    unknown_profiles,
+)
 
 DEFAULT_TOPOLOGY_PROFILE_SETS = (
     ("core",),
@@ -47,6 +52,22 @@ class TopologyProfileReport:
         return len(self.infos)
 
     @property
+    def expected_infos(self) -> tuple[TopologyWarning, ...]:
+        return tuple(info for info in self.infos if info.expected)
+
+    @property
+    def expected_info_count(self) -> int:
+        return len(self.expected_infos)
+
+    @property
+    def unexpected_infos(self) -> tuple[TopologyWarning, ...]:
+        return tuple(info for info in self.infos if not info.expected)
+
+    @property
+    def unexpected_info_count(self) -> int:
+        return len(self.unexpected_infos)
+
+    @property
     def error_count(self) -> int:
         return len(self.errors)
 
@@ -57,9 +78,13 @@ class TopologyProfileReport:
             "ok": self.ok,
             "warning_count": self.warning_count,
             "info_count": self.info_count,
+            "expected_info_count": self.expected_info_count,
+            "unexpected_info_count": self.unexpected_info_count,
             "error_count": self.error_count,
             "warnings": [warning.to_payload() for warning in self.warnings],
             "infos": [info.to_payload() for info in self.infos],
+            "expected_infos": [info.to_payload() for info in self.expected_infos],
+            "unexpected_infos": [info.to_payload() for info in self.unexpected_infos],
             "errors": list(self.errors),
         }
 
@@ -83,6 +108,14 @@ class TopologyCheckReport:
         return sum(profile.info_count for profile in self.profiles)
 
     @property
+    def expected_info_count(self) -> int:
+        return sum(profile.expected_info_count for profile in self.profiles)
+
+    @property
+    def unexpected_info_count(self) -> int:
+        return sum(profile.unexpected_info_count for profile in self.profiles)
+
+    @property
     def error_count(self) -> int:
         return sum(profile.error_count for profile in self.profiles)
 
@@ -92,6 +125,8 @@ class TopologyCheckReport:
             "profile_count": len(self.profiles),
             "warning_count": self.warning_count,
             "info_count": self.info_count,
+            "expected_info_count": self.expected_info_count,
+            "unexpected_info_count": self.unexpected_info_count,
             "error_count": self.error_count,
             "profiles": [profile.to_json() for profile in self.profiles],
         }
@@ -107,6 +142,22 @@ def validate_topology_profiles(
     reports: list[TopologyProfileReport] = []
 
     for profiles in profile_sets:
+        missing_profiles = unknown_profiles(descriptors, list(profiles))
+        if missing_profiles:
+            reports.append(
+                TopologyProfileReport(
+                    profiles=profiles,
+                    service_count=0,
+                    warnings=(),
+                    infos=(),
+                    errors=(
+                        f"{_profile_key(profiles)}: unknown profile(s): "
+                        f"{', '.join(missing_profiles)}",
+                    ),
+                )
+            )
+            continue
+
         selected = select_services(descriptors, profiles=list(profiles))
         if not selected:
             reports.append(
@@ -142,10 +193,16 @@ def format_topology_check_report(report: TopologyCheckReport) -> str:
     for profile in report.profiles:
         status = "OK" if profile.ok else "FAILED"
         profile_key = _profile_key(profile.profiles)
+        counters = [
+            f"warnings={profile.warning_count}",
+            f"info={profile.info_count}",
+        ]
+        if profile.expected_info_count:
+            counters.append(f"expected_info={profile.expected_info_count}")
+        if profile.unexpected_info_count:
+            counters.append(f"unexpected_info={profile.unexpected_info_count}")
         lines.append(
-            f"{profile_key}: {status} "
-            f"({profile.service_count} services, "
-            f"warnings={profile.warning_count}, info={profile.info_count})"
+            f"{profile_key}: {status} ({profile.service_count} services, {', '.join(counters)})"
         )
         for warning in profile.warnings:
             lines.append(f"  WARNING: {warning.message}")

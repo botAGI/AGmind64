@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agmind.schemas import ServiceDescriptor
-from agmind.services.compatibility import check_service_compatibility
+from agmind.services.compatibility import CompatIssue, check_service_compatibility
 from agmind.services.renderer import (
     DEFAULT_SERVICES_DIR,
     check_missing_dependencies,
@@ -33,6 +33,7 @@ class TopologyWarning:
     services: tuple[str, ...]
     capability: str | None
     message: str
+    expected: bool = False
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -42,6 +43,7 @@ class TopologyWarning:
             "services": list(self.services),
             "capability": self.capability,
             "message": self.message,
+            "expected": self.expected,
         }
 
 
@@ -69,6 +71,22 @@ class DeploymentTopologyReport:
     @property
     def info_count(self) -> int:
         return len(self.infos)
+
+    @property
+    def expected_infos(self) -> tuple[TopologyWarning, ...]:
+        return tuple(info for info in self.infos if info.expected)
+
+    @property
+    def expected_info_count(self) -> int:
+        return len(self.expected_infos)
+
+    @property
+    def unexpected_infos(self) -> tuple[TopologyWarning, ...]:
+        return tuple(info for info in self.infos if not info.expected)
+
+    @property
+    def unexpected_info_count(self) -> int:
+        return len(self.unexpected_infos)
 
     @property
     def dependency_warnings(self) -> tuple[str, ...]:
@@ -118,6 +136,8 @@ class DeploymentTopologyReport:
             "retrieval_lines": list(self.retrieval_lines),
             "warnings": [warning.to_payload() for warning in self.warnings],
             "infos": [info.to_payload() for info in self.infos],
+            "expected_infos": [info.to_payload() for info in self.expected_infos],
+            "unexpected_infos": [info.to_payload() for info in self.unexpected_infos],
             "dependency_warnings": list(self.dependency_warnings),
             "compatibility_warnings": list(self.compatibility_warnings),
             "compatibility_infos": list(self.compatibility_infos),
@@ -126,6 +146,8 @@ class DeploymentTopologyReport:
             "compatibility_info_count": compatibility_info_count,
             "warning_count": self.warning_count,
             "info_count": self.info_count,
+            "expected_info_count": self.expected_info_count,
+            "unexpected_info_count": self.unexpected_info_count,
             "has_warnings": self.has_warnings,
             "has_infos": self.has_infos,
         }
@@ -159,6 +181,7 @@ def build_deployment_topology_report(
             services=issue.services,
             capability=issue.capability,
             message=issue.message,
+            expected=_topology_issue_is_expected(issue),
         )
         for issue in compatibility.by_severity("info")
     )
@@ -171,6 +194,10 @@ def build_deployment_topology_report(
     )
 
 
+def _topology_issue_is_expected(issue: CompatIssue) -> bool:
+    return issue.severity == "info" and issue.kind == "optional_missing_capability"
+
+
 def build_deployment_topology_report_for_services(
     services: list[str] | tuple[str, ...],
     *,
@@ -178,6 +205,9 @@ def build_deployment_topology_report_for_services(
 ) -> DeploymentTopologyReport:
     """Load descriptors and build a topology report for explicit service names."""
     all_descriptors = load_descriptors(services_dir)
+    missing = sorted(set(services).difference(all_descriptors))
+    if missing:
+        raise ValueError(f"Unknown services requested: {', '.join(missing)}")
     selected = select_services(all_descriptors, services=list(services))
     return build_deployment_topology_report(
         selected,

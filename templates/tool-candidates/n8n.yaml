@@ -1,8 +1,10 @@
 id: n8n
 name: n8n
-status: candidate
+status: accepted
 category: automation
 summary: Optional local workflow automation service for agent and integration flows.
+recommended_version: 2.22.3
+version_source: https://hub.docker.com/r/n8nio/n8n/tags?name=2.22.3
 admission:
   scope: service-profile
   runtime: compose
@@ -28,11 +30,14 @@ dependencies:
     - "5678"
   requires_gpu: false
 risks:
-  - License, telemetry defaults, and Postgres ownership must be reviewed before runtime inclusion.
-  - Workflow credentials need an explicit secrets story before enterprise use.
-next_step: Decide license/telemetry defaults and database ownership before adding a service descriptor.
+  - Workflow credentials are tied to N8N_ENCRYPTION_KEY; losing the persisted key makes old credentials unrecoverable.
+  - The default descriptor uses n8n's local SQLite-backed data folder for low-friction homelab installs; external Postgres remains the enterprise HA follow-up.
+next_step: Add an enterprise Postgres mode after AGmind grows first-class multi-database provisioning.
 verification:
   commands:
-    - agmind render compose --profile automation --domain ci.example.com
+    - agmind render compose --profile automation --domain ci.example.com --output /tmp/agmind-n8n.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-n8n.yml config --quiet
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md
+    - https://docs.n8n.io/hosting/installation/docker/
+    - https://docs.n8n.io/hosting/securing/telemetry-opt-out/

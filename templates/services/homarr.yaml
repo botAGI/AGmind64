@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: homarr
+image: ghcr.io/homarr-labs/homarr:v1.62.0
+digest: fc96436bf80000bed8989d6606fc1ac0929bf4809bb4594168ad4b327e8f2c5f
+tier: ops
+purpose: Homelab application portal and service dashboard — Homarr v1.62.0 (2026-05-22)
+owner: observability-stack
+profiles:
+- observability
+ports:
+- 127.0.0.1:7575:7575
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+- /var/lib/agmind/homarr/appdata:/appdata
+env:
+  SECRET_ENCRYPTION_KEY: ${HOMARR_SECRET_ENCRYPTION_KEY:?HOMARR_SECRET_ENCRYPTION_KEY is required}
+resources:
+  cpus: 1.0
+  mem_limit: 1g
+routing:
+  host: homarr.agmind.dev
+  middleware_chain: chain-internal
+  healthcheck_path: /

@@ -168,6 +168,20 @@ def cmd_inspect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = Fals
         f" vm_guest={'yes' if report.proxmox.vm_guest else 'no'}"
     )
     print(f"Peers: {len(report.peers)} discovered")
+    if report.lan_neighbors:
+        print(f"LAN neighbors: {len(report.lan_neighbors)} candidate(s)")
+        for neighbor in report.lan_neighbors:
+            ports: list[str] = []
+            if neighbor.agmind_port_open:
+                ports.append("agmind:41423")
+            if neighbor.ssh_port_open:
+                ports.append("ssh:22")
+            port_text = f" ports={','.join(ports)}" if ports else ""
+            print(
+                "  - "
+                f"{neighbor.address:<15} {neighbor.mac:<17} "
+                f"{neighbor.interface:<10} {neighbor.state}{port_text}"
+            )
     return 0
 
 

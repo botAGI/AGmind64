@@ -11,7 +11,7 @@ agmind_kernel_hwe_min: "6.17.0-19"
 agmind_mesa_min: "25.2.8"
 agmind_mesa_recommended: "26.0.0"
 agmind_rocm_min: "7.2.0"
-agmind_rocm_recommended: "7.2.3"  # latest stable per AMD repo на 2026-04-30
+agmind_rocm_recommended: "7.2.3"  # AGmind tested ROCm baseline; bump only after local verification
 agmind_firmware_min: "20260110"
 
 # ---- Strix Halo specifics ----

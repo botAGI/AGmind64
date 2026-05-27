@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import getpass
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,12 @@ from agmind.ops.exec import logs as do_logs
 from agmind.ops.exec import shell as do_shell
 
 
+def _prompt_sudo_password(ask_sudo_password: bool) -> str | None:
+    if not ask_sudo_password:
+        return None
+    return getpass.getpass("sudo password: ")
+
+
 def _running_compose_services(install_dir: Path) -> list[str]:
     """Return list of running services if compose deployment is up. Empty otherwise."""
     if shutil.which("docker") is None:
@@ -43,7 +50,7 @@ def _running_compose_services(install_dir: Path) -> list[str]:
             timeout=5.0,
             check=False,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         return []
     if proc.returncode != 0:
         return []
@@ -55,8 +62,15 @@ def cmd_logs(
     install_dir: Path,
     tail: int,
     follow: bool,
+    ask_sudo_password: bool = False,
 ) -> int:
-    return do_logs(install_dir=install_dir, service=service, tail=tail, follow=follow)
+    return do_logs(
+        install_dir=install_dir,
+        service=service,
+        tail=tail,
+        follow=follow,
+        sudo_password=_prompt_sudo_password(ask_sudo_password),
+    )
 
 
 def cmd_shell(
@@ -64,20 +78,31 @@ def cmd_shell(
     install_dir: Path,
     cmd: list[str] | None,
     workdir: str | None,
+    ask_sudo_password: bool = False,
 ) -> int:
-    return do_shell(install_dir=install_dir, service=service, cmd=cmd, workdir=workdir)
+    return do_shell(
+        install_dir=install_dir,
+        service=service,
+        cmd=cmd,
+        workdir=workdir,
+        sudo_password=_prompt_sudo_password(ask_sudo_password),
+    )
 
 
 def cmd_backup(
     output: Path,
+    ask_sudo_password: bool = False,
 ) -> int:
     output = Path(output)
     if output.exists():
         print(f"agmind backup: refusing to overwrite existing {output}", file=sys.stderr)
         return 2
     try:
-        result: BackupResult = create_backup(output_path=output)
-    except FileNotFoundError as exc:
+        result: BackupResult = create_backup(
+            output_path=output,
+            sudo_password=_prompt_sudo_password(ask_sudo_password),
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
         print(f"agmind backup: {exc}", file=sys.stderr)
         return 1
     size_mb = result.bytes_written / (1024 * 1024)
@@ -96,6 +121,7 @@ def cmd_restore(
     install_dir: Path = BACKUP_INSTALL_DIR,
     user_dir: Path = DEFAULT_USER_DIR,
     system_dir: Path = DEFAULT_SYSTEM_DIR,
+    ask_sudo_password: bool = False,
 ) -> int:
     backup_path = Path(backup_path)
     if not backup_path.exists():
@@ -134,7 +160,11 @@ def cmd_restore(
 
     sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
     try:
-        result = restore_backup(backup_path=backup_path, sources=sources)
+        result = restore_backup(
+            backup_path=backup_path,
+            sources=sources,
+            sudo_password=_prompt_sudo_password(ask_sudo_password),
+        )
     except Exception as exc:  # noqa: BLE001
         print(f"agmind restore: failed: {exc}", file=sys.stderr)
         return 1
@@ -163,10 +193,27 @@ def cmd_restore(
     return 0
 
 
+def cmd_root_owned_backup_smoke(
+    root: Path,
+    output: Path,
+    dry_run: bool = False,
+    keep: bool = False,
+) -> int:
+    from agmind.ops import root_owned_backup_smoke
+
+    argv = ["--root", str(root), "--output", str(output)]
+    if dry_run:
+        argv.append("--dry-run")
+    if keep:
+        argv.append("--keep")
+    return root_owned_backup_smoke.main(argv)
+
+
 __all__ = [
     "BACKUP_INSTALL_DIR",  # re-export для backwards compat / tests
     "cmd_backup",
     "cmd_logs",
     "cmd_restore",
+    "cmd_root_owned_backup_smoke",
     "cmd_shell",
 ]

@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -82,12 +83,32 @@ def filter_by_profile(
     return {name: d for name, d in descriptors.items() if set(d.profiles) & wanted}
 
 
+def available_profiles(descriptors: dict[str, ServiceDescriptor]) -> set[str]:
+    """Return profile names understood by the descriptor catalog."""
+    profiles = {profile for descriptor in descriptors.values() for profile in descriptor.profiles}
+    profiles.add("full")
+    return profiles
+
+
+def unknown_profiles(
+    descriptors: dict[str, ServiceDescriptor],
+    profiles: list[str] | None,
+) -> list[str]:
+    """Return requested profile names that are absent from the descriptor catalog."""
+    if not profiles:
+        return []
+    return sorted(set(profiles).difference(available_profiles(descriptors)))
+
+
 def filter_by_services(
     descriptors: dict[str, ServiceDescriptor],
     services: list[str],
 ) -> dict[str, ServiceDescriptor]:
     """Keep only explicit named services (Phase J.1.8: per-service selection)."""
     wanted = set(services)
+    missing = sorted(wanted.difference(descriptors))
+    if missing:
+        raise ValueError(f"Unknown services requested: {', '.join(missing)}")
     return {name: d for name, d in descriptors.items() if name in wanted}
 
 
@@ -220,6 +241,7 @@ def _first_container_port(d: ServiceDescriptor) -> str | None:
 def descriptor_to_compose_service(
     d: ServiceDescriptor,
     traefik_enabled: bool = True,
+    selected_descriptors: Mapping[str, ServiceDescriptor] | None = None,
 ) -> dict[str, Any]:
     """Build single compose service definition (compose v3.9 format)."""
     svc: dict[str, Any] = {
@@ -231,7 +253,7 @@ def descriptor_to_compose_service(
     if d.profiles:
         svc["profiles"] = list(d.profiles)
     if d.depends_on:
-        svc["depends_on"] = list(d.depends_on)
+        svc["depends_on"] = render_depends_on(d, selected_descriptors or {})
     if d.resources.cpus is not None:
         svc["cpus"] = str(d.resources.cpus)
     if d.resources.mem_limit:
@@ -277,6 +299,26 @@ def descriptor_to_compose_service(
         svc["labels"] = labels
 
     return svc
+
+
+def render_depends_on(
+    d: ServiceDescriptor,
+    selected_descriptors: Mapping[str, ServiceDescriptor],
+) -> dict[str, dict[str, bool | str]]:
+    """Render Compose long-syntax dependency gates for a descriptor."""
+    depends_on: dict[str, dict[str, bool | str]] = {}
+    for dependency in d.depends_on:
+        dependency_descriptor = selected_descriptors.get(dependency)
+        condition = (
+            "service_healthy"
+            if dependency_descriptor and dependency_descriptor.health
+            else "service_started"
+        )
+        depends_on[dependency] = {
+            "condition": condition,
+            "restart": True,
+        }
+    return depends_on
 
 
 def inject_capability_env(
@@ -344,8 +386,9 @@ def render_compose(
     resolved_descriptors = descriptors_with_capability_env(descriptors)
 
     services_block_local: dict[str, Any] = {}
+    selected_by_name = {descriptor.name: descriptor for descriptor in resolved_descriptors}
     for d in sorted(resolved_descriptors, key=lambda x: x.name):
-        svc = descriptor_to_compose_service(d, traefik_enabled)
+        svc = descriptor_to_compose_service(d, traefik_enabled, selected_by_name)
         services_block_local[d.name] = svc
     services_block = services_block_local
     compose: dict[str, Any] = {
@@ -402,9 +445,24 @@ def render_to_string(
         domain: если задан — sed-replace `agmind.dev` placeholder на этот домен
     """
     descriptors = load_descriptors(services_dir)
+    if services is not None:
+        missing = sorted(set(services).difference(descriptors))
+        if missing:
+            raise ValueError(f"Unknown services requested: {', '.join(missing)}")
+    if services is None:
+        missing_profiles = unknown_profiles(descriptors, profiles)
+        if missing_profiles:
+            raise ValueError(f"Unknown profiles requested: {', '.join(missing_profiles)}")
     selected = select_services(descriptors, profiles=profiles, services=services)
     if not selected:
         raise ValueError(f"No services match: profiles={profiles}, services={services}")
+    missing_dependencies = check_missing_dependencies(selected, descriptors)
+    if missing_dependencies:
+        details = "; ".join(
+            f"{name} requires {', '.join(deps)}"
+            for name, deps in sorted(missing_dependencies.items())
+        )
+        raise ValueError(f"Missing dependencies for selected services: {details}")
     compose = render_compose(list(selected.values()), traefik_enabled=traefik_enabled)
     rendered = to_yaml(compose)
     if domain and domain != "agmind.dev":

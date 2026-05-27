@@ -2,6 +2,38 @@
 
 Детальный setup AGmind на AMD Strix Halo (gfx1151).
 
+## Recommended clean TUI install
+
+Для новой ручной установки сначала докажи рендер и зависимости без мутаций,
+потом запускай TUI:
+
+```bash
+uv venv
+uv pip install -e ".[dev]"
+
+# Optional proof when Docker Compose 2.24+ is already available:
+agmind verify install --domain lab.example.com
+
+# Focused descriptor proof for one or more explicit services:
+agmind render compose --service n8n --service dozzle --domain lab.example.com \
+  --output /tmp/agmind-focused.yml
+
+# Main one-command TUI path:
+agmind setup
+```
+
+`agmind setup` ведет оператора через wizard, bootstrap, запись runtime `.env`
+и `version.env`, точную проверку `docker compose config --quiet` для выбранного
+стека, pull образов, загрузку моделей, deploy, health checks и rollback-aware
+failure handling. Значения credentials не печатаются; путь к `/opt/agmind/.env`
+показывается в финальном summary.
+
+Если Docker ставится вручную до TUI, используй официальные пакеты Docker Engine
+`docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` и
+`docker-compose-plugin`. `docker.io` из distro repo считается конфликтующим
+пакетом для production bootstrap; роль Docker удаляет его перед установкой
+официального Engine, если Compose plugin отсутствует или старее `2.24.0`.
+
 ## Architecture overview
 
 ```
@@ -247,7 +279,8 @@ agmind rerank "пример запроса" "первый документ" "в�
 - Open WebUI (если `ui` profile): http://`agmind-chat.local`
 - Grafana (если `observability`): http://localhost:3002
 
-Credentials в `/opt/agmind/.env` (chmod 600).
+Credentials в `/opt/agmind/.env` (chmod 600). Версии выбранных
+runtime-сервисов и digest записываются в `/opt/agmind/version.env` (chmod 644).
 
 ## Profile-specific notes
 
@@ -287,11 +320,28 @@ Idempotent — Ansible применит только diff. State preserved в
 ## Backup
 
 ```bash
-# Docker volumes — bind-mounted, рейзу tar:
-sudo tar -czf agmind-backup-$(date +%F).tar.gz \
-    /var/lib/agmind/{postgres,qdrant,redis} \
-    /opt/agmind/.env
+# Config/state backup. Use the sudo prompt for root-owned /opt and /var/lib paths.
+agmind backup --ask-sudo-password --output ~/agmind-backup.tar.gz
+agmind restore --ask-sudo-password ~/agmind-backup.tar.gz
 ```
+
+The CLI backup includes rendered Compose, runtime `.env`, runtime
+`version.env`, setup/schema state, service descriptor snapshots, and deploy
+snapshots. It intentionally excludes GGUF models and Docker volume data;
+protect `/var/lib/agmind` service data with host/storage snapshots before
+destructive maintenance.
+
+Optional root-owned smoke without touching `/opt/agmind`:
+
+```bash
+agmind ops smoke backup-root-owned --dry-run
+agmind ops smoke backup-root-owned
+```
+
+The smoke creates a temporary root-owned tree under
+`/tmp/agmind-root-owned-smoke`, runs `create_backup(..., sudo_password=...)`,
+restores into a second `/tmp` target, and cleans up by default. The checkout
+script `python3 scripts/proof/root_owned_backup_smoke.py` is equivalent.
 
 ## Uninstall
 

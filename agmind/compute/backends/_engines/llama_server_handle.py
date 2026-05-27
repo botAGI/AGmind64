@@ -16,7 +16,7 @@ from typing import Any
 
 from agmind.compute.base import LLMHandle
 from agmind.compute.clients import LlamaServerClient, SamplingParams
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

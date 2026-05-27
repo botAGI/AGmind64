@@ -7,7 +7,7 @@ import inspect
 import pkgutil
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 from agmind.migrations.base import Migration, MigrationContext
 from agmind.migrations.state import DEFAULT_USER_STATE_DIR, SCHEMA_FILENAME, SchemaState
 

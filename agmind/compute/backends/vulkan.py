@@ -30,7 +30,7 @@ from agmind.compute.detect import (
     AMDVLK_ICD_FILES,
     detect_host,
 )
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

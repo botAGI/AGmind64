@@ -20,7 +20,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Static
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -79,6 +79,8 @@ def _run_compose_ps(install_dir: Path) -> tuple[str, str, int]:
         return "", "docker command not found", 127
     except subprocess.TimeoutExpired:
         return "", f"docker compose ps timed out after {COMPOSE_PS_TIMEOUT}s", 124
+    except OSError as exc:
+        return "", f"docker compose ps failed: {exc}", 1
     return proc.stdout, proc.stderr, proc.returncode
 
 

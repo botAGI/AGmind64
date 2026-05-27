@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.files import write_text_atomic
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -86,9 +87,7 @@ def write_inventory(
     Создаёт parent dir если нет. Kwargs передаются в `generate_inventory_yaml`.
     """
     text = generate_inventory_yaml(peers, **kwargs)  # type: ignore[arg-type]
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(text, encoding="utf-8")
-    output_path.chmod(0o644)
+    write_text_atomic(output_path, text, mode=0o644)
     log.info("cluster inventory written: %s (%d peers)", output_path, len(peers))
     return output_path
 

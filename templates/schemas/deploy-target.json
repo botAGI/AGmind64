@@ -52,6 +52,26 @@
       "title": "DeploymentConfigurator",
       "type": "object"
     },
+    "DeploymentExpectedWarning": {
+      "additionalProperties": false,
+      "description": "One explicitly accepted Kubernetes render warning for a target.",
+      "properties": {
+        "service": {
+          "title": "Service",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "code"
+      ],
+      "title": "DeploymentExpectedWarning",
+      "type": "object"
+    },
     "DeploymentProvisioner": {
       "additionalProperties": false,
       "description": "Infrastructure provisioning boundary before host configuration runs.",
@@ -120,6 +140,14 @@
           },
           "title": "Profiles",
           "type": "array"
+        },
+        "excluded_services": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Services",
+          "type": "array"
         }
       },
       "required": [
@@ -155,6 +183,14 @@
             "type": "string"
           },
           "title": "Expected Warning Codes",
+          "type": "array"
+        },
+        "expected_warnings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DeploymentExpectedWarning"
+          },
+          "title": "Expected Warnings",
           "type": "array"
         }
       },

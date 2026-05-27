@@ -118,13 +118,13 @@ def cmd_validate(
 
 _SCAFFOLD_TEMPLATE = """# yaml-language-server: $schema=../schemas/service.json
 name: {name}
-image: REPLACE_WITH_IMAGE:tag
+image: example/{name}:0.1.0
 tier: {tier}
 purpose: TODO — короткое описание чем занимается
 profiles:
 - core
 ports:
-- 127.0.0.1:0:0  # TODO: host:container port mapping
+- 127.0.0.1:8080:8080  # TODO: host:container port mapping
 resources:
   cpus: 1.0
   mem_limit: 1g
@@ -133,7 +133,7 @@ health:
   - CMD
   - curl
   - -f
-  - http://localhost:0/health  # TODO: реальный healthcheck URL
+  - http://localhost:8080/health  # TODO: реальный healthcheck URL
 """
 
 _TIERS: tuple[str, ...] = ("edge", "inference", "app", "storage", "ops")
@@ -156,5 +156,5 @@ def cmd_scaffold(
     services_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(_SCAFFOLD_TEMPLATE.format(name=name, tier=tier), encoding="utf-8")
     print(f"✓ created {path}")
-    print(f"  → edit и затем `agmind service validate {name}`")
+    print(f"  → review image/ports, затем `agmind service validate {name}`")
     return 0

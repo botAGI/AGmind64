@@ -27,7 +27,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

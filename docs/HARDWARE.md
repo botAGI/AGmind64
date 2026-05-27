@@ -1,9 +1,7 @@
 # AGmind — Hardware setup (Strix Halo, x86_64)
 
-> Этот документ — **черновик**. Финализируется после фазы D (когда
-> известны окончательные бенчмарки). Часть рекомендаций ниже выходит за
-> пределы Dockerfile (хост-side настройки) — пользователь применяет их
-> на BIOS / kernel / systemd до запуска agmind.
+> Production host checklist for AGmind on Strix Halo. Host-side settings below
+> are applied in BIOS, kernel, systemd, and Docker before running the stack.
 
 ## Поддерживаемое железо
 

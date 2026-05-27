@@ -32,7 +32,7 @@ from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Sele
 
 
 class DomainValidator(Validator):
-    """Inline validator для domain Input — non-empty + содержит точку + не placeholder.
+    """Inline validator для domain Input — non-empty + содержит точку.
 
     M4.3: messages через i18n.t() — supports EN/RU.
     """
@@ -53,13 +53,6 @@ class DomainValidator(Validator):
                 t(
                     "wizard.validation.domain_no_dot",
                     default="must contain '.'",
-                )
-            )
-        if v == "agmind.dev":
-            return self.failure(
-                t(
-                    "wizard.validation.domain_placeholder",
-                    default="agmind.dev is placeholder — use your own",
                 )
             )
         return self.success()
@@ -122,7 +115,9 @@ class AGCheckbox(Checkbox):
 
 
 from agmind.cli.tui.logo import AnimatedLogo
-from agmind.log import logger
+from agmind.core.files import write_text_atomic
+from agmind.core.logging import logger
+from agmind.core.secrets import write_private_text
 
 log = logger(__name__)
 
@@ -134,8 +129,8 @@ TOKEN_PATH = _USER_DATA_DIR / "cf_dns_api_token"
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 
 
-# Smart defaults — минимальный production set (Phase J.1.8):
-# 11 services: traefik (edge) + llama-* (inference) + qdrant (storage) + 6 ops.
+# Smart defaults — production set:
+# edge + inference + vector store + observability + operator consoles.
 _DEFAULT_SERVICES = {
     "traefik",
     "llama-llm",
@@ -148,6 +143,11 @@ _DEFAULT_SERVICES = {
     "alloy",
     "alertmanager",
     "node-exporter",
+    "uptime-kuma",
+    "homarr",
+    "watchtower",
+    "dozzle",
+    "netdata",
 }
 
 
@@ -157,6 +157,7 @@ class SetupState:
 
     domain: str = ""
     cf_api_token: str = ""
+    sudo_password: str = ""
     profiles: list[str] = field(default_factory=list)
     """Legacy bulk filter (для backward compat). Phase J.1.8 предпочитает services."""
     services: list[str] = field(default_factory=lambda: sorted(_DEFAULT_SERVICES))
@@ -215,7 +216,8 @@ class SetupState:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = asdict(self)
         data.pop("cf_api_token")  # секреты НЕ в state.json
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        data.pop("sudo_password", None)
+        write_text_atomic(path, json.dumps(data, indent=2))
 
     @classmethod
     def from_json(cls, path: Path) -> SetupState:
@@ -277,7 +279,7 @@ def detect_hardware() -> DetectedHardware:
         pass
     ram_gb = ram_bytes / (1024**3)
 
-    # Tier по RAM (см. agmind/models.py::_TIER_RAM_THRESHOLDS_GB)
+    # Tier по RAM (см. agmind/models/::_TIER_RAM_THRESHOLDS_GB)
     if ram_gb >= 128:
         recommended_tier = "XL"
     elif ram_gb >= 64:
@@ -302,7 +304,7 @@ def detect_hardware() -> DetectedHardware:
                 if "1586" in line or "ryzen ai max" in line_low:
                     is_strix_halo = True
                 break
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         pass
 
     vulkan_present = shutil.which("vulkaninfo") is not None
@@ -331,6 +333,7 @@ _PROFILE_DESCRIPTIONS: dict[str, str] = {
     "rag": "RAG stack (Dify + Postgres + Redis + Docling)",
     "ragflow": "RAGFlow (Elasticsearch + MySQL + MinIO)",
     "ui": "Open WebUI chat frontend",
+    "automation": "n8n workflow automation",
     "observability": "Prometheus + Grafana + Loki + Alertmanager",
     "security": "Authelia + fail2ban",
     "core-caddy": "Core с Caddy вместо Traefik",
@@ -363,6 +366,56 @@ _TIER_LABELS: dict[str, str] = {
 # Visual tier order top-down в UI
 _TIER_ORDER = ["edge", "inference", "app", "storage", "ops"]
 
+_SERVICE_DEPARTMENT_LABELS: dict[str, str] = {
+    "core": "<CORE> FOUNDATION",
+    "rag_agents": "<RAG/AGENTS> APPS & AUTOMATION",
+    "model_runtime": "<MODELS> LLM / EMBED / RERANK RUNTIME",
+    "data": "<DATA> VECTOR / DB / OBJECT STORAGE",
+    "monitoring": "<MON> MONITORING OUT OF BOX",
+    "security": "<SEC> ACCESS & POLICY",
+}
+
+_SERVICE_DEPARTMENT_HINTS: dict[str, str] = {
+    "core": "Routing and base entrypoints.",
+    "rag_agents": "Dify, RAGFlow, document parsing, chat UI, and workflow automation.",
+    "model_runtime": "Local OpenAI-compatible model endpoints split by generation, embeddings, rerank.",
+    "data": "Vector stores, SQL stores, cache, object storage, and search index providers.",
+    "monitoring": "Prometheus, Grafana, Loki, Alloy, Alertmanager, exporters, and admin surfaces.",
+    "security": "Identity, edge policy, and host protection components.",
+}
+
+_SERVICE_DEPARTMENT_ORDER = [
+    "core",
+    "rag_agents",
+    "data",
+    "model_runtime",
+    "monitoring",
+    "security",
+]
+
+
+def _service_department_for(name: str, tier: str, profiles: list[str]) -> str:
+    """Map technical service descriptors to installer product departments."""
+    profile_set = set(profiles)
+    if "security" in profile_set:
+        return "security"
+    if (
+        "observability" in profile_set
+        or "proxmox" in profile_set
+        or tier == "ops"
+        or name.endswith("-exporter")
+    ):
+        return "monitoring"
+    if tier == "inference":
+        return "model_runtime"
+    if tier == "storage":
+        return "data"
+    if tier == "edge" or name in {"traefik", "caddy", "nginx"}:
+        return "core"
+    if profile_set & {"rag", "ragflow", "ui", "automation"} or tier == "app":
+        return "rag_agents"
+    return "core"
+
 
 def get_services_by_tier() -> dict[str, list[tuple[str, str]]]:
     """Discover все services из templates/services/*.yaml grouped by tier.
@@ -394,6 +447,37 @@ def get_services_by_tier() -> dict[str, list[tuple[str, str]]]:
     for tier in by_tier:
         if tier not in ordered:
             ordered[tier] = by_tier[tier]
+    return ordered
+
+
+def get_services_by_department() -> dict[str, list[tuple[str, str]]]:
+    """Discover services grouped by installer-facing product department."""
+    try:
+        from agmind.services.renderer import load_descriptors
+    except ImportError:
+        return {}
+
+    from collections import defaultdict
+
+    descriptors = load_descriptors()
+    by_department: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for name in sorted(descriptors):
+        descriptor = descriptors[name]
+        department = _service_department_for(
+            descriptor.name,
+            str(descriptor.tier),
+            list(descriptor.profiles),
+        )
+        purpose = (descriptor.purpose or "").split(".")[0].strip()[:60]
+        by_department[department].append((descriptor.name, purpose or descriptor.image))
+
+    ordered: dict[str, list[tuple[str, str]]] = {}
+    for department in _SERVICE_DEPARTMENT_ORDER:
+        if department in by_department:
+            ordered[department] = by_department[department]
+    for department in by_department:
+        if department not in ordered:
+            ordered[department] = by_department[department]
     return ordered
 
 
@@ -446,11 +530,13 @@ def get_available_profiles() -> list[tuple[str, str]]:
             return (2, name)
         if name == "ui":
             return (3, name)
-        if name == "observability":
+        if name == "automation":
             return (4, name)
-        if name == "security":
+        if name == "observability":
             return (5, name)
-        return (6, name)
+        if name == "security":
+            return (6, name)
+        return (7, name)
 
     out: list[tuple[str, str]] = []
     for prof in sorted(profile_services, key=_sort_key):
@@ -515,6 +601,8 @@ class AgmindSetupApp(App[SetupState | None]):
         initial_state: SetupState | None = None,
         auto_deploy: bool = False,
         multi_step: bool | None = None,
+        install_mode: bool = False,
+        require_sudo_password: bool | None = None,
     ) -> None:
         super().__init__()
         self.detected = detected or detect_hardware()
@@ -523,6 +611,12 @@ class AgmindSetupApp(App[SetupState | None]):
         self.preview_text: str = ""
         self.auto_deploy = auto_deploy
         """Если True — Apply сразу запускает DeployProgressScreen внутри TUI."""
+        self.install_mode = install_mode
+        """Если True — Apply запускает полный InstallProgressScreen в этом же TUI."""
+        self.require_sudo_password = (
+            install_mode if require_sudo_password is None else require_sudo_password
+        )
+        """Если True — wizard собирает sudo password для bootstrap step."""
         # Phase M4.1: multi-step wizard теперь DEFAULT.
         # Escape hatch: AGMIND_WIZARD_LEGACY=1 или multi_step=False kwarg.
         import os as _os_module
@@ -539,8 +633,9 @@ class AgmindSetupApp(App[SetupState | None]):
         # Discover profiles + backends + services-by-tier dynamically.
         self.profiles_available = get_available_profiles()
         self.backends_available = get_available_backends()
-        # Phase J.1.8: per-service selection grouped by tier
-        self.services_by_tier = get_services_by_tier()
+        # Phase J.1.8 + M8: per-service selection grouped by installer department.
+        # Attribute name stays for backward compatibility with existing screens/tests.
+        self.services_by_tier = get_services_by_department()
         # Phase M5.4: cluster peers — populated lazily (mDNS browse) при первом read.
         self._cluster_peers_cache: list[tuple[str, str]] | None = None
 
@@ -596,6 +691,14 @@ class AgmindSetupApp(App[SetupState | None]):
                 password=True,
                 validators=[TokenLengthValidator()],
             )
+            if self.require_sudo_password:
+                yield Label("Sudo password (bootstrap only, not saved)", classes="section")
+                yield Input(
+                    placeholder="sudo password (hidden)",
+                    id="sudo-password-input",
+                    value=self.state.sudo_password,
+                    password=True,
+                )
 
             yield Label("Backend", classes="section")
             yield Select(
@@ -675,13 +778,16 @@ class AgmindSetupApp(App[SetupState | None]):
             yield Label(f"Services ({total} available — defaults preselected)", classes="section")
             with Container(id="service-checkboxes"):
                 for tier, services in self.services_by_tier.items():
-                    tier_label = _TIER_LABELS.get(tier, tier)
+                    tier_label = _SERVICE_DEPARTMENT_LABELS.get(tier, _TIER_LABELS.get(tier, tier))
                     # Each tier — visual bordered card
                     with Container(classes="tier-group"):
                         yield Label(
                             f"{tier_label}  ·  {len(services)} services",
                             classes="tier-section",
                         )
+                        hint = _SERVICE_DEPARTMENT_HINTS.get(tier)
+                        if hint:
+                            yield Static(f"[dim]{hint}[/dim]", classes="hint")
                         for name, _purpose in services:
                             # Compact: just the service name. Purpose редко короче имени
                             # и в 2-колоночном grid не помещается чисто.
@@ -716,6 +822,9 @@ class AgmindSetupApp(App[SetupState | None]):
         """Gather inputs from widgets into SetupState."""
         domain = self.query_one("#domain-input", Input).value.strip()
         cf_token = self.query_one("#cf-token-input", Input).value.strip()
+        sudo_password = self.state.sudo_password
+        if self.require_sudo_password:
+            sudo_password = self.query_one("#sudo-password-input", Input).value
         backend_select = self.query_one("#backend-select", Select)
         backend = str(backend_select.value) if backend_select.value is not None else "auto"
 
@@ -767,6 +876,7 @@ class AgmindSetupApp(App[SetupState | None]):
         return SetupState(
             domain=domain,
             cf_api_token=cf_token,
+            sudo_password=sudo_password,
             services=expand_selected_services_for_setup(services),
             profiles=[],  # cleared — services field теперь primary
             backend=backend,
@@ -781,6 +891,19 @@ class AgmindSetupApp(App[SetupState | None]):
             parallel_slots=parallel_slots,
         )
 
+    def _state_for_submit(self) -> SetupState:
+        """Return the current setup state for Apply/Preview.
+
+        Single-screen mode owns visible form widgets, so it gathers them live.
+        Multi-step mode saves each screen into `self.state`; the root app only
+        renders Header/Footer and therefore must not query form widget ids.
+        """
+        if not self.multi_step:
+            return self._collect_state()
+        self.state.services = expand_selected_services_for_setup(list(self.state.services))
+        self.state.profiles = []
+        return self.state
+
     def _validate(self, state: SetupState) -> list[str]:
         """Returns list of error messages (empty = valid)."""
         errors: list[str] = []
@@ -788,10 +911,36 @@ class AgmindSetupApp(App[SetupState | None]):
             errors.append("domain должен содержать '.' (e.g. lab.yourcompany.com)")
         if len(state.cf_api_token) < 20:
             errors.append("CF API token < 20 chars — неверный")
+        if self.require_sudo_password and not state.sudo_password:
+            errors.append("sudo password нужен для bootstrap step")
         if not state.services and not state.profiles:
             errors.append("Выбери хотя бы один service")
-        if not self.detected.docker_present:
-            errors.append("Docker не установлен — apt install docker.io")
+        try:
+            from agmind.services.renderer import load_descriptors
+
+            descriptors = load_descriptors()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"service catalog unavailable: {exc}")
+        else:
+            if state.services:
+                missing_services = sorted(set(state.services).difference(descriptors))
+                if missing_services:
+                    errors.append("unknown selected services: " + ", ".join(missing_services))
+            if not state.services and state.profiles:
+                available_profiles = {
+                    profile
+                    for descriptor in descriptors.values()
+                    for profile in descriptor.profiles
+                }
+                available_profiles.add("full")
+                missing_profiles = sorted(set(state.profiles).difference(available_profiles))
+                if missing_profiles:
+                    errors.append("unknown selected profiles: " + ", ".join(missing_profiles))
+        if not self.detected.docker_present and not self.install_mode:
+            errors.append(
+                "Docker не установлен — установи docker-ce + docker-compose-plugin "
+                "или запусти bootstrap step"
+            )
         # Phase O.A (revised): compat issues — warnings only, не блокируют Apply.
         # См. ADR-0011 amendment.
         return errors
@@ -857,7 +1006,7 @@ class AgmindSetupApp(App[SetupState | None]):
             self.action_submit()
 
     def action_preview(self) -> None:
-        state = self._collect_state()
+        state = self._state_for_submit()
         errors = self._validate(state)
         if errors:
             # Phase M3.S.1: toast вместо persistent status-msg
@@ -908,7 +1057,7 @@ class AgmindSetupApp(App[SetupState | None]):
         self.notify(summary + (compat_warn or ""), title="Preview", severity=severity)
 
     def action_submit(self) -> None:
-        state = self._collect_state()
+        state = self._state_for_submit()
         errors = self._validate(state)
         if errors:
             # Phase M3.S.1: toast + status — toast вылетает первым (visible)
@@ -925,15 +1074,58 @@ class AgmindSetupApp(App[SetupState | None]):
 
         # Save CF token в отдельный файл с chmod 600
         try:
-            TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-            TOKEN_PATH.write_text(state.cf_api_token, encoding="utf-8")
-            TOKEN_PATH.chmod(0o600)
+            write_private_text(TOKEN_PATH, state.cf_api_token)
         except OSError as exc:
             self._set_status(f"⚠️ couldn't save token: {exc}", kind="error")
             return
 
         self.result_state = state
         user_stack_dir = Path.home() / ".local" / "share" / "agmind" / "stack"
+
+        if self.install_mode:
+            from agmind.cli.tui.install_screen import InstallProgressScreen
+            from agmind.install.orchestrator import InstallConfig
+            from agmind.install.steps import default_steps
+
+            final_repo, final_file = state.resolve_model_repo_file()
+            embed_repo, embed_file = state.resolve_embed_repo_file()
+            rerank_repo, rerank_file = state.resolve_rerank_repo_file()
+            config = InstallConfig(
+                domain=state.domain,
+                cf_api_token=state.cf_api_token,
+                services=state.services,
+                backend=state.backend,
+                model_repo=final_repo if final_file else None,
+                model_file=final_file if final_file else None,
+                install_dir=Path(state.install_dir),
+                ctx_size=state.ctx_size,
+                kv_cache_type=state.kv_cache_type,
+                threads=state.threads,
+                parallel_slots=state.parallel_slots,
+                embed_repo=embed_repo if embed_file else None,
+                embed_file=embed_file if embed_file else None,
+                embed_ctx_size=state.embed_ctx_size,
+                embed_kv_cache=state.embed_kv_cache,
+                embed_parallel=state.embed_parallel,
+                rerank_repo=rerank_repo if rerank_file else None,
+                rerank_file=rerank_file if rerank_file else None,
+                rerank_ctx_size=state.rerank_ctx_size,
+                sudo_password=state.sudo_password,
+            )
+
+            def _after_install(result: object) -> None:
+                if result is not None:
+                    state.__dict__["_install_result"] = result
+                self.exit(state)
+
+            self.push_screen(
+                InstallProgressScreen(
+                    config=config,
+                    steps=default_steps(),
+                ),
+                callback=_after_install,
+            )
+            return
 
         # Phase J.1.6: всё в одном TUI app. Apply → (deploy progress?) → SummaryScreen → quit.
         if self.auto_deploy:
@@ -963,6 +1155,7 @@ class AgmindSetupApp(App[SetupState | None]):
                         state_path=STATE_PATH,
                         token_path=TOKEN_PATH,
                         install_dir=user_stack_dir,
+                        services=state.services,
                         deploy_result=deploy_result if isinstance(deploy_result, _DR) else None,
                     )
                 )
@@ -970,6 +1163,7 @@ class AgmindSetupApp(App[SetupState | None]):
             self.push_screen(
                 DeployProgressScreen(
                     profiles=state.profiles,
+                    services=state.services,
                     domain=state.domain,
                     install_dir=user_stack_dir,
                 ),
@@ -990,6 +1184,7 @@ class AgmindSetupApp(App[SetupState | None]):
                     state_path=STATE_PATH,
                     token_path=TOKEN_PATH,
                     install_dir=user_stack_dir,
+                    services=state.services,
                 )
             )
 
@@ -998,6 +1193,8 @@ def run_setup_wizard(
     initial_state: SetupState | None = None,
     auto_deploy: bool = False,
     multi_step: bool | None = None,
+    install_mode: bool = False,
+    require_sudo_password: bool | None = None,
 ) -> SetupState | None:
     """Launch wizard, return collected state or None если cancelled.
 
@@ -1006,6 +1203,8 @@ def run_setup_wizard(
         auto_deploy: True → Apply pushes DeployProgressScreen с live progress
         multi_step: None → default per env (M4.1 — default True);
                     True/False explicit override
+        install_mode: True → Apply pushes full InstallProgressScreen
+        require_sudo_password: True → collect sudo password inside wizard
     """
     detected = detect_hardware()
     app = AgmindSetupApp(
@@ -1013,5 +1212,7 @@ def run_setup_wizard(
         initial_state=initial_state,
         auto_deploy=auto_deploy,
         multi_step=multi_step,
+        install_mode=install_mode,
+        require_sudo_password=require_sudo_password,
     )
     return app.run()

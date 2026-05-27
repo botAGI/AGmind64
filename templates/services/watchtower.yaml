@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: watchtower
+image: containrrr/watchtower:1.7.1
+digest: 6dd50763bbd632a83cb154d5451700530d1e44200b268a4e9488fefdfcf2b038
+tier: ops
+purpose: Container update monitor in dry-run mode — Watchtower 1.7.1
+owner: observability-stack
+profiles:
+- observability
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+env:
+  WATCHTOWER_MONITOR_ONLY: 'true'
+  WATCHTOWER_CLEANUP: 'false'
+  WATCHTOWER_SCHEDULE: 0 0 4 * * *
+  WATCHTOWER_NO_RESTART: 'true'
+resources:
+  cpus: 0.5
+  mem_limit: 256m

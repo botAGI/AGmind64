@@ -27,7 +27,7 @@ help:
 # --- Quality gates ---
 
 audit:
-	$(PYTHON) scripts/audit_forbidden.py --fail
+	$(PYTHON) scripts/checks/audit_forbidden.py --fail
 
 lint:
 	$(RUFF) check .

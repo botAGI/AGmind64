@@ -17,17 +17,20 @@ import json
 import sys
 from pathlib import Path
 
+from agmind.core.files import write_text_atomic
 from agmind.services.deployment_topology import build_deployment_topology_report
 from agmind.services.renderer import (
     DEFAULT_SERVICES_DIR,
     load_descriptors,
     render_to_string,
     select_services,
+    unknown_profiles,
 )
 
 
 def cmd_render_compose(
     profiles: list[str],
+    services: list[str] | None = None,
     output: Path | None = None,
     traefik: bool = True,
     diff: Path | None = None,
@@ -42,6 +45,7 @@ def cmd_render_compose(
     try:
         rendered = render_to_string(
             profiles=profiles,
+            services=services,
             services_dir=services_dir,
             traefik_enabled=traefik,
             domain=domain,
@@ -76,19 +80,20 @@ def cmd_render_compose(
         sys.stdout.write(rendered)
         return 0
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(rendered, encoding="utf-8")
+    write_text_atomic(output, rendered)
     print(f"✓ wrote {output} ({len(rendered)} bytes)")
     return 0
 
 
 def cmd_render_kubernetes(
     profiles: list[str],
+    services: list[str] | None = None,
     output: Path | None = None,
     namespace: str = "agmind",
     strict: bool = False,
     include_namespace: bool = True,
     services_dir: Path = DEFAULT_SERVICES_DIR,
+    target_id: str | None = None,
 ) -> int:
     """Render Kubernetes YAML from service descriptors.
 
@@ -96,10 +101,27 @@ def cmd_render_kubernetes(
         0 success, 1 error.
     """
     try:
+        exclude_services: list[str] | None = None
+        if target_id is not None:
+            from agmind.deploy.targets import load_deploy_targets
+
+            targets = load_deploy_targets()
+            target = targets.get(target_id)
+            if target is None:
+                raise ValueError(f"unknown deployment target: {target_id}")
+            if target.runtime.kind != "kubernetes":
+                raise ValueError(f"deployment target is not Kubernetes-backed: {target_id}")
+            if services is not None:
+                raise ValueError("--target cannot be combined with explicit --service selection")
+            profiles = list(target.runtime.profiles)
+            exclude_services = list(target.runtime.excluded_services)
+
         from agmind.services.kubernetes_renderer import render_to_string as render_k8s_to_string
 
         rendered = render_k8s_to_string(
             profiles=profiles,
+            services=services,
+            exclude_services=exclude_services,
             services_dir=services_dir,
             namespace=namespace,
             strict=strict,
@@ -113,8 +135,7 @@ def cmd_render_kubernetes(
         sys.stdout.write(rendered)
         return 0
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(rendered, encoding="utf-8")
+    write_text_atomic(output, rendered)
     print(f"✓ wrote {output} ({len(rendered)} bytes)")
     return 0
 
@@ -129,6 +150,22 @@ def cmd_render_topology(
     """Render an operator topology report for profiles or explicit services."""
     try:
         descriptors = load_descriptors(services_dir)
+        if services is not None:
+            missing = sorted(set(services).difference(descriptors))
+            if missing:
+                print(
+                    "ERROR: unknown selected services for topology: " + ", ".join(missing),
+                    file=sys.stderr,
+                )
+                return 1
+        else:
+            missing_profiles = unknown_profiles(descriptors, profiles)
+            if missing_profiles:
+                print(
+                    "ERROR: unknown selected profiles for topology: " + ", ".join(missing_profiles),
+                    file=sys.stderr,
+                )
+                return 1
         selected = select_services(
             descriptors,
             profiles=profiles,

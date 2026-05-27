@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,7 +81,7 @@ def test_run_preflight_checks_have_required_fields() -> None:
 
 
 def test_run_preflight_specific_checks_present() -> None:
-    """Все 9 preflight checks должны выполняться."""
+    """Все базовые preflight checks должны выполняться."""
     r = run_preflight()
     names = {c.name for c in r.checks}
     expected = {
@@ -92,8 +94,76 @@ def test_run_preflight_specific_checks_present() -> None:
         "amdvlk-absent",
         "vulkan-tooling",
         "rocm-tooling",
+        "docker-compose",
     }
     assert expected.issubset(names)
+
+
+def test_docker_compose_check_warns_without_docker(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor.shutil, "which", lambda _name: None)
+
+    result = doctor._check_docker_compose()  # noqa: SLF001
+
+    assert result.status == "warn"
+    assert result.name == "docker-compose"
+    assert "docker-ce" in result.fix_hint
+    assert "docker-compose-plugin" in result.fix_hint
+
+
+def test_docker_compose_check_rejects_old_compose(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            ["docker", "compose", "version", "--short"],
+            0,
+            stdout="2.23.3\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(doctor.subprocess, "run", fake_run)
+
+    result = doctor._check_docker_compose()  # noqa: SLF001
+
+    assert result.status == "warn"
+    assert "2.24.0+" in result.message
+
+
+def test_docker_compose_check_accepts_minimum_compose(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            ["docker", "compose", "version", "--short"],
+            0,
+            stdout="2.24.0\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(doctor.subprocess, "run", fake_run)
+
+    result = doctor._check_docker_compose()  # noqa: SLF001
+
+    assert result.status == "ok"
+    assert "2.24.0" in result.message
+
+
+def test_devices_check_skips_cpu_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", lambda: SimpleNamespace(gpu=None))
+    monkeypatch.setattr(doctor.shutil, "which", lambda _name: None)
+
+    result = doctor._check_devices()  # noqa: SLF001
+
+    assert result.status == "skip"
+    assert "CPU fallback" in result.message
 
 
 def test_doctor_report_human_readable_format() -> None:

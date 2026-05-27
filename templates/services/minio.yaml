@@ -17,6 +17,15 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 2g
+health:
+  test:
+  - CMD
+  - mc
+  - ready
+  - local
+  interval: 5s
+  timeout: 5s
+  retries: 5
 
 # Phase O capabilities
 provides:

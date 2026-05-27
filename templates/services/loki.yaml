@@ -11,6 +11,8 @@ ports:
 volumes:
 - /etc/agmind/loki:/etc/loki:ro
 - /var/lib/agmind/loki:/loki
+command:
+- -config.file=/etc/loki/loki.yml
 resources:
   cpus: 2.0
   mem_limit: 2g

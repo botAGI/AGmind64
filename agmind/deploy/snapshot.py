@@ -5,6 +5,7 @@
     ├── compose.yml         — текущий рендеренный compose
     ├── meta.json           — timestamp, agmind_version, profile, reason
     ├── env.snapshot        — /opt/agmind/.env (если есть)
+    ├── version.env.snapshot — /opt/agmind/version.env (если есть)
     └── descriptors/*.yaml  — copy templates/services/*.yaml на момент snapshot
 
 Retention: 10 последних snapshots auto-prune'ятся (см. SnapshotManager.prune_old).
@@ -14,11 +15,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.files import write_text_atomic
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -65,6 +69,10 @@ class Snapshot:
     def env_file(self) -> Path:
         return self.path / "env.snapshot"
 
+    @property
+    def version_env_file(self) -> Path:
+        return self.path / "version.env.snapshot"
+
 
 @dataclass
 class SnapshotManager:
@@ -72,10 +80,84 @@ class SnapshotManager:
 
     snapshots_dir: Path = DEFAULT_SNAPSHOTS_DIR
     retention: int = DEFAULT_RETENTION
+    sudo_password: str | None = None
     _last_saved: Snapshot | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.snapshots_dir = Path(self.snapshots_dir)
+
+    def _run_sudo(self, cmd: list[str]) -> None:
+        if self.sudo_password is None:
+            raise PermissionError("sudo password not provided for snapshot store")
+        result = subprocess.run(
+            ["sudo", "-S", "-p", "", "--", *cmd],
+            capture_output=True,
+            text=True,
+            check=False,
+            input=f"{self.sudo_password}\n",
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or f"sudo {cmd[0]} failed").strip()
+            raise OSError(detail)
+
+    def _mkdir(self, path: Path) -> None:
+        if self.sudo_password is not None:
+            self._run_sudo(["install", "-d", "-m", "0755", str(path)])
+            return
+        path.mkdir(parents=True, exist_ok=True)
+
+    def _write_text(self, path: Path, text: str, mode: str = "0644") -> None:
+        if self.sudo_password is None:
+            write_text_atomic(path, text, mode=int(mode, 8))
+            return
+
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            prefix=".agmind-snapshot-",
+            delete=False,
+        ) as handle:
+            tmp_path = Path(handle.name)
+            handle.write(text)
+
+        try:
+            self._run_sudo(["install", "-D", "-m", mode, str(tmp_path), str(path)])
+        finally:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    def _copy_file(self, source: Path, target: Path, mode: str) -> None:
+        if self.sudo_password is not None:
+            self._run_sudo(["install", "-D", "-m", mode, str(source), str(target)])
+            return
+        shutil.copy2(source, target)
+        target.chmod(int(mode, 8))
+
+    def _copytree(self, source: Path, target: Path) -> None:
+        if self.sudo_password is not None:
+            self._run_sudo(["install", "-d", "-m", "0755", str(target)])
+            self._run_sudo(["cp", "-R", "--no-preserve=ownership", f"{source}/.", str(target)])
+            return
+        shutil.copytree(source, target, dirs_exist_ok=True)
+
+    def _remove_incomplete_snapshot(self, path: Path) -> None:
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if self.sudo_password is not None and path.is_relative_to(self.snapshots_dir):
+                try:
+                    self._run_sudo(["rm", "-rf", "--one-file-system", str(path)])
+                    return
+                except OSError as sudo_exc:
+                    log.error(
+                        "failed to remove incomplete snapshot %s via sudo: %s", path, sudo_exc
+                    )
+            else:
+                log.error("failed to remove incomplete snapshot %s: %s", path, exc)
 
     def save(
         self,
@@ -84,6 +166,7 @@ class SnapshotManager:
         reason: str = "",
         descriptors_dir: Path | None = None,
         env_file: Path | None = None,
+        version_env_file: Path | None = None,
         agmind_version: str = "",
     ) -> Snapshot:
         """Create new snapshot from current state.
@@ -94,36 +177,44 @@ class SnapshotManager:
             reason: human-readable reason
             descriptors_dir: путь к templates/services/ для copy
             env_file: путь к .env файлу для copy
+            version_env_file: путь к version.env файлу для copy
             agmind_version: version string
         """
         now = datetime.now(UTC)
         ts = now.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
         snap_path = self.snapshots_dir / ts
-        snap_path.mkdir(parents=True, exist_ok=True)
+        self._mkdir(snap_path)
 
-        # compose.yml
-        snap_path.joinpath("compose.yml").write_text(compose_text, encoding="utf-8")
+        try:
+            # compose.yml
+            self._write_text(snap_path.joinpath("compose.yml"), compose_text)
 
-        # descriptors copy
-        if descriptors_dir is not None and descriptors_dir.exists():
-            target = snap_path / "descriptors"
-            shutil.copytree(descriptors_dir, target, dirs_exist_ok=True)
+            # descriptors copy
+            if descriptors_dir is not None and descriptors_dir.exists():
+                target = snap_path / "descriptors"
+                self._copytree(descriptors_dir, target)
 
-        # env snapshot
-        if env_file is not None and env_file.exists():
-            shutil.copy2(env_file, snap_path / "env.snapshot")
+            # env snapshot
+            if env_file is not None and env_file.exists():
+                self._copy_file(env_file, snap_path / "env.snapshot", "0600")
+            if version_env_file is not None and version_env_file.exists():
+                self._copy_file(version_env_file, snap_path / "version.env.snapshot", "0644")
 
-        # meta
-        meta = {
-            "id": ts,
-            "timestamp": now.isoformat(),
-            "profile": profile,
-            "reason": reason,
-            "agmind_version": agmind_version,
-        }
-        snap_path.joinpath("meta.json").write_text(
-            json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+            # meta
+            meta = {
+                "id": ts,
+                "timestamp": now.isoformat(),
+                "profile": profile,
+                "reason": reason,
+                "agmind_version": agmind_version,
+            }
+            self._write_text(
+                snap_path.joinpath("meta.json"),
+                json.dumps(meta, indent=2, ensure_ascii=False),
+            )
+        except Exception:
+            self._remove_incomplete_snapshot(snap_path)
+            raise
 
         snapshot = Snapshot(
             path=snap_path,
@@ -189,5 +280,14 @@ class SnapshotManager:
                 log.info("pruned snapshot %s", snap.id)
                 removed += 1
             except OSError as exc:
+                if self.sudo_password is not None and snap.path.is_relative_to(self.snapshots_dir):
+                    try:
+                        self._run_sudo(["rm", "-rf", "--one-file-system", str(snap.path)])
+                        log.info("pruned snapshot %s via sudo", snap.id)
+                        removed += 1
+                        continue
+                    except OSError as sudo_exc:
+                        log.error("failed to prune %s via sudo: %s", snap.id, sudo_exc)
+                        continue
                 log.error("failed to prune %s: %s", snap.id, exc)
         return removed

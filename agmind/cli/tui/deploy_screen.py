@@ -24,7 +24,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Label, RichLog, Static
 
-from agmind.deploy.runner import DeployResult, deploy
+from agmind.deploy.runner import DeployResult, ProgressCallback, deploy
 
 
 class DeployProgressScreen(Screen[DeployResult]):
@@ -97,9 +97,11 @@ class DeployProgressScreen(Screen[DeployResult]):
         domain: str,
         install_dir: Path,
         healthcheck_timeout: int = 300,
+        services: list[str] | None = None,
     ) -> None:
         super().__init__()
         self.profiles = profiles
+        self.services = services
         self.domain = domain
         self.install_dir = install_dir
         self.healthcheck_timeout = healthcheck_timeout
@@ -113,6 +115,7 @@ class DeployProgressScreen(Screen[DeployResult]):
             f"Deploying AGmind\n"
             f"  domain: {self.domain}\n"
             f"  profiles: {', '.join(self.profiles)}\n"
+            f"  services: {', '.join(self.services or []) or '-'}\n"
             f"  install_dir: {self.install_dir}",
             id="deploy-title",
         )
@@ -202,20 +205,24 @@ class DeployProgressScreen(Screen[DeployResult]):
                         self.app.call_from_thread(self._update_step, s, "error")
 
         try:
-            self.result = deploy(
-                profiles=self.profiles,
-                install_dir=self.install_dir,
-                domain=self.domain,
-                apply=True,
-                no_prompt=True,
-                healthcheck_timeout=self.healthcheck_timeout,
-                progress=progress_cb,
-            )
+            self.result = self._deploy(progress_cb)
         except Exception as exc:  # noqa: BLE001
             self.result = DeployResult(success=False, message=f"unhandled error: {exc}")
 
         # Finalize UI from worker thread
         self.app.call_from_thread(self._finalize)
+
+    def _deploy(self, progress_cb: ProgressCallback) -> DeployResult:
+        return deploy(
+            profiles=self.profiles,
+            services=self.services,
+            install_dir=self.install_dir,
+            domain=self.domain,
+            apply=True,
+            no_prompt=True,
+            healthcheck_timeout=self.healthcheck_timeout,
+            progress=progress_cb,
+        )
 
     def _finalize(self) -> None:
         result = self.result

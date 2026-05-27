@@ -64,7 +64,7 @@ User priority (см. memory feedback-tui-devops): "fast добавление н�
    - `mem_limit`: `^\d+(k|m|g)$` lowercase
    - `port`: `^(\d{1,3}(\.\d{1,3}){3}:)?\d+:\d+$`
    - `tier`: Literal `edge | inference | storage | ops`
-6. **JSON Schema export**: `scripts/export_schemas.py` запускается вручную и в pre-commit при изменении `agmind/schemas/`. Artifact `templates/schemas/service.json` коммитится в git (developer convenience).
+6. **JSON Schema export**: `scripts/dev/export_schemas.py` запускается вручную и в pre-commit при изменении `agmind/schemas/`. Artifact `templates/schemas/service.json` коммитится в git (developer convenience).
 
 ## Последствия
 

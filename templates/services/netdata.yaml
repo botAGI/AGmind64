@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: netdata
+image: netdata/netdata:v2.10.3
+digest: bcc822ec685dd7ee488e9f99b957f479b66301be04f13f346df692ad7de94151
+tier: ops
+purpose: Real-time host and container health dashboard — Netdata v2.10.3 (2026-04-27)
+owner: observability-stack
+profiles:
+- observability
+ports:
+- 127.0.0.1:19999:19999
+volumes:
+- /var/lib/agmind/netdata/config:/etc/netdata
+- /var/lib/agmind/netdata/lib:/var/lib/netdata
+- /var/lib/agmind/netdata/cache:/var/cache/netdata
+- /etc/passwd:/host/etc/passwd:ro
+- /etc/group:/host/etc/group:ro
+- /proc:/host/proc:ro
+- /sys:/host/sys:ro
+- /etc/os-release:/host/etc/os-release:ro
+- /var/run/docker.sock:/var/run/docker.sock:ro
+env:
+  DO_NOT_TRACK: '1'
+  NETDATA_CLAIM_TOKEN: ''
+  NETDATA_CLAIM_URL: ''
+  NETDATA_CLAIM_ROOMS: ''
+cap_add:
+- SYS_PTRACE
+- SYS_ADMIN
+security_opt:
+- apparmor:unconfined
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+routing:
+  host: netdata.agmind.dev
+  middleware_chain: chain-internal
+  healthcheck_path: /api/v1/info
+observability:
+  prometheus_scrape: true
+  metrics_path: /api/v1/allmetrics
+  metrics_port: 19999

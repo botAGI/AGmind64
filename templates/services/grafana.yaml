@@ -9,7 +9,7 @@ profiles:
 ports:
 - 127.0.0.1:3002:3000
 volumes:
-- /etc/agmind/grafana:/etc/grafana/provisioning:ro
+- /etc/agmind/grafana/provisioning:/etc/grafana/provisioning:ro
 - /var/lib/agmind/grafana:/var/lib/grafana
 env:
   GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}

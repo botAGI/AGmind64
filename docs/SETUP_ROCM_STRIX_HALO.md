@@ -81,7 +81,7 @@ rocm-smi
 # amd-smi — НЕ ИСПОЛЬЗОВАТЬ
 # Сломан на gfx1151 (ROCm/ROCm#6035, открыт 15 Mar 2026, статус: triage без фикса).
 # Все метрики возвращают N/A кроме EDGE temp.
-# AGmind использует scripts/amdgpu_textfile.sh вместо amd-smi.
+# AGmind использует scripts/ops/amdgpu_textfile.sh вместо amd-smi.
 ```
 
 ## Real install log (2026-05-19, our Strix Halo):
@@ -132,7 +132,7 @@ cd ~/AGmind64
 
 | Issue | Status | Workaround |
 |---|---|---|
-| **ROCm/ROCm#6035** amd-smi N/A на gfx1151 | Open, triage | Используем `scripts/amdgpu_textfile.sh` (R13) — читает sysfs напрямую |
+| **ROCm/ROCm#6035** amd-smi N/A на gfx1151 | Open, triage | Используем `scripts/ops/amdgpu_textfile.sh` (R13) — читает sysfs напрямую |
 | **ROCm/ROCm#5665** GPU hang на ROCm 7.1 + AI + video encoding | Закрыт в 7.2.3 | Используем 7.2.3 |
 | **firmware 20251125** регрессия | Известна | `apt install linux-firmware` ≥ 20260110 |
 | **HSA_OVERRIDE_GFX_VERSION=11.5.1** | НЕ нужен на 7.2.x | В AMD docs не требуется; community workaround для старых версий (ollama#14855) |

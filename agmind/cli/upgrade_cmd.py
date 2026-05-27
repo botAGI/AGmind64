@@ -19,7 +19,8 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
-from agmind.log import logger
+from agmind.core.files import write_text_atomic
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -115,7 +116,7 @@ def _bump_pin_in_yaml(
             if line.startswith("image:"):
                 out.append(f"digest: {new_digest}")
         new_lines = out
-    yaml_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    write_text_atomic(yaml_path, "\n".join(new_lines) + "\n")
     return old_tag, new_tag
 
 
@@ -134,7 +135,8 @@ def _save_upgrade_state(
     state_file = UPGRADE_STATE_DIR / f"{ts}_{service}.json"
     import json
 
-    state_file.write_text(
+    write_text_atomic(
+        state_file,
         json.dumps(
             {
                 "service": service,
@@ -146,7 +148,6 @@ def _save_upgrade_state(
             },
             indent=2,
         ),
-        encoding="utf-8",
     )
     return state_file
 
@@ -165,7 +166,7 @@ def _save_upgrade_plan_state(plan: UpgradePlan) -> Path:
         "timestamp": ts,
         "items": [asdict(item) for item in plan.items],
     }
-    state_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_text_atomic(state_file, json.dumps(payload, indent=2))
     return state_file
 
 
@@ -189,8 +190,8 @@ def _latest_upgrade_state() -> dict[str, Any] | None:
 
 
 def cmd_check() -> int:
-    """Run scripts/version_check.py."""
-    script = REPO_ROOT / "scripts" / "version_check.py"
+    """Run scripts/checks/version_check.py."""
+    script = REPO_ROOT / "scripts" / "checks" / "version_check.py"
     if not script.exists():
         print(f"ERROR: {script} not found", file=sys.stderr)
         return 1

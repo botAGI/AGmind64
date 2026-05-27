@@ -26,7 +26,7 @@ from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass
 from typing import cast
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

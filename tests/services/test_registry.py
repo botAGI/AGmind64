@@ -22,6 +22,8 @@ from agmind.services.registry import (
 
 pytestmark = pytest.mark.backend_any
 
+VALID_SHA256 = "a" * 64
+
 
 # ---- ServiceProfile enum ----
 
@@ -33,6 +35,7 @@ def test_service_profile_values_stable() -> None:
         "rag",
         "ragflow",
         "ui",
+        "automation",
         "observability",
         "proxmox",
         "security",
@@ -59,9 +62,103 @@ def test_service_fq_image_without_digest() -> None:
     assert s.fq_image() == "alpine:3.21"
 
 
+@pytest.mark.parametrize(
+    "image",
+    [
+        "alpine",
+        "registry.internal:5000/alpine",
+        "alpine:",
+    ],
+)
+def test_service_fq_image_rejects_image_without_tag_or_digest(image: str) -> None:
+    s = Service(name="test", image=image)
+    with pytest.raises(ValueError, match="no tag"):
+        s.fq_image()
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        "alpine:3.21\n",
+        "alpine:3.21 ",
+        "\talpine:3.21",
+    ],
+)
+def test_service_fq_image_rejects_image_with_whitespace(image: str) -> None:
+    s = Service(name="test", image=image)
+    with pytest.raises(ValueError, match="whitespace"):
+        s.fq_image()
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        f"alpine:@sha256:{VALID_SHA256}",
+        f"registry.internal:5000/alpine:@sha256:{VALID_SHA256}",
+    ],
+)
+def test_service_fq_image_rejects_empty_tag_before_inline_digest(image: str) -> None:
+    s = Service(name="test", image=image)
+    with pytest.raises(ValueError, match="no tag"):
+        s.fq_image()
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        "alpine:latest",
+        f"alpine:latest@sha256:{VALID_SHA256}",
+    ],
+)
+def test_service_fq_image_rejects_latest_tag(image: str) -> None:
+    s = Service(name="test", image=image)
+    with pytest.raises(ValueError, match="latest"):
+        s.fq_image()
+
+
 def test_service_fq_image_with_digest() -> None:
+    s = Service(name="test", image="alpine:3.21", digest=VALID_SHA256)
+    assert s.fq_image() == f"alpine:3.21@sha256:{VALID_SHA256}"
+
+
+def test_service_fq_image_normalizes_prefixed_digest() -> None:
+    s = Service(name="test", image="alpine:3.21", digest=f"sha256:{VALID_SHA256}")
+    assert s.fq_image() == f"alpine:3.21@sha256:{VALID_SHA256}"
+
+
+def test_service_fq_image_rejects_invalid_digest() -> None:
     s = Service(name="test", image="alpine:3.21", digest="abc123")
-    assert s.fq_image() == "alpine:3.21@sha256:abc123"
+    with pytest.raises(ValueError, match="sha256 digest"):
+        s.fq_image()
+
+
+@pytest.mark.parametrize(
+    "digest",
+    [
+        VALID_SHA256 + "\n",
+        f"sha256:{VALID_SHA256}\n",
+    ],
+)
+def test_service_fq_image_rejects_digest_with_trailing_newline(digest: str) -> None:
+    s = Service(name="test", image="alpine:3.21", digest=digest)
+    with pytest.raises(ValueError, match="sha256 digest"):
+        s.fq_image()
+
+
+def test_service_fq_image_rejects_inline_digest_with_trailing_newline() -> None:
+    s = Service(name="test", image=f"alpine:3.21@sha256:{VALID_SHA256}\n")
+    with pytest.raises(ValueError, match="sha256 digest"):
+        s.fq_image()
+
+
+def test_service_fq_image_rejects_duplicate_digest_source() -> None:
+    s = Service(
+        name="test",
+        image=f"alpine:3.21@sha256:{VALID_SHA256}",
+        digest=VALID_SHA256,
+    )
+    with pytest.raises(ValueError, match="duplicate digest"):
+        s.fq_image()
 
 
 # ---- YAML parser fallback ----
@@ -135,6 +232,53 @@ def test_load_registry_minimal(tmp_path: Path) -> None:
     assert reg["alpha"].image == "alpine:3.21"
 
 
+def test_load_registry_split_dir_fails_on_invalid_descriptor(tmp_path: Path) -> None:
+    services_dir = tmp_path / "services"
+    services_dir.mkdir()
+    (services_dir / "good.yaml").write_text(
+        dedent("""
+        name: good
+        image: alpine:3.21
+        tier: ops
+        purpose: Valid service
+        """).strip(),
+        encoding="utf-8",
+    )
+    (services_dir / "bad.yaml").write_text(
+        dedent("""
+        name: bad
+        image: alpine
+        tier: ops
+        purpose: Invalid service
+        """).strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="bad.yaml"):
+        load_registry(services_dir)
+
+
+def test_load_registry_split_dir_rejects_duplicate_service_names(tmp_path: Path) -> None:
+    services_dir = tmp_path / "services"
+    services_dir.mkdir()
+    for filename, image in (
+        ("alpha.yaml", "alpine:3.21"),
+        ("beta.yaml", "alpine:3.22"),
+    ):
+        (services_dir / filename).write_text(
+            dedent(f"""
+            name: duplicate
+            image: {image}
+            tier: ops
+            purpose: Duplicate service
+            """).strip(),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ValueError, match="duplicate service name 'duplicate'"):
+        load_registry(services_dir)
+
+
 # ---- list_services ----
 
 
@@ -177,6 +321,13 @@ def test_services_for_profile_proxmox_is_opt_in() -> None:
     assert "proxmox-exporter" not in {
         s.name for s in services_for_profile(ServiceProfile.OBSERVABILITY)
     }
+
+
+def test_services_for_profile_automation_is_opt_in() -> None:
+    automation = services_for_profile(ServiceProfile.AUTOMATION)
+    names = {s.name for s in automation}
+    assert "n8n" in names
+    assert "n8n" not in {s.name for s in services_for_profile(ServiceProfile.CORE)}
 
 
 def test_services_for_profile_invalid_string() -> None:

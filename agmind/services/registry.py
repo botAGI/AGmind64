@@ -14,6 +14,7 @@ Profile system:
 - rag-milvus     — RAG с Milvus
 - ragflow        — core + RAGFlow + MySQL + Elasticsearch + MinIO
 - ui             — Open WebUI как chat frontend
+- automation     — local workflow automation services such as n8n
 - observability  — Prometheus + Grafana + Loki + Alloy + Alertmanager + exporters
 - proxmox        — Proxmox-specific opt-in integrations and exporters
 - security       — Authelia + fail2ban (host-level)
@@ -28,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -40,10 +41,46 @@ class ServiceProfile(str, Enum):
     RAG = "rag"
     RAGFLOW = "ragflow"
     UI = "ui"
+    AUTOMATION = "automation"
     OBSERVABILITY = "observability"
     PROXMOX = "proxmox"
     SECURITY = "security"
     FULL = "full"
+
+
+_IMAGE_LATEST_RE = re.compile(r":latest(?:$|@)")
+_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}\Z")
+
+
+def _image_has_tag(image: str) -> bool:
+    image_without_digest = image.split("@", 1)[0]
+    last_slash = image_without_digest.rfind("/")
+    last_colon = image_without_digest.rfind(":")
+    return last_colon > last_slash and last_colon < len(image_without_digest) - 1
+
+
+def _normalize_sha256_digest(digest: str) -> str:
+    if not _SHA256_DIGEST_RE.match(digest):
+        raise ValueError(f"digest '{digest}' invalid: expected sha256 digest with 64 hex chars")
+    return digest.removeprefix("sha256:")
+
+
+def _validate_image_reference(image: str) -> None:
+    if _IMAGE_LATEST_RE.search(image):
+        raise ValueError(f"image '{image}' uses :latest — pin to semver")
+    if "@" in image:
+        image_name, digest = image.rsplit("@", 1)
+        if any(char.isspace() for char in image_name):
+            raise ValueError(f"image '{image}' contains whitespace — pin to exact image reference")
+        if image_name.endswith(":"):
+            raise ValueError(f"image '{image}' has no tag — pin to semver")
+        if not image_name or not _SHA256_DIGEST_RE.match(digest):
+            raise ValueError(f"image '{image}' has invalid sha256 digest")
+        return
+    if any(char.isspace() for char in image):
+        raise ValueError(f"image '{image}' contains whitespace — pin to exact image reference")
+    if not _image_has_tag(image):
+        raise ValueError(f"image '{image}' has no tag — pin to semver")
 
 
 @dataclass(frozen=True)
@@ -91,8 +128,13 @@ class Service:
 
     def fq_image(self) -> str:
         """Return fully-qualified image reference (with digest if pinned)."""
+        _validate_image_reference(self.image)
         if self.digest:
-            return f"{self.image}@sha256:{self.digest}"
+            if "@" in self.image:
+                raise ValueError(
+                    "duplicate digest: use either image@sha256:<digest> or digest field, not both"
+                )
+            return f"{self.image}@sha256:{_normalize_sha256_digest(self.digest)}"
         return self.image
 
 
@@ -260,14 +302,19 @@ def load_registry(path: Path | str | None = None) -> dict[str, Service]:
         return {}
 
     out: dict[str, Service] = {}
+    errors: list[str] = []
     for yaml_path in sorted(services_dir.glob("*.yaml")):
         try:
             data = _parse_yaml(yaml_path.read_text(encoding="utf-8"))
             descriptor = ServiceDescriptor.model_validate(data)
+            if descriptor.name in out:
+                errors.append(f"{yaml_path.name}: duplicate service name '{descriptor.name}'")
+                continue
             out[descriptor.name] = descriptor.to_legacy_service()
         except Exception as exc:  # noqa: BLE001
-            log.error("failed to load %s: %s", yaml_path.name, exc)
-            continue
+            errors.append(f"{yaml_path.name}: {exc}")
+    if errors:
+        raise ValueError("failed to load service descriptors: " + "; ".join(errors))
     return out
 
 
@@ -294,9 +341,6 @@ def services_for_profile(
         wanted_profiles = {profile.value}
 
     return [s for s in all_services if set(s.profiles) & wanted_profiles]
-
-
-_IMAGE_LATEST_RE = re.compile(r":latest(?:$|@)")
 
 
 def validate_no_latest(services: dict[str, Service]) -> list[str]:

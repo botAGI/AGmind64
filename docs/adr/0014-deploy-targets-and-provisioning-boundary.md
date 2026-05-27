@@ -72,13 +72,13 @@ implementations, not hidden branches inside `templates/services/*.yaml`.
 - `templates/deploy-targets/ubuntu-compose.yaml`,
   `templates/deploy-targets/proxmox-vm-compose.yaml`, and
   `templates/deploy-targets/k3s.yaml` define the first target ladder.
-- `scripts/export_schemas.py` exports
+- `scripts/dev/export_schemas.py` exports
   `templates/schemas/deploy-target.json` for editor and CI validation.
-- `tests/test_deploy_targets.py` verifies target validation, duplicate-id
+- `tests/deploy/test_deploy_targets.py` verifies target validation, duplicate-id
   rejection, repository baseline targets, and schema export.
 - `infra/proxmox/vm-compose` provides the first OpenTofu root module skeleton
   for `proxmox-vm-compose`.
-- `scripts/proxmox_inventory.py` converts `tofu output -json` into a local
+- `scripts/ops/proxmox_inventory.py` converts `tofu output -json` into a local
   Ansible inventory for the existing install playbook.
 
 ## Consequences

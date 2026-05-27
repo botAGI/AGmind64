@@ -33,7 +33,7 @@ from typing import Any
 
 from agmind.compute.base import Backend, DeviceInfo, LLMHandle
 from agmind.compute.detect import detect_host
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

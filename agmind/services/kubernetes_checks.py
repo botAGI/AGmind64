@@ -11,13 +11,18 @@ from typing import Any
 
 import yaml
 
-from agmind.deploy.targets import DeploymentTarget, load_deploy_targets
+from agmind.deploy.targets import DeploymentExpectedWarning, DeploymentTarget, load_deploy_targets
 from agmind.services.kubernetes_renderer import (
     KubernetesRenderWarning,
     render_kubernetes,
     to_yaml,
 )
-from agmind.services.renderer import DEFAULT_SERVICES_DIR, load_descriptors, select_services
+from agmind.services.renderer import (
+    DEFAULT_SERVICES_DIR,
+    load_descriptors,
+    select_services,
+    unknown_profiles,
+)
 
 
 @dataclass(frozen=True)
@@ -34,9 +39,28 @@ class KubernetesTargetRenderReport:
     warning_count: int
     warning_summary: dict[str, int]
     warnings: tuple[KubernetesRenderWarning, ...] = ()
+    expected_warnings: tuple[KubernetesRenderWarning, ...] = ()
+    unexpected_warnings: tuple[KubernetesRenderWarning, ...] = ()
     errors: tuple[str, ...] = ()
 
+    @property
+    def expected_warning_count(self) -> int:
+        return len(self.expected_warnings)
+
+    @property
+    def expected_warning_summary(self) -> dict[str, int]:
+        return _summarize_warnings(self.expected_warnings)
+
+    @property
+    def unexpected_warning_count(self) -> int:
+        return len(self.unexpected_warnings)
+
+    @property
+    def unexpected_warning_summary(self) -> dict[str, int]:
+        return _summarize_warnings(self.unexpected_warnings)
+
     def to_json(self) -> dict[str, Any]:
+        expected_keys = {_warning_key(warning) for warning in self.expected_warnings}
         return {
             "target_id": self.target_id,
             "renderer": self.renderer,
@@ -47,7 +71,14 @@ class KubernetesTargetRenderReport:
             "service_count": self.service_count,
             "warning_count": self.warning_count,
             "warning_summary": dict(self.warning_summary),
-            "warnings": [_warning_to_json(warning) for warning in self.warnings],
+            "expected_warning_count": self.expected_warning_count,
+            "expected_warning_summary": dict(self.expected_warning_summary),
+            "unexpected_warning_count": self.unexpected_warning_count,
+            "unexpected_warning_summary": dict(self.unexpected_warning_summary),
+            "warnings": [
+                _warning_to_json(warning, expected=_warning_key(warning) in expected_keys)
+                for warning in self.warnings
+            ],
             "errors": list(self.errors),
         }
 
@@ -67,6 +98,12 @@ class KubernetesRenderCheckReport:
             "ok": self.ok,
             "warning_summary": _merge_warning_summaries(
                 target.warning_summary for target in self.targets
+            ),
+            "expected_warning_summary": _merge_warning_summaries(
+                target.expected_warning_summary for target in self.targets
+            ),
+            "unexpected_warning_summary": _merge_warning_summaries(
+                target.unexpected_warning_summary for target in self.targets
             ),
             "targets": [target.to_json() for target in self.targets],
         }
@@ -118,12 +155,15 @@ def format_kubernetes_render_report(report: KubernetesRenderCheckReport) -> str:
             f"({target.object_count} objects, {target.deployment_count} deployments, "
             f"{target.service_count} services, profiles={profile_text})"
         )
-        if target.warning_count:
-            summary = _format_warning_summary(target.warning_summary)
-            lines.append(f"  warnings: {target.warning_count} ({summary})")
-            blockers = _format_code_breakdown(target.warnings, severity="blocker")
+        if target.unexpected_warning_count:
+            summary = _format_warning_summary(target.unexpected_warning_summary)
+            lines.append(f"  warnings: {target.unexpected_warning_count} ({summary})")
+            blockers = _format_code_breakdown(target.unexpected_warnings, severity="blocker")
             if blockers:
                 lines.append(f"  blockers: {blockers}")
+        if target.expected_warning_count:
+            summary = _format_warning_summary(target.expected_warning_summary)
+            lines.append(f"  expected warnings: {target.expected_warning_count} ({summary})")
         for error in target.errors:
             lines.append(f"  ERROR: {error}")
     if report.ok:
@@ -187,9 +227,15 @@ def _validate_one_target(
             f"{target.id}: {blocker_count} blocker warnings require research status "
             "or Kubernetes-native remediation"
         )
+    expected_warnings = _expected_warnings(
+        warnings,
+        expected_codes=target.verification.expected_warning_codes,
+        expected_warnings=target.verification.expected_warnings,
+    )
     unexpected_warnings = _unexpected_warnings(
         warnings,
         expected_codes=target.verification.expected_warning_codes,
+        expected_warnings=target.verification.expected_warnings,
     )
     if strict and unexpected_warnings:
         warning_label = "warning" if len(unexpected_warnings) == 1 else "warnings"
@@ -210,6 +256,8 @@ def _validate_one_target(
         warning_count=len(warnings),
         warning_summary=_summarize_warnings(warnings),
         warnings=warnings,
+        expected_warnings=expected_warnings,
+        unexpected_warnings=unexpected_warnings,
         errors=tuple(errors),
     )
 
@@ -224,7 +272,18 @@ def _render_target_to_yaml_and_warnings(
     services_dir: Path,
 ) -> tuple[str, tuple[KubernetesRenderWarning, ...]]:
     descriptors = load_descriptors(services_dir)
+    missing_profiles = unknown_profiles(descriptors, list(target.runtime.profiles))
+    if missing_profiles:
+        raise ValueError(f"Unknown profiles requested: {', '.join(missing_profiles)}")
     selected = select_services(descriptors, profiles=list(target.runtime.profiles))
+    excluded = frozenset(target.runtime.excluded_services)
+    if excluded:
+        missing = sorted(excluded.difference(descriptors))
+        if missing:
+            raise ValueError(f"Unknown excluded services: {', '.join(missing)}")
+        selected = {
+            name: descriptor for name, descriptor in selected.items() if name not in excluded
+        }
     if not selected:
         raise ValueError(f"No services match: profiles={list(target.runtime.profiles)}")
     result = render_kubernetes(list(selected.values()), namespace="agmind")
@@ -256,13 +315,14 @@ def _format_warning_summary(summary: dict[str, int]) -> str:
     )
 
 
-def _warning_to_json(warning: KubernetesRenderWarning) -> dict[str, str]:
+def _warning_to_json(warning: KubernetesRenderWarning, *, expected: bool) -> dict[str, str | bool]:
     return {
         "service": warning.service,
         "code": warning.code,
         "severity": warning.severity,
         "message": warning.message,
         "remediation": warning.remediation,
+        "expected": expected,
     }
 
 
@@ -283,11 +343,49 @@ def _unexpected_warnings(
     warnings: tuple[KubernetesRenderWarning, ...],
     *,
     expected_codes: tuple[str, ...],
+    expected_warnings: tuple[DeploymentExpectedWarning, ...],
 ) -> tuple[KubernetesRenderWarning, ...]:
-    expected = frozenset(expected_codes)
-    if not expected:
-        return warnings
-    return tuple(warning for warning in warnings if warning.code not in expected)
+    return tuple(
+        warning
+        for warning in warnings
+        if not _warning_is_expected(
+            warning,
+            expected_codes=expected_codes,
+            expected_warnings=expected_warnings,
+        )
+    )
+
+
+def _expected_warnings(
+    warnings: tuple[KubernetesRenderWarning, ...],
+    *,
+    expected_codes: tuple[str, ...],
+    expected_warnings: tuple[DeploymentExpectedWarning, ...],
+) -> tuple[KubernetesRenderWarning, ...]:
+    return tuple(
+        warning
+        for warning in warnings
+        if _warning_is_expected(
+            warning,
+            expected_codes=expected_codes,
+            expected_warnings=expected_warnings,
+        )
+    )
+
+
+def _warning_is_expected(
+    warning: KubernetesRenderWarning,
+    *,
+    expected_codes: tuple[str, ...],
+    expected_warnings: tuple[DeploymentExpectedWarning, ...],
+) -> bool:
+    expected_code_set = frozenset(expected_codes)
+    expected_pairs = frozenset((warning.service, warning.code) for warning in expected_warnings)
+    return warning.code in expected_code_set or _warning_key(warning) in expected_pairs
+
+
+def _warning_key(warning: KubernetesRenderWarning) -> tuple[str, str]:
+    return (warning.service, warning.code)
 
 
 def _format_warning_code_breakdown(warnings: tuple[KubernetesRenderWarning, ...]) -> str:

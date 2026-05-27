@@ -7,16 +7,22 @@ InstallStepResult с success / message / elapsed.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
-from agmind._env import parse_env_file, shell_quote
 from agmind.config.env import write_env
+from agmind.core.env import parse_env_file, parse_env_text, shell_quote
+from agmind.core.secrets import generate_secret, write_private_text
+from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import (
     DEFAULT_REPO_ROOT,
     InstallConfig,
@@ -26,7 +32,6 @@ from agmind.install.orchestrator import (
     ProgressEvent,
     ProgressKind,
 )
-from agmind.secrets import generate_secret
 
 # ---------- helpers ----------
 
@@ -37,7 +42,405 @@ _RUNTIME_SECRET_KEYS = (
     "MYSQL_ROOT_PASSWORD",
     "MINIO_ROOT_PASSWORD",
     "REDIS_PASSWORD",
+    "N8N_ENCRYPTION_KEY",
+    "HOMARR_SECRET_ENCRYPTION_KEY",
 )
+
+_RUNTIME_TARGET_GUARD_SCRIPT = r"""
+set -eu
+while [ "$#" -gt 0 ]; do
+    kind=$1
+    path=$2
+    shift 2
+    if [ -L "$path" ]; then
+        echo "runtime ${kind} target must not be a symlink: ${path}" >&2
+        exit 1
+    fi
+    if [ ! -e "$path" ]; then
+        continue
+    fi
+    case "$kind" in
+        directory)
+            if [ ! -d "$path" ]; then
+                echo "runtime directory target must be a real directory: ${path}" >&2
+                exit 1
+            fi
+            ;;
+        file)
+            if [ ! -f "$path" ]; then
+                echo "runtime file target must be a regular file: ${path}" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "unknown runtime target kind: ${kind}" >&2
+            exit 1
+            ;;
+    esac
+done
+"""
+
+
+def _redact_install_secrets(text: str, config: InstallConfig) -> str:
+    redacted = text
+    for secret in (config.cf_api_token, config.sudo_password):
+        if secret:
+            redacted = redacted.replace(secret, "***")
+    return redacted
+
+
+def _copytree_contents(source: Path, target: Path) -> None:
+    if not source.is_dir():
+        raise FileNotFoundError(f"required runtime template directory missing: {source}")
+    target.mkdir(parents=True, exist_ok=True)
+    for item in source.iterdir():
+        destination = target / item.name
+        if item.is_dir():
+            _copytree_atomic(item, destination)
+        else:
+            _copy_file_atomic(item, destination)
+
+
+def _cleanup_path(path: Path) -> None:
+    if path.is_symlink():
+        path.unlink(missing_ok=True)
+        return
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _replace_path_atomic(staged: Path, target: Path) -> None:
+    backup = target.with_name(f".{target.name}.rollback")
+    _cleanup_path(backup)
+    try:
+        if target.exists():
+            target.replace(backup)
+        staged.replace(target)
+    except Exception:
+        if backup.exists() and not target.exists():
+            backup.replace(target)
+        raise
+    finally:
+        _cleanup_path(backup)
+
+
+def _copytree_atomic(source: Path, target: Path) -> None:
+    staged = target.with_name(f".{target.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        shutil.copytree(source, staged)
+        _replace_path_atomic(staged, target)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
+def _copy_file_atomic(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staged = target.with_name(f".{target.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        shutil.copy2(source, staged)
+        _replace_path_atomic(staged, target)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
+def _write_secret_file(path: Path, value: str) -> None:
+    secret_dir = path.parent
+    if secret_dir.exists() and (secret_dir.is_symlink() or not secret_dir.is_dir()):
+        raise OSError(f"runtime secret directory must be a real directory: {secret_dir}")
+    secret_dir.mkdir(parents=True, exist_ok=True)
+    secret_dir.chmod(0o700)
+    write_private_text(path, value)
+
+
+def _stage_prometheus_config(observability_dir: Path, prometheus_dir: Path) -> None:
+    staged = prometheus_dir.with_name(f".{prometheus_dir.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        staged.mkdir(parents=True, exist_ok=True)
+        _copy_file_atomic(observability_dir / "prometheus.yml", staged / "prometheus.yml")
+        _copytree_contents(observability_dir / "prometheus" / "rules", staged / "rules")
+        _replace_path_atomic(staged, prometheus_dir)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
+def _stage_single_file_config(source: Path, target_dir: Path, target_name: str) -> None:
+    staged = target_dir.with_name(f".{target_dir.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        staged.mkdir(parents=True, exist_ok=True)
+        _copy_file_atomic(source, staged / target_name)
+        _replace_path_atomic(staged, target_dir)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
+def _stage_directory_contents(source: Path, target: Path) -> None:
+    staged = target.with_name(f".{target.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        _copytree_contents(source, staged)
+        _replace_path_atomic(staged, target)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
+def _materialize_runtime_files(
+    config: InstallConfig,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    selected = set(config.services)
+    templates_dir = DEFAULT_REPO_ROOT / "templates"
+    data_dir = config.models_dir.parent
+
+    if "traefik" in selected:
+        if config.cf_api_token:
+            _write_secret_file(data_dir / "secrets" / "cf_dns_api_token", config.cf_api_token)
+        _stage_directory_contents(
+            templates_dir / "traefik" / "dynamic",
+            data_dir / "traefik" / "dynamic",
+        )
+        (data_dir / "traefik" / "letsencrypt").mkdir(parents=True, exist_ok=True)
+
+    observability_dir = templates_dir / "observability"
+    if "prometheus" in selected:
+        _stage_prometheus_config(observability_dir, config.config_dir / "prometheus")
+    if "grafana" in selected:
+        _stage_directory_contents(
+            observability_dir / "grafana" / "provisioning",
+            config.config_dir / "grafana" / "provisioning",
+        )
+    if "loki" in selected:
+        _stage_directory_contents(observability_dir / "loki", config.config_dir / "loki")
+    if "alloy" in selected:
+        _stage_directory_contents(observability_dir / "alloy", config.config_dir / "alloy")
+    if "alertmanager" in selected:
+        _stage_single_file_config(
+            observability_dir / "alertmanager.yml",
+            config.config_dir / "alertmanager",
+            "alertmanager.yml",
+        )
+
+    callback(
+        _make_event(
+            step_id,
+            ProgressKind.LOG,
+            f"runtime files ready: data={data_dir} config={config.config_dir}",
+        )
+    )
+
+
+def _stage_runtime_payload(
+    config: InstallConfig,
+    env_text: str,
+    version_env_text: str,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    config.install_dir.mkdir(parents=True, exist_ok=True)
+    _materialize_runtime_files(config, callback, step_id)
+    write_env(config.install_dir / ".env", env_text, mode=0o600)
+    write_env(config.install_dir / "version.env", version_env_text, mode=0o644)
+
+
+def _write_runtime_payload_local(
+    config: InstallConfig,
+    env_text: str,
+    version_env_text: str,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    _stage_runtime_payload(config, env_text, version_env_text, callback, step_id)
+
+
+def _run_sudo_runtime_command(
+    config: InstallConfig,
+    cmd: list[str],
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    if config.sudo_password is None:
+        raise PermissionError("sudo password not provided for root-owned runtime paths")
+    rc, _ = _stream_subprocess(
+        ["sudo", "-S", "-p", "", "--", *cmd],
+        callback,
+        step_id,
+        stdin_payload=_sudo_stdin_payload(config),
+    )
+    if rc != 0:
+        raise OSError(f"sudo command failed rc={rc}: {cmd[0]}")
+
+
+def _sudo_runtime_target_args(staged_root: Path, target_root: Path) -> list[str]:
+    args: list[str] = ["directory", str(target_root)]
+    if not staged_root.exists():
+        return args
+    for item in staged_root.rglob("*"):
+        if item.is_dir():
+            kind = "directory"
+        elif item.is_file():
+            kind = "file"
+        else:
+            continue
+        args.extend([kind, str(target_root / item.relative_to(staged_root))])
+    return args
+
+
+def _assert_sudo_runtime_targets_safe(
+    config: InstallConfig,
+    staged_install: Path,
+    staged_data: Path,
+    staged_config: Path,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    args = [
+        "directory",
+        str(config.install_dir),
+        "file",
+        str(config.install_dir / ".env"),
+        "file",
+        str(config.install_dir / "version.env"),
+        *_sudo_runtime_target_args(staged_data, config.models_dir.parent),
+        *_sudo_runtime_target_args(staged_config, config.config_dir),
+    ]
+    rc, lines = _stream_subprocess(
+        [
+            "sudo",
+            "-S",
+            "-p",
+            "",
+            "--",
+            "sh",
+            "-c",
+            _RUNTIME_TARGET_GUARD_SCRIPT,
+            "agmind-runtime-target-guard",
+            *args,
+        ],
+        callback,
+        step_id,
+        stdin_payload=_sudo_stdin_payload(config),
+    )
+    if rc != 0:
+        detail = lines[-1] if lines else "unsafe runtime target path"
+        raise OSError(detail)
+
+
+def _write_runtime_payload_sudo(
+    config: InstallConfig,
+    env_text: str,
+    version_env_text: str,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    data_dir = config.models_dir.parent
+    with tempfile.TemporaryDirectory(prefix="agmind-runtime-payload-") as tmp:
+        stage = Path(tmp)
+        staged_install = stage / "install"
+        staged_data = stage / "data"
+        staged_config = stage / "config"
+        staged_config.mkdir(parents=True, exist_ok=True)
+        staged = replace(
+            config,
+            install_dir=staged_install,
+            models_dir=staged_data / "models",
+            config_dir=staged_config,
+        )
+        _stage_runtime_payload(staged, env_text, version_env_text, callback, step_id)
+
+        _assert_sudo_runtime_targets_safe(
+            config,
+            staged_install,
+            staged_data,
+            staged_config,
+            callback,
+            step_id,
+        )
+        _run_sudo_runtime_command(
+            config,
+            [
+                "install",
+                "-d",
+                "-m",
+                "0755",
+                str(config.install_dir),
+                str(data_dir),
+                str(config.config_dir),
+            ],
+            callback,
+            step_id,
+        )
+        _run_sudo_runtime_command(
+            config,
+            [
+                "install",
+                "-m",
+                "0600",
+                str(staged_install / ".env"),
+                str(config.install_dir / ".env"),
+            ],
+            callback,
+            step_id,
+        )
+        _run_sudo_runtime_command(
+            config,
+            [
+                "install",
+                "-m",
+                "0644",
+                str(staged_install / "version.env"),
+                str(config.install_dir / "version.env"),
+            ],
+            callback,
+            step_id,
+        )
+        if staged_data.exists():
+            _run_sudo_runtime_command(
+                config,
+                ["cp", "-R", "--no-preserve=ownership", f"{staged_data}/.", str(data_dir)],
+                callback,
+                step_id,
+            )
+        if staged_config.exists():
+            _run_sudo_runtime_command(
+                config,
+                [
+                    "cp",
+                    "-R",
+                    "--no-preserve=ownership",
+                    f"{staged_config}/.",
+                    str(config.config_dir),
+                ],
+                callback,
+                step_id,
+            )
+        secret_file = data_dir / "secrets" / "cf_dns_api_token"
+        if (staged_data / "secrets" / "cf_dns_api_token").exists():
+            _run_sudo_runtime_command(
+                config,
+                ["chmod", "0700", str(data_dir / "secrets")],
+                callback,
+                step_id,
+            )
+            _run_sudo_runtime_command(
+                config,
+                ["chmod", "0600", str(secret_file)],
+                callback,
+                step_id,
+            )
 
 
 def _env_line(key: str, value: str) -> str:
@@ -47,10 +450,81 @@ def _env_line(key: str, value: str) -> str:
 def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
     values: dict[str, str] = {
         "MINIO_ROOT_USER": existing_env.get("MINIO_ROOT_USER") or "agmind",
+        "N8N_TIMEZONE": existing_env.get("N8N_TIMEZONE") or "UTC",
     }
     for key in _RUNTIME_SECRET_KEYS:
         values[key] = existing_env.get(key) or generate_secret(32)
     return values
+
+
+def _version_key(service_name: str) -> str:
+    return f"{service_name.upper().replace('-', '_')}_VERSION"
+
+
+def _image_tag(image: str) -> str:
+    image_without_digest = image.split("@", 1)[0]
+    last_slash = image_without_digest.rfind("/")
+    last_colon = image_without_digest.rfind(":")
+    if last_colon <= last_slash or last_colon == len(image_without_digest) - 1:
+        return ""
+    return image_without_digest[last_colon + 1 :]
+
+
+def _image_digest(image: str) -> str:
+    if "@" not in image:
+        return ""
+    return image.rsplit("@", 1)[1].removeprefix("sha256:")
+
+
+def _runtime_version_env(service_names: list[str]) -> str:
+    from agmind import __version__
+    from agmind.services.renderer import load_descriptors
+
+    descriptors = load_descriptors()
+    if not service_names:
+        raise ValueError("no selected services for version.env")
+    selected_names = sorted(set(service_names))
+    missing = [name for name in selected_names if name not in descriptors]
+    if missing:
+        raise ValueError(f"unknown selected services for version.env: {', '.join(missing)}")
+
+    lines = [
+        "# AGmind runtime version manifest — written by `agmind install`.",
+        "# Non-secret file used by operators, backup, and drift reviews.",
+        _env_line("AGMIND_VERSION", __version__),
+        "",
+    ]
+    for service_name in selected_names:
+        descriptor = descriptors[service_name]
+        tag = _image_tag(descriptor.image)
+        digest = (descriptor.digest or _image_digest(descriptor.image)).removeprefix("sha256:")
+        if not tag and not digest:
+            continue
+        key = _version_key(service_name)
+        lines.append(_env_line(key, tag))
+        lines.append(_env_line(f"{key}_IMAGE", descriptor.image))
+        if digest:
+            lines.append(_env_line(f"{key}_DIGEST", f"sha256:{digest}"))
+    return "\n".join(lines) + "\n"
+
+
+def _parse_existing_runtime_env(config: InstallConfig, env_path: Path) -> dict[str, str]:
+    try:
+        return parse_env_file(env_path)
+    except PermissionError as exc:
+        if config.sudo_password is None:
+            raise
+        result = subprocess.run(
+            ["sudo", "-S", "-p", "", "--", "cat", str(env_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            input=f"{config.sudo_password}\n",
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or str(exc)).strip()
+            raise PermissionError(f"cannot read existing runtime env via sudo: {detail}") from exc
+        return parse_env_text(result.stdout)
 
 
 def _stream_subprocess(
@@ -115,6 +589,19 @@ def _make_event(
     from agmind.install.orchestrator import ProgressEvent
 
     return ProgressEvent(step_id=step_id, kind=kind, text=text, progress_pct=pct)
+
+
+def _docker_compose_cmd(config: InstallConfig, args: list[str]) -> list[str]:
+    compose = ["docker", "compose", *args]
+    if config.sudo_password is None:
+        return compose
+    return ["sudo", "-S", "-p", "", "--", *compose]
+
+
+def _sudo_stdin_payload(config: InstallConfig) -> bytes | None:
+    if config.sudo_password is None:
+        return None
+    return f"{config.sudo_password}\n".encode()
 
 
 # ---------- Step 1: doctor ----------
@@ -184,6 +671,8 @@ class BootstrapStep(InstallStep):
     label = "System bootstrap (apt, groups, dirs)"
 
     PLAYBOOK_RELATIVE = "ansible/install.yml"
+    ANSIBLE_DIR_RELATIVE = "ansible"
+    GALAXY_DIR_NAME = ".galaxy"
     ANSIBLE_TAGS = "bootstrap"
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
@@ -196,6 +685,7 @@ class BootstrapStep(InstallStep):
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
 
+        ansible_dir = DEFAULT_REPO_ROOT / self.ANSIBLE_DIR_RELATIVE
         playbook = DEFAULT_REPO_ROOT / self.PLAYBOOK_RELATIVE
         if not playbook.exists():
             return InstallStepResult(
@@ -205,22 +695,64 @@ class BootstrapStep(InstallStep):
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
 
-        # Write password to anonymous pipe → pass fd as become-password-file.
-        rfd, wfd = os.pipe()
-        try:
-            os.write(wfd, config.sudo_password.encode("utf-8") + b"\n")
-            os.close(wfd)
+        requirements = ansible_dir / "requirements.yml"
+        if requirements.exists():
+            galaxy_dir = ansible_dir / self.GALAXY_DIR_NAME
+            rc, _ = _stream_subprocess(
+                [
+                    resolve_ansible_command("ansible-galaxy"),
+                    "collection",
+                    "install",
+                    "-r",
+                    str(requirements),
+                    "-p",
+                    str(galaxy_dir),
+                ],
+                callback,
+                self.step_id,
+                cwd=ansible_dir,
+            )
+            if rc != 0:
+                return InstallStepResult(
+                    step_id=self.step_id,
+                    success=False,
+                    message=f"ansible-galaxy collection install failed with rc={rc}",
+                    elapsed=timedelta(seconds=time.monotonic() - start),
+                )
 
-            extra_vars = f"agmind_domain={config.domain} agmind_cf_api_token={config.cf_api_token}"
+        # Write password and sensitive vars to anonymous pipes. The visible
+        # process argv contains only /dev/fd/N paths, not secret values.
+        become_rfd: int | None = None
+        become_wfd: int | None = None
+        vars_rfd: int | None = None
+        vars_wfd: int | None = None
+        try:
+            become_rfd, become_wfd = os.pipe()
+            os.write(become_wfd, config.sudo_password.encode() + b"\n")
+            os.close(become_wfd)
+            become_wfd = None
+
+            vars_rfd, vars_wfd = os.pipe()
+            extra_vars_payload = json.dumps(
+                {
+                    "agmind_domain": config.domain,
+                    "agmind_cf_api_token": config.cf_api_token,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            os.write(vars_wfd, extra_vars_payload + b"\n")
+            os.close(vars_wfd)
+            vars_wfd = None
+
             cmd = [
-                "ansible-playbook",
+                resolve_ansible_command("ansible-playbook"),
                 str(playbook),
                 "--become-password-file",
-                f"/dev/fd/{rfd}",
+                f"/dev/fd/{become_rfd}",
                 "--tags",
                 self.ANSIBLE_TAGS,
                 "--extra-vars",
-                extra_vars,
+                f"@/dev/fd/{vars_rfd}",
                 "-i",
                 "localhost,",
                 "--connection",
@@ -236,23 +768,25 @@ class BootstrapStep(InstallStep):
                 stdin=subprocess.DEVNULL,
                 text=True,
                 bufsize=1,
-                pass_fds=(rfd,),
+                cwd=str(ansible_dir),
+                pass_fds=(become_rfd, vars_rfd),
             )
             if proc.stdout is not None:
                 for raw in proc.stdout:
                     line = raw.rstrip()
                     if not line:
                         continue
-                    # Sanitize stdout — на всякий случай пароль не должен попасть
-                    if config.sudo_password and config.sudo_password in line:
-                        line = line.replace(config.sudo_password, "***")
+                    line = _redact_install_secrets(line, config)
                     callback(_make_event(self.step_id, ProgressKind.LOG, line))
             rc = proc.wait()
         finally:
-            try:
-                os.close(rfd)
-            except OSError:
-                pass
+            for fd in (become_rfd, become_wfd, vars_rfd, vars_wfd):
+                if fd is None:
+                    continue
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
         elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:
@@ -273,6 +807,68 @@ class BootstrapStep(InstallStep):
 # ---------- Step 3: docker image pull ----------
 
 
+class ComposeConfigStep(InstallStep):
+    """Validate the exact selected Compose config before real pulls/deploy."""
+
+    step_id = "compose_config"
+    label = "Validate Docker Compose config"
+
+    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
+        start = time.monotonic()
+        if not config.services:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message="no selected services for compose config",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+        import tempfile
+
+        from agmind.services.renderer import render_to_string
+
+        try:
+            compose_text = render_to_string(
+                services=config.services if config.services else None,
+                domain=config.domain,
+                traefik_enabled=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message=f"compose render failed: {exc}",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+
+        with tempfile.TemporaryDirectory(prefix="agmind-compose-config-") as tmp:
+            tmpdir = Path(tmp)
+            (tmpdir / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
+            compose_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
+            rc, _ = _stream_subprocess(
+                _docker_compose_cmd(config, ["config", "--quiet"]),
+                callback,
+                self.step_id,
+                cwd=tmpdir,
+                env=compose_env,
+                stdin_payload=_sudo_stdin_payload(config),
+            )
+
+        elapsed = timedelta(seconds=time.monotonic() - start)
+        if rc != 0:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message=f"docker compose config rc={rc}",
+                elapsed=elapsed,
+            )
+        return InstallStepResult(
+            step_id=self.step_id,
+            success=True,
+            message="compose config OK",
+            elapsed=elapsed,
+        )
+
+
 class ImagePullStep(InstallStep):
     """`docker compose pull` после bootstrap (user уже в docker group).
 
@@ -286,6 +882,13 @@ class ImagePullStep(InstallStep):
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
+        if not config.services:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message="no selected services for image pull",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
         # Lazy import чтобы не тянуть тяжёлый renderer на загрузке модуля.
         # Render compose в temp dir чтобы вызвать `docker compose pull`.
         import tempfile
@@ -309,8 +912,8 @@ class ImagePullStep(InstallStep):
         with tempfile.TemporaryDirectory(prefix="agmind-pull-") as tmp:
             tmpdir = Path(tmp)
             (tmpdir / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
-            cmd = ["docker", "compose", "pull", "--policy", "missing", "--quiet"]
-            compose_env = parse_env_file(config.install_dir / ".env")
+            cmd = _docker_compose_cmd(config, ["pull", "--policy", "missing", "--quiet"])
+            compose_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
             # docker compose pull stderr содержит per-layer progress; stream его.
             rc, _ = _stream_subprocess(
                 cmd,
@@ -318,6 +921,7 @@ class ImagePullStep(InstallStep):
                 self.step_id,
                 cwd=tmpdir,
                 env=compose_env,
+                stdin_payload=_sudo_stdin_payload(config),
             )
 
         elapsed = timedelta(seconds=time.monotonic() - start)
@@ -442,14 +1046,34 @@ class ModelDownloadStep(InstallStep):
                 shutil.move(str(existing), str(target))
             except OSError as exc:
                 try:
-                    shutil.copy2(str(existing), str(target))
+                    _copy_file_atomic(existing, target)
                     existing.unlink()
                 except OSError as exc2:
                     return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
             return True, f"{role}: relocated {size_mb} MiB"
 
+        partial = target.with_name(f".{target.name}.part")
+        if target.is_file() and target.stat().st_size < min_size:
+            try:
+                if partial.exists():
+                    target.unlink()
+                else:
+                    target.replace(partial)
+            except OSError as exc:
+                return False, f"{role}: cannot stage partial model download: {exc}"
         url = f"https://huggingface.co/{repo}/resolve/main/{file_name}"
-        cmd = ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url]
+        cmd = [
+            "curl",
+            "-fL",
+            "-C",
+            "-",
+            "-o",
+            str(partial),
+            "--progress-bar",
+            "--retry",
+            "3",
+            url,
+        ]
         last_pct = [-1]
 
         def parse_curl_pct(line: str) -> None:
@@ -482,6 +1106,12 @@ class ModelDownloadStep(InstallStep):
         rc, _ = _stream_subprocess(cmd, callback, self.step_id, extra_emit=parse_curl_pct)
         if rc != 0:
             return False, f"{role}: curl rc={rc} (download failed)"
+        partial_size = partial.stat().st_size if partial.exists() else 0
+        if partial_size < min_size:
+            size_mb = partial_size // (1024 * 1024)
+            min_mb = min_size // (1024 * 1024)
+            return False, f"{role}: downloaded file too small ({size_mb} MiB < {min_mb} MiB)"
+        partial.replace(target)
         size_mb = target.stat().st_size // (1024 * 1024)
         return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
 
@@ -525,10 +1155,19 @@ class DeployStep(InstallStep):
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
+        if not config.services:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message="no selected services for deploy",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
         from agmind.deploy.runner import deploy as _deploy
 
         def deploy_progress(step: str, msg: str) -> None:
-            callback(_make_event(self.step_id, ProgressKind.LOG, f"[{step}] {msg}"))
+            safe_step = _redact_install_secrets(step, config)
+            safe_msg = _redact_install_secrets(msg, config)
+            callback(_make_event(self.step_id, ProgressKind.LOG, f"[{safe_step}] {safe_msg}"))
 
         try:
             result = _deploy(
@@ -539,6 +1178,7 @@ class DeployStep(InstallStep):
                 no_prompt=True,
                 progress=deploy_progress,
                 services=config.services,
+                sudo_password=config.sudo_password,
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(
@@ -581,8 +1221,16 @@ class EnvWriteStep(InstallStep):
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
         env_path = config.install_dir / ".env"
-        config.install_dir.mkdir(parents=True, exist_ok=True)
-        runtime_env = _runtime_env(parse_env_file(env_path))
+        try:
+            version_env_text = _runtime_version_env(config.services)
+        except ValueError as exc:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message=str(exc),
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+        runtime_env = _runtime_env(_parse_existing_runtime_env(config, env_path))
 
         # Phase M5.2: separate LLM/Embed/Rerank env vars так чтобы templates
         # параметризовали каждый llama-* service независимо. Legacy AGMIND_CTX_SIZE
@@ -623,14 +1271,40 @@ class EnvWriteStep(InstallStep):
             _env_line("MINIO_ROOT_USER", runtime_env["MINIO_ROOT_USER"]),
             _env_line("MINIO_ROOT_PASSWORD", runtime_env["MINIO_ROOT_PASSWORD"]),
             _env_line("REDIS_PASSWORD", runtime_env["REDIS_PASSWORD"]),
+            _env_line("N8N_ENCRYPTION_KEY", runtime_env["N8N_ENCRYPTION_KEY"]),
+            _env_line("N8N_TIMEZONE", runtime_env["N8N_TIMEZONE"]),
+            _env_line(
+                "HOMARR_SECRET_ENCRYPTION_KEY",
+                runtime_env["HOMARR_SECRET_ENCRYPTION_KEY"],
+            ),
         ]
+        env_text = "\n".join(lines) + "\n"
         try:
-            write_env(env_path, "\n".join(lines) + "\n", mode=0o600)
+            _write_runtime_payload_local(config, env_text, version_env_text, callback, self.step_id)
+        except PermissionError as exc:
+            if config.sudo_password is None:
+                return InstallStepResult(
+                    step_id=self.step_id,
+                    success=False,
+                    message=f"cannot write runtime files without sudo: {exc}",
+                    elapsed=timedelta(seconds=time.monotonic() - start),
+                )
+            try:
+                _write_runtime_payload_sudo(
+                    config, env_text, version_env_text, callback, self.step_id
+                )
+            except OSError as sudo_exc:
+                return InstallStepResult(
+                    step_id=self.step_id,
+                    success=False,
+                    message=f"sudo runtime file write failed: {sudo_exc}",
+                    elapsed=timedelta(seconds=time.monotonic() - start),
+                )
         except OSError as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=False,
-                message=f"cannot write {env_path}: {exc}",
+                message=f"cannot write runtime files: {exc}",
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
         callback(
@@ -654,6 +1328,7 @@ def default_steps() -> list[InstallStep]:
         DoctorStep(),
         BootstrapStep(),
         EnvWriteStep(),  # before ImagePullStep — compose parses ${VAR:?} guards
+        ComposeConfigStep(),  # fail fast before real image pulls
         ImagePullStep(),
         ModelDownloadStep(),
         DeployStep(),
@@ -662,6 +1337,7 @@ def default_steps() -> list[InstallStep]:
 
 __all__ = [
     "BootstrapStep",
+    "ComposeConfigStep",
     "DeployStep",
     "DoctorStep",
     "EnvWriteStep",

@@ -80,7 +80,7 @@ agmind/
 docs/adr/
   0009-state-migration-system.md   # этот файл
 tests/
-  test_migrations.py   # 26 tests (state + runner + v001 + CLI smoke)
+  migrations/test_migrations.py   # 26 tests (state + runner + v001 + CLI smoke)
 ```
 
 ### Контракт Migration

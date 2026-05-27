@@ -103,7 +103,7 @@ gate.
   Python (спека буквально)».
 - `AGMIND_MIGRATION_SPEC.md` Part 1.4 описывает именно этот целевой
   layout (`agmind/compute/`, `legacy/gb10/`, `docker/Dockerfile.{base,cpu,vulkan,rocm}`,
-  `docs/adr/`, `scripts/audit_forbidden.py`).
+  `docs/adr/`, `scripts/checks/audit_forbidden.py`).
 - Compute abstraction (Vulkan/ROCm/CPU/NPU-stub) — natural fit для
   Python ABC + lazy imports.
 - Karpathy-style simplicity (minimum code, surgical changes, executable

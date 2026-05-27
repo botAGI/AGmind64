@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from agmind.core.files import write_text_atomic
 from agmind.deploy.targets import DeploymentTarget, load_deploy_targets
 from agmind.services.kubernetes_checks import (
     _empty_warning_summary,
@@ -270,7 +271,7 @@ def run_kubernetes_server_dry_run(
         if report.run_metadata_path is not None:
             _write_json(report.run_metadata_path, dict(run_metadata))
         proof_command_path = artifact_dir / "proof-command.txt"
-        proof_command_path.write_text(shlex.join(report.proof_command) + "\n", encoding="utf-8")
+        write_text_atomic(proof_command_path, shlex.join(report.proof_command) + "\n")
         summary_path = artifact_dir / "summary.json"
         _write_json(summary_path, report.to_json())
         _write_artifact_checksums(
@@ -510,6 +511,7 @@ def _run_one_target(
     try:
         rendered = render_to_string(
             profiles=list(target.runtime.profiles),
+            exclude_services=list(target.runtime.excluded_services),
             services_dir=services_dir,
             namespace=namespace,
         )
@@ -528,7 +530,7 @@ def _run_one_target(
         return report
 
     if manifest_path is not None:
-        manifest_path.write_text(rendered, encoding="utf-8")
+        write_text_atomic(manifest_path, rendered)
         manifest_bytes, manifest_sha256 = _artifact_size_and_sha256(manifest_path)
 
     if not _kubectl_available(kubectl, runner=runner):
@@ -635,6 +637,9 @@ def _warning_evidence_for_target(
         return _empty_warning_summary(), ()
     target_report = report.targets[0]
     expected_codes = frozenset(target.verification.expected_warning_codes)
+    expected_warnings = frozenset(
+        (warning.service, warning.code) for warning in target.verification.expected_warnings
+    )
     warning_records = tuple(
         KubernetesDryRunWarningRecord(
             service=warning.service,
@@ -642,7 +647,8 @@ def _warning_evidence_for_target(
             severity=warning.severity,
             message=warning.message,
             remediation=warning.remediation,
-            expected=warning.code in expected_codes,
+            expected=warning.code in expected_codes
+            or (warning.service, warning.code) in expected_warnings,
         )
         for warning in target_report.warnings
     )
@@ -671,7 +677,7 @@ def _build_proof_command(
     kubectl: str,
     kube_context: str,
 ) -> tuple[str, ...]:
-    command: list[str] = ["scripts/kubernetes_dry_run.py"]
+    command: list[str] = ["scripts/proof/kubernetes_dry_run.py"]
     for target_id in target_ids:
         command.extend(("--target", target_id))
     if require_cluster:
@@ -785,7 +791,14 @@ def _kubectl_available(kubectl: str | None, *, runner: CommandRunner | None) -> 
 
 def _subprocess_runner(command: tuple[str, ...], manifest: Path) -> CommandResult:
     del manifest
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        return CommandResult(
+            returncode=1,
+            stdout="",
+            stderr=f"kubectl execution failed: {exc}",
+        )
     return CommandResult(
         returncode=result.returncode,
         stdout=result.stdout,
@@ -856,7 +869,7 @@ def _write_artifact_checksums(
         relative_path = path.relative_to(artifact_dir).as_posix()
         _, digest = _artifact_size_and_sha256(path)
         lines.append(f"{digest}  {relative_path}")
-    checksum_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_text_atomic(checksum_path, "\n".join(lines) + "\n")
 
 
 def _verify_checksum_file(
@@ -1193,8 +1206,7 @@ def _verify_target_manifest_metadata(
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_text_atomic(path, json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
 
 __all__ = [

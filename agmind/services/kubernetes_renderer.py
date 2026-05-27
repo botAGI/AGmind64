@@ -18,9 +18,11 @@ import yaml
 from agmind.schemas import ServiceDescriptor
 from agmind.services.renderer import (
     DEFAULT_SERVICES_DIR,
+    check_missing_dependencies,
     descriptors_with_capability_env,
     load_descriptors,
     select_services,
+    unknown_profiles,
 )
 
 DEFAULT_NAMESPACE = "agmind"
@@ -36,6 +38,15 @@ _SECRET_TOKEN_MARKERS = (
     "API_KEY",
     "ACCESS_KEY",
     "PRIVATE_KEY",
+)
+COMPOSE_ONLY_DOCKER_SOCKET_SERVICES = frozenset(
+    {
+        "dozzle",
+        "homarr",
+        "netdata",
+        "portainer",
+        "watchtower",
+    }
 )
 
 WarningSeverity = Literal["info", "warning", "blocker"]
@@ -113,6 +124,7 @@ def render_to_string(
     *,
     profiles: list[str] | None = None,
     services: list[str] | None = None,
+    exclude_services: list[str] | None = None,
     services_dir: Path = DEFAULT_SERVICES_DIR,
     namespace: str = DEFAULT_NAMESPACE,
     include_namespace: bool = True,
@@ -120,15 +132,44 @@ def render_to_string(
 ) -> str:
     """Load descriptors, select by profile/service, and render Kubernetes YAML."""
     descriptors = load_descriptors(services_dir)
+    if services is not None:
+        missing = sorted(set(services).difference(descriptors))
+        if missing:
+            raise ValueError(f"Unknown services requested: {', '.join(missing)}")
+    if exclude_services is not None:
+        missing = sorted(set(exclude_services).difference(descriptors))
+        if missing:
+            raise ValueError(f"Unknown excluded services: {', '.join(missing)}")
+    if services is None:
+        missing_profiles = unknown_profiles(descriptors, profiles)
+        if missing_profiles:
+            raise ValueError(f"Unknown profiles requested: {', '.join(missing_profiles)}")
     selected = select_services(descriptors, profiles=profiles, services=services)
+    if exclude_services:
+        excluded = frozenset(exclude_services)
+        selected = {
+            name: descriptor for name, descriptor in selected.items() if name not in excluded
+        }
     if not selected:
         raise ValueError(f"No services match: profiles={profiles}, services={services}")
+    missing_dependencies = check_missing_dependencies(selected, descriptors)
+    if missing_dependencies:
+        details = "; ".join(
+            f"{name} requires {', '.join(deps)}"
+            for name, deps in sorted(missing_dependencies.items())
+        )
+        raise ValueError(f"Missing dependencies for selected services: {details}")
     result = render_kubernetes(
         list(selected.values()),
         namespace=namespace,
         include_namespace=include_namespace,
         strict=strict,
     )
+    if services is not None and not any(obj.get("kind") != "Namespace" for obj in result.objects):
+        raise ValueError(
+            "No Kubernetes-renderable services selected after applying Kubernetes omissions: "
+            + ", ".join(sorted(selected))
+        )
     return to_yaml(result)
 
 
@@ -473,13 +514,15 @@ def _docker_socket_replaced_by_kubernetes_provider(descriptor: ServiceDescriptor
 
 
 def _is_kubernetes_omitted_service(descriptor: ServiceDescriptor) -> bool:
-    return _is_portainer_docker_socket_service(descriptor) or _is_unconfigured_rerank_service(
+    return _is_compose_only_docker_socket_service(descriptor) or _is_unconfigured_rerank_service(
         descriptor
     )
 
 
-def _is_portainer_docker_socket_service(descriptor: ServiceDescriptor) -> bool:
-    return descriptor.name == "portainer" and _has_docker_socket_volume(descriptor)
+def _is_compose_only_docker_socket_service(descriptor: ServiceDescriptor) -> bool:
+    return descriptor.name in COMPOSE_ONLY_DOCKER_SOCKET_SERVICES and _has_docker_socket_volume(
+        descriptor
+    )
 
 
 def _is_unconfigured_rerank_service(descriptor: ServiceDescriptor) -> bool:

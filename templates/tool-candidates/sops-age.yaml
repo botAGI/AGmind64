@@ -31,6 +31,6 @@ risks:
 next_step: Add SOPS age file layout, key handling docs, and CI-safe decrypt checks.
 verification:
   commands:
-    - python scripts/audit_forbidden.py --fail
+    - python scripts/checks/audit_forbidden.py --fail
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

@@ -15,6 +15,7 @@ volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/traefik/dynamic:/etc/traefik/dynamic:ro
 - /var/lib/agmind/traefik/letsencrypt:/letsencrypt
+- /var/lib/agmind/secrets/cf_dns_api_token:/run/secrets/cf_dns_api_token:ro
 env:
   CF_DNS_API_TOKEN_FILE: /run/secrets/cf_dns_api_token
 command:

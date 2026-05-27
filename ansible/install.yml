@@ -7,7 +7,10 @@
 #     # запросит публичный домен + Cloudflare API token
 #
 # Non-interactive (CI / automation):
-#   ansible-playbook install.yml --extra-vars "agmind_domain=mycompany.com agmind_cf_api_token=$CF_TOKEN"
+#   Prefer `agmind install --no-tui --cf-token-file <chmod-600-file>`.
+#   If running Ansible directly, pass secrets via a chmod 600 vars file:
+#   ansible-playbook install.yml --extra-vars @agmind-vars.json
+#   Avoid putting agmind_cf_api_token directly in process arguments.
 #
 # Selective tags:
 #   ansible-playbook install.yml -t bootstrap              # только bootstrap

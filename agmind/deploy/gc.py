@@ -9,22 +9,26 @@ Operations:
     - images: dangling + старше cutoff (default 72h)
     - volumes: anonymous + labeled `agmind.gc=auto`
     - networks: unused (не привязанные ни к одному контейнеру)
-    - models: GGUF файлы в /var/lib/agmind/models не упомянутые ни в одном
-              ServiceDescriptor.env (TODO в Phase L.C.2)
+    - models: GGUF файлы в /var/lib/agmind/models не упомянутые в service
+              descriptors, rendered model env defaults, or model catalog
 
 CLI: `agmind gc [--auto] [--aggressive] [--dry-run]`.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
+
+_MODEL_SUFFIXES = (".gguf", ".safetensors", ".bin")
+_MODEL_FILENAME_RE = re.compile(r"([A-Za-z0-9_.][^/\\\s:{}$\"']*\.(?:gguf|safetensors|bin))")
 
 
 @dataclass
@@ -47,7 +51,15 @@ def _docker_available() -> bool:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        return subprocess.CompletedProcess(
+            cmd,
+            1,
+            stdout="",
+            stderr=f"docker command failed: {exc}",
+        )
 
 
 def _parse_size(text: str) -> int:
@@ -96,6 +108,8 @@ def gc_containers(dry_run: bool = False) -> GcReport:
                 "{{.Names}}",
             ]
         )
+        if result.returncode != 0:
+            return GcReport(target="containers", error=result.stderr.strip(), dry_run=True)
         names = [n for n in result.stdout.strip().splitlines() if n]
         return GcReport(
             target="containers",
@@ -137,6 +151,8 @@ def gc_images(older_than_hours: int = 72, dry_run: bool = False) -> GcReport:
                 "{{.Repository}}:{{.Tag}} ({{.Size}})",
             ]
         )
+        if result.returncode != 0:
+            return GcReport(target="images", error=result.stderr.strip(), dry_run=True)
         items = [l for l in result.stdout.strip().splitlines() if l]
         return GcReport(target="images", items_removed=len(items), dry_run=True, items=items)
 
@@ -182,6 +198,8 @@ def gc_volumes(aggressive: bool = False, dry_run: bool = False) -> GcReport:
                 "label=agmind.gc=auto",
             ]
         result = _run(cmd)
+        if result.returncode != 0:
+            return GcReport(target="volumes", error=result.stderr.strip(), dry_run=True)
         items = [l for l in result.stdout.strip().splitlines() if l]
         return GcReport(target="volumes", items_removed=len(items), dry_run=True, items=items)
 
@@ -204,6 +222,8 @@ def gc_networks(dry_run: bool = False) -> GcReport:
 
     if dry_run:
         result = _run(["docker", "network", "ls", "--format", "{{.Name}}"])
+        if result.returncode != 0:
+            return GcReport(target="networks", error=result.stderr.strip(), dry_run=True)
         # docker network prune не показывает что бы удалил dry-run mode
         return GcReport(target="networks", dry_run=True)
 
@@ -236,7 +256,7 @@ def gc_models(
     for path in models_dir.iterdir():
         if not path.is_file():
             continue
-        if path.suffix.lower() not in (".gguf", ".safetensors", ".bin"):
+        if path.suffix.lower() not in _MODEL_SUFFIXES:
             continue
         if path.name in used_filenames:
             continue
@@ -288,10 +308,7 @@ def _scan_used_models() -> set[str]:
                 import yaml
 
                 data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-                env = (data or {}).get("env", {}) if isinstance(data, dict) else {}
-                for value in env.values():
-                    if isinstance(value, str) and value.endswith((".gguf", ".safetensors", ".bin")):
-                        used.add(Path(value).name)
+                used.update(_extract_model_filenames(data))
             except Exception:
                 continue
 
@@ -303,21 +320,25 @@ def _scan_used_models() -> set[str]:
 
             data = yaml.safe_load(models_yaml.read_text(encoding="utf-8"))
 
-            # Walk values recursively
-            def _walk(obj: object) -> None:
-                if isinstance(obj, dict):
-                    for v in obj.values():
-                        _walk(v)
-                elif isinstance(obj, list):
-                    for v in obj:
-                        _walk(v)
-                elif isinstance(obj, str) and obj.endswith((".gguf", ".safetensors", ".bin")):
-                    used.add(Path(obj).name)
-
-            _walk(data)
+            used.update(_extract_model_filenames(data))
         except Exception:
             pass
 
+    return used
+
+
+def _extract_model_filenames(obj: object) -> set[str]:
+    """Return model filenames from nested descriptor/catalog structures."""
+    used: set[str] = set()
+    if isinstance(obj, dict):
+        for value in obj.values():
+            used.update(_extract_model_filenames(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            used.update(_extract_model_filenames(value))
+    elif isinstance(obj, str):
+        for match in _MODEL_FILENAME_RE.finditer(obj):
+            used.add(Path(match.group(1)).name)
     return used
 
 

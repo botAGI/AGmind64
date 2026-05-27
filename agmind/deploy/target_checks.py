@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from agmind.deploy.targets import DeploymentTarget
+from agmind.services.renderer import load_descriptors, unknown_profiles
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-KUBERNETES_DRY_RUN_SCRIPT = "scripts/kubernetes_dry_run.py"
+KUBERNETES_DRY_RUN_SCRIPT = "scripts/proof/kubernetes_dry_run.py"
 DEFAULT_KUBERNETES_PROOF_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "kubernetes-proof.yml"
 
 
@@ -93,6 +94,15 @@ def _path_exists(path: str, repo_root: Path) -> bool:
     return (repo_root / path).exists()
 
 
+def _repository_service_names(repo_root: Path) -> frozenset[str]:
+    descriptors = load_descriptors(repo_root / "templates" / "services")
+    return frozenset(descriptors)
+
+
+def _repository_service_descriptors(repo_root: Path) -> dict[str, Any]:
+    return load_descriptors(repo_root / "templates" / "services")
+
+
 def validate_deploy_targets(
     targets: Mapping[str, DeploymentTarget],
     *,
@@ -109,6 +119,8 @@ def validate_deploy_target_report(
 ) -> DeploymentCheckReport:
     """Validate deploy target references and return structured issue metadata."""
     issues: list[DeploymentCheckIssue] = []
+    service_names: frozenset[str] | None = None
+    service_descriptors: dict[str, Any] | None = None
     supported = [target for target in targets.values() if target.status == "supported"]
     if not supported:
         issues.append(
@@ -120,6 +132,27 @@ def validate_deploy_target_report(
         )
 
     for target in targets.values():
+        if service_descriptors is None:
+            service_descriptors = _repository_service_descriptors(repo_root)
+        missing_profiles = (
+            unknown_profiles(
+                service_descriptors,
+                list(target.runtime.profiles),
+            )
+            if service_descriptors
+            else []
+        )
+        if missing_profiles:
+            issues.append(
+                _issue(
+                    "error",
+                    "missing_runtime_profile",
+                    f"{target.id}: runtime profiles reference unknown profile(s): "
+                    f"{', '.join(missing_profiles)}",
+                    target.id,
+                )
+            )
+
         if _is_enforced_target(target) and not target.verification.commands:
             issues.append(
                 _issue(
@@ -168,6 +201,22 @@ def validate_deploy_target_report(
                     )
 
         if target.runtime.kind == "kubernetes":
+            if target.runtime.excluded_services:
+                if service_names is None:
+                    service_names = _repository_service_names(repo_root)
+                missing = tuple(
+                    sorted(set(target.runtime.excluded_services).difference(service_names))
+                )
+                if missing:
+                    issues.append(
+                        _issue(
+                            "error",
+                            "missing_runtime_excluded_service",
+                            f"{target.id}: runtime excluded_services reference unknown "
+                            f"service(s): {', '.join(missing)}",
+                            target.id,
+                        )
+                    )
             issues.extend(_validate_kubernetes_proof_artifacts(target))
 
     return DeploymentCheckReport(target_count=len(targets), issues=_sort_issues(issues))
@@ -237,7 +286,7 @@ def validate_kubernetes_proof_workflow_report(
                 "kubernetes proof workflow must use runner-local python/uv",
             )
         )
-    if ".venv/bin/python scripts/kubernetes_render_check.py --strict" not in workflow:
+    if ".venv/bin/python scripts/checks/kubernetes_render_check.py --strict" not in workflow:
         issues.append(
             _issue(
                 "error",

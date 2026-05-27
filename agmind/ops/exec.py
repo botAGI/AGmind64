@@ -1,7 +1,7 @@
-"""Phase L.E: docker compose proxy helpers — logs / shell.
+"""Phase L.E: docker compose proxy helpers - logs / shell.
 
-Эти команды просто запускают `docker compose` под капотом, обрабатывая
-edge cases (нет compose файла, неизвестный сервис, нет docker binary).
+These commands proxy to `docker compose` and handle common edge cases:
+missing compose file, unknown service, missing docker binary, and optional sudo.
 """
 
 from __future__ import annotations
@@ -10,13 +10,25 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
 
+def _compose_cmd(cmd: list[str], sudo_password: str | None = None) -> list[str]:
+    if sudo_password is None:
+        return cmd
+    return ["sudo", "-S", "-p", "", "--", *cmd]
+
+
+def _sudo_stdin(sudo_password: str | None) -> str | None:
+    if sudo_password is None:
+        return None
+    return f"{sudo_password}\n"
+
+
 def _check_prereqs(install_dir: Path) -> str | None:
-    """Returns error message or None if все ок."""
+    """Returns error message or None if all prerequisites are present."""
     if shutil.which("docker") is None:
         return "docker binary not found in PATH"
     compose_file = install_dir / "docker-compose.yml"
@@ -26,7 +38,7 @@ def _check_prereqs(install_dir: Path) -> str | None:
 
 
 def known_services(install_dir: Path) -> list[str]:
-    """Parse compose file для list сервисов. Returns empty list если YAML невалиден."""
+    """Parse compose file for service names. Returns empty list if YAML is invalid."""
     compose_file = install_dir / "docker-compose.yml"
     if not compose_file.exists():
         return []
@@ -46,11 +58,11 @@ def logs(
     service: str | None = None,
     tail: int = 200,
     follow: bool = False,
+    sudo_password: str | None = None,
 ) -> int:
     """Stream container logs. Returns subprocess exit code.
 
-    Если service=None — логи всех сервисов. Иначе только указанного.
-    `follow=True` блокирует процесс до Ctrl-C; tail управляет initial backlog.
+    If service=None, streams all services. Otherwise streams one selected service.
     """
     err = _check_prereqs(install_dir)
     if err is not None:
@@ -68,10 +80,19 @@ def logs(
     if service is not None:
         cmd.append(service)
 
-    log.info("running: %s (cwd=%s)", " ".join(cmd), install_dir)
+    run_cmd = _compose_cmd(cmd, sudo_password)
+    log.info("running: %s (cwd=%s)", " ".join(run_cmd), install_dir)
     try:
-        result = subprocess.run(cmd, cwd=install_dir, check=False)
+        result = subprocess.run(
+            run_cmd,
+            cwd=install_dir,
+            check=False,
+            input=_sudo_stdin(sudo_password),
+        )
         return result.returncode
+    except OSError as exc:
+        print(f"agmind logs: docker compose failed: {exc}")
+        return 1
     except KeyboardInterrupt:
         return 130
 
@@ -81,12 +102,9 @@ def shell(
     service: str,
     cmd: list[str] | None = None,
     workdir: str | None = None,
+    sudo_password: str | None = None,
 ) -> int:
-    """`docker compose exec -it <service> <cmd>`. Returns subprocess exit code.
-
-    Default cmd = ["/bin/sh"]. Контейнер должен быть running, иначе compose exec
-    вернёт rc != 0.
-    """
+    """Run `docker compose exec -it <service> <cmd>`. Returns subprocess exit code."""
     err = _check_prereqs(install_dir)
     if err is not None:
         print(f"agmind shell: {err}")
@@ -103,9 +121,18 @@ def shell(
     docker_cmd.append(service)
     docker_cmd.extend(cmd or ["/bin/sh"])
 
-    log.info("running: %s (cwd=%s)", " ".join(docker_cmd), install_dir)
+    run_cmd = _compose_cmd(docker_cmd, sudo_password)
+    log.info("running: %s (cwd=%s)", " ".join(run_cmd), install_dir)
     try:
-        result = subprocess.run(docker_cmd, cwd=install_dir, check=False)
+        result = subprocess.run(
+            run_cmd,
+            cwd=install_dir,
+            check=False,
+            input=_sudo_stdin(sudo_password),
+        )
         return result.returncode
+    except OSError as exc:
+        print(f"agmind shell: docker compose failed: {exc}")
+        return 1
     except KeyboardInterrupt:
         return 130

@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from agmind.core.files import write_text_atomic
+
 if TYPE_CHECKING:
     from agmind.migrations.base import Migration
 
@@ -61,7 +63,7 @@ class SchemaState:
             "schema_version": self.schema_version,
             "applied": [asdict(a) for a in self.applied],
         }
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        write_text_atomic(path, json.dumps(payload, indent=2, ensure_ascii=False))
 
     def record(self, migration: Migration) -> None:
         """Mark migration как applied. Обновляет schema_version если выше."""

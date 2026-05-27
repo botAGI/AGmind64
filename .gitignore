@@ -64,7 +64,11 @@ checkpoints/
 # Logs / runtime
 *.log
 migration_progress.lock
+.ansible/
+.benchmarks/
 ansible/inventory/*.generated.yml
+ansible/.galaxy/
+ansible/.facts_cache/
 
 # Agent-local artifacts
 .claude/

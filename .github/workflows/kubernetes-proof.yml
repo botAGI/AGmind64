@@ -40,7 +40,7 @@ jobs:
           "$HOME/.local/bin/uv" pip install --python .venv/bin/python -c constraints/dev.txt -e ".[dev]"
 
       - name: Validate strict Kubernetes render
-        run: .venv/bin/python scripts/kubernetes_render_check.py --strict
+        run: .venv/bin/python scripts/checks/kubernetes_render_check.py --strict
 
       - name: Run k3s server-side dry-run proof
         run: |
@@ -60,7 +60,7 @@ jobs:
             args+=(--context "${{ inputs.kube_context }}")
           fi
 
-          .venv/bin/python scripts/kubernetes_dry_run.py "${args[@]}"
+          .venv/bin/python scripts/proof/kubernetes_dry_run.py "${args[@]}"
 
       - name: Verify k3s proof bundle
         if: always()
@@ -68,7 +68,7 @@ jobs:
           set -o pipefail
           set +e
           mkdir -p local-kubernetes-proof/k3s
-          .venv/bin/python scripts/kubernetes_dry_run.py --json --verify-artifact-dir local-kubernetes-proof/k3s | tee local-kubernetes-proof/k3s/verification.json
+          .venv/bin/python scripts/proof/kubernetes_dry_run.py --json --verify-artifact-dir local-kubernetes-proof/k3s | tee local-kubernetes-proof/k3s/verification.json
           status=${PIPESTATUS[0]}
           exit "$status"
 

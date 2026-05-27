@@ -31,13 +31,14 @@ class DeploymentRuntime(BaseModel):
     kind: RuntimeKind
     renderer: str = Field(min_length=1)
     profiles: tuple[str, ...] = ()
+    excluded_services: tuple[str, ...] = ()
 
-    @field_validator("profiles")
+    @field_validator("profiles", "excluded_services")
     @classmethod
-    def _check_profiles(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        for profile in value:
-            if not _TOKEN_RE.match(profile):
-                raise ValueError(f"profile '{profile}' invalid")
+    def _check_tokens(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for token in value:
+            if not _TOKEN_RE.match(token):
+                raise ValueError(f"runtime token '{token}' invalid")
         return value
 
 
@@ -72,6 +73,22 @@ class DeploymentConfigurator(BaseModel):
     manifests: tuple[str, ...] = ()
 
 
+class DeploymentExpectedWarning(BaseModel):
+    """One explicitly accepted Kubernetes render warning for a target."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    service: str
+    code: str
+
+    @field_validator("service", "code")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        if not _TOKEN_RE.match(value):
+            raise ValueError(f"expected warning token '{value}' invalid")
+        return value
+
+
 class DeploymentVerification(BaseModel):
     """Commands and artifacts used to validate the target lane."""
 
@@ -80,6 +97,7 @@ class DeploymentVerification(BaseModel):
     commands: tuple[str, ...] = ()
     artifacts: tuple[str, ...] = ()
     expected_warning_codes: tuple[str, ...] = ()
+    expected_warnings: tuple[DeploymentExpectedWarning, ...] = ()
 
     @field_validator("expected_warning_codes")
     @classmethod
@@ -87,6 +105,17 @@ class DeploymentVerification(BaseModel):
         for code in value:
             if not _TOKEN_RE.match(code):
                 raise ValueError(f"expected warning code '{code}' invalid")
+        return value
+
+    @field_validator("expected_warnings")
+    @classmethod
+    def _check_expected_warnings(
+        cls,
+        value: tuple[DeploymentExpectedWarning, ...],
+    ) -> tuple[DeploymentExpectedWarning, ...]:
+        pairs = [(warning.service, warning.code) for warning in value]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("expected warnings must not contain duplicate service/code pairs")
         return value
 
 

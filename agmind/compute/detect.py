@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Final
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 

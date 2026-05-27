@@ -10,6 +10,8 @@ from typing import Final, cast
 
 import yaml
 
+from agmind.core.files import write_text_atomic
+
 DEFAULT_INVENTORY_PATH: Final = Path("ansible/inventory/proxmox.generated.yml")
 MASTER_PROFILES: Final = ("core", "rag", "observability")
 WORKER_PROFILES: Final = ("core",)
@@ -88,7 +90,7 @@ def render_inventory_yaml(inventory: Mapping[str, object]) -> str:
     )
     return (
         "# AGmind Proxmox inventory — generated from OpenTofu outputs.\n"
-        "# Regenerate with scripts/proxmox_inventory.py after tofu apply.\n"
+        "# Regenerate with scripts/ops/proxmox_inventory.py after tofu apply.\n"
         "# Hand-edits may be overwritten.\n\n"
         f"{body}"
     )
@@ -100,9 +102,7 @@ def write_inventory_from_tofu_outputs(
 ) -> Path:
     """Convert OpenTofu outputs and write a 0644 Ansible inventory YAML file."""
     inventory = inventory_from_tofu_outputs(outputs)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_inventory_yaml(inventory), encoding="utf-8")
-    output_path.chmod(0o644)
+    write_text_atomic(output_path, render_inventory_yaml(inventory), mode=0o644)
     return output_path
 
 

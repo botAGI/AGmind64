@@ -5,12 +5,13 @@ Wrapper над `docker compose` (или `ansible-playbook install.yml -t service
 
 from __future__ import annotations
 
+import getpass
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
@@ -41,7 +42,11 @@ def _run_compose(*args: str, check: bool = True) -> int:
     env_args = ["--env-file", str(env_file)] if env_file.exists() else []
     cmd = ["docker", "compose", *env_args, "-f", str(compose), *args]
     log.info("$ %s", " ".join(cmd))
-    result = subprocess.run(cmd, cwd=install_dir, check=False)
+    try:
+        result = subprocess.run(cmd, cwd=install_dir, check=False)
+    except OSError as exc:
+        print(f"ERROR: docker compose failed: {exc}", file=sys.stderr)
+        return 1
     if check and result.returncode != 0:
         return result.returncode
     return result.returncode
@@ -101,6 +106,12 @@ def cmd_pull() -> int:
 # ---- Phase L.B: idempotent deploy + snapshot/rollback ----
 
 
+def _prompt_sudo_password(ask_sudo_password: bool) -> str | None:
+    if not ask_sudo_password:
+        return None
+    return getpass.getpass("sudo password: ")
+
+
 def cmd_deploy(
     profiles: list[str],
     install_dir: Path,
@@ -109,6 +120,8 @@ def cmd_deploy(
     no_prompt: bool,
     healthcheck_timeout: int,
     verbose: bool = False,
+    ask_sudo_password: bool = False,
+    services: list[str] | None = None,
 ) -> int:
     """Idempotent deploy (Phase L.B): dry-run by default, --apply to commit.
 
@@ -120,11 +133,13 @@ def cmd_deploy(
 
     result = do_deploy(
         profiles=profiles,
+        services=services,
         install_dir=install_dir,
         domain=domain,
         apply=apply,
         no_prompt=no_prompt,
         healthcheck_timeout=healthcheck_timeout,
+        sudo_password=_prompt_sudo_password(ask_sudo_password),
     )
 
     if result.diff is not None:
@@ -142,11 +157,17 @@ def cmd_deploy(
     return 0 if result.success else 1
 
 
-def cmd_rollback(snapshot_id: str | None, install_dir: Path) -> int:
+def cmd_rollback(
+    snapshot_id: str | None, install_dir: Path, ask_sudo_password: bool = False
+) -> int:
     """Restore deployment from snapshot (Phase L.B)."""
     from agmind.deploy import rollback as do_rollback
 
-    result = do_rollback(snapshot_id=snapshot_id, install_dir=install_dir)
+    result = do_rollback(
+        snapshot_id=snapshot_id,
+        install_dir=install_dir,
+        sudo_password=_prompt_sudo_password(ask_sudo_password),
+    )
     icon = "✓" if result.success else "✗"
     sys.stdout.write(f"{icon} {result.message}\n")
     return 0 if result.success else 1

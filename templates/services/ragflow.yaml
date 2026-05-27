@@ -53,4 +53,5 @@ provides:
 consumes:
 - llm_inference
 - embedding_inference
+- reranker
 - search_index

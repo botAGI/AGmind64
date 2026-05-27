@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from agmind.schemas import ServiceDescriptor
 from agmind.services.retrieval_policy import DIFY_SERVICES, DIFY_VECTOR_PROVIDERS
 
-OPTIONAL_MISSING_CAPABILITIES = frozenset({"dify_external_kb"})
+OPTIONAL_MISSING_CAPABILITIES = frozenset({"dify_external_kb", "reranker"})
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: dozzle
+image: amir20/dozzle:v10.6.1
+digest: 4a5e45a15120807294d0a896ec9f89e63d8d43da4e97480fe245454e2b00403e
+tier: ops
+purpose: Container log viewer — Dozzle v10.6.1 (2026-05-24)
+owner: observability-stack
+profiles:
+- observability
+ports:
+- 127.0.0.1:8084:8080
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+resources:
+  cpus: 0.5
+  mem_limit: 512m
+health:
+  test:
+  - CMD
+  - /dozzle
+  - healthcheck
+  interval: 30s
+  timeout: 5s
+  retries: 5
+  start_period: 10s
+routing:
+  host: dozzle.agmind.dev
+  middleware_chain: chain-internal
+  healthcheck_path: /

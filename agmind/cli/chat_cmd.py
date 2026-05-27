@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import sys
 
-from agmind.log import logger
+from agmind.core.logging import logger
 
 log = logger(__name__)
 
