@@ -393,6 +393,50 @@ def test_install_no_tui_requires_cf_token_before_sudo_prompt(
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    token_file = tmp_path / "cf-token"  # type: ignore[operator]
+    token_file.write_text("super-secret-token-with-length-40-abcdef", encoding="utf-8")
+    token_file.chmod(0o600)
+
+    def fail_getpass(prompt: str) -> str:
+        raise AssertionError(f"sudo prompt should not run before validation: {prompt}")
+
+    monkeypatch.setattr("getpass.getpass", fail_getpass)
+    monkeypatch.setattr(
+        "agmind.install.steps.default_steps",
+        lambda: (_ for _ in ()).throw(AssertionError("install steps should not be built")),
+    )
+
+    cli_app = typer.main.get_command(_make_app())
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app,
+        [
+            "install",
+            "--no-tui",
+            "--domain",
+            "bad`domain.example",
+            "--cf-token-file",
+            str(token_file),
+            "--model-file",
+            "model.gguf",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "domain" in result.output.lower()
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> None:
     import typer
     from click.testing import CliRunner

@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 
+from agmind.core.domain import validate_domain
 from agmind.schemas import ServiceDescriptor
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -428,6 +429,16 @@ def to_yaml(compose: dict[str, Any]) -> str:
     return header + body
 
 
+def _replace_domain_placeholder(value: Any, domain: str) -> Any:
+    if isinstance(value, str):
+        return value.replace("agmind.dev", domain)
+    if isinstance(value, list):
+        return [_replace_domain_placeholder(item, domain) for item in value]
+    if isinstance(value, dict):
+        return {key: _replace_domain_placeholder(item, domain) for key, item in value.items()}
+    return value
+
+
 def render_to_string(
     profiles: list[str] | None = None,
     services_dir: Path = DEFAULT_SERVICES_DIR,
@@ -442,7 +453,7 @@ def render_to_string(
         services: explicit service names (per-service selection, takes precedence)
         services_dir: где искать service descriptors
         traefik_enabled: добавлять Traefik routing labels из routing config
-        domain: если задан — sed-replace `agmind.dev` placeholder на этот домен
+        domain: если задан — заменить `agmind.dev` placeholder на этот домен
     """
     descriptors = load_descriptors(services_dir)
     if services is not None:
@@ -464,7 +475,8 @@ def render_to_string(
         )
         raise ValueError(f"Missing dependencies for selected services: {details}")
     compose = render_compose(list(selected.values()), traefik_enabled=traefik_enabled)
-    rendered = to_yaml(compose)
-    if domain and domain != "agmind.dev":
-        rendered = rendered.replace("agmind.dev", domain)
-    return rendered
+    if domain:
+        safe_domain = validate_domain(domain)
+        if safe_domain != "agmind.dev":
+            compose = _replace_domain_placeholder(compose, safe_domain)
+    return to_yaml(compose)

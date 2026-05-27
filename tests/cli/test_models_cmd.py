@@ -166,6 +166,21 @@ def test_info_local_file_missing(
     assert rc == 2
 
 
+def test_info_rejects_model_path_traversal(
+    models_dir: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outside = tmp_path / "outside.gguf"
+    _write_blob(outside, size_mb=1)
+
+    rc = models_cmd.cmd_info(file="../outside.gguf")
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "model file" in err
+
+
 def test_info_local_file_reports_stat_oserror_without_traceback(
     models_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -344,6 +359,29 @@ def test_pull_requires_id_or_repo_file(models_dir: Path) -> None:
     assert rc == 2
 
 
+def test_pull_rejects_model_path_traversal(
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = models_cmd.cmd_pull(repo="example/repo", file="../../escape.gguf")
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "model file" in err
+    assert not (models_dir.parent / "escape.gguf").exists()
+
+
+def test_pull_rejects_unsafe_repo(
+    models_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = models_cmd.cmd_pull(repo="https://evil.example/repo", file="model.gguf")
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "HF repo" in err
+
+
 def test_pull_reports_models_dir_mkdir_oserror_without_traceback(
     models_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -438,6 +476,22 @@ def test_rm_by_curated_id(models_dir: Path) -> None:
 def test_rm_unknown_id(models_dir: Path) -> None:
     rc = models_cmd.cmd_rm(model_id="bogus")
     assert rc == 1
+
+
+def test_rm_rejects_external_file_path(
+    models_dir: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outside = tmp_path / "outside.gguf"
+    _write_blob(outside, size_mb=1)
+
+    rc = models_cmd.cmd_rm(file=str(outside), force=True)
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "model file" in err
+    assert outside.exists()
 
 
 def test_rm_warns_if_in_use(

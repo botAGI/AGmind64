@@ -591,11 +591,21 @@ def _make_event(
     return ProgressEvent(step_id=step_id, kind=kind, text=text, progress_pct=pct)
 
 
-def _docker_compose_cmd(config: InstallConfig, args: list[str]) -> list[str]:
-    compose = ["docker", "compose", *args]
+def _docker_compose_cmd(
+    config: InstallConfig,
+    args: list[str],
+    env_file: Path | None = None,
+) -> list[str]:
+    env_args = ["--env-file", str(env_file)] if env_file is not None else []
+    compose = ["docker", "compose", *env_args, *args]
     if config.sudo_password is None:
         return compose
     return ["sudo", "-S", "-p", "", "--", *compose]
+
+
+def _write_compose_env_file(path: Path, values: dict[str, str]) -> None:
+    content = "".join(_env_line(key, values[key]) + "\n" for key in sorted(values))
+    write_env(path, content, mode=0o600)
 
 
 def _sudo_stdin_payload(config: InstallConfig) -> bytes | None:
@@ -844,12 +854,13 @@ class ComposeConfigStep(InstallStep):
             tmpdir = Path(tmp)
             (tmpdir / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
             compose_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
+            compose_env_file = tmpdir / ".env"
+            _write_compose_env_file(compose_env_file, compose_env)
             rc, _ = _stream_subprocess(
-                _docker_compose_cmd(config, ["config", "--quiet"]),
+                _docker_compose_cmd(config, ["config", "--quiet"], env_file=compose_env_file),
                 callback,
                 self.step_id,
                 cwd=tmpdir,
-                env=compose_env,
                 stdin_payload=_sudo_stdin_payload(config),
             )
 
@@ -912,15 +923,20 @@ class ImagePullStep(InstallStep):
         with tempfile.TemporaryDirectory(prefix="agmind-pull-") as tmp:
             tmpdir = Path(tmp)
             (tmpdir / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
-            cmd = _docker_compose_cmd(config, ["pull", "--policy", "missing", "--quiet"])
             compose_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
+            compose_env_file = tmpdir / ".env"
+            _write_compose_env_file(compose_env_file, compose_env)
+            cmd = _docker_compose_cmd(
+                config,
+                ["pull", "--policy", "missing", "--quiet"],
+                env_file=compose_env_file,
+            )
             # docker compose pull stderr содержит per-layer progress; stream его.
             rc, _ = _stream_subprocess(
                 cmd,
                 callback,
                 self.step_id,
                 cwd=tmpdir,
-                env=compose_env,
                 stdin_payload=_sudo_stdin_payload(config),
             )
 
@@ -996,11 +1012,13 @@ class ModelDownloadStep(InstallStep):
         config: InstallConfig,
     ) -> tuple[Path | None, str]:
         """Return (path, status_msg) — где модель уже есть. None если nowhere."""
-        target = models_dir / file_name
+        from agmind.models import safe_model_target
+
+        target = safe_model_target(models_dir, file_name)
         if target.exists() and target.stat().st_size >= min_size:
             return target, f"already present в {target.parent}"
         for fb in self._fallback_dirs(config):
-            cand = fb / file_name
+            cand = safe_model_target(fb, file_name)
             if cand.exists() and cand.stat().st_size >= min_size:
                 return cand, f"found in fallback {fb}"
         return None, "not present anywhere"
@@ -1017,8 +1035,14 @@ class ModelDownloadStep(InstallStep):
         if not repo or not file_name:
             return True, f"{role}: no model — skipped"
 
+        from agmind.models import hf_resolve_url, safe_model_target
+
         min_size = self.MIN_VALID_SIZE if role == "llm" else self.MIN_VALID_SIZE_SMALL
-        target = config.models_dir / file_name
+        try:
+            target = safe_model_target(config.models_dir, file_name)
+            url = hf_resolve_url(repo, file_name)
+        except ValueError as exc:
+            return False, f"{role}: {exc}"
         config.models_dir.mkdir(parents=True, exist_ok=True)
 
         existing, status = self._detect_existing(config.models_dir, file_name, min_size, config)
@@ -1061,7 +1085,6 @@ class ModelDownloadStep(InstallStep):
                     target.replace(partial)
             except OSError as exc:
                 return False, f"{role}: cannot stage partial model download: {exc}"
-        url = f"https://huggingface.co/{repo}/resolve/main/{file_name}"
         cmd = [
             "curl",
             "-fL",

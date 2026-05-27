@@ -118,6 +118,29 @@ def test_rendered_compose_has_no_unguarded_interpolation() -> None:
     assert re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", rendered) == []
 
 
+@pytest.mark.parametrize(
+    "domain",
+    [
+        "bad domain.example",
+        "bad`domain.example",
+        "bad\n.example",
+        "evil.${VAR}.example",
+        "https://lab.example.com",
+        "*.example.com",
+    ],
+)
+def test_render_to_string_rejects_invalid_domain(domain: str) -> None:
+    with pytest.raises(ValueError, match="domain"):
+        render_to_string(services=["traefik"], domain=domain)
+
+
+def test_render_to_string_normalizes_domain() -> None:
+    rendered = render_to_string(services=["traefik"], domain="Lab.Example.COM.")
+
+    assert "lab.example.com" in rendered
+    assert "Lab.Example.COM" not in rendered
+
+
 # ---------- render_traefik_labels ----------
 
 

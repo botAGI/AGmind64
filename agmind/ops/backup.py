@@ -132,6 +132,13 @@ def _sensitive_member_mode(label: str, path: Path | None = None) -> int:
     return 0o644
 
 
+def _restored_member_mode(member_name: str) -> int:
+    name = PurePosixPath(member_name).name
+    if name == ".env" or name == "env.snapshot" or name.endswith(".env.snapshot"):
+        return 0o600
+    return 0o644
+
+
 def _add_bytes_member(
     tar: tarfile.TarFile,
     arcname: str,
@@ -278,7 +285,9 @@ def create_backup(
             info.size = len(meta_bytes)
             info.mtime = int(datetime.now(UTC).timestamp())
             tar.addfile(info, io.BytesIO(meta_bytes))
+        tmp_path.chmod(0o600)
         tmp_path.replace(output_path)
+        output_path.chmod(0o600)
     except Exception:
         _cleanup_path(tmp_path)
         raise
@@ -573,9 +582,10 @@ def _extract_dir_members(
             f = tar.extractfile(m)
             if f is None:
                 continue
+            mode = _restored_member_mode(m.name)
             if sudo_password is None:
-                _write_bytes_atomic(out_path, f.read(), mode=0o644)
+                _write_bytes_atomic(out_path, f.read(), mode=mode)
             else:
-                _sudo_install_bytes(f.read(), out_path, 0o644, sudo_password)
+                _sudo_install_bytes(f.read(), out_path, mode, sudo_password)
         else:
             raise ValueError(f"unsupported member type in backup archive: {m.name}")

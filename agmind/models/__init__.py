@@ -9,9 +9,11 @@ LLM/embed/rerank/VLM models с правильным quant для Strix Halo gfx1
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
+from urllib.parse import quote
 
 from agmind.core.logging import logger
 
@@ -21,6 +23,7 @@ Tier = Literal["S", "M", "L", "XL", "XXL"]
 ModelKind = Literal["llm", "embed", "rerank"]
 _VALID_TIERS: tuple[Tier, ...] = ("S", "M", "L", "XL", "XXL")
 _VALID_MODEL_KINDS: tuple[ModelKind, ...] = ("llm", "embed", "rerank")
+_HF_REPO_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 
 # Tier thresholds — основаны на R10 (effective GTT pool ≈ 94% системной RAM).
 # Выбираем tier по RAM, потому что GTT может не быть настроен (warning у doctor).
@@ -56,7 +59,7 @@ class ModelSpec:
     @property
     def hf_url(self) -> str:
         """HuggingFace direct download URL."""
-        return f"https://huggingface.co/{self.hf_repo}/resolve/main/{self.filename}"
+        return hf_resolve_url(self.hf_repo, self.filename)
 
     @property
     def local_filename(self) -> str:
@@ -412,4 +415,43 @@ def model_path(spec: ModelSpec, models_dir: str | Path | None = None) -> Path:
     """Return локальный путь файла модели."""
     if models_dir is None:
         models_dir = os.environ.get("AGMIND_MODELS_DIR", "/var/lib/agmind/models")
-    return Path(models_dir) / spec.local_filename
+    return safe_model_target(Path(models_dir), spec.local_filename)
+
+
+def safe_model_target(models_dir: Path, file_name: str) -> Path:
+    """Return a model path constrained to one basename inside models_dir."""
+    if not file_name or "\x00" in file_name:
+        raise ValueError("model file name is empty or contains NUL")
+
+    posix = PurePosixPath(file_name)
+    if posix.is_absolute() or ".." in posix.parts:
+        raise ValueError("model file must be relative and must not contain '..'")
+    if len(posix.parts) != 1:
+        raise ValueError("model file must be a basename, not a path")
+
+    base = Path(models_dir).resolve()
+    target = (base / posix.name).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError("model file escapes models dir") from exc
+    return target
+
+
+def hf_resolve_url(repo: str, file_name: str) -> str:
+    """Return a safe Hugging Face resolve URL for a validated repo and model file."""
+    safe_model_target(Path("/tmp/agmind-model-name-check"), file_name)
+    repo_parts = PurePosixPath(repo).parts
+    if (
+        not repo
+        or "\x00" in repo
+        or "://" in repo
+        or PurePosixPath(repo).is_absolute()
+        or ".." in repo_parts
+        or len(repo_parts) not in {1, 2}
+        or any(not _HF_REPO_PART_RE.match(part) for part in repo_parts)
+    ):
+        raise ValueError("HF repo must be a safe Hugging Face repo id")
+    safe_repo = "/".join(quote(part, safe="") for part in repo_parts)
+    safe_file = quote(PurePosixPath(file_name).name, safe="")
+    return f"https://huggingface.co/{safe_repo}/resolve/main/{safe_file}"

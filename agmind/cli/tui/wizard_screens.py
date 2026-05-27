@@ -33,6 +33,7 @@ from textual.widgets import (
     Static,
 )
 
+from agmind.core.domain import validate_domain
 from agmind.i18n import t
 from agmind.services.retrieval_policy import DIFY_VECTOR_PROVIDERS
 
@@ -170,7 +171,7 @@ class DomainScreen(Screen[None]):
         self._save_and_advance()
 
     def _save_and_advance(self) -> None:
-        self.app.state.domain = self.query_one("#domain-input", Input).value.strip()
+        raw_domain = self.query_one("#domain-input", Input).value.strip()
         self.app.state.cf_api_token = self.query_one("#cf-token-input", Input).value.strip()
         if getattr(self.app, "require_sudo_password", False):
             self.app.state.sudo_password = self.query_one("#sudo-password-input", Input).value
@@ -181,8 +182,10 @@ class DomainScreen(Screen[None]):
         except Exception:
             pass
         # Validate before advancing
-        if not self.app.state.domain or "." not in self.app.state.domain:
-            self.app.notify("Domain должен содержать '.'", severity="error")
+        try:
+            self.app.state.domain = validate_domain(raw_domain)
+        except ValueError as exc:
+            self.app.notify(f"Domain invalid: {exc}", severity="error")
             return
         if self.app.state.cf_api_token and len(self.app.state.cf_api_token) < 20:
             self.app.notify("CF token < 20 chars", severity="error")

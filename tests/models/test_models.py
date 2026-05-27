@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agmind.models import (
     ModelSpec,
     ModelsRegistry,
     detect_tier,
+    hf_resolve_url,
     load_models_registry,
     model_path,
     resolve_embedding,
     resolve_llm,
     resolve_reranker,
     resolve_vlm,
+    safe_model_target,
 )
 
 pytestmark = pytest.mark.backend_any
@@ -233,6 +237,38 @@ def test_model_path_default() -> None:
     os.environ.pop("AGMIND_MODELS_DIR", None)
     p = model_path(spec)
     assert "/var/lib/agmind/models" in str(p)
+
+
+@pytest.mark.parametrize(
+    "file_name",
+    [
+        "../escape.gguf",
+        "nested/model.gguf",
+        "/tmp/model.gguf",
+        "",
+        "bad\x00model.gguf",
+    ],
+)
+def test_safe_model_target_rejects_path_escape(tmp_path: Path, file_name: str) -> None:
+    with pytest.raises(ValueError, match="model file"):
+        safe_model_target(tmp_path / "models", file_name)
+
+
+def test_safe_model_target_accepts_basename(tmp_path: Path) -> None:
+    target = safe_model_target(tmp_path / "models", "model.gguf")
+
+    assert target == (tmp_path / "models" / "model.gguf").resolve()
+
+
+def test_hf_resolve_url_rejects_unsafe_repo() -> None:
+    with pytest.raises(ValueError, match="HF repo"):
+        hf_resolve_url("https://evil.example/repo", "model.gguf")
+
+
+def test_hf_resolve_url_quotes_model_file() -> None:
+    url = hf_resolve_url("org/repo", "model name.gguf")
+
+    assert url == "https://huggingface.co/org/repo/resolve/main/model%20name.gguf"
 
 
 # ---- verification field consistency ----

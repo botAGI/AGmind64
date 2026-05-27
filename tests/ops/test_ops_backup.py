@@ -93,6 +93,15 @@ def test_backup_creates_tarball(tmp_path: Path) -> None:
     assert result.sources_missing == ()
 
 
+def test_backup_archive_is_private_when_it_contains_runtime_secrets(tmp_path: Path) -> None:
+    install, _user, _system = _make_repo(tmp_path)
+    out = tmp_path / "backup.tar.gz"
+
+    create_backup(output_path=out, sources=[BackupSource("env", install / ".env")])
+
+    assert stat.S_IMODE(out.stat().st_mode) == 0o600
+
+
 def test_backup_unlinks_stale_temp_archive_symlink(tmp_path: Path) -> None:
     install, user, system = _make_repo(tmp_path)
     out = tmp_path / "backup.tar.gz"
@@ -622,6 +631,48 @@ def test_restore_directory_extracts_children(tmp_path: Path) -> None:
     restore_backup(backup_path=backup, sources=_custom_sources(install, user, system))
     assert (install / "templates" / "services" / "traefik.yaml").exists()
     assert (install / "templates" / "services" / "qdrant.yaml").exists()
+
+
+def test_restore_snapshot_env_members_are_private(tmp_path: Path) -> None:
+    backup = tmp_path / "backup.tar.gz"
+    target = tmp_path / "system" / "snapshots"
+    metadata = {"format_version": BACKUP_FORMAT_VERSION, "included": ["snapshots"]}
+
+    with tarfile.open(backup, "w:gz") as tar:
+        top = tarfile.TarInfo("snapshots")
+        top.type = tarfile.DIRTYPE
+        tar.addfile(top)
+
+        snapshot_dir = tarfile.TarInfo("snapshots/2026-05-27T00-00-00Z")
+        snapshot_dir.type = tarfile.DIRTYPE
+        tar.addfile(snapshot_dir)
+
+        env_payload = b"POSTGRES_PASSWORD=secret\n"
+        env = tarfile.TarInfo("snapshots/2026-05-27T00-00-00Z/env.snapshot")
+        env.size = len(env_payload)
+        tar.addfile(env, io.BytesIO(env_payload))
+
+        meta_payload = b"{}"
+        snapshot_meta = tarfile.TarInfo("snapshots/2026-05-27T00-00-00Z/meta.json")
+        snapshot_meta.size = len(meta_payload)
+        tar.addfile(snapshot_meta, io.BytesIO(meta_payload))
+
+        backup_meta_payload = json.dumps(metadata).encode("utf-8")
+        backup_meta = tarfile.TarInfo(METADATA_FILENAME)
+        backup_meta.size = len(backup_meta_payload)
+        tar.addfile(backup_meta, io.BytesIO(backup_meta_payload))
+
+    result = restore_backup(
+        backup_path=backup,
+        sources=[BackupSource("snapshots", target)],
+    )
+
+    restored_env = target / "2026-05-27T00-00-00Z" / "env.snapshot"
+    restored_meta = target / "2026-05-27T00-00-00Z" / "meta.json"
+    assert result.extracted == ("snapshots",)
+    assert restored_env.read_text(encoding="utf-8") == "POSTGRES_PASSWORD=secret\n"
+    assert stat.S_IMODE(restored_env.stat().st_mode) == 0o600
+    assert stat.S_IMODE(restored_meta.stat().st_mode) == 0o644
 
 
 def test_restore_directory_failure_preserves_existing_tree(

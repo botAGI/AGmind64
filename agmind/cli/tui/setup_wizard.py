@@ -30,6 +30,8 @@ from textual.containers import Container, Horizontal, VerticalScroll
 from textual.validation import ValidationResult, Validator
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select, Static
 
+from agmind.core.domain import validate_domain
+
 
 class DomainValidator(Validator):
     """Inline validator для domain Input — non-empty + содержит точку.
@@ -40,21 +42,18 @@ class DomainValidator(Validator):
     def validate(self, value: str) -> ValidationResult:
         from agmind.i18n import t
 
-        v = value.strip()
-        if not v:
-            return self.failure(
-                t(
-                    "wizard.validation.domain_empty",
-                    default="required (e.g. lab.example.com)",
-                )
-            )
-        if "." not in v:
-            return self.failure(
-                t(
-                    "wizard.validation.domain_no_dot",
-                    default="must contain '.'",
-                )
-            )
+        try:
+            validate_domain(value)
+        except ValueError as exc:
+            key = "wizard.validation.domain_invalid"
+            default = str(exc)
+            if str(exc) == "domain is required":
+                key = "wizard.validation.domain_empty"
+                default = "required (e.g. lab.example.com)"
+            elif str(exc) == "domain must contain '.'":
+                key = "wizard.validation.domain_no_dot"
+                default = "domain must contain '.'"
+            return self.failure(t(key, default=default))
         return self.success()
 
 
@@ -907,8 +906,10 @@ class AgmindSetupApp(App[SetupState | None]):
     def _validate(self, state: SetupState) -> list[str]:
         """Returns list of error messages (empty = valid)."""
         errors: list[str] = []
-        if not state.domain or "." not in state.domain:
-            errors.append("domain должен содержать '.' (e.g. lab.yourcompany.com)")
+        try:
+            state.domain = validate_domain(state.domain)
+        except ValueError as exc:
+            errors.append(f"domain invalid: {exc}")
         if len(state.cf_api_token) < 20:
             errors.append("CF API token < 20 chars — неверный")
         if self.require_sudo_password and not state.sudo_password:

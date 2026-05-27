@@ -152,6 +152,35 @@ def test_validate_accepts_real_owned_domain() -> None:
     assert errors == []  # NO placeholder rejection
 
 
+@pytest.mark.parametrize(
+    "domain",
+    [
+        "bad domain.example",
+        "bad`domain.example",
+        "bad\n.example",
+        "evil.${VAR}.example",
+        "https://lab.example.com",
+        "*.example.com",
+    ],
+)
+def test_validate_rejects_domain_config_injection_values(domain: str) -> None:
+    detected = DetectedHardware(
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
+        recommended_tier="XL",
+    )
+    app = AgmindSetupApp(detected=detected)
+    state = SetupState(domain=domain, cf_api_token="x" * 30, profiles=["core"])
+
+    errors = app._validate(state)
+
+    assert any("domain" in e.lower() for e in errors)
+
+
 def test_validate_rejects_short_token() -> None:
     detected = DetectedHardware(
         ram_gb=128,
@@ -369,6 +398,29 @@ def test_domain_validator_valid_passes() -> None:
     for v in ("lab.example.com", "agi.mycorp.io", "x.y.z.test"):
         result = DomainValidator().validate(v)
         assert result.is_valid, f"{v} should be valid"
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [
+        "bad domain.example",
+        "bad`domain.example",
+        "bad\n.example",
+        "evil.${VAR}.example",
+        "https://lab.example.com",
+        "*.example.com",
+    ],
+)
+def test_domain_validator_rejects_config_injection_values(
+    domain: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGMIND_LANG", "en")
+    from agmind.cli.tui.setup_wizard import DomainValidator
+
+    result = DomainValidator().validate(domain)
+
+    assert not result.is_valid
+    assert "domain" in (result.failure_descriptions[0] if result.failure_descriptions else "")
 
 
 def test_token_validator_empty_ok() -> None:

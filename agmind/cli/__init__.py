@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from agmind import __version__
+from agmind.core.domain import validate_domain
 from agmind.core.logging import setup as setup_logging
 
 # Lazy import typer чтобы import agmind.cli не валился без typer.
@@ -1281,10 +1282,10 @@ def _make_app() -> typer.Typer:
             wizard_state = initial
             if not dry_run:
                 validation_errors: list[str] = []
-                if not wizard_state.domain or "." not in wizard_state.domain:
-                    validation_errors.append(
-                        "domain должен содержать '.' (e.g. lab.yourcompany.com)"
-                    )
+                try:
+                    wizard_state.domain = validate_domain(wizard_state.domain)
+                except ValueError as exc:
+                    validation_errors.append(f"domain invalid: {exc}")
                 if len(wizard_state.cf_api_token) < 20:
                     validation_errors.append(
                         "CF API token < 20 chars — provide --cf-token-file with chmod 600"

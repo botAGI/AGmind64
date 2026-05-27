@@ -226,6 +226,7 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
     """
     if model_id is not None:
         from agmind.install.models import find_by_id
+        from agmind.models import safe_model_target
 
         entry = find_by_id(model_id)
         if entry is None:
@@ -234,7 +235,11 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        local = _models_dir() / entry.file
+        try:
+            local = safe_model_target(_models_dir(), entry.file)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         present = "✓ downloaded" if local.exists() else "· not downloaded"
         print(f"{entry.name}")
         print(f"  ID:           {entry.id}")
@@ -259,15 +264,17 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
         return 0
 
     if file is not None:
-        local = _models_dir() / file
+        from agmind.models import safe_model_target
+
         try:
-            if not local.exists():
-                # Try absolute path
-                local = Path(file)
+            local = safe_model_target(_models_dir(), file)
             if not local.exists():
                 print(f"ERROR: file not found: {file}", file=sys.stderr)
                 return 2
             stat_result = local.stat()
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         except OSError as exc:
             print(f"ERROR: failed to inspect {local}: {exc}", file=sys.stderr)
             return 1
@@ -317,7 +324,15 @@ def cmd_pull(
     models_dir = _models_dir()
     if not _prepare_models_dir(models_dir):
         return 1
-    target = models_dir / file
+    from agmind.models import hf_resolve_url, safe_model_target
+
+    try:
+        target = safe_model_target(models_dir, file)
+        url = hf_resolve_url(repo, file)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
     if target.exists() and not force:
         try:
             size_gib = target.stat().st_size / 1024**3
@@ -331,7 +346,6 @@ def cmd_pull(
         print("ERROR: curl not installed", file=sys.stderr)
         return 1
 
-    url = f"https://huggingface.co/{repo}/resolve/main/{file}"
     print(f"Downloading {url}")
     print(f"  → {target}")
     try:
@@ -363,11 +377,21 @@ def cmd_rm(model_id: str | None = None, file: str | None = None, force: bool = F
         if entry is None:
             print(f"ERROR: unknown model id {model_id!r}", file=sys.stderr)
             return 1
-        target = _models_dir() / entry.file
+        from agmind.models import safe_model_target
+
+        try:
+            target = safe_model_target(_models_dir(), entry.file)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     elif file is not None:
-        target = _models_dir() / file
-        if not target.exists():
-            target = Path(file)
+        from agmind.models import safe_model_target
+
+        try:
+            target = safe_model_target(_models_dir(), file)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     else:
         print("ERROR: pass <model_id> или --file", file=sys.stderr)
         return 2

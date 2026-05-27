@@ -1291,6 +1291,7 @@ def test_image_pull_step_uses_runtime_env_from_install_dir(
         install_dir=install_dir,
     )
     calls: list[dict[str, object]] = []
+    env_texts: list[str] = []
 
     monkeypatch.setattr(
         "agmind.services.renderer.render_to_string",
@@ -1321,6 +1322,8 @@ def test_image_pull_step_uses_runtime_env_from_install_dir(
                 "extra_emit": extra_emit,
             }
         )
+        assert cwd is not None
+        env_texts.append((cwd / ".env").read_text(encoding="utf-8"))
         return 0, []
 
     monkeypatch.setattr(steps, "_stream_subprocess", fake_stream_subprocess)
@@ -1328,11 +1331,19 @@ def test_image_pull_step_uses_runtime_env_from_install_dir(
     result = ImagePullStep().run(lambda _event: None, cfg)
 
     assert result.success
-    assert calls[0]["cmd"] == ["docker", "compose", "pull", "--policy", "missing", "--quiet"]
-    assert calls[0]["env"] == {
-        "POSTGRES_PASSWORD": "existing-postgres",
-        "REDIS_PASSWORD": "existing-redis",
-    }
+    assert calls[0]["cmd"] == [
+        "docker",
+        "compose",
+        "--env-file",
+        str(calls[0]["cwd"] / ".env"),  # type: ignore[operator]
+        "pull",
+        "--policy",
+        "missing",
+        "--quiet",
+    ]
+    assert calls[0]["env"] is None
+    assert "POSTGRES_PASSWORD=existing-postgres" in env_texts[0]
+    assert "REDIS_PASSWORD=existing-redis" in env_texts[0]
 
 
 def test_compose_config_step_validates_render_with_runtime_env(
@@ -1355,6 +1366,7 @@ def test_compose_config_step_validates_render_with_runtime_env(
         install_dir=install_dir,
     )
     calls: list[dict[str, object]] = []
+    env_texts: list[str] = []
 
     monkeypatch.setattr(
         "agmind.services.renderer.render_to_string",
@@ -1379,6 +1391,8 @@ def test_compose_config_step_validates_render_with_runtime_env(
                 "extra_emit": extra_emit,
             }
         )
+        assert cwd is not None
+        env_texts.append((cwd / ".env").read_text(encoding="utf-8"))
         return 0, []
 
     monkeypatch.setattr(steps, "_stream_subprocess", fake_stream_subprocess)
@@ -1386,8 +1400,16 @@ def test_compose_config_step_validates_render_with_runtime_env(
     result = ComposeConfigStep().run(lambda _event: None, cfg)
 
     assert result.success
-    assert calls[0]["cmd"] == ["docker", "compose", "config", "--quiet"]
-    assert calls[0]["env"] == {"POSTGRES_PASSWORD": "existing-postgres"}
+    assert calls[0]["cmd"] == [
+        "docker",
+        "compose",
+        "--env-file",
+        str(calls[0]["cwd"] / ".env"),  # type: ignore[operator]
+        "config",
+        "--quiet",
+    ]
+    assert calls[0]["env"] is None
+    assert env_texts[0] == "POSTGRES_PASSWORD=existing-postgres\n"
 
 
 def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
@@ -1407,6 +1429,7 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
     )
     calls: list[dict[str, object]] = []
     env_paths: list[tuple[str | None, Path]] = []
+    env_texts: list[str] = []
 
     monkeypatch.setattr(
         "agmind.services.renderer.render_to_string",
@@ -1426,7 +1449,9 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
     ) -> tuple[int, list[str]]:
-        calls.append({"cmd": cmd, "env": env, "stdin_payload": stdin_payload})
+        calls.append({"cmd": cmd, "cwd": cwd, "env": env, "stdin_payload": stdin_payload})
+        assert cwd is not None
+        env_texts.append((cwd / ".env").read_text(encoding="utf-8"))
         return 0, []
 
     monkeypatch.setattr(steps, "_parse_existing_runtime_env", fake_runtime_env)
@@ -1447,6 +1472,8 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
         "--",
         "docker",
         "compose",
+        "--env-file",
+        str(calls[0]["cwd"] / ".env"),  # type: ignore[operator]
         "config",
         "--quiet",
     ]
@@ -1458,13 +1485,19 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
         "--",
         "docker",
         "compose",
+        "--env-file",
+        str(calls[1]["cwd"] / ".env"),  # type: ignore[operator]
         "pull",
         "--policy",
         "missing",
         "--quiet",
     ]
-    assert calls[0]["env"] == {"POSTGRES_PASSWORD": "existing-postgres"}
-    assert calls[1]["env"] == {"POSTGRES_PASSWORD": "existing-postgres"}
+    assert calls[0]["env"] is None
+    assert calls[1]["env"] is None
+    assert env_texts == [
+        "POSTGRES_PASSWORD=existing-postgres\n",
+        "POSTGRES_PASSWORD=existing-postgres\n",
+    ]
     assert calls[0]["stdin_payload"] is not None
     assert calls[1]["stdin_payload"] is not None
 
@@ -1634,6 +1667,33 @@ def test_model_download_skipped_when_no_repo(tmp_path: Path) -> None:
     result = ModelDownloadStep().run(lambda _e: None, cfg)
     assert result.success is True
     assert "skip" in result.message.lower()
+
+
+def test_model_download_rejects_model_path_traversal(tmp_path: Path) -> None:
+    from agmind.install.steps import ModelDownloadStep
+
+    cfg = _make_config(tmp_path)
+    cfg.model_repo = "example/repo"
+    cfg.model_file = "../../escape.gguf"
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+
+    assert result.success is False
+    assert "model file" in result.message
+    assert not (cfg.models_dir.parent / "escape.gguf").exists()
+
+
+def test_model_download_rejects_unsafe_repo(tmp_path: Path) -> None:
+    from agmind.install.steps import ModelDownloadStep
+
+    cfg = _make_config(tmp_path)
+    cfg.model_repo = "https://evil.example/repo"
+    cfg.model_file = "model.gguf"
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+
+    assert result.success is False
+    assert "HF repo" in result.message
 
 
 def test_model_download_idempotent_if_present(tmp_path: Path) -> None:
