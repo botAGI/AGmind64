@@ -555,28 +555,37 @@ def _stream_subprocess(
         text=True,
         bufsize=1,
     )
-    if stdin_payload is not None and proc.stdin is not None:
-        try:
-            proc.stdin.write(stdin_payload.decode("utf-8"))
-            proc.stdin.close()
-        except BrokenPipeError:
-            pass
+    try:
+        if stdin_payload is not None and proc.stdin is not None:
+            try:
+                proc.stdin.write(stdin_payload.decode("utf-8"))
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
 
-    captured: list[str] = []
-    if proc.stdout is not None:
-        for raw in proc.stdout:
-            line = raw.rstrip()
-            if not line:
-                continue
-            captured.append(line)
-            callback(_make_event(step_id, ProgressKind.LOG, line))
-            if extra_emit is not None:
-                try:
-                    extra_emit(line)
-                except Exception:  # noqa: BLE001
-                    pass
-    rc = proc.wait()
-    return rc, captured
+        captured: list[str] = []
+        if proc.stdout is not None:
+            for raw in proc.stdout:
+                line = raw.rstrip()
+                if not line:
+                    continue
+                captured.append(line)
+                callback(_make_event(step_id, ProgressKind.LOG, line))
+                if extra_emit is not None:
+                    try:
+                        extra_emit(line)
+                    except Exception:  # noqa: BLE001
+                        pass
+        rc = proc.wait()
+        return rc, captured
+    finally:
+        # Never leave a child running / pipes open if the loop or a callback
+        # raised before proc.wait().
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if proc.stdout is not None:
+            proc.stdout.close()
 
 
 def _make_event(
@@ -736,6 +745,7 @@ class BootstrapStep(InstallStep):
         become_wfd: int | None = None
         vars_rfd: int | None = None
         vars_wfd: int | None = None
+        proc: subprocess.Popen[str] | None = None
         try:
             become_rfd, become_wfd = os.pipe()
             os.write(become_wfd, config.sudo_password.encode() + b"\n")
@@ -790,6 +800,12 @@ class BootstrapStep(InstallStep):
                     callback(_make_event(self.step_id, ProgressKind.LOG, line))
             rc = proc.wait()
         finally:
+            if proc is not None:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+                if proc.stdout is not None:
+                    proc.stdout.close()
             for fd in (become_rfd, become_wfd, vars_rfd, vars_wfd):
                 if fd is None:
                     continue

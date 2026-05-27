@@ -1736,11 +1736,16 @@ def test_bootstrap_redacts_install_secrets_from_playbook_logs(
     sudo_password = "sudo-secret-password"
 
     class FakeProc:
-        stdout = [
-            f"TASK token={token}\n",
-            f"BECOME password={sudo_password}\n",
-            f"COMBINED token={token} sudo={sudo_password}\n",
-        ]
+        stdout = _FakeStdout(
+            [
+                f"TASK token={token}\n",
+                f"BECOME password={sudo_password}\n",
+                f"COMBINED token={token} sudo={sudo_password}\n",
+            ]
+        )
+
+        def poll(self) -> int:
+            return 0
 
         def wait(self) -> int:
             return 0
@@ -1784,7 +1789,10 @@ def test_bootstrap_passes_cf_token_outside_process_arguments(
     captured: dict[str, object] = {}
 
     class FakeProc:
-        stdout = ["ok\n"]
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
 
         def wait(self) -> int:
             return 0
@@ -1831,7 +1839,10 @@ def test_bootstrap_installs_ansible_collections_before_playbook(
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     class FakeProc:
-        stdout = ["ok\n"]
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
 
         def wait(self) -> int:
             return 0
@@ -1856,3 +1867,55 @@ def test_bootstrap_installs_ansible_collections_before_playbook(
     assert calls[1][0][0] == "/venv/bin/ansible-playbook"
     assert calls[0][1]["cwd"] == str(steps.DEFAULT_REPO_ROOT / "ansible")
     assert calls[1][1]["cwd"] == str(steps.DEFAULT_REPO_ROOT / "ansible")
+
+
+class _FakeStdout:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+        self.closed = False
+
+    def __iter__(self) -> object:
+        return iter(self._lines)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeProc:
+    def __init__(self) -> None:
+        self.stdin = None
+        self.stdout = _FakeStdout(["line-1\n", "line-2\n"])
+        self._alive = True
+        self.killed = False
+        self.waited = 0
+
+    def poll(self) -> int | None:
+        return None if self._alive else 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self._alive = False
+
+    def wait(self) -> int:
+        self.waited += 1
+        self._alive = False
+        return 0
+
+
+def test_stream_subprocess_reaps_process_when_callback_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agmind.install import steps
+
+    fake = _FakeProc()
+    monkeypatch.setattr(steps.subprocess, "Popen", lambda *a, **k: fake)
+
+    def boom(_event: object) -> None:
+        raise RuntimeError("callback failed")
+
+    with pytest.raises(RuntimeError, match="callback failed"):
+        steps._stream_subprocess(["echo", "hi"], boom, "step")
+
+    assert fake.killed is True
+    assert fake.waited >= 1
+    assert fake.stdout.closed is True
