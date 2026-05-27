@@ -119,7 +119,7 @@ def test_scan_constraint_specs_finds_backend_planes() -> None:
     pins = vc.scan_constraint_specs(REPO_ROOT / "constraints")
     by_source_name = {(pin.source, pin.name): pin for pin in pins}
 
-    assert by_source_name[("constraint:core", "typer")].specifier == ">=0.12,<1"
+    assert by_source_name[("constraint:core", "typer")].specifier == ">=0.26,<1"
     assert by_source_name[("constraint:vulkan", "llama-cpp-python")].file == (
         "constraints/vulkan.txt"
     )

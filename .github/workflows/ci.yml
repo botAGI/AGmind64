@@ -180,6 +180,7 @@ jobs:
   test-cpu:
     runs-on: [self-hosted, linux, x64]
     needs: [audit, schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, kubernetes-render-validate]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install agmind + dev
@@ -204,18 +205,27 @@ jobs:
           path: coverage.xml
 
   # ---- Docker matrix build ----
-  docker-build:
+  # Build the base image once; the backend matrix reuses the daemon-local tag
+  # (single self-hosted runner) instead of rebuilding it three times.
+  docker-build-base:
     runs-on: [self-hosted, linux, x64]
     needs: [audit, constraints-validate]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build base image
+        run: docker build -f docker/Dockerfile.base -t agmind-base:ci .
+
+  docker-build:
+    runs-on: [self-hosted, linux, x64]
+    needs: [audit, constraints-validate, docker-build-base]
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         backend: [cpu, vulkan, rocm]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build base image
-        run: docker build -f docker/Dockerfile.base -t agmind-base:ci .
 
       - name: Build ${{ matrix.backend }} image
         run: |
@@ -229,6 +239,7 @@ jobs:
   compose-validate:
     runs-on: [self-hosted, linux, x64]
     needs: [schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install agmind
@@ -268,6 +279,7 @@ jobs:
   # the current commit, not stale tags left on the self-hosted runner.
   test-strix-halo:
     runs-on: [self-hosted, linux, x64, strix-halo]
+    timeout-minutes: 20
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
