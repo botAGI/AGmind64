@@ -76,6 +76,10 @@ CLAUDE.md
 .planning/
 docs/superpowers/
 
+# Runtime secrets env (written to install dir at 0600; never commit if rendered into repo)
+.env
+*.env
+
 # Local dev
 local-*
 secrets/

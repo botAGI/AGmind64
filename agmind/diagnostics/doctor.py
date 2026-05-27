@@ -355,10 +355,12 @@ def _format_version(version: tuple[int, int, int]) -> str:
 def _check_user_groups() -> CheckResult:
     """User должен быть в render + video для /dev/kfd, /dev/dri access."""
     import grp
+    import os
     import pwd
 
+    uid = os.getuid()
     try:
-        user = pwd.getpwuid(__import__("os").getuid()).pw_name
+        user = pwd.getpwuid(uid).pw_name
     except KeyError:
         return CheckResult(
             name="user-groups",
@@ -367,7 +369,7 @@ def _check_user_groups() -> CheckResult:
         )
 
     user_groups = {g.gr_name for g in grp.getgrall() if user in g.gr_mem}
-    user_groups.add(grp.getgrgid(pwd.getpwuid(__import__("os").getuid()).pw_gid).gr_name)
+    user_groups.add(grp.getgrgid(pwd.getpwuid(uid).pw_gid).gr_name)
     missing = {"render", "video"} - user_groups
     if not missing:
         return CheckResult(
