@@ -26,12 +26,13 @@ langgenius/dify-api:
 langgenius/dify-plugin-daemon:
   reason: "Local build — track upstream stable carefully. 0.6.x = current target."
 
-# Pydantic-pinned services (через docker-compose):
+# Dify-backing datastores. AGmind ships its own modern pins (PG 17 LTS,
+# Redis 8) verified against Dify; bump majors only after re-verifying Dify.
 postgres:
-  reason: "Dify pins postgres:15-alpine; bump только после Dify minor с обновлённым pin."
+  reason: "Dify metadata store on PG 17 LTS (verified 2026-05-16); bump majors только после Dify re-verify."
 
 redis:
-  reason: "Dify pins redis:6-alpine; bump только после Dify minor с обновлённым pin."
+  reason: "Dify task queue + plugin cache on Redis 8 (verified 2026-05-09); bump majors только после Dify re-verify."
 
 # RAGFlow ES requirement:
 elasticsearch:
