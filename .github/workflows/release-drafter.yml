@@ -15,6 +15,12 @@ permissions:
 
 jobs:
   update_release_draft:
+    # Fork-PR guard: pull_request_target runs with the base-repo token and
+    # contents/pull-requests write scope. Only run on push to main or on PRs
+    # from the same repository, never on untrusted fork PRs.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     # GitHub-API-only job: keep it off the single-lane self-hosted runner so it
     # never blocks the critical CI/test/deploy queue (backlog M6.B.5).
     runs-on: ubuntu-latest
