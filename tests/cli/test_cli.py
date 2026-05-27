@@ -50,6 +50,60 @@ def test_make_app_has_doctor_command() -> None:
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_doctor_runs_preflight_exactly_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.diagnostics.doctor import CheckResult, DoctorReport
+
+    calls = {"n": 0}
+
+    def fake_run_preflight() -> DoctorReport:
+        calls["n"] += 1
+        return DoctorReport(checks=[CheckResult(name="probe", status="ok", message="m")])
+
+    monkeypatch.setattr("agmind.diagnostics.doctor.run_preflight", fake_run_preflight)
+
+    cli_app = typer.main.get_command(_make_app())
+    result = CliRunner().invoke(cli_app, ["doctor"])
+
+    assert calls["n"] == 1
+    assert result.exit_code == 0
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+@pytest.mark.parametrize(
+    ("statuses", "expected_code"),
+    [
+        (["ok", "skip"], 0),
+        (["ok", "warn"], 1),
+        (["ok", "warn", "fail"], 2),
+    ],
+)
+def test_doctor_exit_codes(
+    monkeypatch: pytest.MonkeyPatch,
+    statuses: list[str],
+    expected_code: int,
+) -> None:
+    import typer
+    from click.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.diagnostics.doctor import CheckResult, DoctorReport
+
+    def fake_run_preflight() -> DoctorReport:
+        return DoctorReport(checks=[CheckResult(name=s, status=s, message="m") for s in statuses])
+
+    monkeypatch.setattr("agmind.diagnostics.doctor.run_preflight", fake_run_preflight)
+
+    cli_app = typer.main.get_command(_make_app())
+    result = CliRunner().invoke(cli_app, ["doctor"])
+
+    assert result.exit_code == expected_code
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_deploy_command_accepts_repeated_explicit_services(
     tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,

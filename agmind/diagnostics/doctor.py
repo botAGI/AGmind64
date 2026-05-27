@@ -442,13 +442,24 @@ def run_preflight() -> DoctorReport:
 
 
 def doctor_report(*, as_json: bool = False, color: bool | None = None) -> str:
-    """Human-readable или JSON отчёт.
+    """Human-readable или JSON отчёт. Runs preflight, then formats.
+
+    Thin wrapper kept for back-compat. Callers that need the exit code should
+    run :func:`run_preflight` once and pass the report to
+    :func:`format_doctor_report` instead, to avoid running checks twice.
+    """
+    return format_doctor_report(run_preflight(), as_json=as_json, color=color)
+
+
+def format_doctor_report(
+    report: DoctorReport, *, as_json: bool = False, color: bool | None = None
+) -> str:
+    """Render an already-computed :class:`DoctorReport` to text or JSON.
 
     Phase M4.4: colored output via Rich markup. Enable controlled by:
       - `color` kwarg (None → auto-detect: True if stdout TTY, False otherwise)
       - `NO_COLOR=1` env var → forced off
     """
-    report = run_preflight()
     if as_json:
         return report.to_json()
 

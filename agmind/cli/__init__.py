@@ -75,13 +75,10 @@ def _make_app() -> typer.Typer:
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
     ) -> None:
         """Run preflight diagnostics."""
-        from agmind.diagnostics import doctor_report
-
-        out = doctor_report(as_json=as_json)
-        typer.echo(out)
-        from agmind.diagnostics.doctor import run_preflight
+        from agmind.diagnostics.doctor import format_doctor_report, run_preflight
 
         report = run_preflight()
+        typer.echo(format_doctor_report(report, as_json=as_json))
         if report.has_failures:
             raise typer.Exit(code=2)
         if report.has_warnings:

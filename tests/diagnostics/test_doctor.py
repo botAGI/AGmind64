@@ -180,6 +180,26 @@ def test_doctor_report_json_format() -> None:
     assert "checks" in parsed
 
 
+def test_format_doctor_report_takes_precomputed_report() -> None:
+    from agmind.diagnostics.doctor import format_doctor_report
+
+    report = DoctorReport(
+        checks=[
+            CheckResult(name="probe", status="ok", message="all good"),
+            CheckResult(name="other", status="warn", message="heads up", fix_hint="do x"),
+        ]
+    )
+
+    plain = format_doctor_report(report, as_json=False, color=False)
+    assert "AGmind doctor" in plain
+    assert "probe" in plain
+    assert "→ do x" in plain
+
+    parsed = json.loads(format_doctor_report(report, as_json=True))
+    assert parsed["summary"]["total"] == 2
+    assert parsed["summary"]["warn"] == 1
+
+
 def test_doctor_report_fix_hint_shown_in_human(monkeypatch: pytest.MonkeyPatch) -> None:
     """Если check имеет fix_hint и status warn/fail — hint в выводе."""
     # Не мокаем — реальные checks на dev машине дают warn'ы с hints
