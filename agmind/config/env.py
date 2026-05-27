@@ -5,9 +5,10 @@ Substitution: `${KEY}` → value. Unresolved placeholders → KeyError.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
+
+from agmind.core.files import write_text_atomic
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -45,13 +46,4 @@ def write_env(
 
     Use mode=0o600 для secret-containing files (.env с paswords).
     """
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        os.chmod(tmp, mode)
-        tmp.replace(p)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    write_text_atomic(Path(path), content, mode=mode)

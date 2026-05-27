@@ -87,15 +87,11 @@ def test_schema_state_save_preserves_existing_file_on_write_failure(
     path.parent.mkdir(parents=True)
     path.write_text(old, encoding="utf-8")
     path.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == path or self.name == f".{path.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def boom(*args: object, **kwargs: object) -> int:
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr("agmind.core.files.os.open", boom)
 
     with pytest.raises(OSError, match="disk full"):
         SchemaState(schema_version=2).save(path)

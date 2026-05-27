@@ -11,6 +11,7 @@ import secrets as stdlib_secrets
 import stat
 from pathlib import Path
 
+from agmind.core.files import write_text_atomic
 from agmind.core.logging import logger
 
 log = logger(__name__)
@@ -32,16 +33,8 @@ def generate_secret(length: int = 32) -> str:
 
 
 def write_private_text(path: Path, content: str) -> None:
-    """Write secret text atomically with chmod 600 and temp cleanup on failure."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    try:
-        tmp.write_text(content, encoding="utf-8")
-        tmp.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        tmp.replace(path)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    """Write secret text atomically, created mode 0600, with temp cleanup."""
+    write_text_atomic(path, content, mode=stat.S_IRUSR | stat.S_IWUSR)
 
 
 def write_creds(creds: dict[str, str], path: Path | None = None) -> None:

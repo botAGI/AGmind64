@@ -131,15 +131,11 @@ def test_write_inventory_preserves_existing_file_on_write_failure(
     old = "# old inventory\nall: {}\n"
     output_path.write_text(old, encoding="utf-8")
     output_path.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == output_path or self.name == f".{output_path.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def boom(*args: object, **kwargs: object) -> int:
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr("agmind.core.files.os.open", boom)
 
     with pytest.raises(OSError, match="disk full"):
         write_inventory_from_tofu_outputs(_tofu_outputs(), output_path)
