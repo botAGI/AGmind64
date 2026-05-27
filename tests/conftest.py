@@ -40,6 +40,24 @@ def _restore_root_logging() -> Iterator[None]:
         root.setLevel(saved_level)
 
 
+@pytest.fixture(autouse=True)
+def _reset_i18n_cache() -> Iterator[None]:
+    """Clear the i18n catalog cache per test.
+
+    `agmind.i18n` memoises loaded catalogs in a module-level ``_loaded`` dict.
+    A test that stubs or monkeypatches catalog contents would otherwise leak
+    into later tests under pytest-randomly. Snapshot/restore isolates it.
+    """
+    import agmind.i18n as i18n
+
+    saved = dict(i18n._loaded)
+    try:
+        yield
+    finally:
+        i18n._loaded.clear()
+        i18n._loaded.update(saved)
+
+
 @pytest.fixture
 def has_vulkan() -> bool:
     """True если vulkaninfo доступен на host (физический GPU есть)."""
