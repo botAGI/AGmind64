@@ -32,7 +32,11 @@ def _check_prereqs(install_dir: Path) -> str | None:
     if shutil.which("docker") is None:
         return "docker binary not found in PATH"
     compose_file = install_dir / "docker-compose.yml"
-    if not compose_file.exists():
+    try:
+        compose_exists = compose_file.exists()
+    except OSError as exc:
+        return f"cannot access deployment at {compose_file}: {exc}"
+    if not compose_exists:
         return f"no deployment at {compose_file} (run `agmind deploy --apply`)"
     return None
 
@@ -40,7 +44,12 @@ def _check_prereqs(install_dir: Path) -> str | None:
 def known_services(install_dir: Path) -> list[str]:
     """Parse compose file for service names. Returns empty list if YAML is invalid."""
     compose_file = install_dir / "docker-compose.yml"
-    if not compose_file.exists():
+    try:
+        compose_exists = compose_file.exists()
+    except OSError as exc:
+        log.warning("compose access failed: %s", exc)
+        return []
+    if not compose_exists:
         return []
     try:
         import yaml

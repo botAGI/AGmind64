@@ -42,6 +42,21 @@ def test_known_services_invalid_yaml(tmp_path: Path) -> None:
     assert known_services(tmp_path) == []
 
 
+def test_known_services_inaccessible_compose_returns_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_exists = Path.exists
+
+    def flaky_exists(path: Path) -> bool:
+        if path.name == "docker-compose.yml":
+            raise PermissionError("stat denied")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", flaky_exists)
+
+    assert known_services(tmp_path) == []
+
+
 # ---------- logs ----------
 
 
@@ -121,6 +136,32 @@ def test_logs_no_docker_binary(
     assert "docker" in capsys.readouterr().out
 
 
+def test_logs_reports_inaccessible_compose_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    install = tmp_path / "locked"
+    install.mkdir()
+    original_exists = Path.exists
+
+    def flaky_exists(path: Path) -> bool:
+        if path.name == "docker-compose.yml":
+            raise PermissionError("stat denied")
+        return original_exists(path)
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(Path, "exists", flaky_exists)
+
+    rc = logs(install_dir=install)
+
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "cannot access deployment" in out
+    assert "stat denied" in out
+    assert "Traceback" not in out
+
+
 def test_logs_reports_subprocess_failure_without_traceback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -154,6 +195,32 @@ def test_shell_unknown_service(tmp_path: Path, capsys: pytest.CaptureFixture[str
     rc = shell(install_dir=install, service="ghost")
     assert rc == 2
     assert "unknown service" in capsys.readouterr().out
+
+
+def test_shell_reports_inaccessible_compose_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    install = tmp_path / "locked"
+    install.mkdir()
+    original_exists = Path.exists
+
+    def flaky_exists(path: Path) -> bool:
+        if path.name == "docker-compose.yml":
+            raise PermissionError("stat denied")
+        return original_exists(path)
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(Path, "exists", flaky_exists)
+
+    rc = shell(install_dir=install, service="traefik")
+
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "cannot access deployment" in out
+    assert "stat denied" in out
+    assert "Traceback" not in out
 
 
 def test_shell_invokes_docker_compose_exec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
