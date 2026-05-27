@@ -33,7 +33,12 @@ def resolve_service_selection(
     carry its siblings and mandatory runtime requirements.
     """
 
-    selected = {service for service in services if service in descriptors}
+    requested = list(services)
+    unknown = [service for service in requested if service not in descriptors]
+    if unknown:
+        raise ValueError(f"unknown services: {', '.join(unknown)}")
+
+    selected = set(requested)
     contracts = component_contracts or {}
     owners = _service_component_owners(contracts)
     stack_components = _stack_component_ids(contracts)

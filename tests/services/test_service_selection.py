@@ -1,6 +1,17 @@
 from __future__ import annotations
 
 
+def test_service_selection_rejects_unknown_service_names() -> None:
+    import pytest
+
+    from agmind.services.renderer import load_descriptors
+    from agmind.services.selection import resolve_service_selection
+
+    descriptors = load_descriptors()
+    with pytest.raises(ValueError, match="unknown services: missing-service"):
+        resolve_service_selection(descriptors, services=["traefik", "missing-service"])
+
+
 def test_service_selection_expands_dify_stack_and_mandatory_runtime_dependencies() -> None:
     from agmind.components import load_component_contracts
     from agmind.services.compatibility import check_service_compatibility
