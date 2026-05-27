@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.backend_any
+
 
 def test_retrieval_topology_summarizes_dify_milvus_and_ragflow_elasticsearch() -> None:
     from agmind.services.retrieval_policy import summarize_retrieval_topology

@@ -10,6 +10,8 @@ from pydantic import ValidationError
 from agmind.components import ComponentContract, load_component_contracts
 from agmind.services.renderer import load_descriptors
 
+pytestmark = pytest.mark.backend_any
+
 
 def _write_contract(path: Path, *, component_id: str = "ollama") -> Path:
     payload = {

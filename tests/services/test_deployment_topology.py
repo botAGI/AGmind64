@@ -17,6 +17,8 @@ from agmind.services.topology_checks import (
     validate_topology_profiles,
 )
 
+pytestmark = pytest.mark.backend_any
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

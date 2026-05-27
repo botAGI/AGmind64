@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.backend_any
+
 
 def test_service_selection_rejects_unknown_service_names() -> None:
-    import pytest
-
     from agmind.services.renderer import load_descriptors
     from agmind.services.selection import resolve_service_selection
 

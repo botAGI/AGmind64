@@ -13,6 +13,8 @@ from agmind.deploy.proxmox_exporter import (
     validate_pve_config,
 )
 
+pytestmark = pytest.mark.backend_any
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "checks" / "proxmox_exporter_check.py"
 SERVICES_TASKS = REPO_ROOT / "ansible" / "roles" / "services" / "tasks" / "main.yml"

@@ -4,12 +4,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from agmind.addons import load_tool_candidates
 from agmind.components import load_component_contracts
 from agmind.schemas import ServiceDescriptor
 from agmind.services.renderer import render_to_string
+
+pytestmark = pytest.mark.backend_any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVICE_PATH = REPO_ROOT / "templates" / "services" / "proxmox-exporter.yaml"

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from agmind.cli import service_cmd
+
+pytestmark = pytest.mark.backend_any
 
 
 def test_service_scaffold_writes_descriptor_that_validates(tmp_path: Path) -> None:
