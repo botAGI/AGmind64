@@ -294,7 +294,7 @@ def validate_kubernetes_proof_workflow_report(
                 "kubernetes proof workflow must run strict Kubernetes render validation",
             )
         )
-    if "actions/upload-artifact@v4" not in workflow:
+    if "actions/upload-artifact@" not in workflow:
         issues.append(
             _issue(
                 "error",
@@ -595,7 +595,7 @@ def _workflow_step_writes_verifier_report(
 
 
 def _workflow_uploads_artifact(workflow: str, artifact: str) -> bool:
-    upload_index = workflow.find("actions/upload-artifact@v4")
+    upload_index = workflow.find("actions/upload-artifact@")
     if upload_index < 0:
         return False
     step_start = workflow.rfind("\n      - name:", 0, upload_index)

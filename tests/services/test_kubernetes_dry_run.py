@@ -1314,7 +1314,7 @@ def test_ci_has_manual_kubernetes_proof_artifact_workflow() -> None:
     assert "- name: Summarize k3s proof bundle\n        if: always()" in workflow
     assert "find local-kubernetes-proof/k3s -maxdepth 1 -type f -print | sort" in workflow
     assert "cat local-kubernetes-proof/k3s/checksums.txt" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/upload-artifact@" in workflow
     assert "local-kubernetes-proof/k3s/k3s.yaml" in workflow
     assert "local-kubernetes-proof/k3s/k3s.dry-run.json" in workflow
     assert "local-kubernetes-proof/k3s/proof-command.txt" in workflow
@@ -1322,6 +1322,34 @@ def test_ci_has_manual_kubernetes_proof_artifact_workflow() -> None:
     assert "local-kubernetes-proof/k3s/summary.json" in workflow
     assert "local-kubernetes-proof/k3s/checksums.txt" in workflow
     assert "local-kubernetes-proof/k3s/verification.json" in workflow
+
+
+def test_proof_workflow_accepts_bumped_upload_artifact_version(tmp_path: Path) -> None:
+    """A routine actions/upload-artifact version bump must not fail the proof check.
+
+    Dependabot bumps `actions/upload-artifact` (and checkout) across the
+    workflows; the proof-workflow contract must validate the upload step by
+    purpose, not by a pinned action version, or every Actions bump breaks CI.
+    """
+    from agmind.deploy import load_deploy_targets
+    from agmind.deploy.target_checks import validate_kubernetes_proof_workflow_report
+
+    source = (REPO_ROOT / ".github" / "workflows" / "kubernetes-proof.yml").read_text(
+        encoding="utf-8"
+    )
+    bumped = source.replace("actions/upload-artifact@v4", "actions/upload-artifact@v7").replace(
+        "actions/checkout@v4", "actions/checkout@v6"
+    )
+    assert "actions/upload-artifact@v7" in bumped  # guard: bump actually applied
+
+    workflow_path = tmp_path / "kubernetes-proof.yml"
+    workflow_path.write_text(bumped, encoding="utf-8")
+
+    report = validate_kubernetes_proof_workflow_report(
+        load_deploy_targets(), workflow_path=workflow_path
+    )
+
+    assert report.ok, report.messages()
 
 
 def test_kubernetes_proof_workflow_check_script_runs() -> None:
