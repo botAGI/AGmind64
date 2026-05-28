@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import typer
+
 from agmind.install.verify import (
     DEFAULT_SCENARIOS,
     InstallVerifyScenario,
@@ -57,3 +59,70 @@ def _select_scenarios(names: list[str]) -> tuple[InstallVerifyScenario, ...] | N
     if missing:
         return None
     return tuple(by_name[name] for name in names)
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``verify`` command group to ``app``."""
+
+    # ---- verify subcommand group (fresh-install/product gates) ----
+    verify_app = typer.Typer(
+        name="verify",
+        help="Run non-destructive product readiness gates.",
+        no_args_is_help=True,
+    )
+    app.add_typer(verify_app)
+
+    @verify_app.command("install")
+    def verify_install_cmd(
+        domain: str = typer.Option(
+            "lab.example.com",
+            "--domain",
+            help="Domain used for render/config validation.",
+        ),
+        scenario: list[str] | None = typer.Option(
+            None,
+            "--scenario",
+            "-s",
+            help="Fresh-install scenario to run; can be repeated.",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        skip_ansible: bool = typer.Option(
+            False,
+            "--skip-ansible",
+            help="Skip ansible-galaxy and ansible-playbook syntax checks.",
+        ),
+        skip_compose: bool = typer.Option(
+            False,
+            "--skip-compose",
+            help="Skip docker compose config validation.",
+        ),
+        skip_galaxy: bool = typer.Option(
+            False,
+            "--skip-galaxy",
+            help="Skip ansible-galaxy collection install before syntax check.",
+        ),
+        timeout_seconds: int = typer.Option(
+            240,
+            "--timeout",
+            min=1,
+            help="Per-command timeout in seconds.",
+        ),
+        work_dir: Path | None = typer.Option(
+            None,
+            "--work-dir",
+            help="Keep verification artifacts under this directory.",
+        ),
+    ) -> None:
+        """Prove `agmind setup` inputs can render/deploy cleanly without applying."""
+        raise typer.Exit(
+            code=cmd_install(
+                domain=domain,
+                scenarios=scenario,
+                as_json=as_json,
+                skip_ansible=skip_ansible,
+                skip_compose=skip_compose,
+                skip_galaxy=skip_galaxy,
+                timeout_seconds=timeout_seconds,
+                work_dir=work_dir,
+            )
+        )

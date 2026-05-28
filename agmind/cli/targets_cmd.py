@@ -7,6 +7,8 @@ import sys
 from collections import Counter
 from typing import Any
 
+import typer
+
 from agmind.deploy import DeploymentTarget, load_deploy_targets
 from agmind.deploy.target_checks import (
     format_deployment_check_report,
@@ -124,3 +126,37 @@ def cmd_validate(as_json: bool = False) -> int:
 
     print(format_deployment_check_report(report, ok_label="deployment targets"))
     return 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``targets`` command group to ``app``."""
+
+    # ---- targets subcommand group (universal deployment lanes) ----
+    targets_app = typer.Typer(
+        name="targets",
+        help="Inspect deployment target contracts",
+        no_args_is_help=True,
+    )
+    app.add_typer(targets_app)
+
+    @targets_app.command("list")
+    def targets_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List deployment targets."""
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @targets_app.command("status")
+    def targets_status(
+        name: str = typer.Argument(..., help="Deployment target id"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show one deployment target."""
+        raise typer.Exit(code=cmd_status(name=name, as_json=as_json))
+
+    @targets_app.command("validate")
+    def targets_validate(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Validate deployment target contracts."""
+        raise typer.Exit(code=cmd_validate(as_json=as_json))

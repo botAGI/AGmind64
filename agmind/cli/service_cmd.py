@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
+import typer
 import yaml
 
 from agmind.schemas import ServiceDescriptor
@@ -158,3 +159,43 @@ def cmd_scaffold(
     print(f"✓ created {path}")
     print(f"  → review image/ports, затем `agmind service validate {name}`")
     return 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``service`` command group to ``app``."""
+
+    # ---- service subcommand group (Phase H'.E) ----
+    service_app = typer.Typer(
+        name="service",
+        help="Manage service descriptors (templates/services/*.yaml)",
+        no_args_is_help=True,
+    )
+    app.add_typer(service_app)
+
+    @service_app.command("list")
+    def service_list() -> None:
+        """List all service descriptors with tier и profiles."""
+        raise typer.Exit(code=cmd_list())
+
+    @service_app.command("status")
+    def service_status(
+        name: str | None = typer.Argument(None, help="Service name (omit for summary)"),
+    ) -> None:
+        """Show tier breakdown или детали одного сервиса."""
+        raise typer.Exit(code=cmd_status(name))
+
+    @service_app.command("validate")
+    def service_validate(
+        name: str | None = typer.Argument(None, help="Service name (omit to validate all)"),
+    ) -> None:
+        """Validate descriptors against Pydantic schema."""
+        raise typer.Exit(code=cmd_validate(name))
+
+    @service_app.command("scaffold")
+    def service_scaffold(
+        name: str = typer.Argument(..., help="New service name (a-z0-9-)"),
+        tier: str = typer.Option(..., "--tier", "-t", help="edge|inference|app|storage|ops"),
+        force: bool = typer.Option(False, "--force", help="Overwrite existing file"),
+    ) -> None:
+        """Scaffold new templates/services/<name>.yaml из шаблона."""
+        raise typer.Exit(code=cmd_scaffold(name, tier, force=force))  # type: ignore[arg-type]

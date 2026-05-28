@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import sys
 
+import typer
+
 from agmind.migrations.runner import MigrationRunner
 
 
@@ -118,3 +120,48 @@ def cmd_down(steps: int = 1, target: int | None = None) -> int:
         print(f"  <- v{m.version:03d} {m.name} rolled back")
     print(f"Schema now at v{runner.current_version:03d}")
     return 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``migrate`` command group to ``app``."""
+
+    # ---- migrate subcommand group (Phase L.D) ----
+    migrate_app = typer.Typer(
+        name="migrate",
+        help="Manage AGmind state schema migrations (Phase L.D).",
+        no_args_is_help=True,
+    )
+    app.add_typer(migrate_app)
+
+    @migrate_app.command("status")
+    def migrate_status(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show current schema version + applied/pending migrations."""
+        raise typer.Exit(code=cmd_status(as_json=as_json))
+
+    @migrate_app.command("list")
+    def migrate_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List all known migrations (registered in agmind.migrations.versions)."""
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @migrate_app.command("up")
+    def migrate_up(
+        target: int | None = typer.Option(
+            None, "--target", help="Apply migrations up to this version (inclusive)."
+        ),
+    ) -> None:
+        """Apply pending migrations."""
+        raise typer.Exit(code=cmd_up(target=target))
+
+    @migrate_app.command("down")
+    def migrate_down(
+        steps: int = typer.Option(1, "--steps", help="How many migrations to roll back."),
+        target: int | None = typer.Option(
+            None, "--target", help="Roll back everything above this version."
+        ),
+    ) -> None:
+        """Roll back applied migrations."""
+        raise typer.Exit(code=cmd_down(steps=steps, target=target))

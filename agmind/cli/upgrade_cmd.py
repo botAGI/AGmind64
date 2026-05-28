@@ -19,6 +19,8 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
+import typer
+
 from agmind.core.files import write_text_atomic
 from agmind.core.logging import logger
 
@@ -406,6 +408,96 @@ def _archive_latest_state() -> None:
         _sh.move(str(state_files[0]), str(archived_dir / f"{ts}_{state_files[0].name}"))
 
 
+def register(app: typer.Typer) -> None:
+    """Attach the ``upgrade`` command group to ``app``."""
+
+    # ---- upgrade subcommand group (Phase M3.R) ----
+    upgrade_app = typer.Typer(
+        name="upgrade",
+        help="Bump pinned image versions + safely redeploy с rollback.",
+        no_args_is_help=False,
+        invoke_without_command=True,
+    )
+    app.add_typer(upgrade_app)
+
+    @upgrade_app.callback(invoke_without_command=True)
+    def upgrade_cb(
+        ctx: typer.Context,
+        component: str | None = typer.Option(
+            None,
+            "--component",
+            "-c",
+            help="Service name (e.g. ragflow). Bump его image tag.",
+        ),
+        version: str | None = typer.Option(
+            None,
+            "--version",
+            "-v",
+            help="Target tag (e.g. v0.25.5). Required с --component.",
+        ),
+        digest: str | None = typer.Option(
+            None,
+            "--digest",
+            help="Optional sha256 digest (без `sha256:` prefix).",
+        ),
+        check: bool = typer.Option(
+            False,
+            "--check",
+            help="Run version_check.py scanner и выйти.",
+        ),
+        apply: bool = typer.Option(
+            False,
+            "--apply",
+            help="Re-deploy after bump (uses Phase L.B runner).",
+        ),
+        plan: bool = typer.Option(
+            False,
+            "--plan",
+            help="Print component update plan without editing files.",
+        ),
+        rollback: bool = typer.Option(
+            False,
+            "--rollback",
+            help="Revert last bump (read latest state + restore template).",
+        ),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Bump даже если pin в version_holds.yaml.",
+        ),
+    ) -> None:
+        """Phase M3.R: upgrade lifecycle."""
+        if ctx.invoked_subcommand is not None:
+            return
+
+        if check:
+            raise typer.Exit(code=cmd_check())
+        if rollback:
+            raise typer.Exit(code=cmd_rollback())
+        if apply and not component:
+            raise typer.Exit(code=cmd_apply())
+        if component:
+            if version is None:
+                typer.echo("ERROR: --component requires --version", err=True)
+                raise typer.Exit(code=2)
+            rc = cmd_component(
+                service=component,
+                version=version,
+                force=force,
+                digest=digest,
+                plan_only=plan,
+            )
+            if rc != 0 or not apply or plan:
+                raise typer.Exit(code=rc)
+            raise typer.Exit(code=cmd_apply())
+
+        typer.echo(
+            "Usage: agmind upgrade [--check | --component X --version Y "
+            "[--plan] [--apply] | --apply | --rollback]"
+        )
+        raise typer.Exit(code=2)
+
+
 __all__ = [
     "UpgradePlan",
     "UpgradePlanItem",
@@ -414,4 +506,5 @@ __all__ = [
     "cmd_component",
     "cmd_apply",
     "cmd_rollback",
+    "register",
 ]
