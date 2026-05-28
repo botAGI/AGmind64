@@ -7,6 +7,8 @@ import signal
 import sys
 import time
 
+import typer
+
 from agmind.cluster.detect import (
     DEFAULT_AGMIND_PORT,
     DEFAULT_DISCOVERY_TIMEOUT,
@@ -185,4 +187,63 @@ def cmd_inspect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = Fals
     return 0
 
 
-__all__ = ["cmd_advertise", "cmd_detect", "cmd_inspect", "cmd_status"]
+def register(app: typer.Typer) -> None:
+    """Attach the ``cluster`` command group to ``app``."""
+
+    # ---- cluster subcommand group (Phase M4.U.1 — mDNS auto-detect) ----
+    cluster_app = typer.Typer(
+        name="cluster",
+        help="Multi-node coordination — mDNS-based peer discovery.",
+        no_args_is_help=True,
+    )
+    app.add_typer(cluster_app)
+
+    @cluster_app.command("detect")
+    def cluster_detect(
+        timeout: float = typer.Option(
+            3.0,
+            "--timeout",
+            "-t",
+            help="Discovery duration в секундах",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Browse LAN для agmind peers via mDNS (one-shot)."""
+        raise typer.Exit(code=cmd_detect(timeout=timeout, as_json=as_json))
+
+    @cluster_app.command("advertise")
+    def cluster_advertise(
+        port: int = typer.Option(
+            41423,
+            "--port",
+            "-p",
+            help="Port для service advertisement",
+        ),
+        duration: float = typer.Option(
+            0.0,
+            "--duration",
+            "-d",
+            help="Stop после N seconds (0 = forever / Ctrl+C)",
+        ),
+    ) -> None:
+        """Publish this node как `_agmind._tcp.local.` service (daemon mode)."""
+        raise typer.Exit(code=cmd_advertise(port=port, duration=duration))
+
+    @cluster_app.command("status")
+    def cluster_status(
+        timeout: float = typer.Option(3.0, "--timeout", "-t"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show this node info + discovered peers."""
+        raise typer.Exit(code=cmd_status(timeout=timeout, as_json=as_json))
+
+    @cluster_app.command("inspect")
+    def cluster_inspect(
+        timeout: float = typer.Option(3.0, "--timeout", "-t"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Inspect local runtime/cluster environment and recommend deploy target."""
+        raise typer.Exit(code=cmd_inspect(timeout=timeout, as_json=as_json))
+
+
+__all__ = ["cmd_advertise", "cmd_detect", "cmd_inspect", "cmd_status", "register"]

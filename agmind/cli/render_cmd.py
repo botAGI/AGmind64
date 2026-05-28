@@ -17,6 +17,8 @@ import json
 import sys
 from pathlib import Path
 
+import typer
+
 from agmind.core.files import write_text_atomic
 from agmind.services.deployment_topology import build_deployment_topology_report
 from agmind.services.renderer import (
@@ -195,3 +197,140 @@ def cmd_render_topology(
     else:
         sys.stdout.write("TOPOLOGY OK\n")
     return 2 if fail_on_warning and report.has_warnings else 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``render`` command group to ``app``."""
+
+    # ---- render subcommand group (Phase H'.C) ----
+    render_app = typer.Typer(
+        name="render",
+        help="Render compose / configs from templates/services/*.yaml descriptors",
+        no_args_is_help=True,
+    )
+    app.add_typer(render_app)
+
+    @render_app.command("compose")
+    def render_compose(
+        profile: str = typer.Option(
+            "core",
+            "--profile",
+            "-p",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
+        ),
+        output: Path | None = typer.Option(
+            None, "--output", "-o", help="Output file (default: stdout)"
+        ),
+        no_traefik: bool = typer.Option(
+            False, "--no-traefik", help="Skip Traefik labels generation"
+        ),
+        diff: Path | None = typer.Option(
+            None, "--diff", help="Diff against existing compose file (no write)"
+        ),
+        domain: str | None = typer.Option(
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
+            help="Override agmind.dev placeholder (e.g. yourdomain.com)",
+        ),
+    ) -> None:
+        """Render docker-compose.yml from ServiceDescriptor catalog."""
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_render_compose(
+            profiles=profiles,
+            services=service,
+            output=output,
+            traefik=not no_traefik,
+            diff=diff,
+            domain=domain,
+        )
+        raise typer.Exit(code=rc)
+
+    @render_app.command("kubernetes")
+    def render_kubernetes(
+        profile: str = typer.Option(
+            "core",
+            "--profile",
+            "-p",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
+        ),
+        output: Path | None = typer.Option(
+            None, "--output", "-o", help="Output file (default: stdout)"
+        ),
+        namespace: str = typer.Option(
+            "agmind",
+            "--namespace",
+            "-n",
+            help="Kubernetes namespace for rendered objects",
+        ),
+        strict: bool = typer.Option(
+            False,
+            "--strict",
+            help="Fail if selected descriptors contain Docker-only fields",
+        ),
+        target: str | None = typer.Option(
+            None,
+            "--target",
+            help="Deployment target id; uses target profiles and exclusions",
+        ),
+        no_namespace: bool = typer.Option(
+            False,
+            "--no-namespace",
+            help="Do not emit a Namespace object",
+        ),
+    ) -> None:
+        """Render Kubernetes manifests from ServiceDescriptor catalog."""
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_render_kubernetes(
+            profiles=profiles,
+            services=service,
+            output=output,
+            namespace=namespace,
+            strict=strict,
+            include_namespace=not no_namespace,
+            target_id=target,
+        )
+        raise typer.Exit(code=rc)
+
+    @render_app.command("topology")
+    def render_topology(
+        profile: str = typer.Option(
+            "core",
+            "--profile",
+            "-p",
+            help="Comma-separated profile names (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        fail_on_warning: bool = typer.Option(
+            False,
+            "--fail-on-warning",
+            help="Exit 2 when topology warnings are present",
+        ),
+    ) -> None:
+        """Render selected-service topology warnings and RAG storage plan."""
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_render_topology(
+            profiles=profiles,
+            services=service,
+            as_json=as_json,
+            fail_on_warning=fail_on_warning,
+        )
+        raise typer.Exit(code=rc)

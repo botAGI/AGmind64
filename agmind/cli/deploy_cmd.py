@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import typer
+
 from agmind.core.logging import logger
 
 log = logger(__name__)
@@ -187,3 +189,209 @@ def cmd_snapshots_list() -> int:
     for s in snaps:
         print(f"{s.id:<22} {s.profile:<25} {s.reason}")
     return 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the deploy group, rollback, snapshots group and gc to ``app``."""
+
+    # ---- deploy subcommand group (Phase L.B) ----
+    deploy_app = typer.Typer(
+        name="deploy",
+        help="Idempotent deploy с automatic snapshot + healthcheck + rollback",
+        no_args_is_help=False,
+        invoke_without_command=True,
+    )
+    app.add_typer(deploy_app)
+
+    @deploy_app.callback(invoke_without_command=True)
+    def deploy_group(
+        ctx: typer.Context,
+        profile: str = typer.Option(
+            "core,observability",
+            "--profile",
+            "-p",
+            help="Comma-separated profiles to deploy (ignored when --service is used)",
+        ),
+        service: list[str] | None = typer.Option(
+            None,
+            "--service",
+            "-s",
+            help="Explicit service name; can be repeated",
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Install directory (default: /opt/agmind)",
+        ),
+        domain: str | None = typer.Option(
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
+            help="Override agmind.dev placeholder",
+        ),
+        apply: bool = typer.Option(
+            False,
+            "--apply",
+            help="Actually apply changes (default: dry-run / diff only)",
+        ),
+        no_prompt: bool = typer.Option(
+            False,
+            "--no-prompt",
+            help="Skip interactive confirmation (CI mode)",
+        ),
+        healthcheck_timeout: int = typer.Option(
+            300,
+            "--healthcheck-timeout",
+            help="Seconds to wait for healthy state",
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
+        verbose: bool = typer.Option(
+            False,
+            "--verbose",
+            "-v",
+            help="Show full unified diff",
+        ),
+    ) -> None:
+        """Deploy (default: dry-run). Use --apply to commit changes."""
+        if ctx.invoked_subcommand is not None:
+            return
+
+        profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        rc = cmd_deploy(
+            profiles=profiles,
+            services=service,
+            install_dir=install_dir,
+            domain=domain,
+            apply=apply,
+            no_prompt=no_prompt,
+            healthcheck_timeout=healthcheck_timeout,
+            verbose=verbose,
+            ask_sudo_password=ask_sudo_password,
+        )
+        raise typer.Exit(code=rc)
+
+    @deploy_app.command("up")
+    def deploy_up(
+        profile: str | None = typer.Option(None, "--profile", "-p"),
+        detach: bool = typer.Option(True, "--detach/--no-detach"),
+    ) -> None:
+        """Backward-compatible docker compose up wrapper."""
+        raise typer.Exit(code=cmd_up(profile=profile, detach=detach))
+
+    @deploy_app.command("down")
+    def deploy_down(
+        volumes: bool = typer.Option(False, "--volumes", help="Also remove named volumes."),
+    ) -> None:
+        """Backward-compatible docker compose down wrapper."""
+        raise typer.Exit(code=cmd_down(volumes=volumes))
+
+    @deploy_app.command("status")
+    def deploy_status() -> None:
+        """Backward-compatible docker compose ps wrapper."""
+        raise typer.Exit(code=cmd_status())
+
+    @deploy_app.command("ps")
+    def deploy_ps(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Backward-compatible docker compose ps wrapper."""
+        raise typer.Exit(code=cmd_ps(as_json=as_json))
+
+    @deploy_app.command("logs")
+    def deploy_logs(
+        service: str | None = typer.Argument(None, help="Service name."),
+        follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
+        lines: int = typer.Option(100, "--lines", help="Initial backlog lines."),
+    ) -> None:
+        """Backward-compatible docker compose logs wrapper."""
+        raise typer.Exit(code=cmd_logs(service=service, follow=follow, lines=lines))
+
+    @deploy_app.command("restart")
+    def deploy_restart(
+        service: str | None = typer.Argument(None, help="Service name."),
+    ) -> None:
+        """Backward-compatible docker compose restart wrapper."""
+        raise typer.Exit(code=cmd_restart(service=service))
+
+    @deploy_app.command("pull")
+    def deploy_pull() -> None:
+        """Backward-compatible docker compose pull wrapper."""
+        raise typer.Exit(code=cmd_pull())
+
+    # ---- rollback (top-level command) ----
+    @app.command()
+    def rollback(
+        snapshot_id: str | None = typer.Argument(
+            None,
+            help="Snapshot ID (omit for latest)",
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Install directory",
+        ),
+    ) -> None:
+        """Restore deployment from snapshot."""
+        raise typer.Exit(
+            code=cmd_rollback(snapshot_id, install_dir, ask_sudo_password=ask_sudo_password)
+        )
+
+    # ---- snapshots list (top-level) ----
+    snapshots_app = typer.Typer(
+        name="snapshots",
+        help="Manage deployment snapshots",
+        no_args_is_help=True,
+    )
+    app.add_typer(snapshots_app)
+
+    @snapshots_app.command("list")
+    def snapshots_list() -> None:
+        """List available snapshots (newest first)."""
+        raise typer.Exit(code=cmd_snapshots_list())
+
+    # ---- gc (Phase L.C) ----
+    @app.command()
+    def gc(
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Show what would be removed (don't delete)"
+        ),
+        aggressive: bool = typer.Option(
+            False,
+            "--aggressive",
+            help="Remove ALL unused volumes (default: только labeled agmind.gc=auto)",
+        ),
+        older_than_hours: int = typer.Option(
+            72,
+            "--older-than-hours",
+            help="Image age cutoff в часах (default: 72)",
+        ),
+        include_models: bool = typer.Option(
+            False,
+            "--include-models",
+            help="Также удалить GGUF/safetensors не упомянутые в descriptors",
+        ),
+    ) -> None:
+        """Garbage collection: containers + images + volumes + networks (+ models opt-in)."""
+        from agmind.deploy import format_gc_report, gc_all
+
+        reports = gc_all(
+            aggressive=aggressive,
+            older_than_hours=older_than_hours,
+            dry_run=dry_run,
+            include_models=include_models,
+        )
+        sys.stdout.write(format_gc_report(reports))

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import sys
 
+import typer
+
 from agmind.ci.monitor import DEFAULT_RUN_LIMIT, CIMonitorReport, collect_ci_status
 
 
@@ -59,4 +61,31 @@ def _summary(summary: dict[str, int]) -> str:
     return ", ".join(f"{key}={value}" for key, value in summary.items())
 
 
-__all__ = ["cmd_status"]
+def register(app: typer.Typer) -> None:
+    """Attach the ``ci`` command group to ``app``."""
+
+    # ---- ci subcommand group (GitHub Actions/self-hosted runner visibility) ----
+    ci_app = typer.Typer(
+        name="ci",
+        help="Inspect GitHub Actions runs and self-hosted runners",
+        no_args_is_help=True,
+    )
+    app.add_typer(ci_app)
+
+    @ci_app.command("status")
+    def ci_status(
+        repository: str | None = typer.Option(
+            None,
+            "--repo",
+            help="GitHub repository slug owner/name (default: git remote or AGMIND_GITHUB_REPO)",
+        ),
+        run_limit: int = typer.Option(10, "--limit", "-n", min=1, max=100),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show GitHub Actions queue and self-hosted runner state."""
+        raise typer.Exit(
+            code=cmd_status(repository=repository, run_limit=run_limit, as_json=as_json)
+        )
+
+
+__all__ = ["cmd_status", "register"]

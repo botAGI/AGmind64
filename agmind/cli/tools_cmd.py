@@ -7,6 +7,8 @@ import sys
 from collections import Counter
 from typing import Any
 
+import typer
+
 from agmind.addons import ToolCandidate, load_tool_candidates
 from agmind.addons.checks import validate_tool_candidates
 from agmind.components import load_component_contracts
@@ -155,3 +157,35 @@ def cmd_validate() -> int:
 
     print(f"tool candidates OK: {len(candidates)} candidates, {len(deploy_targets)} targets")
     return 0
+
+
+def register(app: typer.Typer) -> None:
+    """Attach the ``tools`` command group to ``app``."""
+
+    # ---- tools subcommand group (optional homelab/enterprise integrations) ----
+    tools_app = typer.Typer(
+        name="tools",
+        help="Inspect optional homelab/enterprise tool candidates",
+        no_args_is_help=True,
+    )
+    app.add_typer(tools_app)
+
+    @tools_app.command("list")
+    def tools_list(
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """List optional tool candidates."""
+        raise typer.Exit(code=cmd_list(as_json=as_json))
+
+    @tools_app.command("status")
+    def tools_status(
+        name: str = typer.Argument(..., help="Tool candidate id"),
+        as_json: bool = typer.Option(False, "--json", help="JSON output"),
+    ) -> None:
+        """Show one optional tool candidate."""
+        raise typer.Exit(code=cmd_status(name=name, as_json=as_json))
+
+    @tools_app.command("validate")
+    def tools_validate() -> None:
+        """Validate tool candidates and accepted runtime admission."""
+        raise typer.Exit(code=cmd_validate())

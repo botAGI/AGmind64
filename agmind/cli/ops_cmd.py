@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import typer
+
 from agmind.ops.backup import (
     DEFAULT_INSTALL_DIR as BACKUP_INSTALL_DIR,
 )
@@ -209,6 +211,137 @@ def cmd_root_owned_backup_smoke(
     return root_owned_backup_smoke.main(argv)
 
 
+def register(app: typer.Typer) -> None:
+    """Attach logs/shell/backup/restore commands and the ``ops`` group to ``app``."""
+
+    # ---- ops subcommands: logs / shell / backup / restore (Phase L.E) ----
+    @app.command()
+    def logs(
+        service: str | None = typer.Argument(None, help="Service name (omit для всех сервисов)."),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"), "--install-dir", help="Deployment dir."
+        ),
+        tail: int = typer.Option(200, "--tail", help="Initial backlog lines."),
+        follow: bool = typer.Option(False, "-f", "--follow", help="Stream new logs."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
+    ) -> None:
+        """Stream docker compose logs."""
+        raise typer.Exit(
+            code=cmd_logs(
+                service,
+                install_dir,
+                tail,
+                follow,
+                ask_sudo_password=ask_sudo_password,
+            )
+        )
+
+    @app.command()
+    def shell(
+        service: str = typer.Argument(..., help="Service name."),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"), "--install-dir", help="Deployment dir."
+        ),
+        cmd: str = typer.Option("/bin/sh", "--cmd", help="Command to run (default /bin/sh)."),
+        workdir: str | None = typer.Option(
+            None, "--workdir", "-w", help="Working dir внутри container."
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install paths",
+        ),
+    ) -> None:
+        """Open shell inside running service container (docker compose exec)."""
+        import shlex
+
+        cmd_argv = shlex.split(cmd) if cmd else None
+        raise typer.Exit(
+            code=cmd_shell(
+                service,
+                install_dir,
+                cmd_argv,
+                workdir,
+                ask_sudo_password=ask_sudo_password,
+            )
+        )
+
+    @app.command()
+    def backup(
+        output: Path = typer.Option(
+            ...,
+            "--output",
+            "-o",
+            help="Path для .tar.gz (e.g. agmind-2026-05-20.tar.gz).",
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
+    ) -> None:
+        """Create tar.gz backup of compose / .env / state / snapshots (Phase L.E)."""
+        raise typer.Exit(code=cmd_backup(output, ask_sudo_password=ask_sudo_password))
+
+    @app.command()
+    def restore(
+        backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
+        yes: bool = typer.Option(False, "-y", "--yes", help="Skip interactive confirmation."),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password for root-owned install/snapshot paths",
+        ),
+    ) -> None:
+        """Restore deployment from `agmind backup` archive (Phase L.E)."""
+        raise typer.Exit(
+            code=cmd_restore(backup_file, yes=yes, ask_sudo_password=ask_sudo_password)
+        )
+
+    ops_app = typer.Typer(
+        name="ops",
+        help="Run day-2 operator helpers.",
+        no_args_is_help=True,
+    )
+    ops_smoke_app = typer.Typer(
+        name="smoke",
+        help="Run non-destructive operator smoke checks.",
+        no_args_is_help=True,
+    )
+    ops_app.add_typer(ops_smoke_app)
+    app.add_typer(ops_app)
+
+    @ops_smoke_app.command("backup-root-owned")
+    def ops_smoke_backup_root_owned(
+        root: Path = typer.Option(
+            Path("/tmp/agmind-root-owned-smoke"),
+            "--root",
+            help="Temporary smoke root under /tmp.",
+        ),
+        output: Path = typer.Option(
+            Path("/tmp/agmind-root-owned-smoke.tar.gz"),
+            "--output",
+            "-o",
+            help="Backup archive path under /tmp.",
+        ),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print plan without sudo."),
+        keep: bool = typer.Option(False, "--keep", help="Keep temporary smoke tree."),
+    ) -> None:
+        """Smoke backup/restore against root-owned temporary paths."""
+        raise typer.Exit(
+            code=cmd_root_owned_backup_smoke(
+                root=root,
+                output=output,
+                dry_run=dry_run,
+                keep=keep,
+            )
+        )
+
+
 __all__ = [
     "BACKUP_INSTALL_DIR",  # re-export для backwards compat / tests
     "cmd_backup",
@@ -216,4 +349,5 @@ __all__ = [
     "cmd_restore",
     "cmd_root_owned_backup_smoke",
     "cmd_shell",
+    "register",
 ]
