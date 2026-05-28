@@ -2,6 +2,8 @@
 
 English | [Русская версия](README.ru.md)
 
+[![CI](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml/badge.svg)](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml)
+
 Private LLM/RAG platform for AMD Strix Halo and generic x86_64 hosts. The
 primary lane is Docker Compose on Ubuntu, with optional Proxmox VM provisioning
 and Kubernetes targets kept behind explicit deploy-target contracts.
