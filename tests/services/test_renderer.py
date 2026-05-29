@@ -246,6 +246,25 @@ def test_compose_service_with_digest_fq_image() -> None:
     assert svc["image"] == f"qdrant/qdrant:v1.18.0@sha256:{VALID_SHA256}"
 
 
+def test_fq_image_drops_illegal_tag_when_digest_pins_it() -> None:
+    """A descriptor whose tag contains a char illegal in a docker reference (e.g. '+',
+    as grafana's '13.0.1+security-01' version label) must still render a VALID image
+    reference. The digest is authoritative, so pin by digest only (repo@sha256:<d>);
+    rendering the docker-invalid name:tag@sha256:<d> fails `docker compose up` with
+    'invalid reference format'."""
+    d = _minimal_descriptor(image="grafana/grafana:13.0.1+security-01", digest=VALID_SHA256)
+    ref = d.fq_image()
+    assert ref == f"grafana/grafana@sha256:{VALID_SHA256}"
+    assert "+" not in ref
+    assert ":13.0.1" not in ref
+
+
+def test_fq_image_keeps_valid_tag_with_digest() -> None:
+    """Regression: a legal tag is preserved in name:tag@digest form."""
+    d = _minimal_descriptor(image="qdrant/qdrant:v1.18.0", digest=VALID_SHA256)
+    assert d.fq_image() == f"qdrant/qdrant:v1.18.0@sha256:{VALID_SHA256}"
+
+
 def test_compose_service_healthcheck_format() -> None:
     d = _minimal_descriptor(
         health={

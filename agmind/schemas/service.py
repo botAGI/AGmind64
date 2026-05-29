@@ -53,6 +53,26 @@ def _image_has_tag(image: str) -> bool:
     return last_colon > last_slash and last_colon < len(image_without_digest) - 1
 
 
+# Docker reference tag grammar: [A-Za-z0-9_][A-Za-z0-9_.-]{0,127} — notably NO '+'.
+_VALID_DOCKER_TAG_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
+
+
+def _is_valid_docker_tag(tag: str) -> bool:
+    return bool(_VALID_DOCKER_TAG_RE.match(tag))
+
+
+def _split_repo_tag(image: str) -> tuple[str, str | None]:
+    """Split ``repo[:tag]`` (no digest) into ``(repo, tag|None)``.
+
+    A registry-port colon (``host:5000/img``) is not treated as a tag.
+    """
+    last_slash = image.rfind("/")
+    last_colon = image.rfind(":")
+    if last_colon > last_slash and last_colon < len(image) - 1:
+        return image[:last_colon], image[last_colon + 1 :]
+    return image, None
+
+
 class HealthCheck(BaseModel):
     """Docker healthcheck definition (compose v3 format).
 
@@ -357,6 +377,13 @@ class ServiceDescriptor(BaseModel):
         """Fully-qualified image reference (image + digest if present)."""
         if self.digest:
             digest = self.digest if self.digest.startswith("sha256:") else f"sha256:{self.digest}"
+            repo, tag = _split_repo_tag(self.image)
+            if tag is not None and not _is_valid_docker_tag(tag):
+                # Tag is not a legal docker reference tag (e.g. grafana's
+                # '13.0.1+security-01' — '+' is illegal). The digest is authoritative,
+                # so pin by digest only (repo@sha256:<d>); keeping the bad tag yields
+                # 'invalid reference format' on `docker compose up`.
+                return f"{repo}@{digest}"
             return f"{self.image}@{digest}"
         return self.image
 
