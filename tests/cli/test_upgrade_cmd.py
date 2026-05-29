@@ -323,6 +323,92 @@ def test_component_plan_for_grouped_stack_lists_all_descriptors(
     assert plan.policy == "strict-pin"
 
 
+def test_component_upgrade_skips_divergent_scheme_members(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """G.3: a component-wide upgrade bumps ONLY same-scheme members.
+
+    The dify-like fixture is heterogeneous: dify-api shares the component
+    reference line (1.14.2) while dify-sandbox (0.2.15) and dify-plugin-daemon
+    (0.6.1-local) are on divergent version schemes. `agmind upgrade dify 1.15.0`
+    must rewrite ONLY dify-api to 1.15.0; the divergent members are marked
+    unchanged (new_tag == old_tag, so cmd_component's changed_items filter drops
+    them) and each is named in a stderr WARNING.
+    """
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-sandbox", "langgenius/dify-sandbox", "0.2.15")
+    _make_descriptor(
+        services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local"
+    )
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(
+        components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"]
+    )
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    plan = upgrade_cmd.build_component_upgrade_plan("dify", "1.15.0")
+
+    by_service = {item.service: item for item in plan.items}
+
+    # Same-scheme member (on the 1.14.2 reference line) is bumped.
+    assert by_service["dify-api"].new_tag == "1.15.0"
+
+    # Divergent members are NOT rewritten to the target tag — marked unchanged
+    # so cmd_component's changed_items filter (old_tag != new_tag) drops them.
+    assert by_service["dify-sandbox"].new_tag == "0.2.15"
+    assert by_service["dify-sandbox"].new_tag == by_service["dify-sandbox"].old_tag
+    assert by_service["dify-plugin-daemon"].new_tag == "0.6.1-local"
+    assert (
+        by_service["dify-plugin-daemon"].new_tag
+        == by_service["dify-plugin-daemon"].old_tag
+    )
+
+    # Each divergent member is named in a stderr WARNING.
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "dify-sandbox" in err
+    assert "0.2.15" in err
+    assert "dify-plugin-daemon" in err
+    assert "0.6.1-local" in err
+
+
+def test_component_upgrade_does_not_write_divergent_members(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G.3 end-to-end: `agmind upgrade dify <v>` leaves divergent pins intact.
+
+    sandbox/plugin-daemon descriptors keep their own tags; only the same-scheme
+    member is rewritten to the target version on disk.
+    """
+    services = tmp_repo / "templates" / "services"
+    _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
+    _make_descriptor(services, "dify-sandbox", "langgenius/dify-sandbox", "0.2.15")
+    _make_descriptor(
+        services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local"
+    )
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(
+        components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"]
+    )
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    rc = upgrade_cmd.cmd_component("dify", "1.15.0", plan_only=False)
+
+    assert rc == 0
+    assert "langgenius/dify-api:1.15.0" in (services / "dify-api.yaml").read_text()
+    # Divergent members keep their original tags — never rewritten to 1.15.0.
+    sandbox_yaml = (services / "dify-sandbox.yaml").read_text()
+    assert "langgenius/dify-sandbox:0.2.15" in sandbox_yaml
+    assert "1.15.0" not in sandbox_yaml
+    daemon_yaml = (services / "dify-plugin-daemon.yaml").read_text()
+    assert "langgenius/dify-plugin-daemon:0.6.1-local" in daemon_yaml
+    assert "1.15.0" not in daemon_yaml
+
+
 def test_component_apply_saves_grouped_state(
     tmp_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
