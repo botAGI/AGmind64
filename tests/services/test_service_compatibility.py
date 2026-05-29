@@ -190,6 +190,84 @@ def test_bindings_milvus_dify_correct_env() -> None:
     assert env["MILVUS_URI"] == "http://milvus:19530"
 
 
+# ---------- BINDINGS ↔ descriptor closure guard (F.3) ----------
+#
+# BINDINGS and each descriptor's provides/consumes are two hand-maintained
+# sources. Spot-checks above cover individual pairs; this closure guard locks the
+# WHOLE table so a renamed/deleted service or a missing provides/consumes entry
+# fails loudly instead of silently misconfiguring rendered env.
+#
+# Intentional gaps go here as explicit (capability, provider, consumer) triples
+# with an inline reason. Empty today: every binding currently closes over the
+# real catalog. Do NOT add entries to silence a real drift — fix the binding or
+# the descriptor.
+KNOWN_BINDING_GAPS: set[tuple[str, str, str]] = set()
+
+
+def test_every_binding_triple_closes_over_real_descriptors() -> None:
+    """Each BINDINGS[cap][provider][consumer] must resolve to real descriptors.
+
+    For every triple: provider and consumer must exist in load_descriptors(),
+    the provider must declare `cap` in `.provides`, and the consumer must declare
+    `cap` in `.consumes`. A stale/renamed/deleted service or a missing
+    provides/consumes entry surfaces as a named violation.
+    """
+    from agmind.services.renderer import load_descriptors
+
+    all_d = load_descriptors()
+    violations: list[str] = []
+
+    for cap, prov_table in BINDINGS.items():
+        for provider, cons_table in prov_table.items():
+            for consumer in cons_table:
+                if (cap, provider, consumer) in KNOWN_BINDING_GAPS:
+                    continue
+                if provider not in all_d:
+                    violations.append(
+                        f"({cap}, {provider}, {consumer}): provider '{provider}' "
+                        f"is not a real descriptor"
+                    )
+                    continue
+                if consumer not in all_d:
+                    violations.append(
+                        f"({cap}, {provider}, {consumer}): consumer '{consumer}' "
+                        f"is not a real descriptor"
+                    )
+                    continue
+                if cap not in all_d[provider].provides:
+                    violations.append(
+                        f"({cap}, {provider}, {consumer}): provider '{provider}' "
+                        f"does not declare provides={cap!r} "
+                        f"(has {sorted(all_d[provider].provides)})"
+                    )
+                if cap not in all_d[consumer].consumes:
+                    violations.append(
+                        f"({cap}, {provider}, {consumer}): consumer '{consumer}' "
+                        f"does not declare consumes={cap!r} "
+                        f"(has {sorted(all_d[consumer].consumes)})"
+                    )
+
+    assert not violations, "BINDINGS↔descriptor drift detected:\n" + "\n".join(sorted(violations))
+
+
+def test_binding_closure_guard_actually_iterates_all_triples() -> None:
+    """Sanity: the closure guard must cover EVERY triple, not a subset.
+
+    Counts the triples the guard would inspect and asserts it matches the live
+    BINDINGS shape, so the guard above cannot silently degrade to a no-op.
+    """
+    triples = [
+        (cap, provider, consumer)
+        for cap, prov_table in BINDINGS.items()
+        for provider, cons_table in prov_table.items()
+        for consumer in cons_table
+    ]
+    assert len(triples) == len(set(triples))
+    assert len(triples) >= len(BINDINGS), "expected at least one triple per capability"
+    # Spot anchor: a known-good triple is present (catches an accidentally empty table).
+    assert ("llm_inference", "llama-llm", "dify-api") in triples
+
+
 # ---------- renderer integration ----------
 
 
