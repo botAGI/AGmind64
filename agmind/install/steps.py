@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -529,6 +530,37 @@ def _parse_existing_runtime_env(config: InstallConfig, env_path: Path) -> dict[s
         return parse_env_text(result.stdout)
 
 
+def _kill_on_cancel(
+    proc: subprocess.Popen[str],
+    cancel_event: threading.Event | None,
+) -> None:
+    """Spawn a daemon watchdog that terminates *proc* promptly when *cancel_event*
+    fires.
+
+    Without this the worker thread blocks in ``proc.stdout`` / ``proc.wait()`` and the
+    whole TUI hangs on Cancel/Close — Textual cannot force-kill a thread worker, so app
+    exit waits (up to ~300s) for the blocked thread. The watchdog is a daemon thread,
+    so it never itself blocks interpreter shutdown, and it exits on its own when the
+    process finishes normally.
+    """
+    if cancel_event is None:
+        return
+
+    def _watch() -> None:
+        while not cancel_event.wait(0.25):
+            if proc.poll() is not None:
+                return  # finished normally
+        # cancel fired — terminate, then hard-kill if it lingers
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    threading.Thread(target=_watch, name="agmind-cancel-watch", daemon=True).start()
+
+
 def _stream_subprocess(
     cmd: list[str],
     callback: ProgressCallback,
@@ -537,12 +569,16 @@ def _stream_subprocess(
     env: dict[str, str] | None = None,
     stdin_payload: bytes | None = None,
     extra_emit: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[int, list[str]]:
     """Run subprocess, stream stdout+stderr line-by-line via callback.
 
     Returns (returncode, captured_lines). `extra_emit` callable получает
     каждую строку и может emit'ить дополнительные ProgressEvent (e.g.
     парсить progress %). Все строки также эмитятся как ProgressKind.LOG.
+
+    If `cancel_event` is provided, a daemon watchdog kills the child when it fires so
+    Cancel/Close never hangs the worker on a long subprocess.
     """
     proc_env = os.environ.copy()
     if env:
@@ -557,6 +593,7 @@ def _stream_subprocess(
         text=True,
         bufsize=1,
     )
+    _kill_on_cancel(proc, cancel_event)
     try:
         if stdin_payload is not None and proc.stdin is not None:
             try:
@@ -740,6 +777,7 @@ class BootstrapStep(InstallStep):
                 callback,
                 self.step_id,
                 cwd=ansible_dir,
+                cancel_event=self.cancel_event,
             )
             if rc != 0:
                 return InstallStepResult(
@@ -800,6 +838,7 @@ class BootstrapStep(InstallStep):
                 bufsize=1,
                 cwd=str(ansible_dir),
             )
+            _kill_on_cancel(proc, self.cancel_event)
             if proc.stdout is not None:
                 for raw in proc.stdout:
                     line = raw.rstrip()
@@ -889,6 +928,7 @@ class ComposeConfigStep(InstallStep):
                 self.step_id,
                 cwd=tmpdir,
                 stdin_payload=_sudo_stdin_payload(config),
+                cancel_event=self.cancel_event,
             )
 
         elapsed = timedelta(seconds=time.monotonic() - start)
@@ -965,6 +1005,7 @@ class ImagePullStep(InstallStep):
                 self.step_id,
                 cwd=tmpdir,
                 stdin_payload=_sudo_stdin_payload(config),
+                cancel_event=self.cancel_event,
             )
 
         elapsed = timedelta(seconds=time.monotonic() - start)
@@ -1165,7 +1206,9 @@ class ModelDownloadStep(InstallStep):
             except (ValueError, IndexError):
                 pass
 
-        rc, _ = _stream_subprocess(cmd, callback, self.step_id, extra_emit=parse_curl_pct)
+        rc, _ = _stream_subprocess(
+            cmd, callback, self.step_id, extra_emit=parse_curl_pct, cancel_event=self.cancel_event
+        )
         if rc != 0:
             return False, f"{role}: curl rc={rc} (download failed)"
         partial_size = partial.stat().st_size if partial.exists() else 0

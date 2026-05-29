@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import ClassVar
 
@@ -99,6 +100,10 @@ class InstallProgressScreen(Screen[InstallResult]):
         super().__init__()
         self.config = config
         self.steps = steps
+        # Signalled on cancel/close/unmount; the orchestrator + steps watch it and a
+        # daemon watchdog kills the running subprocess so the worker unblocks (otherwise
+        # Textual blocks app exit waiting on the thread-worker -> TUI/VS Code freeze).
+        self.cancel_event = threading.Event()
         self.result: InstallResult | None = None
         self._step_states: dict[str, str] = {step.step_id: "pending" for step in steps}
         self._step_start_ts: dict[str, datetime] = {}
@@ -183,6 +188,7 @@ class InstallProgressScreen(Screen[InstallResult]):
             config=self.config,
             steps=self.steps,
             callback=progress_cb,
+            cancel_event=self.cancel_event,
         )
         try:
             self.result = orchestrator.run()
@@ -197,6 +203,10 @@ class InstallProgressScreen(Screen[InstallResult]):
         self.app.call_from_thread(self._finalize)
 
     def _handle_event(self, event: ProgressEvent) -> None:
+        if not self.is_mounted:
+            # Screen was dismissed/cancelled while the worker was still draining a
+            # subprocess; its widgets are gone — drop the late update instead of raising.
+            return
         log_widget = self.query_one("#install-log", RichLog)
         ts = datetime.now().strftime("%H:%M:%S")
         if event.kind is ProgressKind.STEP_START:
@@ -220,6 +230,8 @@ class InstallProgressScreen(Screen[InstallResult]):
             log_widget.write(f"[dim]{ts}[/dim] {event.text}")
 
     def _finalize(self) -> None:
+        if not self.is_mounted:
+            return
         result = self.result
         status = self.query_one("#status-line", Static)
         log_widget = self.query_one("#install-log", RichLog)
@@ -250,6 +262,10 @@ class InstallProgressScreen(Screen[InstallResult]):
     def action_cancel(self) -> None:
         from agmind.install.orchestrator import InstallResult as _IR
 
+        # Signal the worker FIRST so the running subprocess is killed and the thread
+        # unblocks — otherwise dismissing here leaves the worker stuck and the app hangs
+        # on exit waiting to join it.
+        self.cancel_event.set()
         if self.result is None:
             self.result = _IR(
                 success=False,
@@ -257,6 +273,11 @@ class InstallProgressScreen(Screen[InstallResult]):
                 message="cancelled by user",
             )
         self.dismiss(self.result)
+
+    def on_unmount(self) -> None:
+        # Catch-all: whatever tears the screen down (Cancel/Close/Escape/ctrl+c/quit),
+        # make sure a still-running subprocess is killed so app exit does not block.
+        self.cancel_event.set()
 
     def action_dismiss_if_done(self) -> None:
         if self.result is not None:

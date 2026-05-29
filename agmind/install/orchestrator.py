@@ -14,6 +14,7 @@ Design rules:
 
 from __future__ import annotations
 
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -150,6 +151,9 @@ class InstallStep(ABC):
 
     step_id: str = ""
     label: str = ""
+    # Set by the orchestrator before run(). Steps pass it to _stream_subprocess so a
+    # running child is killed promptly on Cancel (instead of hanging the worker).
+    cancel_event: threading.Event | None = None
 
     @abstractmethod
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
@@ -182,11 +186,23 @@ class InstallOrchestrator:
     config: InstallConfig
     steps: list[InstallStep]
     callback: ProgressCallback = field(default=lambda _ev: None)
+    cancel_event: threading.Event | None = None
+
+    def _cancelled(self) -> bool:
+        return self.cancel_event is not None and self.cancel_event.is_set()
 
     def run(self) -> InstallResult:
         log.info("install starting: %s", self.config.redact())
         results: list[InstallStepResult] = []
         for step in self.steps:
+            if self._cancelled():
+                self.config.wipe_secrets()
+                return InstallResult(
+                    success=False,
+                    steps=tuple(results),
+                    message="cancelled by user",
+                )
+            step.cancel_event = self.cancel_event
             start = time.monotonic()
             self._emit_step_start(step)
             try:
@@ -202,6 +218,16 @@ class InstallOrchestrator:
                 )
             result = self._redact_result(result)
             results.append(result)
+            if self._cancelled():
+                # Cancel fired during the step (its child was killed); report it as a
+                # cancellation rather than a confusing subprocess-failure message.
+                self._emit_step_error(step, "cancelled by user")
+                self.config.wipe_secrets()
+                return InstallResult(
+                    success=False,
+                    steps=tuple(results),
+                    message="cancelled by user",
+                )
             if not result.success:
                 self._emit_step_error(step, result.message)
                 self.config.wipe_secrets()

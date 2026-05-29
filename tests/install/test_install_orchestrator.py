@@ -687,6 +687,7 @@ def test_env_write_step_uses_sudo_when_runtime_paths_are_root_owned(
         env: dict[str, str] | None = None,
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
+        cancel_event: object | None = None,
     ) -> tuple[int, list[str]]:
         calls.append(
             {
@@ -741,6 +742,7 @@ def test_env_write_step_sudo_rejects_existing_runtime_secret_symlink(
         env: dict[str, str] | None = None,
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
+        cancel_event: object | None = None,
     ) -> tuple[int, list[str]]:
         del callback, step_id, cwd, env, stdin_payload, extra_emit
         calls.append(cmd)
@@ -1319,6 +1321,7 @@ def test_image_pull_step_uses_runtime_env_from_install_dir(
         env: dict[str, str] | None = None,
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
+        cancel_event: object | None = None,
     ) -> tuple[int, list[str]]:
         calls.append(
             {
@@ -1388,6 +1391,7 @@ def test_compose_config_step_validates_render_with_runtime_env(
         env: dict[str, str] | None = None,
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
+        cancel_event: object | None = None,
     ) -> tuple[int, list[str]]:
         calls.append(
             {
@@ -1455,6 +1459,7 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
         env: dict[str, str] | None = None,
         stdin_payload: bytes | None = None,
         extra_emit: object | None = None,
+        cancel_event: object | None = None,
     ) -> tuple[int, list[str]]:
         calls.append({"cmd": cmd, "cwd": cwd, "env": env, "stdin_payload": stdin_payload})
         assert cwd is not None
@@ -2042,3 +2047,70 @@ def test_stream_subprocess_reaps_process_when_callback_raises(
     assert fake.killed is True
     assert fake.waited >= 1
     assert fake.stdout.closed is True
+
+
+# ---------- cancellation (freeze fix) ----------
+
+
+def test_orchestrator_assigns_cancel_event_to_steps(tmp_path: Path) -> None:
+    """Orchestrator must hand its cancel_event to each step so the step can pass it
+    to _stream_subprocess and have the child killed on Cancel."""
+    import threading
+
+    ev = threading.Event()
+    step = FakeStep(step_id="s1", label="s1")
+    InstallOrchestrator(
+        config=_make_config(tmp_path),
+        steps=[step],
+        callback=lambda _e: None,
+        cancel_event=ev,
+    ).run()
+    assert step.cancel_event is ev
+
+
+def test_orchestrator_reports_cancellation_when_event_already_set(tmp_path: Path) -> None:
+    """If the cancel_event is set, the orchestrator stops without running further steps
+    and reports a cancellation (not a generic failure)."""
+    import threading
+
+    ev = threading.Event()
+    ev.set()
+    ran: list[str] = []
+
+    @dataclass
+    class _RecordStep(FakeStep):
+        def run(
+            self, callback: ProgressCallback, config: InstallConfig
+        ) -> InstallStepResult:
+            ran.append(self.step_id)
+            return super().run(callback, config)
+
+    result = InstallOrchestrator(
+        config=_make_config(tmp_path),
+        steps=[_RecordStep(step_id="s1", label="s1")],
+        callback=lambda _e: None,
+        cancel_event=ev,
+    ).run()
+
+    assert result.success is False
+    assert "cancel" in result.message.lower()
+    assert ran == []  # never started the step
+
+
+def test_stream_subprocess_killed_promptly_by_cancel_event() -> None:
+    """A pre-set cancel_event must terminate a long-running child fast, instead of
+    blocking the worker thread (and thus the TUI/VS Code) until it finishes."""
+    import threading
+    import time as _time
+
+    from agmind.install import steps
+
+    ev = threading.Event()
+    ev.set()  # already cancelled before the child starts
+    t0 = _time.monotonic()
+    rc, _lines = steps._stream_subprocess(
+        ["sleep", "30"], lambda _e: None, "cancel-test", cancel_event=ev
+    )
+    elapsed = _time.monotonic() - t0
+    assert elapsed < 5.0, f"cancel did not kill the child promptly (took {elapsed:.1f}s)"
+    assert rc != 0
