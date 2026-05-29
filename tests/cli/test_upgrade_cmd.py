@@ -7,8 +7,10 @@ import stat
 from pathlib import Path
 
 import pytest
+import yaml
 
 from agmind.cli import upgrade_cmd
+from agmind.schemas import ServiceDescriptor
 
 pytestmark = pytest.mark.backend_any
 
@@ -44,6 +46,29 @@ def _make_descriptor(
     return yaml_path
 
 
+def _make_separate_form_descriptor(
+    services_dir: Path, name: str, image: str, tag: str, digest: str
+) -> Path:
+    """Write a descriptor in the canonical separate-field form (like weaviate.yaml).
+
+    The `image:` line carries NO inline `@sha256:`; the digest lives on its own
+    bare-hex `digest:` line. This is the form used by 34/40 real catalog
+    descriptors (0 use inline today).
+    """
+    yaml_path = services_dir / f"{name}.yaml"
+    lines = [
+        f"name: {name}",
+        f"image: {image}:{tag}",
+        f"digest: {digest}",
+        "tier: storage",
+        "purpose: test",
+        "profiles:",
+        "- test",
+    ]
+    yaml_path.write_text("\n".join(lines) + "\n")
+    return yaml_path
+
+
 # ---------- _read_current_pin ----------
 
 
@@ -75,12 +100,43 @@ def test_bump_pin_replaces_image_tag(tmp_repo: Path) -> None:
 
 def test_bump_pin_updates_digest(tmp_repo: Path) -> None:
     services = tmp_repo / "templates" / "services"
-    p = _make_descriptor(services, "x", "vendor/x", "1.0", digest="a" * 64)
+    # Separate-field input (matches the real catalog; no inline @sha256:).
+    p = _make_separate_form_descriptor(services, "x", "vendor/x", "1.0", digest="a" * 64)
     new_digest = "b" * 64
     upgrade_cmd._bump_pin_in_yaml(p, "2.0", new_digest=new_digest)
     text = p.read_text()
-    assert f"vendor/x:2.0@sha256:{new_digest}" in text
+    # Single digest source: image line stays bare, separate digest line is bumped.
+    assert "image: vendor/x:2.0" in text
+    assert "@sha256:" not in text
     assert f"digest: {new_digest}" in text
+
+
+def test_bump_pin_separate_form_roundtrips_through_schema(tmp_repo: Path) -> None:
+    """Regression (F.1): a digest-bumped separate-form descriptor must load.
+
+    On the pre-fix `_bump_pin_in_yaml` this FAILS with a pydantic
+    ValidationError ("duplicate digest"), because the buggy bump writes BOTH an
+    inline `image: ...@sha256:<d>` AND a separate `digest:` line, which
+    `_check_single_digest_source` rejects.
+    """
+    services = tmp_repo / "templates" / "services"
+    # Service name must satisfy the schema's name regex for the round-trip.
+    p = _make_separate_form_descriptor(services, "xsvc", "vendor/x", "1.0", digest="a" * 64)
+    new_digest = "b" * 64
+
+    upgrade_cmd._bump_pin_in_yaml(p, "2.0", new_digest=new_digest)
+
+    text = p.read_text()
+    # The image line must NOT carry an inline digest.
+    assert "image: vendor/x:2.0" in text
+    assert "@sha256:" not in text
+    # The separate digest line must carry the new digest.
+    assert f"digest: {new_digest}" in text
+
+    # The bumped descriptor must round-trip through the schema validator.
+    descriptor = ServiceDescriptor.model_validate(yaml.safe_load(text))
+    assert descriptor.image == "vendor/x:2.0"
+    assert descriptor.digest == new_digest
 
 
 def test_bump_pin_adds_digest_if_absent(tmp_repo: Path) -> None:

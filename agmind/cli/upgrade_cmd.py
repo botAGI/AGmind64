@@ -88,7 +88,17 @@ def _read_current_pin(yaml_path: Path) -> tuple[str, str, str | None] | None:
 def _bump_pin_in_yaml(
     yaml_path: Path, new_tag: str, new_digest: str | None = None
 ) -> tuple[str, str]:
-    """Replace image tag (and digest) в descriptor. Returns (old_tag, new_tag)."""
+    """Replace image tag (and digest) в descriptor. Returns (old_tag, new_tag).
+
+    Digest single-source invariant (`_check_single_digest_source`): a descriptor
+    must carry its sha256 in EITHER the inline `image: name:tag@sha256:<d>` form
+    OR a separate `digest:` line, never both. The catalog uses the separate form
+    (34/40 descriptors; 0 inline), so a digest bump always keeps `image:` as a
+    bare `name:tag` and writes the sha256 ONLY on the separate `digest:` line —
+    either by rewriting an existing `digest:` line or, if none exists, by adding
+    one right after `image:`. Writing both inline and separate forms would corrupt
+    the descriptor into an un-loadable "duplicate digest" state (F.1).
+    """
     text = yaml_path.read_text(encoding="utf-8")
     new_lines: list[str] = []
     digest_replaced = False
@@ -99,11 +109,9 @@ def _bump_pin_in_yaml(
         if m:
             image = m.group("image")
             old_tag = m.group("tag")
-            tag_part = f"{image}:{new_tag}"
-            if new_digest:
-                new_lines.append(f"image: {tag_part}@sha256:{new_digest}")
-            else:
-                new_lines.append(f"image: {tag_part}")
+            # Always emit a bare `image: name:tag`; the digest is single-sourced
+            # on the separate `digest:` line below (never inline `@sha256:`).
+            new_lines.append(f"image: {image}:{new_tag}")
             continue
         if line.startswith("digest:") and new_digest is not None:
             new_lines.append(f"digest: {new_digest}")
