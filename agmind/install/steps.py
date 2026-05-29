@@ -1091,8 +1091,6 @@ class ModelDownloadStep(InstallStep):
                     f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
                 )
             )
-            import shutil
-
             try:
                 shutil.move(str(existing), str(target))
             except OSError as exc:
@@ -1112,6 +1110,8 @@ class ModelDownloadStep(InstallStep):
                     target.replace(partial)
             except OSError as exc:
                 return False, f"{role}: cannot stage partial model download: {exc}"
+        if shutil.which("curl") is None:
+            return False, f"{role}: curl not found on PATH (required to download models)"
         cmd = [
             "curl",
             "-fL",
@@ -1120,8 +1120,20 @@ class ModelDownloadStep(InstallStep):
             "-o",
             str(partial),
             "--progress-bar",
+            # Network stall guards: this download streams through an uncancellable
+            # worker thread, so a half-open HF socket with no timeout would hang the
+            # whole TUI. Fail fast on a dead connect (30s) or a transfer that drops
+            # below 1 KiB/s for 60s; do NOT set --max-time (slow-but-progressing
+            # multi-GB downloads must still succeed).
+            "--connect-timeout",
+            "30",
+            "--speed-limit",
+            "1024",
+            "--speed-time",
+            "60",
             "--retry",
             "3",
+            "--retry-connrefused",
             url,
         ]
         last_pct = [-1]

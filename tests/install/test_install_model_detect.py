@@ -244,6 +244,66 @@ def test_download_moves_too_small_final_target_to_partial_before_curl(
     assert partial.read_bytes() == b"old partial"
 
 
+def test_curl_command_has_network_timeout_guards(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """curl must carry connect/stall timeouts. The download runs in an uncancellable
+    thread-worker; a half-open HF socket with no --connect-timeout/--speed-time hangs
+    the read loop forever and freezes the TUI. These flags make curl exit non-zero on
+    a stall, which the step already handles cleanly."""
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []))
+    captured_cmd: list[list[str]] = []
+
+    def fake_stream(cmd, callback, step_id, **kw):
+        captured_cmd.append(cmd)
+        output = Path(cmd[cmd.index("-o") + 1])
+        _make_blob(output, size_mb=200)
+        return (0, [])
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+    assert result.success
+    cmd = captured_cmd[0]
+    assert "--connect-timeout" in cmd
+    assert "--speed-limit" in cmd
+    assert "--speed-time" in cmd
+
+
+def test_download_fails_cleanly_when_curl_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If curl is absent the step must fail with a clear, actionable message BEFORE
+    attempting a download — not a deep rc=127 OSError mid-run."""
+    import agmind.install.steps as steps_mod
+
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.model_file
+    _make_blob(target, size_mb=1)  # too small -> would trigger a download
+    monkeypatch.setattr(ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []))
+    monkeypatch.setattr(
+        steps_mod.shutil,
+        "which",
+        lambda name: None if name == "curl" else f"/usr/bin/{name}",
+    )
+
+    called: list[object] = []
+
+    def fake_stream(*args: object, **kwargs: object) -> tuple[int, list[str]]:
+        called.append(args)
+        return (0, [])
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+    assert not result.success
+    assert "curl" in result.message.lower()
+    assert called == []  # never attempted the download
+
+
 def test_download_success_rejects_too_small_partial_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
