@@ -1,9 +1,11 @@
 ---
+# G.4 (M6.G): dropped `recreate: always` so docker_compose_v2 uses its module
+# default — recreate only containers whose config actually changed, instead of
+# tearing down and recreating the entire stack on every notify.
 - name: recreate compose
   community.docker.docker_compose_v2:
     project_src: "{{ agmind_install_dir }}"
     state: present
-    recreate: always
 
 - name: reload nginx
   community.docker.docker_container_exec:

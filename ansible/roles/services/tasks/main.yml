@@ -120,17 +120,34 @@
   when: agmind_proxy | default('traefik') == 'traefik'
   notify: recreate compose
 
-- name: Render docker-compose.yml через agmind render compose
+# G.4 (M6.G): content-diff-driven render. Render to a temp output with
+# changed_when: false, then a content-based copy into place owns the real change
+# signal — so a repeat run with no compose change does NOT force-recreate the stack.
+- name: Render docker-compose.yml через agmind render compose (temp output)
   ansible.builtin.command:
     cmd: >-
       {{ agmind_venv }}/bin/agmind render compose
       --profile {{ agmind_profiles | join(',') }}
       --domain {{ agmind_domain }}
-      --output {{ agmind_install_dir }}/docker-compose.yml
+      --output {{ agmind_install_dir }}/docker-compose.yml.new
   args:
     chdir: "{{ agmind_install_dir }}"
-  changed_when: true
+  changed_when: false
+
+- name: Activate rendered docker-compose.yml (content-diff drives recreate)
+  ansible.builtin.copy:
+    src: "{{ agmind_install_dir }}/docker-compose.yml.new"
+    dest: "{{ agmind_install_dir }}/docker-compose.yml"
+    remote_src: true
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0644"
   notify: recreate compose
+
+- name: Remove temporary rendered docker-compose.yml.new
+  ansible.builtin.file:
+    path: "{{ agmind_install_dir }}/docker-compose.yml.new"
+    state: absent
 
 - name: Render .env с secrets (chmod 600)
   ansible.builtin.template:
