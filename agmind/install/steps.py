@@ -20,7 +20,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from agmind.config.env import write_env
-from agmind.core.env import parse_env_file, parse_env_text, shell_quote
+from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
 from agmind.core.secrets import generate_secret, write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import (
@@ -444,7 +444,9 @@ def _write_runtime_payload_sudo(
 
 
 def _env_line(key: str, value: str) -> str:
-    return f"{key}={shell_quote(value) if value else ''}"
+    # docker-compose env-file quoting (NOT shell): bare for simple values,
+    # double-quoted+escaped for space/quote/special so writer↔reader round-trip.
+    return f"{key}={compose_env_quote(value) if value else ''}"
 
 
 def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
