@@ -139,6 +139,7 @@
     owner: "{{ agmind_user }}"
     group: "{{ agmind_group }}"
     mode: "0600"
+  no_log: true   # ВАЖНО: plaintext secrets НЕ должны попасть в Ansible stdout / logs под --diff/-vvv
 
 - name: Validate compose config (docker compose --quiet)
   ansible.builtin.command:
