@@ -104,6 +104,9 @@ class InstallProgressScreen(Screen[InstallResult]):
         # daemon watchdog kills the running subprocess so the worker unblocks (otherwise
         # Textual blocks app exit waiting on the thread-worker -> TUI/VS Code freeze).
         self.cancel_event = threading.Event()
+        # Backup so a Retry can re-inject secrets after the orchestrator wipes the config
+        # on a failed run. Cleared on unmount (the screen owns the final wipe now).
+        self._secret_backup: tuple[str | None, str] = (config.sudo_password, config.cf_api_token)
         self.result: InstallResult | None = None
         self._step_states: dict[str, str] = {step.step_id: "pending" for step in steps}
         self._step_start_ts: dict[str, datetime] = {}
@@ -133,6 +136,7 @@ class InstallProgressScreen(Screen[InstallResult]):
 
         with Horizontal(id="install-buttons"):
             yield Button("Close", id="install-close-btn", variant="default", disabled=True)
+            yield Button("Retry", id="install-retry-btn", variant="primary", disabled=True)
             yield Button("Cancel", id="install-cancel-btn", variant="error")
 
         yield Footer()
@@ -237,6 +241,7 @@ class InstallProgressScreen(Screen[InstallResult]):
         log_widget = self.query_one("#install-log", RichLog)
         close_btn = self.query_one("#install-close-btn", Button)
         cancel_btn = self.query_one("#install-cancel-btn", Button)
+        retry_btn = self.query_one("#install-retry-btn", Button)
 
         if result is None:
             status.update("⚠️  Install finished without result")
@@ -249,15 +254,50 @@ class InstallProgressScreen(Screen[InstallResult]):
             status.update(f"❌ {result.message}")
             status.set_classes("status-line error")
             log_widget.write(f"[yellow]{self._final_operator_hint()}[/yellow]")
+            log_widget.write(
+                "[cyan]Retry re-runs from where it failed — completed steps and downloaded models are kept.[/cyan]"
+            )
 
         close_btn.disabled = False
         cancel_btn.disabled = True
+        # Offer Retry unless the run cleanly succeeded; completed steps skip and the
+        # already-downloaded models are reused, so a retry resumes rather than restarts.
+        retry_btn.disabled = result is not None and result.success
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "install-close-btn":
             self.dismiss(self.result)
+        elif event.button.id == "install-retry-btn":
+            self.action_retry()
         elif event.button.id == "install-cancel-btn":
             self.action_cancel()
+
+    def _prepare_retry(self) -> None:
+        """Reset run state for a retry (no widget access — unit-testable).
+
+        Re-injects the secrets the orchestrator wiped on the failed run, clears the
+        failed result + cancel flag, and resets step states to pending. Idempotent steps
+        then skip completed work and the model download reuses what is already on disk.
+        """
+        self.config.sudo_password, self.config.cf_api_token = self._secret_backup
+        self.result = None
+        self.cancel_event.clear()
+        self._step_states = {step.step_id: "pending" for step in self.steps}
+        self._step_start_ts.clear()
+        self._step_elapsed.clear()
+
+    def action_retry(self) -> None:
+        self._prepare_retry()
+        for step in self.steps:
+            self.query_one(f"#install-step-{step.step_id}", Static).update(self._step_line(step))
+        self.query_one("#step-progress-bar", ProgressBar).update(progress=0)
+        status = self.query_one("#status-line", Static)
+        status.update("Retrying…")
+        status.set_classes("status-line running")
+        self.query_one("#install-close-btn", Button).disabled = True
+        self.query_one("#install-retry-btn", Button).disabled = True
+        self.query_one("#install-cancel-btn", Button).disabled = False
+        self._run_install()
 
     def action_cancel(self) -> None:
         from agmind.install.orchestrator import InstallResult as _IR
@@ -278,6 +318,11 @@ class InstallProgressScreen(Screen[InstallResult]):
         # Catch-all: whatever tears the screen down (Cancel/Close/Escape/ctrl+c/quit),
         # make sure a still-running subprocess is killed so app exit does not block.
         self.cancel_event.set()
+        # Final secret wipe: the orchestrator no longer is the last line of defence for
+        # the TUI (retry needs secrets to survive a failed run), so wipe them — and the
+        # backup — once the screen is gone for good.
+        self.config.wipe_secrets()
+        self._secret_backup = (None, "")
 
     def action_dismiss_if_done(self) -> None:
         if self.result is not None:
