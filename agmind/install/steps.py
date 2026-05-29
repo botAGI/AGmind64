@@ -683,9 +683,15 @@ class DoctorStep(InstallStep):
 class BootstrapStep(InstallStep):
     """Run `ansible-playbook install.yml --tags bootstrap` с sudo password.
 
-    Sudo password передаётся через `--become-password-file=<fd>` — anonymous
-    pipe (fd=4 в child process). Это безопаснее чем temp file: pw в
-    kernel buffer, не на disk.
+    Sudo password передаётся как `ansible_become_password` внутри extra-vars,
+    записанных в anonymous pipe и переданных через `--extra-vars @/dev/fd/<fd>`.
+    Секрет остаётся в kernel buffer (не на disk) и не виден в argv.
+
+    ВАЖНО: НЕ использовать `--become-password-file /dev/fd/<fd>` — Ansible прогоняет
+    этот аргумент через `unfrack_path()` (= `os.path.realpath`), а realpath не
+    резолвит pipe-FD: `/dev/fd/N` → `/proc/<pid>/fd/pipe:[inode]` (не существует) →
+    "The password file ... was not found", rc=1. extra-vars `@/dev/fd/N` грузится
+    через `unfrackpath(follow=False)`, pipe-FD переживает — поэтому секрет едет там.
     """
 
     step_id = "bootstrap"
@@ -743,22 +749,21 @@ class BootstrapStep(InstallStep):
 
         # Write password and sensitive vars to anonymous pipes. The visible
         # process argv contains only /dev/fd/N paths, not secret values.
-        become_rfd: int | None = None
-        become_wfd: int | None = None
         vars_rfd: int | None = None
         vars_wfd: int | None = None
         proc: subprocess.Popen[str] | None = None
         try:
-            become_rfd, become_wfd = os.pipe()
-            os.write(become_wfd, config.sudo_password.encode() + b"\n")
-            os.close(become_wfd)
-            become_wfd = None
-
+            # Sudo password + sensitive vars travel through ONE anonymous pipe consumed
+            # by `--extra-vars @/dev/fd/N`. We deliberately do NOT use
+            # `--become-password-file /dev/fd/N`: Ansible realpath-canonicalizes that
+            # arg and cannot resolve a pipe FD (see class docstring). The extra-vars
+            # loader uses unfrackpath(follow=False), so the pipe FD survives.
             vars_rfd, vars_wfd = os.pipe()
             extra_vars_payload = json.dumps(
                 {
                     "agmind_domain": config.domain,
                     "agmind_cf_api_token": config.cf_api_token,
+                    "ansible_become_password": config.sudo_password,
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
@@ -769,8 +774,6 @@ class BootstrapStep(InstallStep):
             cmd = [
                 resolve_ansible_command("ansible-playbook"),
                 str(playbook),
-                "--become-password-file",
-                f"/dev/fd/{become_rfd}",
                 "--tags",
                 self.ANSIBLE_TAGS,
                 "--extra-vars",
@@ -791,7 +794,7 @@ class BootstrapStep(InstallStep):
                 text=True,
                 bufsize=1,
                 cwd=str(ansible_dir),
-                pass_fds=(become_rfd, vars_rfd),
+                pass_fds=(vars_rfd,),
             )
             if proc.stdout is not None:
                 for raw in proc.stdout:
@@ -808,7 +811,7 @@ class BootstrapStep(InstallStep):
                     proc.wait()
                 if proc.stdout is not None:
                     proc.stdout.close()
-            for fd in (become_rfd, become_wfd, vars_rfd, vars_wfd):
+            for fd in (vars_rfd, vars_wfd):
                 if fd is None:
                     continue
                 try:

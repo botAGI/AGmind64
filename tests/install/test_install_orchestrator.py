@@ -1836,6 +1836,73 @@ def test_bootstrap_passes_cf_token_outside_process_arguments(
     assert "lab.example.com" in payload
 
 
+def test_bootstrap_passes_sudo_password_via_extra_vars_not_become_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sudo password must reach Ansible via the extra-vars pipe (ansible_become_password),
+    never via ``--become-password-file``.
+
+    Ansible applies ``type=unfrack_path()`` (i.e. ``os.path.realpath``) to
+    ``--become-password-file`` at argparse time, and realpath cannot resolve a
+    ``/dev/fd/N`` pipe — it mangles it to ``/proc/<pid>/fd/pipe:[inode]`` which does
+    not exist, so a piped become-password-file always fails with
+    "The password file ... was not found". The extra-vars ``@/dev/fd/N`` loader uses
+    ``unfrackpath(follow=False)`` and is unaffected, so the secret rides that channel.
+    """
+    from agmind.install import steps
+    from agmind.install.steps import BootstrapStep
+
+    ansible_dir = tmp_path / "ansible"
+    ansible_dir.mkdir()
+    (ansible_dir / "install.yml").write_text("---\n", encoding="utf-8")
+    sudo_password = "sudo-secret-password"
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> FakeProc:
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        extra_vars = cmd[cmd.index("--extra-vars") + 1]
+        if isinstance(extra_vars, str) and extra_vars.startswith("@/dev/fd/"):
+            vars_fd = int(extra_vars.removeprefix("@/dev/fd/"))
+            captured["extra_vars_payload"] = os.read(vars_fd, 65536).decode("utf-8")
+        return FakeProc()
+
+    monkeypatch.setattr(steps, "DEFAULT_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(steps.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(steps, "resolve_ansible_command", lambda name: f"/venv/bin/{name}")
+
+    cfg = _make_config(tmp_path)
+    cfg.sudo_password = sudo_password
+
+    result = BootstrapStep().run(lambda _e: None, cfg)
+
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    argv = "\0".join(str(part) for part in cmd)
+    kwargs = str(captured["kwargs"])
+    assert result.success is True
+    # the realpath-mangled channel must be gone entirely (both flag spellings)
+    assert "--become-password-file" not in cmd
+    assert "--become-pass-file" not in cmd
+    # sudo password never appears in argv or Popen kwargs (stays in kernel pipe buffer)
+    assert sudo_password not in argv
+    assert sudo_password not in kwargs
+    # it travels through the working extra-vars pipe as ansible_become_password
+    payload = str(captured["extra_vars_payload"])
+    assert "ansible_become_password" in payload
+    assert sudo_password in payload
+
+
 def test_bootstrap_installs_ansible_collections_before_playbook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
