@@ -73,9 +73,7 @@ def _recreate_compose_handler() -> dict[str, object]:
     for handler in _load_handlers():
         if handler.get("name") == _RECREATE_HANDLER_NAME:
             return handler
-    raise AssertionError(
-        f"missing '{_RECREATE_HANDLER_NAME}' handler in {_SERVICES_HANDLERS}"
-    )
+    raise AssertionError(f"missing '{_RECREATE_HANDLER_NAME}' handler in {_SERVICES_HANDLERS}")
 
 
 def test_role_yaml_files_exist() -> None:
