@@ -71,6 +71,12 @@ health:
   - curl
   - -f
   - http://localhost:8080/health
+  # A multi-GB GGUF takes minutes to load into unified memory on first start. Keep
+  # docker in "starting" (not "unhealthy") during the load so the deploy does not
+  # false-rollback; the deploy runner waits up to its own healthcheck_timeout.
+  start_period: 600s
+  interval: 15s
+  retries: 5
 routing:
   host: llama.agmind.dev
   middleware_chain: chain-llm

@@ -1591,6 +1591,38 @@ def test_deploy_step_uses_selected_services(
     assert calls["services"] == ["llama-llm", "qdrant"]
 
 
+def test_deploy_step_uses_generous_healthcheck_timeout_for_model_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """First-run deploy must wait long enough for a multi-GB LLM to load before
+    declaring the stack unhealthy and rolling back (BREA02). The runner default of
+    300s is too short for a 35B GGUF load on first start, causing a false rollback of
+    an otherwise-healthy deploy."""
+    from agmind.deploy.runner import DeployResult
+    from agmind.install.steps import DeployStep
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm", "qdrant"],
+        install_dir=tmp_path / "opt",
+    )
+
+    result = DeployStep().run(lambda _e: None, cfg)
+
+    assert result.success
+    timeout = calls.get("healthcheck_timeout")
+    assert isinstance(timeout, int), "DeployStep must pass an explicit healthcheck_timeout"
+    assert timeout >= 900, f"healthcheck_timeout={timeout} too short for first model load"
+
+
 def test_deploy_step_rejects_empty_service_selection_before_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1212,6 +1212,10 @@ class ModelDownloadStep(InstallStep):
 class DeployStep(InstallStep):
     """Run `agmind deploy --apply` (reuse Phase L.B runner)."""
 
+    # First-run model load (multi-GB GGUF -> unified memory) can take many minutes;
+    # the runner default of 300s would false-rollback an otherwise-healthy stack.
+    HEALTHCHECK_TIMEOUT = 900
+
     step_id = "deploy"
     label = "Deploy compose stack + healthcheck"
 
@@ -1241,6 +1245,9 @@ class DeployStep(InstallStep):
                 progress=deploy_progress,
                 services=config.services,
                 sudo_password=config.sudo_password,
+                # First-run deploy must outlast a multi-GB LLM load; the runner default
+                # (300s) false-rolls-back an otherwise-healthy stack (BREA02).
+                healthcheck_timeout=self.HEALTHCHECK_TIMEOUT,
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(
