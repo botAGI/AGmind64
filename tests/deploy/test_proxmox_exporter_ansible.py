@@ -71,7 +71,9 @@ def test_services_role_creates_proxmox_config_dir_before_compose_render() -> Non
     names = [str(item.get("name", "")) for item in tasks]
 
     dir_index = names.index("Ensure Proxmox exporter config directory exists")
-    render_index = names.index("Render docker-compose.yml через agmind render compose")
+    render_index = names.index(
+        "Render docker-compose.yml через agmind render compose (temp output)"
+    )
     assert dir_index < render_index
 
     task = tasks[dir_index]

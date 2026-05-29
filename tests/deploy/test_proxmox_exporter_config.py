@@ -162,7 +162,9 @@ def test_services_role_invokes_proxmox_validator_before_compose_render() -> None
     names = [str(task.get("name", "")) for task in tasks]
 
     validate_index = names.index("Validate Proxmox exporter config")
-    render_index = names.index("Render docker-compose.yml через agmind render compose")
+    render_index = names.index(
+        "Render docker-compose.yml через agmind render compose (temp output)"
+    )
     assert validate_index < render_index
 
     task = tasks[validate_index]
