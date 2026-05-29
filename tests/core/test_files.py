@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from agmind.core import files as files_mod
 from agmind.core.files import write_text_atomic
 
 pytestmark = pytest.mark.backend_any
@@ -29,18 +30,63 @@ def test_write_text_atomic_creates_secret_mode_under_permissive_umask(
 
     assert target.read_text() == "POSTGRES_PASSWORD=x\n"
     assert _mode(target) == 0o600
-    assert not (tmp_path / ".secret.env.tmp").exists()
+    # No leftover temp matching the target's unique-temp pattern (mkstemp uses a
+    # random suffix, so assert by glob rather than a fixed `.secret.env.tmp` name).
+    assert not list(tmp_path.glob(".secret.env.*"))
 
 
-def test_write_text_atomic_overwrites_stale_temp(tmp_path: Path) -> None:
+def test_write_text_atomic_two_writes_do_not_collide(tmp_path: Path) -> None:
     target = tmp_path / "state.json"
-    stale = tmp_path / ".state.json.tmp"
-    stale.write_text("leftover", encoding="utf-8")  # O_EXCL would fail without cleanup
 
-    write_text_atomic(target, "fresh", mode=0o600)
+    # Two sequential writes to the SAME target must both succeed; a unique temp
+    # name (mkstemp) never collides with a stale/in-flight temp, and no temp is
+    # left behind once the atomic replace completes.
+    write_text_atomic(target, "first", mode=0o600)
+    assert target.read_text() == "first"
+    write_text_atomic(target, "second", mode=0o600)
+    assert target.read_text() == "second"
 
-    assert target.read_text() == "fresh"
-    assert not stale.exists()
+    assert _mode(target) == 0o600
+    assert not list(tmp_path.glob(".state.json.*"))
+
+
+def test_write_text_atomic_content_correctness(tmp_path: Path) -> None:
+    target = tmp_path / "data.txt"
+
+    # New file.
+    write_text_atomic(target, "hello\nworld\n")
+    assert target.read_text() == "hello\nworld\n"
+
+    # Overwrite an existing file.
+    write_text_atomic(target, "replaced")
+    assert target.read_text() == "replaced"
+
+    # No leftover temp for the unique-name writer.
+    assert not list(tmp_path.glob(".data.txt.*"))
+
+
+def test_write_text_atomic_fsyncs_temp_fd_and_parent_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "durable.txt"
+
+    fsynced_fds: list[int] = []
+    real_fsync = os.fsync
+
+    def recording_fsync(fd: int) -> None:
+        fsynced_fds.append(fd)
+        real_fsync(fd)
+
+    monkeypatch.setattr(files_mod.os, "fsync", recording_fsync)
+
+    write_text_atomic(target, "durable content")
+
+    assert target.read_text() == "durable content"
+    # Durability contract: at least the temp fd AND the parent-dir fd are
+    # fsync'd (two distinct fsync calls), so a crash after replace cannot leave
+    # truncated/half-durable state.
+    assert len(fsynced_fds) >= 2
+    assert not list(tmp_path.glob(".durable.txt.*"))
 
 
 def test_write_text_atomic_inherits_existing_target_mode(tmp_path: Path) -> None:
