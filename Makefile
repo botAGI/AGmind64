@@ -46,7 +46,7 @@ test-fast:
 # --- Schema artifacts ---
 
 schema-export:
-	$(PYTHON) -m scripts.export_schemas
+	$(PYTHON) scripts/dev/export_schemas.py
 
 schema-validate:
 	@if [ -x .venv/bin/check-jsonschema ]; then \

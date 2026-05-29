@@ -9,10 +9,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+from agmind.addons import ToolCandidate
+from agmind.components import ComponentContract
+from agmind.deploy import DeploymentTarget
 from agmind.schemas import (
     HealthCheck,
     ObservabilityConfig,
@@ -440,3 +445,61 @@ def test_routing_short_host_rejected() -> None:
 def test_observability_invalid_port() -> None:
     with pytest.raises(ValidationError):
         ObservabilityConfig(metrics_port=99999)
+
+
+# ---------- Schema-drift gate (F.4) ----------
+#
+# The committed templates/schemas/*.json artifacts are produced by
+# scripts/dev/export_schemas.py, which calls <Model>.model_json_schema() and then
+# AUGMENTS the result with exactly three keys before writing:
+#   schema["$id"]     = "https://github.com/botAGI/AGmind64/schemas/<name>.json"
+#   schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+#   schema["title"]   = "<title>"
+# The drift gate MUST compare the committed JSON against that AUGMENTED dict — NOT
+# raw model_json_schema() — or it would fail on the $id/$schema/title keys. If any
+# model changes without `make schema-export`, the committed JSON diverges from the
+# freshly-augmented schema and this gate fails loudly.
+
+# Repo root: tests/services/test_service_schema.py -> parents[2] == repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SCHEMAS_DIR = _REPO_ROOT / "templates" / "schemas"
+
+# (committed json filename, Model, $id url name, title) — mirrors export_schemas.py.
+_SCHEMA_DRIFT_CASES = [
+    ("service.json", ServiceDescriptor, "service.json", "AGmind Service Descriptor"),
+    ("component.json", ComponentContract, "component.json", "AGmind Component Contract"),
+    ("deploy-target.json", DeploymentTarget, "deploy-target.json", "AGmind Deployment Target"),
+    ("tool-candidate.json", ToolCandidate, "tool-candidate.json", "AGmind Tool Candidate"),
+]
+
+
+def _augmented_schema(model: type[Any], url_name: str, title: str) -> dict[str, Any]:
+    """Reproduce the exporter's augmentation (export_schemas.py:32-78)."""
+    schema = model.model_json_schema()
+    schema["$id"] = f"https://github.com/botAGI/AGmind64/schemas/{url_name}"
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["title"] = title
+    return schema
+
+
+@pytest.mark.parametrize(
+    ("filename", "model", "url_name", "title"),
+    _SCHEMA_DRIFT_CASES,
+    ids=[case[0] for case in _SCHEMA_DRIFT_CASES],
+)
+def test_committed_schema_matches_augmented_model(
+    filename: str, model: type[Any], url_name: str, title: str
+) -> None:
+    """Committed templates/schemas/<name>.json == exporter's augmented schema.
+
+    Fails if a model changes without re-running `make schema-export`, keeping CI
+    schema-validation aligned to the real Pydantic contract (F.4 / T-066-06).
+    """
+    committed_path = _SCHEMAS_DIR / filename
+    assert committed_path.exists(), f"missing committed schema: {committed_path}"
+    committed = json.loads(committed_path.read_text(encoding="utf-8"))
+    expected = _augmented_schema(model, url_name, title)
+    assert committed == expected, (
+        f"{filename} is stale vs {model.__name__}.model_json_schema(); "
+        "run `make schema-export` and commit the regenerated artifact."
+    )
