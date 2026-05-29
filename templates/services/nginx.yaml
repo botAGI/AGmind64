@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: nginx
-image: nginx:1.31.0-alpine
-digest: dc48b7a872a79fb541ba5081d320b11b549231bc63ba465a7495afaa7d2ebcb8
+image: nginx:1.31.1-alpine
+digest: 8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a
 tier: edge
 purpose: Reverse proxy mainline 1.31 (2026-05-15) — LAN only, *.local
 profiles:

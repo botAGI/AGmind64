@@ -1,8 +1,9 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: cadvisor
-image: gcr.io/cadvisor/cadvisor:v0.57.0
+image: gcr.io/cadvisor/cadvisor:v0.55.1
+digest: 3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57
 tier: ops
-purpose: Per-container metrics (R12 — metric rename in v0.55→v0.57)
+purpose: Per-container metrics (v0.55.1 — latest published stable; v0.57 was never released)
 profiles:
 - observability
 ports:

@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: elasticsearch
-image: elasticsearch:9.4.1
-digest: 12aec8d2b01e0447c61303fc04a66dfbb7bfbb6a1332faf32707c3a2b54787d8
+# 8.x line: ragflow's elasticsearch-py client + STACK_VERSION are 8.x; ES 9.x would break it.
+image: elasticsearch:8.19.16
+digest: 832cb4df76ba2a08f0051742d216a67e3e3a7d8a616082793ed0150a95d3c9fe
 tier: storage
 purpose: RAGFlow chunk index — 2026-05-12
 profiles:
