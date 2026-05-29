@@ -2079,9 +2079,7 @@ def test_orchestrator_reports_cancellation_when_event_already_set(tmp_path: Path
 
     @dataclass
     class _RecordStep(FakeStep):
-        def run(
-            self, callback: ProgressCallback, config: InstallConfig
-        ) -> InstallStepResult:
+        def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
             ran.append(self.step_id)
             return super().run(callback, config)
 
