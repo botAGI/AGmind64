@@ -1404,6 +1404,230 @@ def test_runner_rollback_passes_sudo_password_to_snapshot_manager_and_restore(
     assert captured["restore_sudo_password"] == "pw"
 
 
+# ---------- G.1: destructive --apply confirmation gate (no_prompt) ----------
+
+
+def _gate_render_with_removal() -> str:
+    """Rendered compose dropping a service so the diff has a non-empty `removed`."""
+    return "services:\n  keeper:\n    image: keeper:1\n"
+
+
+def _gate_install_dir_with_removed_service(tmp_path: Path) -> Path:
+    """Install dir whose current compose has a service that the render removes."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / "docker-compose.yml").write_text(
+        "services:\n  keeper:\n    image: keeper:1\n  doomed:\n    image: doomed:1\n",
+        encoding="utf-8",
+    )
+    return install_dir
+
+
+class _StubSnapshot:
+    id = "stub-snapshot"
+
+
+class _NoopSnapshotManager:
+    """Stub snapshot manager so proceed-path gate tests never touch the real store."""
+
+    def __init__(self, sudo_password: str | None = None) -> None:
+        self.sudo_password = sudo_password
+
+    def save(self, **_kwargs: object) -> object:
+        return _StubSnapshot()
+
+
+def test_deploy_apply_prompts_before_destructive_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A diff with removals + no_prompt=False asks typer.confirm before mutating."""
+    install_dir = _gate_install_dir_with_removed_service(tmp_path)
+    confirm_calls: list[str] = []
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: _gate_render_with_removal())
+
+    def fake_confirm(prompt: str, *args: object, **kwargs: object) -> bool:
+        confirm_calls.append(prompt)
+        return False
+
+    def fail_validate(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        raise AssertionError("validation must not run after a declined confirmation")
+
+    def fail_write_text_maybe_sudo(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("compose file must not be written after a declined confirmation")
+
+    def fail_run_compose(*_args: object, **_kwargs: object) -> tuple[int, str, str]:
+        raise AssertionError("docker compose must not run after a declined confirmation")
+
+    class FailingSnapshotManager:
+        def __init__(self, sudo_password: str | None = None) -> None:
+            self.sudo_password = sudo_password
+
+        def save(self, **_kwargs: object) -> object:
+            raise AssertionError("snapshot must not run after a declined confirmation")
+
+    original_mkdir = Path.mkdir
+
+    def guard_mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == install_dir:
+            raise AssertionError("install dir must not be (re)created after a declined confirmation")
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(runner.typer, "confirm", fake_confirm)
+    monkeypatch.setattr(runner, "_validate_compose_config", fail_validate)
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", fail_write_text_maybe_sudo)
+    monkeypatch.setattr(runner, "_run_compose", fail_run_compose)
+    monkeypatch.setattr(runner, "SnapshotManager", FailingSnapshotManager)
+    monkeypatch.setattr(Path, "mkdir", guard_mkdir)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+    )
+
+    assert len(confirm_calls) == 1
+    assert result.success is False
+    assert result.diff is not None
+    assert "doomed" in result.diff.removed
+    # Aborting leaves the current compose untouched (zero mutating calls).
+    assert (install_dir / "docker-compose.yml").read_text(encoding="utf-8") == (
+        "services:\n  keeper:\n    image: keeper:1\n  doomed:\n    image: doomed:1\n"
+    )
+
+
+def test_deploy_apply_no_prompt_bypasses_confirm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """no_prompt=True (CI/Ansible/upgrade-apply) never calls typer.confirm and proceeds."""
+    install_dir = _gate_install_dir_with_removed_service(tmp_path)
+    writes: list[Path] = []
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: _gate_render_with_removal())
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+
+    def fail_confirm(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("typer.confirm must NOT be called when no_prompt=True")
+
+    def fake_write_text_maybe_sudo(
+        path: Path,
+        text: str,
+        sudo_password: str | None = None,
+        mode: str = "0644",
+    ) -> None:
+        writes.append(path)
+
+    monkeypatch.setattr(runner.typer, "confirm", fail_confirm)
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", fake_write_text_maybe_sudo)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+    )
+
+    assert result.success
+    assert install_dir / "docker-compose.yml" in writes
+
+
+def test_deploy_apply_confirm_yes_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A destructive diff + no_prompt=False + confirm->True reaches the mutating path."""
+    install_dir = _gate_install_dir_with_removed_service(tmp_path)
+    writes: list[Path] = []
+    confirm_calls: list[str] = []
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: _gate_render_with_removal())
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+
+    def fake_confirm(prompt: str, *args: object, **kwargs: object) -> bool:
+        confirm_calls.append(prompt)
+        return True
+
+    def fake_write_text_maybe_sudo(
+        path: Path,
+        text: str,
+        sudo_password: str | None = None,
+        mode: str = "0644",
+    ) -> None:
+        writes.append(path)
+
+    monkeypatch.setattr(runner.typer, "confirm", fake_confirm)
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", fake_write_text_maybe_sudo)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+    )
+
+    assert len(confirm_calls) == 1
+    assert result.success
+    assert install_dir / "docker-compose.yml" in writes
+
+
+def test_deploy_apply_non_destructive_diff_does_not_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A diff with NO removals proceeds without prompting (LOCKED minimal predicate)."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / "docker-compose.yml").write_text(
+        "services:\n  keeper:\n    image: keeper:1\n",
+        encoding="utf-8",
+    )
+    writes: list[Path] = []
+
+    # Image bump only — added/changed, no removals.
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  keeper:\n    image: keeper:2\n",
+    )
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+
+    def fail_confirm(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("typer.confirm must NOT be called for a non-destructive diff")
+
+    def fake_write_text_maybe_sudo(
+        path: Path,
+        text: str,
+        sudo_password: str | None = None,
+        mode: str = "0644",
+    ) -> None:
+        writes.append(path)
+
+    monkeypatch.setattr(runner.typer, "confirm", fail_confirm)
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", fake_write_text_maybe_sudo)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+    )
+
+    assert result.success
+    assert install_dir / "docker-compose.yml" in writes
+
+
 def test_wait_healthy_accepts_compose_json_array(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

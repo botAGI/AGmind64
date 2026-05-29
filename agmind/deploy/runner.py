@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import typer
 import yaml
 
 from agmind.components.checks import check_deploy_conflicts
@@ -522,6 +523,23 @@ def deploy(
             diff=diff,
             message=f"{diff.total_changes} pending change(s) — re-run with --apply to deploy",
         )
+
+    # G.1: confirmation gate for destructive applies. Removals/recreations destroy
+    # containers + connected resources, so prompt before any mutation UNLESS no_prompt
+    # is set (CI / Ansible / upgrade-apply). This block runs AFTER the dry-run early
+    # return and BEFORE install_dir.mkdir / snapshot / write, so a declined prompt
+    # makes ZERO mutating calls.
+    if not no_prompt and diff.removed:
+        removed_label = ", ".join(diff.removed)
+        proceed = typer.confirm(
+            f"⚠️  Apply will remove {len(diff.removed)} service(s) "
+            f"({removed_label}) — containers + connected resources будут уничтожены. Continue?"
+        )
+        if not proceed:
+            msg = "deploy aborted by user — no changes applied"
+            log.info("%s", msg)
+            _emit("error", msg)
+            return DeployResult(success=False, diff=diff, message=msg)
 
     try:
         install_dir.mkdir(parents=True, exist_ok=True)

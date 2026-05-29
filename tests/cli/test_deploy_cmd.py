@@ -201,6 +201,162 @@ def test_cmd_deploy_passes_explicit_services_to_runner(
     assert calls["services"] == ["traefik"]
 
 
+def test_cmd_deploy_threads_no_prompt_to_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cmd_deploy passes its no_prompt argument straight through to do_deploy."""
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        calls.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    rc = deploy_cmd.cmd_deploy(
+        profiles=["core"],
+        services=None,
+        install_dir=tmp_path,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+        healthcheck_timeout=1,
+    )
+
+    assert rc == 0
+    assert calls["no_prompt"] is False
+
+
+def test_deploy_no_prompt_flag_maps_to_runner_kwarg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CliRunner: `deploy --apply --no-prompt` reaches do_deploy with no_prompt=True."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+            "--no-prompt",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["no_prompt"] is True
+
+
+def test_deploy_yes_alias_maps_to_runner_kwarg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CliRunner: `deploy --apply --yes` is an alias mapping to no_prompt=True."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["no_prompt"] is True
+
+
+def test_deploy_without_no_prompt_flag_keeps_runner_kwarg_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CliRunner: omitting the flag leaves no_prompt=False so the gate stays armed."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["no_prompt"] is False
+
+
 def test_cmd_rollback_prompts_for_sudo_password_when_requested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -237,7 +237,9 @@ def register(app: typer.Typer) -> None:
         no_prompt: bool = typer.Option(
             False,
             "--no-prompt",
-            help="Skip interactive confirmation (CI mode)",
+            "--yes",
+            "-y",
+            help="Skip interactive confirmation before destructive --apply (CI mode)",
         ),
         healthcheck_timeout: int = typer.Option(
             300,
