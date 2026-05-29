@@ -83,20 +83,29 @@ def test_write_env_atomic_replaces_existing(tmp_path: Path) -> None:
 def test_write_env_removes_temp_file_and_preserves_existing_on_chmod_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from agmind.core import files as files_mod
+
     p = tmp_path / ".env"
     write_env(p, "OLD_SECRET=keep\n", mode=0o600)
 
-    def fail_chmod(self: Path, mode: int, *args: object, **kwargs: object) -> None:
-        if str(self).endswith(".tmp"):
-            raise PermissionError("chmod denied")
+    original_chmod = files_mod.os.chmod
 
-    monkeypatch.setattr(Path, "chmod", fail_chmod)
+    def fail_chmod(target: object, mode: int, **kwargs: object) -> None:
+        # write_text_atomic chmods the unique temp (".env.<random>.tmp") before
+        # the atomic replace; fail there to exercise the cleanup/preserve path.
+        # os.chmod IS the attribute Path.chmod calls, so forward other chmods.
+        if str(target).endswith(".tmp"):
+            raise PermissionError("chmod denied")
+        original_chmod(target, mode, **kwargs)
+
+    monkeypatch.setattr(files_mod.os, "chmod", fail_chmod)
 
     with pytest.raises(PermissionError, match="chmod denied"):
         write_env(p, "NEW_SECRET=drop\n", mode=0o600)
 
     assert p.read_text(encoding="utf-8") == "OLD_SECRET=keep\n"
-    assert not p.with_name(f".{p.name}.tmp").exists()
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert not list(tmp_path.glob(".env.*.tmp"))
 
 
 def test_write_env_accepts_string_path(tmp_path: Path) -> None:

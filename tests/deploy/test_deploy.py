@@ -48,21 +48,21 @@ def test_save_preserves_compose_content(snapshot_mgr: SnapshotManager) -> None:
 def test_save_removes_partial_compose_on_write_failure(
     snapshot_mgr: SnapshotManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original_write_text = Path.write_text
+    from agmind.core import files as files_mod
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.name in {"compose.yml", ".compose.yml.tmp"}:
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the compose temp fd before the atomic replace;
+        # failing there must unlink the partial temp and leave no compose.yml.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         snapshot_mgr.save(compose_text="services: {}\n", profile="core")
 
     assert list(snapshot_mgr.snapshots_dir.rglob("compose.yml")) == []
-    assert list(snapshot_mgr.snapshots_dir.rglob(".compose.yml.tmp")) == []
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert list(snapshot_mgr.snapshots_dir.rglob(".compose.yml.*.tmp")) == []
 
 
 def test_save_removes_partial_snapshot_on_descriptor_copy_failure(
@@ -1470,7 +1470,9 @@ def test_deploy_apply_prompts_before_destructive_removal(
 
     def guard_mkdir(self: Path, *args: object, **kwargs: object) -> None:
         if self == install_dir:
-            raise AssertionError("install dir must not be (re)created after a declined confirmation")
+            raise AssertionError(
+                "install dir must not be (re)created after a declined confirmation"
+            )
         return original_mkdir(self, *args, **kwargs)
 
     monkeypatch.setattr(runner.typer, "confirm", fake_confirm)
@@ -1537,9 +1539,7 @@ def test_deploy_apply_no_prompt_bypasses_confirm(
     assert install_dir / "docker-compose.yml" in writes
 
 
-def test_deploy_apply_confirm_yes_proceeds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_deploy_apply_confirm_yes_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A destructive diff + no_prompt=False + confirm->True reaches the mutating path."""
     install_dir = _gate_install_dir_with_removed_service(tmp_path)
     writes: list[Path] = []

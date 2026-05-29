@@ -1256,28 +1256,28 @@ def test_kubernetes_dry_run_script_verifier_json_reports_corruption(tmp_path: Pa
 def test_write_json_preserves_existing_artifact_on_write_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from agmind.core import files as files_mod
     from agmind.services.kubernetes_dry_run import _write_json
 
     path = tmp_path / "summary.json"
     old = '{"ok": true}\n'
     path.write_text(old, encoding="utf-8")
     path.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == path or self.name == f".{path.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the temp fd before the atomic replace; failing
+        # there must unlink the temp and leave the existing artifact intact.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         _write_json(path, {"ok": False})
 
     assert path.read_text(encoding="utf-8") == old
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert not path.with_name(f".{path.name}.tmp").exists()
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert not list(path.parent.glob(f".{path.name}.*.tmp"))
 
 
 def test_ci_has_manual_kubernetes_proof_artifact_workflow() -> None:

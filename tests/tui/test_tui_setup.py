@@ -63,26 +63,27 @@ def test_state_roundtrip_excludes_token(tmp_path: Path) -> None:
 def test_state_to_json_preserves_existing_file_on_write_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from agmind.core import files as files_mod
+
     path = tmp_path / "state.json"
     old = json.dumps({"domain": "old.example"}) + "\n"
     path.write_text(old, encoding="utf-8")
     path.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == path or self.name == f".{path.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the temp fd before the atomic replace; failing
+        # there must unlink the temp and leave the existing state file intact.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         SetupState(domain="new.example").to_json(path)
 
     assert path.read_text(encoding="utf-8") == old
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert not path.with_name(f".{path.name}.tmp").exists()
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert not list(path.parent.glob(f".{path.name}.*.tmp"))
 
 
 # ---------- detect_hardware ----------

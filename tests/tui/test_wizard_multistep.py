@@ -160,14 +160,20 @@ async def test_multistep_submit_removes_token_file_on_chmod_failure(
         "agmind.cli.tui.setup_wizard.TOKEN_PATH",
         token_path,
     )
-    original_chmod = Path.chmod
+    from agmind.core import files as files_mod
 
-    def fail_token_chmod(path: Path, mode: int, *args: object, **kwargs: object) -> None:
-        if "cf_dns_api_token" in path.name:
+    original_chmod = files_mod.os.chmod
+
+    def fail_token_chmod(target: object, mode: int, **kwargs: object) -> None:
+        # write_text_atomic chmods the unique temp (".cf_dns_api_token.<rand>.tmp")
+        # before the atomic replace; the random suffix keeps the secret name in
+        # the path, so match on the substring. os.chmod IS the attribute
+        # Path.chmod calls, so forward kwargs for non-token chmods.
+        if "cf_dns_api_token" in Path(target).name:  # type: ignore[arg-type]
             raise PermissionError("chmod denied")
-        original_chmod(path, mode, *args, **kwargs)
+        original_chmod(target, mode, **kwargs)
 
-    monkeypatch.setattr(Path, "chmod", fail_token_chmod)
+    monkeypatch.setattr(files_mod.os, "chmod", fail_token_chmod)
     initial = SetupState(
         domain="lab.example.com",
         cf_api_token="X" * 40,

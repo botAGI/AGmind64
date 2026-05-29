@@ -79,24 +79,25 @@ def test_write_inventory_creates_file(tmp_path: Path) -> None:
 def test_write_inventory_preserves_existing_file_on_write_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from agmind.core import files as files_mod
+
     out = tmp_path / "inventory" / "cluster.yml"
     out.parent.mkdir(parents=True)
     old = "# old cluster inventory\nall: {}\n"
     out.write_text(old, encoding="utf-8")
     out.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == out or self.name == f".{out.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the temp fd before the atomic replace; failing
+        # there must unlink the temp and leave the existing inventory intact.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         write_inventory(peers=[("worker-1", "10.0.0.7")], output_path=out)
 
     assert out.read_text(encoding="utf-8") == old
     assert stat.S_IMODE(out.stat().st_mode) == 0o600
-    assert not out.with_name(f".{out.name}.tmp").exists()
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert not list(out.parent.glob(f".{out.name}.*.tmp"))

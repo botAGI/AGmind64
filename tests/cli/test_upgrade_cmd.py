@@ -151,26 +151,28 @@ def test_bump_pin_adds_digest_if_absent(tmp_repo: Path) -> None:
 def test_bump_pin_preserves_descriptor_on_write_failure(
     tmp_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from agmind.core import files as files_mod
+
     services = tmp_repo / "templates" / "services"
     p = _make_descriptor(services, "x", "vendor/x", "1.0")
     original = p.read_text(encoding="utf-8")
     p.chmod(0o600)
-    original_write_text = Path.write_text
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self == p or self.name == f".{p.name}.tmp":
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the (fully-written) temp fd before the atomic
+        # replace; failing here leaves a complete temp that the cleanup path must
+        # unlink while the original descriptor stays intact.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         upgrade_cmd._bump_pin_in_yaml(p, "2.0")
 
     assert p.read_text(encoding="utf-8") == original
     assert stat.S_IMODE(p.stat().st_mode) == 0o600
-    assert not p.with_name(f".{p.name}.tmp").exists()
+    # mkstemp uses a random suffix, so assert no leftover temp by glob.
+    assert not list(p.parent.glob(f".{p.name}.*.tmp"))
 
 
 # ---------- cmd_component ----------
@@ -259,15 +261,14 @@ def test_component_saves_upgrade_state(tmp_repo: Path) -> None:
 def test_save_upgrade_state_removes_partial_file_on_write_failure(
     tmp_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original_write_text = Path.write_text
+    from agmind.core import files as files_mod
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.parent == upgrade_cmd.UPGRADE_STATE_DIR:
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the temp fd before the atomic replace; failing
+        # there must unlink the partial state temp and leave no .json behind.
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         upgrade_cmd._save_upgrade_state(
@@ -423,13 +424,12 @@ def test_component_apply_saves_grouped_state(
 def test_save_grouped_upgrade_state_removes_partial_file_on_write_failure(
     tmp_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original_write_text = Path.write_text
+    from agmind.core import files as files_mod
 
-    def flaky_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
-        if self.parent == upgrade_cmd.UPGRADE_STATE_DIR:
-            original_write_text(self, "BROKEN\n", encoding="utf-8")
-            raise OSError("disk full")
-        return original_write_text(self, data, *args, **kwargs)
+    def flaky_fsync(fd: int) -> None:
+        # write_text_atomic fsyncs the temp fd before the atomic replace; failing
+        # there must unlink the partial state temp and leave no .json behind.
+        raise OSError("disk full")
 
     plan = upgrade_cmd.UpgradePlan(
         component="dify",
@@ -446,7 +446,7 @@ def test_save_grouped_upgrade_state_removes_partial_file_on_write_failure(
             ),
         ),
     )
-    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+    monkeypatch.setattr(files_mod.os, "fsync", flaky_fsync)
 
     with pytest.raises(OSError, match="disk full"):
         upgrade_cmd._save_upgrade_plan_state(plan)

@@ -887,14 +887,21 @@ def test_env_write_step_removes_cloudflare_token_file_on_chmod_failure(
         models_dir=tmp_path / "data" / "models",
         config_dir=tmp_path / "config",
     )
-    original_chmod = Path.chmod
+    from agmind.core import files as files_mod
 
-    def fail_token_chmod(path: Path, mode: int, *args: object, **kwargs: object) -> None:
-        if "cf_dns_api_token" in path.name:
+    original_chmod = files_mod.os.chmod
+
+    def fail_token_chmod(target: object, mode: int, **kwargs: object) -> None:
+        # write_text_atomic chmods the unique temp (".cf_dns_api_token.<rand>.tmp")
+        # before the atomic replace; the random suffix keeps the secret name in
+        # the path, so match on the substring and fail only for the token file.
+        # NB: os.chmod IS the module attribute pathlib.Path.chmod also calls, so
+        # forward keyword args (e.g. follow_symlinks) for non-token chmods.
+        if "cf_dns_api_token" in Path(os.fspath(target)).name:
             raise PermissionError("chmod denied")
-        original_chmod(path, mode, *args, **kwargs)
+        original_chmod(target, mode, **kwargs)
 
-    monkeypatch.setattr(Path, "chmod", fail_token_chmod)
+    monkeypatch.setattr(files_mod.os, "chmod", fail_token_chmod)
 
     result = EnvWriteStep().run(lambda _event: None, cfg)
 
