@@ -45,6 +45,24 @@ def test_all_wizard_keys_present_in_ru() -> None:
         assert k in ru, f"missing ru key: {k}"
 
 
+def test_en_ru_full_catalog_key_parity() -> None:
+    """F.6: the en/ru catalogs must share the exact same full key set.
+
+    A key present in one locale but missing in the other yields a runtime
+    fallback/KeyError path for the missing locale (threat T-066-08). This guards
+    against catalog drift beyond the WIZARD_KEYS allowlist.
+    """
+    en = set(_load("en"))
+    ru = set(_load("ru"))
+    en_only = sorted(en - ru)
+    ru_only = sorted(ru - en)
+    assert en == ru, (
+        "en/ru i18n catalog key parity broken — keys must match exactly.\n"
+        f"  en-only ({len(en_only)}): {en_only}\n"
+        f"  ru-only ({len(ru_only)}): {ru_only}"
+    )
+
+
 def test_wizard_section_services_interpolates() -> None:
     en = t("wizard.section.services", lang="en")
     ru = t("wizard.section.services", lang="ru")
