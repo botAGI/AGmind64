@@ -285,6 +285,48 @@ def _run_sudo_runtime_command(
         raise OSError(f"sudo command failed rc={rc}: {cmd[0]}")
 
 
+def _ensure_models_dir(
+    config: InstallConfig,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    """Ensure ``config.models_dir`` exists and is writable by the current user.
+
+    The runtime data root (e.g. ``/var/lib/agmind``) is created root-owned via sudo by
+    the runtime-payload step, so a plain user-level ``mkdir`` of ``<data>/models`` fails
+    with ``[Errno 13]`` (the real model_pull failure on first install). If we cannot
+    create/write it directly, create it and hand ownership to the invoking uid/gid via
+    sudo — consistent with how the other system-path writes are privileged — so the
+    multi-GB download itself still runs unprivileged.
+    """
+    models_dir = config.models_dir
+    if models_dir.is_dir() and os.access(models_dir, os.W_OK):
+        return
+    try:
+        models_dir.mkdir(parents=True, exist_ok=True)
+        if os.access(models_dir, os.W_OK):
+            return
+    except PermissionError:
+        pass
+    # Root-owned parent: create + chown to the current user via sudo.
+    _run_sudo_runtime_command(
+        config,
+        [
+            "install",
+            "-d",
+            "-o",
+            str(os.getuid()),
+            "-g",
+            str(os.getgid()),
+            "-m",
+            "0755",
+            str(models_dir),
+        ],
+        callback,
+        step_id,
+    )
+
+
 def _sudo_runtime_target_args(staged_root: Path, target_root: Path) -> list[str]:
     args: list[str] = ["directory", str(target_root)]
     if not staged_root.exists():
@@ -1222,6 +1264,18 @@ class ModelDownloadStep(InstallStep):
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
+
+        # The models dir lives under a root-owned runtime root; make it user-writable
+        # (via sudo if needed) before downloading, else mkdir/curl fail with [Errno 13].
+        try:
+            _ensure_models_dir(config, callback, self.step_id)
+        except (OSError, PermissionError) as exc:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message=f"cannot prepare models dir {config.models_dir}: {exc}",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
 
         roles = (
             ("llm", config.model_repo, config.model_file),

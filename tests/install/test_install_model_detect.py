@@ -341,3 +341,89 @@ def test_skip_step_if_no_model_configured(tmp_path: Path) -> None:
     result = ModelDownloadStep().run(lambda _e: None, cfg)
     assert result.success
     assert "skip" in result.message.lower()
+
+
+def test_ensure_models_dir_skips_sudo_when_writable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If models_dir is already user-writable, no sudo is needed."""
+    from agmind.install import steps
+
+    cfg = _cfg(tmp_path)  # models_dir under a writable tmp tree
+    sudo_calls: list[object] = []
+    monkeypatch.setattr(steps, "_run_sudo_runtime_command", lambda *a, **k: sudo_calls.append(a))
+    steps._ensure_models_dir(cfg, lambda _e: None, "model_pull")
+    assert cfg.models_dir.is_dir()
+    assert sudo_calls == []
+
+
+def test_ensure_models_dir_creates_via_sudo_when_parent_root_owned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """models_dir lives under a root-owned system path (/var/lib/agmind). A plain
+    user-level mkdir raises [Errno 13]; the step must create+chown it via sudo
+    instead of crashing the install (BREA01 — the real model_pull failure)."""
+    import os
+
+    if os.getuid() == 0:
+        pytest.skip("permission semantics don't apply when running as root")
+
+    from agmind.install import steps
+    from agmind.install.orchestrator import InstallConfig
+
+    sysdata = tmp_path / "sysdata"
+    sysdata.mkdir()
+    models_dir = sysdata / "models"
+    cfg = InstallConfig(
+        domain="x.example",
+        cf_api_token="t" * 40,
+        services=["llama-llm"],
+        install_dir=tmp_path / "opt",
+        models_dir=models_dir,
+        sudo_password="pw",
+    )
+    sysdata.chmod(0o555)  # read-only parent -> user mkdir(models) raises PermissionError
+
+    recorded: list[list[str]] = []
+
+    def fake_sudo(config: object, cmd: list[str], callback: object, step_id: object) -> None:
+        recorded.append(cmd)
+        sysdata.chmod(0o755)  # emulate sudo's privilege
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(steps, "_run_sudo_runtime_command", fake_sudo)
+    try:
+        steps._ensure_models_dir(cfg, lambda _e: None, "model_pull")
+    finally:
+        sysdata.chmod(0o755)  # so tmp cleanup can remove it
+
+    assert recorded, "sudo was not used to create the root-owned models dir"
+    assert recorded[0][:2] == ["install", "-d"]
+    assert str(models_dir) in recorded[0]
+    assert models_dir.is_dir()
+
+
+def test_model_download_run_prepares_models_dir_before_downloading(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run() must prepare (ensure-writable) the models dir before any download so the
+    root-owned-parent case is handled up front rather than crashing mid-download."""
+    from agmind.install import steps
+
+    cfg = _cfg(tmp_path)
+    order: list[str] = []
+    monkeypatch.setattr(steps, "_ensure_models_dir", lambda c, cb, sid: order.append("ensure"))
+    monkeypatch.setattr(
+        ModelDownloadStep,
+        "_download_one",
+        lambda self, role, repo, fn, config, cb: (order.append(f"dl:{role}"), (True, f"{role} ok"))[
+            1
+        ],
+    )
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+    assert result.success
+    assert order[0] == "ensure", f"models dir not prepared before downloads: {order}"
