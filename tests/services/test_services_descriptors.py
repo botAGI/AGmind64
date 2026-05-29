@@ -60,6 +60,22 @@ def _duration_seconds(value: str) -> int:
     return int(value[:-1]) * units[value[-1]]
 
 
+def test_traefik_healthcheck_ping_endpoint_is_enabled() -> None:
+    """traefik's healthcheck runs `traefik healthcheck --ping`, which calls the /ping
+    endpoint. That endpoint is OFF by default and must be enabled with `--ping=true` in
+    the static command — otherwise the healthcheck always fails → container unhealthy →
+    deploy rolls back."""
+    data = yaml.safe_load((SERVICES_DIR / "traefik.yaml").read_text(encoding="utf-8"))
+    descriptor = ServiceDescriptor.model_validate(data)
+    health = [str(x) for x in (descriptor.health.test if descriptor.health else [])]
+    command = [str(c) for c in (descriptor.command or [])]
+    if any("--ping" in tok for tok in health):
+        assert any("--ping" in tok for tok in command), (
+            "traefik healthcheck uses `--ping` but the ping endpoint is not enabled "
+            "(`--ping=true` missing from command) → healthcheck never passes"
+        )
+
+
 def test_llama_llm_healthcheck_start_period_allows_model_load() -> None:
     """A multi-GB LLM takes minutes to load into unified memory; the healthcheck
     start_period must be generous so docker does not mark llama-llm unhealthy mid-load

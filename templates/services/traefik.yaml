@@ -19,6 +19,7 @@ volumes:
 env:
   CF_DNS_API_TOKEN_FILE: /run/secrets/cf_dns_api_token
 command:
+- --ping=true
 - --providers.docker=true
 - --providers.docker.exposedbydefault=false
 - --providers.file.directory=/etc/traefik/dynamic
