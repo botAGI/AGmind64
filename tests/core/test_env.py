@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from agmind.core.env import env_get, parse_env_file, parse_env_text, shell_quote
+from agmind.install.steps import _env_line
 
 pytestmark = pytest.mark.backend_any
 
@@ -89,6 +90,56 @@ def test_env_get_explicit_path(tmp_path: Path) -> None:
 
 def test_env_get_default_when_file_missing(tmp_path: Path) -> None:
     assert env_get("X", env_file=tmp_path / "no.env", default="def") == "def"
+
+
+def test_env_line_roundtrips_space_and_embedded_quote() -> None:
+    """G.7: a value with a space AND an embedded quote round-trips writer→reader.
+
+    docker-compose env-file semantics: the writer (`_env_line`) and reader
+    (`parse_env_text`) must agree. The current `shlex.quote` writer produces
+    POSIX shell single-quote escaping (e.g. ``'a '\\''b'`` for ``a 'b``) which
+    the single-layer-strip reader does NOT undo, so the value is corrupted on
+    round-trip. This must hold for a value carrying a space + both quote kinds.
+    """
+    v = """has space and a " and a ' quote"""
+    assert parse_env_text(_env_line("FOO", v))["FOO"] == v
+
+
+def test_env_line_roundtrips_space_only() -> None:
+    """A value with only a space (no quote) round-trips writer→reader."""
+    v = "has space only"
+    assert parse_env_text(_env_line("FOO", v))["FOO"] == v
+
+
+def test_env_line_roundtrips_embedded_double_quote() -> None:
+    """A value with an embedded double quote round-trips via escaping."""
+    v = 'embedded "quote" here'
+    assert parse_env_text(_env_line("FOO", v))["FOO"] == v
+
+
+def test_env_line_simple_value_byte_identical_bare() -> None:
+    """G.7-a idempotency: simple alnum/_- values stay bare (no quotes).
+
+    `_runtime_env` secrets (token_urlsafe), image tags, and digests are
+    [A-Za-z0-9_-]/`.`/`:` — they MUST keep emitting unquoted exactly as today
+    or every install churns `.env`/`version.env`.
+    """
+    assert _env_line("K", "abc_DEF-123") == "K=abc_DEF-123"
+
+
+def test_env_line_token_urlsafe_shaped_value_bare() -> None:
+    """A token_urlsafe-shaped secret (alnum/_-) emits bare and round-trips."""
+    token = "Xy9_aB-cD3fG7hJ_kL2mN-pQ5rS8tU0vW1xY4zZ6"
+    line = _env_line("SECRET", token)
+    assert line == f"SECRET={token}"
+    assert parse_env_text(line)["SECRET"] == token
+
+
+def test_env_line_image_tag_and_digest_bare() -> None:
+    """Image tags and sha256 digests stay byte-identical (bare)."""
+    assert _env_line("V", "1.14.2") == "V=1.14.2"
+    digest = "sha256:" + "a" * 64
+    assert _env_line("D", digest) == f"D={digest}"
 
 
 def test_shell_quote_simple() -> None:
