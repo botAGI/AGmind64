@@ -54,12 +54,14 @@ class ModelSpec:
     ctx_native: int = 0
     backend_preferred: str = ""
     server_flags: tuple[str, ...] = ()
+    revision: str = ""  # optional HF commit/branch/tag pin; "" → mutable `main`
+    sha256: str = ""  # optional content checksum; "" → no post-download verify
     extras: dict[str, Any] = field(default_factory=dict)
 
     @property
     def hf_url(self) -> str:
-        """HuggingFace direct download URL."""
-        return hf_resolve_url(self.hf_repo, self.filename)
+        """HuggingFace direct download URL (pinned to ``revision`` when set)."""
+        return hf_resolve_url(self.hf_repo, self.filename, revision=self.revision)
 
     @property
     def local_filename(self) -> str:
@@ -151,6 +153,8 @@ def _model_from_dict(name: str, data: dict[str, Any], role: str = "primary") -> 
             "ctx_native",
             "backend_preferred",
             "server_flags",
+            "revision",
+            "sha256",
         }:
             extras[k] = v
     return ModelSpec(
@@ -166,6 +170,8 @@ def _model_from_dict(name: str, data: dict[str, Any], role: str = "primary") -> 
         ctx_native=int(data.get("ctx_native") or 0),
         backend_preferred=str(data.get("backend_preferred", "")),
         server_flags=tuple(str(x) for x in (data.get("server_flags") or ())),
+        revision=str(data.get("revision") or ""),
+        sha256=str(data.get("sha256") or ""),
         extras=extras,
     )
 
@@ -440,9 +446,35 @@ def safe_model_target(models_dir: Path, file_name: str) -> Path:
     return target
 
 
-def hf_resolve_url(repo: str, file_name: str) -> str:
-    """Return a safe Hugging Face resolve URL for a validated repo and model file."""
+def _safe_hf_revision(revision: str | None) -> str:
+    """Return a validated, URL-safe HF revision segment (default ``main``).
+
+    A falsy ``revision`` (None or "") means "unpinned" → mutable ``main`` (back-compat).
+    A set revision (commit sha / branch / tag) is validated the same defensive way
+    repo parts are — reject NUL, ``..`` traversal, and control characters — then
+    percent-quoted into a single path segment.
+    """
+    if not revision:
+        return "main"
+    if (
+        "\x00" in revision
+        or "://" in revision
+        or ".." in PurePosixPath(revision).parts
+        or any(ord(char) < 32 or ord(char) == 127 for char in revision)
+        or "/" in revision
+    ):
+        raise ValueError("HF revision must be a safe commit sha / branch / tag")
+    return quote(revision, safe="")
+
+
+def hf_resolve_url(repo: str, file_name: str, revision: str | None = None) -> str:
+    """Return a safe Hugging Face resolve URL for a validated repo and model file.
+
+    When ``revision`` is set, the URL pins ``/resolve/<revision>/`` (immutable
+    download); otherwise it falls back to the mutable ``/resolve/main/`` (back-compat).
+    """
     safe_model_target(Path("/tmp/agmind-model-name-check"), file_name)
+    safe_revision = _safe_hf_revision(revision)
     repo_parts = PurePosixPath(repo).parts
     if (
         not repo
@@ -456,4 +488,4 @@ def hf_resolve_url(repo: str, file_name: str) -> str:
         raise ValueError("HF repo must be a safe Hugging Face repo id")
     safe_repo = "/".join(quote(part, safe="") for part in repo_parts)
     safe_file = quote(PurePosixPath(file_name).name, safe="")
-    return f"https://huggingface.co/{safe_repo}/resolve/main/{safe_file}"
+    return f"https://huggingface.co/{safe_repo}/resolve/{safe_revision}/{safe_file}"

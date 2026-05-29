@@ -22,6 +22,17 @@ def _models_dir() -> Path:
     return Path(os.environ.get("AGMIND_MODELS_DIR", "/var/lib/agmind/models"))
 
 
+def _file_sha256(path: Path) -> str:
+    """Compute a file's sha256, reading in chunks (multi-GB models stay off the heap)."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _prepare_models_dir(models_dir: Path) -> bool:
     try:
         models_dir.mkdir(parents=True, exist_ok=True)
@@ -166,6 +177,20 @@ def cmd_download(
         except Exception as exc:  # noqa: BLE001
             print(f"  [{label}] FAILED: {exc}", file=sys.stderr)
             return 1
+        # G.5: verify content checksum before activation when the spec pins a sha256.
+        # urlretrieve writes directly to the FINAL path, so a mismatch must unlink the
+        # poisoned file rather than leave it in place (GOTCHA G.5-b). Empty sha256 → no
+        # verification (back-compat: unpinned entries download as before).
+        if spec.sha256:
+            actual = _file_sha256(local)
+            if actual != spec.sha256:
+                local.unlink(missing_ok=True)
+                print(
+                    f"  [{label}] FAILED: sha256 mismatch — expected {spec.sha256}, "
+                    f"got {actual} (removed {local})",
+                    file=sys.stderr,
+                )
+                return 1
         print(f"  [{label}] OK")
 
     return 0

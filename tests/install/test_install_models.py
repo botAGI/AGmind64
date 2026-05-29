@@ -201,10 +201,15 @@ def _patch_download(
     models_dir: Path,
 ) -> object:
     """Wire cmd_download to a fixture registry + fake urlretrieve writing `payload`."""
+    import agmind.models as models_mod
     from agmind.cli import models_cmd
 
     monkeypatch.setenv("AGMIND_MODELS_DIR", str(models_dir))
-    monkeypatch.setattr(models_cmd, "load_models_registry", lambda *a, **k: _registry_with_llm(spec))
+    # cmd_download imports load_models_registry lazily from agmind.models, so patch
+    # the source module (not the CLI module) for the lookup to take effect.
+    monkeypatch.setattr(
+        models_mod, "load_models_registry", lambda *a, **k: _registry_with_llm(spec)
+    )
 
     def fake_urlretrieve(url: str, filename: str) -> tuple[str, object]:
         Path(filename).write_bytes(payload)
@@ -227,14 +232,10 @@ def _make_spec(sha256: str) -> object:
     )
 
 
-def test_download_sha256_match_keeps_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_download_sha256_match_keeps_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Matching sha256 → download succeeds and the file remains on disk."""
     spec = _make_spec(_KNOWN_SHA256)
-    models_cmd = _patch_download(
-        monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path
-    )
+    models_cmd = _patch_download(monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path)
     rc = models_cmd.cmd_download("S")
     assert rc == 0
     assert (tmp_path / "model.gguf").exists()
@@ -246,9 +247,7 @@ def test_download_sha256_mismatch_raises_and_unlinks(
 ) -> None:
     """Wrong sha256 → fails loudly AND leaves no poisoned file at the final path."""
     spec = _make_spec("0" * 64)  # never matches _KNOWN_BYTES
-    models_cmd = _patch_download(
-        monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path
-    )
+    models_cmd = _patch_download(monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path)
     rc = models_cmd.cmd_download("S")
     assert rc != 0
     assert not (tmp_path / "model.gguf").exists(), "poisoned file must be unlinked"
