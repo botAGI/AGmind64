@@ -15,6 +15,7 @@ from agmind.deploy.gc import (
     _scan_used_models,
     format_gc_report,
     gc_all,
+    gc_images,
     gc_models,
     gc_volumes,
 )
@@ -344,3 +345,128 @@ def test_gc_volumes_dry_run_real_label_filter_parity(
             assert dry_labels == set()
         else:
             assert dry_labels == {_GC_AUTO_LABEL}
+
+
+# ---------- gc_images mode-faithful argv invariant (6.7 G.2) ----------
+#
+# Audit finding (gc.py:141-174): the gc_images dry-run previewed `dangling=true`
+# but the real run did `prune -af` — silently deleting ALL unused images
+# (including pinned-but-stopped), a dry-run/real mismatch. LOCKED decision G.2:
+# non-aggressive gc_images = `docker image prune -f --filter until=<N>h`
+# (dangling-only, matching the dry-run); aggressive=True = `prune -af`; the
+# dry-run preview enumerates EXACTLY the set the real prune targets per mode.
+# These guards lock the prune flag token and the dry-run/real enumeration parity
+# so a future edit cannot re-introduce the "preview lies about deletions" bug.
+# gc_volumes / gc_networks argv are deliberately NOT touched here (byte-identical).
+
+_DANGLING_FILTER = "dangling=true"
+
+
+def _record_image_argv(
+    monkeypatch: pytest.MonkeyPatch, *, aggressive: bool, dry_run: bool
+) -> list[str]:
+    """Run gc_images with subprocess.run recorded; return the captured argv.
+
+    Mirrors `_record_volume_argv` verbatim (the F.2 recorder idiom): monkeypatch
+    `_docker_available`→True and `gc.subprocess.run`→a recorder returning a real
+    CompletedProcess so `_run` and `_parse_size` stay happy.
+    """
+    calls: list[list[str]] = []
+
+    def fake_run(
+        cmd: list[str], *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(gc_mod, "_docker_available", lambda: True)
+    monkeypatch.setattr(gc_mod.subprocess, "run", fake_run)
+
+    report = gc_images(aggressive=aggressive, dry_run=dry_run)
+
+    assert report.error is None
+    assert len(calls) == 1, f"expected exactly one docker invocation, got {calls}"
+    return calls[0]
+
+
+def _prune_flag_token(argv: list[str]) -> str:
+    """Return the single bundled prune flag token (e.g. '-f' or '-af').
+
+    GOTCHA G.2-a: the real prune flag is ONE bundled argv element (`-af`), not
+    separate `-a` `-f`. Asserting on this exact token is the only safe way to
+    reject `-af` smuggled into the non-aggressive path.
+    """
+    flags = [tok for tok in argv if tok.startswith("-") and not tok.startswith("--")]
+    assert len(flags) == 1, f"expected exactly one short-flag token, got {flags} in {argv}"
+    return flags[0]
+
+
+def test_gc_images_non_aggressive_real_is_dangling_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real non-aggressive prune MUST be `-f` (dangling-only), NEVER `-af`/`-a`/`--all`."""
+    argv = _record_image_argv(monkeypatch, aggressive=False, dry_run=False)
+    assert argv[:3] == ["docker", "image", "prune"]
+    # GOTCHA G.2-a: assert the exact bundled flag token, not `"-a" not in argv`
+    # (which would pass even when `-af` is present).
+    assert _prune_flag_token(argv) == "-f", argv
+    assert "-a" not in argv and "--all" not in argv and "-af" not in argv, argv
+    # The cutoff filter is still applied in both modes.
+    assert _contains_adjacent_pair(argv, ["--filter", "until=72h"]), argv
+
+
+def test_gc_images_aggressive_real_prunes_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real aggressive prune intentionally prunes ALL unused images (`-af`)."""
+    argv = _record_image_argv(monkeypatch, aggressive=True, dry_run=False)
+    assert argv[:3] == ["docker", "image", "prune"]
+    assert _prune_flag_token(argv) == "-af", argv
+    assert _contains_adjacent_pair(argv, ["--filter", "until=72h"]), argv
+
+
+def test_gc_images_non_aggressive_dry_run_previews_dangling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dry-run non-aggressive preview enumerates the `dangling=true` set (== `prune -f`)."""
+    argv = _record_image_argv(monkeypatch, aggressive=False, dry_run=True)
+    assert argv[:3] == ["docker", "image", "ls"]
+    assert _DANGLING_FILTER in _adjacent_filter_label_values(argv), argv
+
+
+def test_gc_images_aggressive_dry_run_drops_dangling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dry-run aggressive preview drops `dangling=true` so it matches the `-af` target set."""
+    argv = _record_image_argv(monkeypatch, aggressive=True, dry_run=True)
+    assert argv[:3] == ["docker", "image", "ls"]
+    assert _DANGLING_FILTER not in argv, argv
+
+
+def test_gc_images_dry_run_real_dangling_parity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The set previewed by dry-run must equal what the real prune targets per mode.
+
+    Non-aggressive: dry-run shows `dangling=true` and real prune is `-f`
+    (dangling-only) — both dangling. Aggressive: dry-run drops `dangling=true`
+    and real prune is `-af` (all unused) — neither dangling. A drift here means
+    the preview lies about deletions (the exact audit finding G.2 closes).
+    """
+    for aggressive in (False, True):
+        dry_argv = _record_image_argv(monkeypatch, aggressive=aggressive, dry_run=True)
+        real_argv = _record_image_argv(monkeypatch, aggressive=aggressive, dry_run=False)
+
+        dry_is_dangling = _DANGLING_FILTER in _adjacent_filter_label_values(dry_argv)
+        # The real prune is dangling-only iff it is NOT `-af` (i.e. plain `-f`).
+        real_is_dangling = _prune_flag_token(real_argv) == "-f"
+
+        assert dry_is_dangling == real_is_dangling, (
+            f"dry-run/real dangling parity broken for aggressive={aggressive}: "
+            f"dry_dangling={dry_is_dangling} real_dangling={real_is_dangling} "
+            f"(dry={dry_argv} real={real_argv})"
+        )
+        if aggressive:
+            assert not dry_is_dangling
+        else:
+            assert dry_is_dangling

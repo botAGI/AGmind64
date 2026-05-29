@@ -127,11 +127,21 @@ def gc_containers(dry_run: bool = False) -> GcReport:
     )
 
 
-def gc_images(older_than_hours: int = 72, dry_run: bool = False) -> GcReport:
-    """Remove dangling + старше cutoff images.
+def gc_images(
+    older_than_hours: int = 72, aggressive: bool = False, dry_run: bool = False
+) -> GcReport:
+    """Remove cutoff images. Mode-faithful: dry-run previews exactly what runs.
+
+    По умолчанию (safe mode): удаляет только dangling images старше cutoff
+    (`docker image prune -f --filter until=<N>h`) — это совпадает с тем, что
+    показывает dry-run preview.
+    aggressive=True: удаляет ВСЕ unused images старше cutoff
+    (`docker image prune -af --filter until=<N>h`), включая запинённые но
+    остановленные. Dry-run в этом режиме перечисляет тот же all-unused набор.
 
     Args:
         older_than_hours: skip удалённые позже N часов. Default 72h.
+        aggressive: prune ВСЕ unused (а не только dangling).
     """
     if not _docker_available():
         return GcReport(target="images", error="docker not installed")
@@ -139,33 +149,43 @@ def gc_images(older_than_hours: int = 72, dry_run: bool = False) -> GcReport:
     until = f"{older_than_hours}h"
 
     if dry_run:
-        result = _run(
-            [
+        if aggressive:
+            # Mirror real `prune -af --filter until`: enumerate ALL images
+            # filtered by the same cutoff (drop dangling=true).
+            cmd = [
+                "docker",
+                "image",
+                "ls",
+                "-a",
+                "--filter",
+                f"until={until}",
+                "--format",
+                "{{.Repository}}:{{.Tag}} ({{.Size}})",
+            ]
+        else:
+            # Mirror real `prune -f`: dangling-only.
+            cmd = [
                 "docker",
                 "image",
                 "ls",
                 "-a",
                 "--filter",
                 "dangling=true",
+                "--filter",
+                f"until={until}",
                 "--format",
                 "{{.Repository}}:{{.Tag}} ({{.Size}})",
             ]
-        )
+        result = _run(cmd)
         if result.returncode != 0:
             return GcReport(target="images", error=result.stderr.strip(), dry_run=True)
         items = [l for l in result.stdout.strip().splitlines() if l]
         return GcReport(target="images", items_removed=len(items), dry_run=True, items=items)
 
-    result = _run(
-        [
-            "docker",
-            "image",
-            "prune",
-            "-af",
-            "--filter",
-            f"until={until}",
-        ]
-    )
+    if aggressive:
+        result = _run(["docker", "image", "prune", "-af", "--filter", f"until={until}"])
+    else:
+        result = _run(["docker", "image", "prune", "-f", "--filter", f"until={until}"])
     if result.returncode != 0:
         return GcReport(target="images", error=result.stderr.strip())
     return GcReport(
@@ -356,7 +376,7 @@ def gc_all(
     """Run all GC operations. Returns list of reports."""
     reports = [
         gc_containers(dry_run=dry_run),
-        gc_images(older_than_hours=older_than_hours, dry_run=dry_run),
+        gc_images(older_than_hours=older_than_hours, aggressive=aggressive, dry_run=dry_run),
         gc_volumes(aggressive=aggressive, dry_run=dry_run),
         gc_networks(dry_run=dry_run),
     ]
