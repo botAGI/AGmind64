@@ -73,6 +73,7 @@ ansible/.facts_cache/
 # Agent-local artifacts
 .claude/
 CLAUDE.md
+AGENTS.md
 .planning/
 docs/superpowers/
 
