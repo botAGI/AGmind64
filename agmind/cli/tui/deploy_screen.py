@@ -14,6 +14,7 @@ TUI screen subscribes и обновляет widgets. Same runner использ�
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -107,6 +108,9 @@ class DeployProgressScreen(Screen[DeployResult]):
         self.healthcheck_timeout = healthcheck_timeout
         self.result: DeployResult | None = None
         self._cancelled = False
+        # Watched by the deploy runner's healthcheck wait so Cancel breaks out of the
+        # long (up to healthcheck_timeout) poll instead of hanging the worker thread.
+        self.cancel_event = threading.Event()
         self._step_states: dict[str, str] = {step: "pending" for step, _ in self.STEPS}
 
     def compose(self) -> ComposeResult:
@@ -222,6 +226,7 @@ class DeployProgressScreen(Screen[DeployResult]):
             no_prompt=True,
             healthcheck_timeout=self.healthcheck_timeout,
             progress=progress_cb,
+            cancel_event=self.cancel_event,
         )
 
     def _finalize(self) -> None:
@@ -253,12 +258,17 @@ class DeployProgressScreen(Screen[DeployResult]):
             self.action_cancel()
 
     def action_cancel(self) -> None:
-        # Soft cancel — worker not actually interruptible mid-step,
-        # но user экран dismiss → result returned as failure.
+        # Signal the runner (its healthcheck wait polls cancel_event) so the worker
+        # unblocks promptly, then dismiss.
         self._cancelled = True
+        self.cancel_event.set()
         if self.result is None:
             self.result = DeployResult(success=False, message="cancelled by user")
         self.dismiss(self.result)
+
+    def on_unmount(self) -> None:
+        # Catch-all so any teardown path unblocks a running deploy worker.
+        self.cancel_event.set()
 
     def action_dismiss_if_done(self) -> None:
         if self.result is not None:

@@ -1057,7 +1057,7 @@ def test_deploy_apply_starts_rendered_services_by_name(
 
     monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args: (0, ""))
-    monkeypatch.setattr(runner, "_wait_healthy", lambda *_args: (True, []))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
 
     def fake_run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
         calls.append(args)
@@ -1661,3 +1661,27 @@ def test_wait_healthy_accepts_compose_json_array(
 
     assert healthy
     assert unhealthy == []
+
+
+def test_wait_healthy_returns_early_on_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The healthcheck poll (up to healthcheck_timeout, now 900s) is the longest part
+    of a deploy. It must break out promptly when the cancel_event fires, instead of
+    blocking the worker thread (and the TUI) for the full timeout."""
+    import threading
+    import time as _time
+
+    # Always report a 'starting' container so the loop would otherwise run to timeout.
+    monkeypatch.setattr(
+        runner,
+        "_run_compose_maybe_sudo",
+        lambda *_a, **_k: (0, '[{"Service": "x", "Health": "starting", "State": "running"}]', ""),
+    )
+    ev = threading.Event()
+    ev.set()  # already cancelled
+
+    t0 = _time.monotonic()
+    healthy, _unhealthy = runner._wait_healthy(Path("/tmp"), timeout=300, cancel_event=ev)
+    elapsed = _time.monotonic() - t0
+
+    assert elapsed < 5.0, f"_wait_healthy ignored cancel (took {elapsed:.1f}s)"
+    assert healthy is False

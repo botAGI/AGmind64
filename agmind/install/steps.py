@@ -1291,6 +1291,8 @@ class DeployStep(InstallStep):
                 # First-run deploy must outlast a multi-GB LLM load; the runner default
                 # (300s) false-rolls-back an otherwise-healthy stack (BREA02).
                 healthcheck_timeout=self.HEALTHCHECK_TIMEOUT,
+                # Let Cancel break out of the long healthcheck wait promptly.
+                cancel_event=self.cancel_event,
             )
         except Exception as exc:  # noqa: BLE001
             return InstallStepResult(

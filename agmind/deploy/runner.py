@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -370,26 +371,43 @@ def _compose_ps_containers(stdout: str) -> list[dict[str, object]]:
     return containers
 
 
+def _interruptible_sleep(seconds: float, cancel_event: threading.Event | None) -> bool:
+    """Sleep up to *seconds*, returning True if cancelled mid-sleep.
+
+    With no cancel_event this is a plain sleep (returns False). With one, it wakes
+    immediately when the event fires so the healthcheck poll can abort promptly.
+    """
+    if cancel_event is None:
+        time.sleep(seconds)
+        return False
+    return cancel_event.wait(seconds)
+
+
 def _wait_healthy(
     install_dir: Path,
     timeout: int,
     sudo_password: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[bool, list[str]]:
     """Wait until все сервисы помечены healthy (или running без healthcheck).
 
-    Returns (success, unhealthy_names).
+    Returns (success, unhealthy_names). If `cancel_event` fires, returns early
+    (success=False) instead of blocking the worker for the full timeout.
     """
     deadline = time.monotonic() + timeout
     last_unhealthy: list[str] = []
 
     while time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            return False, last_unhealthy or ["cancelled by user"]
         rc, stdout, _ = _run_compose_maybe_sudo(
             ["ps", "--format", "json"],
             cwd=install_dir,
             sudo_password=sudo_password,
         )
         if rc != 0:
-            time.sleep(2)
+            if _interruptible_sleep(2.0, cancel_event):
+                return False, last_unhealthy or ["cancelled by user"]
             continue
 
         unhealthy: list[str] = []
@@ -410,7 +428,8 @@ def _wait_healthy(
         if not unhealthy:
             return True, []
         last_unhealthy = unhealthy
-        time.sleep(5)
+        if _interruptible_sleep(5.0, cancel_event):
+            return False, last_unhealthy
 
     return False, last_unhealthy
 
@@ -426,6 +445,7 @@ def deploy(
     services: list[str] | None = None,
     progress: ProgressCallback | None = None,
     sudo_password: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> DeployResult:
     """Main deploy orchestrator.
 
@@ -718,12 +738,15 @@ def deploy(
     _emit("wait_healthy", f"waiting for healthy state (timeout={healthcheck_timeout}s)")
     log.info("waiting for healthy state (timeout=%ds)...", healthcheck_timeout)
     if sudo_password is None:
-        healthy, unhealthy = _wait_healthy(install_dir, healthcheck_timeout)
+        healthy, unhealthy = _wait_healthy(
+            install_dir, healthcheck_timeout, cancel_event=cancel_event
+        )
     else:
         healthy, unhealthy = _wait_healthy(
             install_dir,
             healthcheck_timeout,
             sudo_password=sudo_password,
+            cancel_event=cancel_event,
         )
 
     if not healthy:
