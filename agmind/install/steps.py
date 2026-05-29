@@ -7,6 +7,7 @@ InstallStepResult с success / message / elapsed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -1252,12 +1253,23 @@ class ModelDownloadStep(InstallStep):
             cmd, callback, self.step_id, extra_emit=parse_curl_pct, cancel_event=self.cancel_event
         )
         if rc != 0:
+            # Genuine interrupt/error (incl. cancel): keep the partial so a retry can
+            # `curl -C -` resume it instead of re-downloading from scratch.
             return False, f"{role}: curl rc={rc} (download failed)"
         partial_size = partial.stat().st_size if partial.exists() else 0
         if partial_size < min_size:
+            # curl reported success (rc=0) yet the file is too small — an HF
+            # redirect/resume glitch or an error body, NOT a resumable partial. Leaving
+            # it would poison the next `curl -C -` (the real "100% then 0 MiB" loop), so
+            # clear it; the retry then starts clean and downloads correctly.
+            with contextlib.suppress(OSError):
+                partial.unlink()
             size_mb = partial_size // (1024 * 1024)
             min_mb = min_size // (1024 * 1024)
-            return False, f"{role}: downloaded file too small ({size_mb} MiB < {min_mb} MiB)"
+            return False, (
+                f"{role}: downloaded file too small ({size_mb} MiB < {min_mb} MiB); "
+                "cleared partial for retry"
+            )
         partial.replace(target)
         size_mb = target.stat().st_size // (1024 * 1024)
         return True, f"{role}: downloaded {size_mb} MiB → {target.name}"

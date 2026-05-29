@@ -331,7 +331,10 @@ def test_download_success_rejects_too_small_partial_file(
     assert not result.success
     assert "downloaded file too small" in result.message
     assert not target.exists()
-    assert partial.read_bytes() == b"too small"
+    # curl reported success (rc=0) but produced a too-small file — that is poison for a
+    # later `curl -C -` resume (the real "100% then 0 MiB" failure). It MUST be cleared
+    # so the next retry starts clean instead of resuming from garbage.
+    assert not partial.exists()
 
 
 def test_skip_step_if_no_model_configured(tmp_path: Path) -> None:
