@@ -273,6 +273,110 @@ def test_hf_resolve_url_quotes_model_file() -> None:
     assert url == "https://huggingface.co/org/repo/resolve/main/model%20name.gguf"
 
 
+# ---- G.5: revision-aware resolver (optional pinning mechanism) ----
+
+
+def test_hf_resolve_url_unset_revision_uses_main() -> None:
+    """Back-compat: no revision → /resolve/main/ (existing behavior)."""
+    url = hf_resolve_url("org/repo", "model.gguf")
+    assert url == "https://huggingface.co/org/repo/resolve/main/model.gguf"
+
+
+def test_hf_resolve_url_with_revision_pins_commit() -> None:
+    """When revision is set → /resolve/<revision>/<file> (pinned download)."""
+    url = hf_resolve_url("org/repo", "model.gguf", revision="abc123")
+    assert "/resolve/abc123/" in url
+    assert url == "https://huggingface.co/org/repo/resolve/abc123/model.gguf"
+
+
+def test_hf_resolve_url_with_empty_revision_uses_main() -> None:
+    """Empty-string revision is treated as unset (back-compat default)."""
+    url = hf_resolve_url("org/repo", "model.gguf", revision="")
+    assert url == "https://huggingface.co/org/repo/resolve/main/model.gguf"
+
+
+@pytest.mark.parametrize(
+    "bad_revision",
+    [
+        "bad\x00rev",
+        "..",
+        "../escape",
+        "rev\nwith-newline",
+        "rev\x1fctrl",
+    ],
+)
+def test_hf_resolve_url_rejects_unsafe_revision(bad_revision: str) -> None:
+    """Revision is validated the same defensive way repo parts are (NUL/../control)."""
+    with pytest.raises(ValueError, match="revision"):
+        hf_resolve_url("org/repo", "model.gguf", revision=bad_revision)
+
+
+# ---- G.5: optional revision/sha256 on ModelSpec schema ----
+
+
+def test_modelspec_revision_sha256_default_empty() -> None:
+    """Fields are optional; entries without them load with empty-string defaults."""
+    s = ModelSpec(
+        name="x",
+        hf_repo="org/repo",
+        filename="model.gguf",
+        quant="Q4",
+        size_gb=1.0,
+    )
+    assert s.revision == ""
+    assert s.sha256 == ""
+    # Unpinned spec falls back to /resolve/main/ (back-compat).
+    assert s.hf_url == "https://huggingface.co/org/repo/resolve/main/model.gguf"
+
+
+def test_modelspec_hf_url_threads_revision() -> None:
+    """When revision is set on the spec, hf_url pins the resolve path."""
+    s = ModelSpec(
+        name="x",
+        hf_repo="org/repo",
+        filename="model.gguf",
+        quant="Q4",
+        size_gb=1.0,
+        revision="deadbeef",
+        sha256="00ff",
+    )
+    assert s.hf_url == "https://huggingface.co/org/repo/resolve/deadbeef/model.gguf"
+
+
+def test_model_from_dict_without_pinning_fields_defaults_empty() -> None:
+    """A dict lacking revision/sha256 builds a spec with empty-string defaults."""
+    from agmind.models import _model_from_dict
+
+    spec = _model_from_dict(
+        "",
+        {"name": "m", "hf_repo": "org/repo", "filename": "m.gguf", "quant": "Q4", "size_gb": 2.0},
+    )
+    assert spec.revision == ""
+    assert spec.sha256 == ""
+
+
+def test_model_from_dict_with_pinning_fields_populated_and_not_in_extras() -> None:
+    """revision/sha256 are read into the spec and NOT swept into extras."""
+    from agmind.models import _model_from_dict
+
+    spec = _model_from_dict(
+        "",
+        {
+            "name": "m",
+            "hf_repo": "org/repo",
+            "filename": "m.gguf",
+            "quant": "Q4",
+            "size_gb": 2.0,
+            "revision": "abc123",
+            "sha256": "a" * 64,
+        },
+    )
+    assert spec.revision == "abc123"
+    assert spec.sha256 == "a" * 64
+    assert "revision" not in spec.extras
+    assert "sha256" not in spec.extras
+
+
 # ---- verification field consistency ----
 
 

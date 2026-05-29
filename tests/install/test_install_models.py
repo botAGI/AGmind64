@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import pytest
 
 from agmind.install.models import (
@@ -161,3 +164,104 @@ def test_default_model_id_per_kind() -> None:
     assert rerank_entry is not None and rerank_entry.kind == "rerank"
     # Backward compat: bare default_model_id() = LLM
     assert _did() == "qwen36-a3b-q4km"
+
+
+# ---------- G.5: sha256 verify on the spec-bearing download path ----------
+
+
+_KNOWN_BYTES = b"agmind-test-model-bytes"
+_KNOWN_SHA256 = hashlib.sha256(_KNOWN_BYTES).hexdigest()
+
+
+def _registry_with_llm(spec: object) -> object:
+    """Build a minimal ModelsRegistry whose single S-tier LLM is `spec`."""
+    from agmind.models import ModelsRegistry, ModelTier
+
+    return ModelsRegistry(
+        schema_version=1,
+        last_updated="test",
+        llama_cpp_min_build="b0000",
+        llama_cpp_recommended_build="b0000",
+        llm_tiers={"S": ModelTier(tier="S", description="test", primary=spec)},  # type: ignore[arg-type]
+        embedding_primary=spec,  # type: ignore[arg-type]
+        embedding_ab=None,
+        reranker_primary=spec,  # type: ignore[arg-type]
+        reranker_ab=None,
+        vlm_light=None,
+        vlm_quality=None,
+        antipatterns=(),
+    )
+
+
+def _patch_download(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    spec: object,
+    payload: bytes,
+    models_dir: Path,
+) -> object:
+    """Wire cmd_download to a fixture registry + fake urlretrieve writing `payload`."""
+    from agmind.cli import models_cmd
+
+    monkeypatch.setenv("AGMIND_MODELS_DIR", str(models_dir))
+    monkeypatch.setattr(models_cmd, "load_models_registry", lambda *a, **k: _registry_with_llm(spec))
+
+    def fake_urlretrieve(url: str, filename: str) -> tuple[str, object]:
+        Path(filename).write_bytes(payload)
+        return filename, None
+
+    monkeypatch.setattr(models_cmd, "urlretrieve", fake_urlretrieve)
+    return models_cmd
+
+
+def _make_spec(sha256: str) -> object:
+    from agmind.models import ModelSpec
+
+    return ModelSpec(
+        name="test-llm",
+        hf_repo="org/repo",
+        filename="model.gguf",
+        quant="Q4",
+        size_gb=0.001,
+        sha256=sha256,
+    )
+
+
+def test_download_sha256_match_keeps_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Matching sha256 → download succeeds and the file remains on disk."""
+    spec = _make_spec(_KNOWN_SHA256)
+    models_cmd = _patch_download(
+        monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path
+    )
+    rc = models_cmd.cmd_download("S")
+    assert rc == 0
+    assert (tmp_path / "model.gguf").exists()
+    assert (tmp_path / "model.gguf").read_bytes() == _KNOWN_BYTES
+
+
+def test_download_sha256_mismatch_raises_and_unlinks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Wrong sha256 → fails loudly AND leaves no poisoned file at the final path."""
+    spec = _make_spec("0" * 64)  # never matches _KNOWN_BYTES
+    models_cmd = _patch_download(
+        monkeypatch, spec=spec, payload=_KNOWN_BYTES, models_dir=tmp_path
+    )
+    rc = models_cmd.cmd_download("S")
+    assert rc != 0
+    assert not (tmp_path / "model.gguf").exists(), "poisoned file must be unlinked"
+
+
+def test_download_empty_sha256_skips_verify(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Back-compat: sha256='' → no verification, any bytes accepted, file kept."""
+    spec = _make_spec("")
+    models_cmd = _patch_download(
+        monkeypatch, spec=spec, payload=b"whatever-unverified", models_dir=tmp_path
+    )
+    rc = models_cmd.cmd_download("S")
+    assert rc == 0
+    assert (tmp_path / "model.gguf").exists()
