@@ -684,14 +684,16 @@ class BootstrapStep(InstallStep):
     """Run `ansible-playbook install.yml --tags bootstrap` с sudo password.
 
     Sudo password передаётся как `ansible_become_password` внутри extra-vars,
-    записанных в anonymous pipe и переданных через `--extra-vars @/dev/fd/<fd>`.
-    Секрет остаётся в kernel buffer (не на disk) и не виден в argv.
+    записанных в РЕАЛЬНЫЙ temp-файл с правами 0600 на tmpfs (`/dev/shm`, в RAM —
+    не на персистентный диск) и переданный через `--extra-vars @<path>`. Файл
+    удаляется в `finally`. В argv видно только путь, не сами секреты.
 
-    ВАЖНО: НЕ использовать `--become-password-file /dev/fd/<fd>` — Ansible прогоняет
-    этот аргумент через `unfrack_path()` (= `os.path.realpath`), а realpath не
-    резолвит pipe-FD: `/dev/fd/N` → `/proc/<pid>/fd/pipe:[inode]` (не существует) →
-    "The password file ... was not found", rc=1. extra-vars `@/dev/fd/N` грузится
-    через `unfrackpath(follow=False)`, pipe-FD переживает — поэтому секрет едет там.
+    ВАЖНО: НЕ передавать секреты Ansible через pipe-FD (`/dev/fd/N`) ни в одном
+    file-аргументе. Ansible прогоняет такие пути через `os.path.realpath`, а realpath
+    не резолвит pipe-FD: `/dev/fd/N` → `/proc/<pid>/fd/pipe:[inode]` (не существует),
+    что ломает И `--become-password-file /dev/fd/N` ("The password file ... was not
+    found"), И `--extra-vars @/dev/fd/N` ("Unable to retrieve file contents ...
+    /proc/<pid>/fd/pipe:[inode]"). Оба падают rc=1. Отсюда — реальный temp-файл.
     """
 
     step_id = "bootstrap"
@@ -747,18 +749,22 @@ class BootstrapStep(InstallStep):
                     elapsed=timedelta(seconds=time.monotonic() - start),
                 )
 
-        # Write password and sensitive vars to anonymous pipes. The visible
-        # process argv contains only /dev/fd/N paths, not secret values.
-        vars_rfd: int | None = None
-        vars_wfd: int | None = None
+        # Sudo password + sensitive vars reach Ansible via `--extra-vars @<file>`. We
+        # write a REAL temp file (0600) on a tmpfs (/dev/shm, RAM-backed — never hits
+        # persistent disk) and unlink it in `finally`. We must NOT use a pipe FD
+        # (`/dev/fd/N`) for ANY Ansible file argument: Ansible realpath-canonicalizes
+        # those paths and cannot resolve a pipe FD — `/dev/fd/N` becomes
+        # `/proc/<pid>/fd/pipe:[inode]` (ENOENT), which breaks BOTH
+        # `--become-password-file` and `--extra-vars @/dev/fd/N`. The visible argv
+        # contains only the temp-file path, never the secret values.
+        secrets_dir = (
+            "/dev/shm" if os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK) else None
+        )
+        vars_fd, vars_path = tempfile.mkstemp(
+            prefix=".agmind-bootstrap-", suffix=".json", dir=secrets_dir
+        )
         proc: subprocess.Popen[str] | None = None
         try:
-            # Sudo password + sensitive vars travel through ONE anonymous pipe consumed
-            # by `--extra-vars @/dev/fd/N`. We deliberately do NOT use
-            # `--become-password-file /dev/fd/N`: Ansible realpath-canonicalizes that
-            # arg and cannot resolve a pipe FD (see class docstring). The extra-vars
-            # loader uses unfrackpath(follow=False), so the pipe FD survives.
-            vars_rfd, vars_wfd = os.pipe()
             extra_vars_payload = json.dumps(
                 {
                     "agmind_domain": config.domain,
@@ -767,9 +773,10 @@ class BootstrapStep(InstallStep):
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
-            os.write(vars_wfd, extra_vars_payload + b"\n")
-            os.close(vars_wfd)
-            vars_wfd = None
+            # mkstemp created vars_path with 0600 perms; write the secret through its fd.
+            os.write(vars_fd, extra_vars_payload)
+            os.close(vars_fd)
+            vars_fd = -1
 
             cmd = [
                 resolve_ansible_command("ansible-playbook"),
@@ -777,15 +784,13 @@ class BootstrapStep(InstallStep):
                 "--tags",
                 self.ANSIBLE_TAGS,
                 "--extra-vars",
-                f"@/dev/fd/{vars_rfd}",
+                f"@{vars_path}",
                 "-i",
                 "localhost,",
                 "--connection",
                 "local",
             ]
 
-            # We need rfd to survive into child. subprocess closes fds by default
-            # с close_fds=True, но pass_fds= перечисляет которые оставить.
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -794,7 +799,6 @@ class BootstrapStep(InstallStep):
                 text=True,
                 bufsize=1,
                 cwd=str(ansible_dir),
-                pass_fds=(vars_rfd,),
             )
             if proc.stdout is not None:
                 for raw in proc.stdout:
@@ -811,13 +815,15 @@ class BootstrapStep(InstallStep):
                     proc.wait()
                 if proc.stdout is not None:
                     proc.stdout.close()
-            for fd in (vars_rfd, vars_wfd):
-                if fd is None:
-                    continue
+            if vars_fd >= 0:
                 try:
-                    os.close(fd)
+                    os.close(vars_fd)
                 except OSError:
                     pass
+            try:
+                os.unlink(vars_path)
+            except OSError:
+                pass
 
         elapsed = timedelta(seconds=time.monotonic() - start)
         if rc != 0:

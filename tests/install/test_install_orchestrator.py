@@ -1808,9 +1808,11 @@ def test_bootstrap_passes_cf_token_outside_process_arguments(
         captured["cmd"] = cmd
         captured["kwargs"] = kwargs
         extra_vars = cmd[cmd.index("--extra-vars") + 1]
-        if isinstance(extra_vars, str) and extra_vars.startswith("@/dev/fd/"):
-            vars_fd = int(extra_vars.removeprefix("@/dev/fd/"))
-            captured["extra_vars_payload"] = os.read(vars_fd, 65536).decode("utf-8")
+        captured["extra_vars_arg"] = extra_vars
+        if isinstance(extra_vars, str) and extra_vars.startswith("@"):
+            path = extra_vars[1:]
+            captured["extra_vars_path"] = path
+            captured["extra_vars_payload"] = Path(path).read_text(encoding="utf-8")
         return FakeProc()
 
     monkeypatch.setattr(steps, "DEFAULT_REPO_ROOT", tmp_path)
@@ -1829,26 +1831,32 @@ def test_bootstrap_passes_cf_token_outside_process_arguments(
     assert token not in argv
     assert token not in kwargs
     assert "--extra-vars" in captured["cmd"]
-    assert "@/dev/fd/" in argv
+    # extra-vars must be a REAL file path, never a /dev/fd/N pipe: Ansible
+    # realpath-canonicalizes the @file and cannot resolve a pipe FD.
+    extra_vars_arg = str(captured["extra_vars_arg"])
+    assert extra_vars_arg.startswith("@")
+    assert "/dev/fd/" not in argv
     payload = str(captured["extra_vars_payload"])
     assert "agmind_cf_api_token" in payload
     assert token in payload
     assert "lab.example.com" in payload
+    # the secret-bearing temp file is removed once the step finishes
+    assert not Path(captured["extra_vars_path"]).exists()
 
 
 def test_bootstrap_passes_sudo_password_via_extra_vars_not_become_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sudo password must reach Ansible via the extra-vars pipe (ansible_become_password),
-    never via ``--become-password-file``.
+    """Sudo password must reach Ansible as ``ansible_become_password`` inside the
+    extra-vars file, never via ``--become-password-file`` and never via a pipe FD.
 
     Ansible applies ``type=unfrack_path()`` (i.e. ``os.path.realpath``) to
-    ``--become-password-file`` at argparse time, and realpath cannot resolve a
-    ``/dev/fd/N`` pipe — it mangles it to ``/proc/<pid>/fd/pipe:[inode]`` which does
-    not exist, so a piped become-password-file always fails with
-    "The password file ... was not found". The extra-vars ``@/dev/fd/N`` loader uses
-    ``unfrackpath(follow=False)`` and is unaffected, so the secret rides that channel.
+    ``--become-password-file`` at argparse time, and ALSO canonicalizes the
+    ``--extra-vars @<file>`` path. realpath cannot resolve a ``/dev/fd/N`` pipe —
+    it mangles it to ``/proc/<pid>/fd/pipe:[inode]`` (nonexistent) — so BOTH a piped
+    become-password-file and a piped extra-vars file fail. The secret therefore rides
+    a real 0600 temp file (on tmpfs) passed as ``--extra-vars @<path>``.
     """
     from agmind.install import steps
     from agmind.install.steps import BootstrapStep
@@ -1872,9 +1880,14 @@ def test_bootstrap_passes_sudo_password_via_extra_vars_not_become_file(
         captured["cmd"] = cmd
         captured["kwargs"] = kwargs
         extra_vars = cmd[cmd.index("--extra-vars") + 1]
-        if isinstance(extra_vars, str) and extra_vars.startswith("@/dev/fd/"):
-            vars_fd = int(extra_vars.removeprefix("@/dev/fd/"))
-            captured["extra_vars_payload"] = os.read(vars_fd, 65536).decode("utf-8")
+        captured["extra_vars_arg"] = extra_vars
+        if isinstance(extra_vars, str) and extra_vars.startswith("@"):
+            path = extra_vars[1:]
+            captured["extra_vars_path"] = path
+            # the file must really exist while ansible runs, with 0600 perms
+            st = os.stat(path)
+            captured["extra_vars_mode"] = stat.S_IMODE(st.st_mode)
+            captured["extra_vars_payload"] = Path(path).read_text(encoding="utf-8")
         return FakeProc()
 
     monkeypatch.setattr(steps, "DEFAULT_REPO_ROOT", tmp_path)
@@ -1891,16 +1904,20 @@ def test_bootstrap_passes_sudo_password_via_extra_vars_not_become_file(
     argv = "\0".join(str(part) for part in cmd)
     kwargs = str(captured["kwargs"])
     assert result.success is True
-    # the realpath-mangled channel must be gone entirely (both flag spellings)
+    # the realpath-mangled channels must be gone entirely
     assert "--become-password-file" not in cmd
     assert "--become-pass-file" not in cmd
-    # sudo password never appears in argv or Popen kwargs (stays in kernel pipe buffer)
+    assert "/dev/fd/" not in argv  # no pipe FD passed as any Ansible file arg
+    # sudo password never appears in argv or Popen kwargs
     assert sudo_password not in argv
     assert sudo_password not in kwargs
-    # it travels through the working extra-vars pipe as ansible_become_password
+    # it travels through the extra-vars file as ansible_become_password
     payload = str(captured["extra_vars_payload"])
     assert "ansible_become_password" in payload
     assert sudo_password in payload
+    # secret file is 0600 while live and removed once the step finishes
+    assert captured["extra_vars_mode"] == 0o600
+    assert not Path(captured["extra_vars_path"]).exists()
 
 
 def test_bootstrap_installs_ansible_collections_before_playbook(
