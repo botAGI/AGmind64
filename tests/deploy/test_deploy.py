@@ -441,12 +441,45 @@ def test_runner_run_compose_can_use_sudo_password(
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    # No user docker login present -> plain sudo (anonymous) form, unchanged.
+    monkeypatch.setattr(runner, "_user_docker_config_dir", lambda: None)
 
     assert runner._run_compose(["ps"], cwd=tmp_path, sudo_password="pw") == (0, "", "")
 
     assert calls[0]["cmd"] == ["sudo", "-S", "-p", "", "--", "docker", "compose", "ps"]
     assert calls[0]["input"] == "pw\n"
     assert "pw" not in calls[0]["cmd"]
+
+
+def test_runner_sudo_compose_uses_invoking_user_docker_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sudo-docker must use the invoking user's authenticated ~/.docker, not root's empty
+    config — otherwise `docker compose up` pulls 36 images ANONYMOUSLY and hits Docker
+    Hub's `toomanyrequests` mid-deploy (the real deploy failure)."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner, "_user_docker_config_dir", lambda: "/home/op/.docker")
+
+    runner._run_compose(["pull"], cwd=tmp_path, sudo_password="pw")
+
+    assert calls[0] == [
+        "sudo",
+        "-S",
+        "-p",
+        "",
+        "--",
+        "env",
+        "DOCKER_CONFIG=/home/op/.docker",
+        "docker",
+        "compose",
+        "pull",
+    ]
 
 
 def test_runner_run_compose_reports_oserror_without_traceback(

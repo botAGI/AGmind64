@@ -8,6 +8,7 @@ automatic rollback если healthcheck не прошёл за timeout.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -53,6 +54,19 @@ class DeployResult:
     rollback_performed: bool = False
 
 
+def _user_docker_config_dir() -> str | None:
+    """The invoking user's docker config dir (with `docker login` creds), if present.
+
+    The deploy runs `docker` under sudo (to read root-owned /opt/agmind/.env). Plain
+    `sudo docker` uses root's empty /root/.docker and pulls ANONYMOUSLY → Docker Hub
+    `toomanyrequests` mid-deploy on a 36-image stack. Pointing sudo-docker at the
+    invoking user's authenticated config (via `env DOCKER_CONFIG=...`) makes the pulls
+    authenticated and dodges the anon limit.
+    """
+    candidate = os.environ.get("DOCKER_CONFIG") or os.path.join(os.path.expanduser("~"), ".docker")
+    return candidate if os.path.isdir(candidate) else None
+
+
 def _run_compose(
     args: list[str],
     cwd: Path,
@@ -66,7 +80,11 @@ def _run_compose(
     log.debug("running: %s (cwd=%s)", " ".join(cmd), cwd)
     try:
         if sudo_password is not None:
-            cmd = ["sudo", "-S", "-p", "", "--", *compose_cmd]
+            # Keep sudo (root reads the root-owned .env) but make sudo-docker use the
+            # invoking user's auth so pulls are authenticated, not anonymous.
+            docker_cfg = _user_docker_config_dir()
+            env_prefix = ["env", f"DOCKER_CONFIG={docker_cfg}"] if docker_cfg else []
+            cmd = ["sudo", "-S", "-p", "", "--", *env_prefix, *compose_cmd]
             log.debug("running: %s (cwd=%s)", " ".join(cmd), cwd)
             result = subprocess.run(
                 cmd,
