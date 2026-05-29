@@ -340,13 +340,9 @@ def test_component_upgrade_skips_divergent_scheme_members(
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
     _make_descriptor(services, "dify-sandbox", "langgenius/dify-sandbox", "0.2.15")
-    _make_descriptor(
-        services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local"
-    )
+    _make_descriptor(services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local")
     components = tmp_repo / "templates" / "components"
-    _make_component_contract(
-        components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"]
-    )
+    _make_component_contract(components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"])
     monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
 
     plan = upgrade_cmd.build_component_upgrade_plan("dify", "1.15.0")
@@ -361,10 +357,7 @@ def test_component_upgrade_skips_divergent_scheme_members(
     assert by_service["dify-sandbox"].new_tag == "0.2.15"
     assert by_service["dify-sandbox"].new_tag == by_service["dify-sandbox"].old_tag
     assert by_service["dify-plugin-daemon"].new_tag == "0.6.1-local"
-    assert (
-        by_service["dify-plugin-daemon"].new_tag
-        == by_service["dify-plugin-daemon"].old_tag
-    )
+    assert by_service["dify-plugin-daemon"].new_tag == by_service["dify-plugin-daemon"].old_tag
 
     # Each divergent member is named in a stderr WARNING.
     err = capsys.readouterr().err
@@ -387,13 +380,9 @@ def test_component_upgrade_does_not_write_divergent_members(
     services = tmp_repo / "templates" / "services"
     _make_descriptor(services, "dify-api", "langgenius/dify-api", "1.14.2")
     _make_descriptor(services, "dify-sandbox", "langgenius/dify-sandbox", "0.2.15")
-    _make_descriptor(
-        services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local"
-    )
+    _make_descriptor(services, "dify-plugin-daemon", "langgenius/dify-plugin-daemon", "0.6.1-local")
     components = tmp_repo / "templates" / "components"
-    _make_component_contract(
-        components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"]
-    )
+    _make_component_contract(components, "dify", ["dify-api", "dify-sandbox", "dify-plugin-daemon"])
     monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
 
     rc = upgrade_cmd.cmd_component("dify", "1.15.0", plan_only=False)

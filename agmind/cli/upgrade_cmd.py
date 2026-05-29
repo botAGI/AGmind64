@@ -222,17 +222,25 @@ def build_component_upgrade_plan(
 
     contracts = load_component_contracts(COMPONENTS_DIR)
     policy: str
+    reference_tag: str | None = None
     if component in contracts:
         contract = contracts[component]
         service_names = contract.runtime.service_descriptors
         policy = contract.core.update_policy
         is_component = True
+        # G.3 same-scheme guard: the reference family that `version` replaces.
+        # Prefer the contract's declared pin (current_pin first, then
+        # recommended_version); fall back to the modal member tag only if the
+        # contract carries neither (resolved below once member tags are read).
+        reference_tag = contract.core.current_pin or contract.core.recommended_version
     else:
         service_names = (component,)
         policy = "service"
         is_component = False
 
-    items: list[UpgradePlanItem] = []
+    # Read each member's current pin up front so a missing-descriptor or
+    # missing-image error still aborts the whole plan (unchanged behavior).
+    members: list[tuple[str, str, str, str, str | None]] = []
     for service_name in service_names:
         yaml_path = _find_descriptor_for_service(service_name)
         if yaml_path is None:
@@ -241,15 +249,44 @@ def build_component_upgrade_plan(
         if current is None:
             raise ValueError(f"no image line in {yaml_path}")
         image, old_tag, old_digest = current
+        members.append((service_name, str(yaml_path), image, old_tag, old_digest))
+
+    # Modal fallback: when a component contract declares no pin, treat the
+    # most common member tag as the reference family.
+    if is_component and not reference_tag:
+        tag_counts: dict[str, int] = {}
+        for _name, _path, _img, old_tag, _dig in members:
+            tag_counts[old_tag] = tag_counts.get(old_tag, 0) + 1
+        if tag_counts:
+            reference_tag = max(tag_counts, key=lambda tag: (tag_counts[tag], tag))
+
+    items: list[UpgradePlanItem] = []
+    for service_name, yaml_path_str, image, old_tag, old_digest in members:
+        # Component upgrades bump ONLY members that share the component's
+        # reference version family; divergent members are marked unchanged
+        # (new_tag == old_tag) so cmd_component's changed_items filter drops
+        # them, and a per-member WARNING is surfaced. Raw single-service
+        # upgrades (is_component is False) always bump.
+        if is_component and reference_tag is not None and old_tag != reference_tag:
+            print(
+                f"WARNING: skipping {service_name} ({old_tag}) — divergent version "
+                f"scheme (component reference {reference_tag}); not bumping to {version}",
+                file=sys.stderr,
+            )
+            new_tag = old_tag
+            member_digest: str | None = old_digest
+        else:
+            new_tag = version
+            member_digest = digest
         items.append(
             UpgradePlanItem(
                 service=service_name,
-                yaml_path=str(yaml_path),
+                yaml_path=yaml_path_str,
                 image=image,
                 old_tag=old_tag,
-                new_tag=version,
+                new_tag=new_tag,
                 old_digest=old_digest,
-                new_digest=digest,
+                new_digest=member_digest,
             )
         )
 
