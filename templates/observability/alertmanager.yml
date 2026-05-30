@@ -22,8 +22,11 @@ route:
 receivers:
   - name: tg-default
     telegram_configs:
-      - bot_token_file: /run/secrets/tg_bot_token
-        chat_id: 0  # populated via Ansible from group_vars
+      - bot_token_file: /etc/alertmanager/tg_bot_token
+        # chat_id_file is read at notify-time (not at config-load), so the config
+        # validates and alertmanager BOOTS whether or not Telegram is configured.
+        # Wired from AGMIND_ALERT_TELEGRAM_CHAT_ID in the runtime .env.
+        chat_id_file: /etc/alertmanager/tg_chat_id
         parse_mode: HTML
         send_resolved: true
         message: |
@@ -36,8 +39,8 @@ receivers:
 
   - name: tg-critical
     telegram_configs:
-      - bot_token_file: /run/secrets/tg_bot_token
-        chat_id: 0
+      - bot_token_file: /etc/alertmanager/tg_bot_token
+        chat_id_file: /etc/alertmanager/tg_chat_id
         parse_mode: HTML
         send_resolved: true
         disable_notifications: false

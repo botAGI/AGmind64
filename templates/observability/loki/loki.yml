@@ -10,11 +10,14 @@ server:
   log_level: warn
 
 common:
-  path_prefix: /var/lib/loki
+  # Persistence MUST live under the in-container mount /loki (host bind
+  # /var/lib/agmind/loki:/loki). Any other in-container path is unmounted and
+  # ephemeral — data would be lost on container recreate.
+  path_prefix: /loki
   storage:
     filesystem:
-      chunks_directory: /var/lib/loki/chunks
-      rules_directory: /var/lib/loki/rules
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
   replication_factor: 1
   ring:
     kvstore:
@@ -38,7 +41,7 @@ limits_config:
   max_global_streams_per_user: 5000
 
 compactor:
-  working_directory: /var/lib/loki/compactor
+  working_directory: /loki/compactor
   retention_enabled: true
   delete_request_store: filesystem
 
@@ -46,7 +49,9 @@ ruler:
   storage:
     type: local
     local:
-      directory: /etc/loki/rules
+      # Loki 3.x mkdir's this on startup; /etc/loki is the :ro config mount (EROFS),
+      # so it must point at the writable /loki data mount.
+      directory: /loki/rules
   rule_path: /tmp/loki/rules
   ring:
     kvstore:

@@ -188,6 +188,34 @@ def _stage_single_file_config(source: Path, target_dir: Path, target_name: str) 
         raise
 
 
+def _stage_alertmanager_config(
+    observability_dir: Path,
+    target_dir: Path,
+    *,
+    chat_id: str,
+    bot_token: str,
+) -> None:
+    """Stage alertmanager.yml plus the Telegram chat_id / bot_token as mounted files.
+
+    The config references ``/etc/alertmanager/tg_chat_id`` + ``/etc/alertmanager/
+    tg_bot_token`` (chat_id_file/bot_token_file). Both are written here from the runtime
+    .env (AGMIND_ALERT_TELEGRAM_CHAT_ID / _BOT_TOKEN); empty values still write empty
+    files so the referenced paths exist and alertmanager boots (sending is a no-op until
+    configured). Staged atomically so a partial write never replaces a good config dir.
+    """
+    staged = target_dir.with_name(f".{target_dir.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        staged.mkdir(parents=True, exist_ok=True)
+        _copy_file_atomic(observability_dir / "alertmanager.yml", staged / "alertmanager.yml")
+        (staged / "tg_chat_id").write_text(chat_id, encoding="utf-8")
+        (staged / "tg_bot_token").write_text(bot_token, encoding="utf-8")
+        _replace_path_atomic(staged, target_dir)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
 def _stage_directory_contents(source: Path, target: Path) -> None:
     staged = target.with_name(f".{target.name}.tmp")
     _cleanup_path(staged)
@@ -230,10 +258,12 @@ def _materialize_runtime_files(
     if "alloy" in selected:
         _stage_directory_contents(observability_dir / "alloy", config.config_dir / "alloy")
     if "alertmanager" in selected:
-        _stage_single_file_config(
-            observability_dir / "alertmanager.yml",
+        runtime_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
+        _stage_alertmanager_config(
+            observability_dir,
             config.config_dir / "alertmanager",
-            "alertmanager.yml",
+            chat_id=runtime_env.get("AGMIND_ALERT_TELEGRAM_CHAT_ID", ""),
+            bot_token=runtime_env.get("AGMIND_ALERT_TELEGRAM_BOT_TOKEN", ""),
         )
 
     callback(
