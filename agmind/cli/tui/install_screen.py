@@ -108,6 +108,11 @@ class InstallProgressScreen(Screen[InstallResult]):
         # on a failed run. Cleared on unmount (the screen owns the final wipe now).
         self._secret_backup: tuple[str | None, str] = (config.sudo_password, config.cf_api_token)
         self.result: InstallResult | None = None
+        # Single-flight guard. `@work(exclusive=True)` only flags a thread worker as
+        # cancelled — it cannot kill one blocked in subprocess.run, so a re-entrant
+        # dispatch would start a SECOND `docker compose up` on the same project and the
+        # two would race to create the same container names. Refuse re-entry instead.
+        self._run_active: bool = False
         self._step_states: dict[str, str] = {step.step_id: "pending" for step in steps}
         self._step_start_ts: dict[str, datetime] = {}
         self._step_elapsed: dict[str, str] = {}
@@ -177,8 +182,23 @@ class InstallProgressScreen(Screen[InstallResult]):
             "Values are not printed in the installer summary."
         )
 
+    def _begin_run(self) -> bool:
+        """Claim the single run slot. Returns False if a run is already active.
+
+        The deploy worker blocks in a non-cancellable subprocess; refusing re-entry
+        here is what prevents two concurrent ``docker compose up`` on the same project.
+        """
+        if self._run_active:
+            return False
+        self._run_active = True
+        return True
+
+    def _end_run(self) -> None:
+        self._run_active = False
+
     def on_mount(self) -> None:
-        self._run_install()
+        if self._begin_run():
+            self._run_install()
 
     @work(exclusive=True, thread=True)
     def _run_install(self) -> None:
@@ -234,6 +254,9 @@ class InstallProgressScreen(Screen[InstallResult]):
             log_widget.write(f"[dim]{ts}[/dim] {event.text}")
 
     def _finalize(self) -> None:
+        # Always release the single-flight slot first: the worker body has returned, so
+        # a fresh run (Retry) is now safe to dispatch — even if the screen is gone.
+        self._end_run()
         if not self.is_mounted:
             return
         result = self.result
@@ -287,6 +310,10 @@ class InstallProgressScreen(Screen[InstallResult]):
         self._step_elapsed.clear()
 
     def action_retry(self) -> None:
+        # Refuse re-entry while a run is still in flight — clearing cancel_event and
+        # relaunching here is exactly what spawned a second racing `docker compose up`.
+        if not self._begin_run():
+            return
         self._prepare_retry()
         for step in self.steps:
             self.query_one(f"#install-step-{step.step_id}", Static).update(self._step_line(step))
