@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: keycloak
+kind: edge
+core:
+  upstream: https://github.com/keycloak/keycloak
+  min_version: '26.4'
+  recommended_version: '26.4'
+  current_pin: '26.4'
+  update_policy: compatible-minor
+  source: registry
+runtime:
+  service_descriptors:
+  - keycloak
+  compose_profiles:
+  - security
+  ports:
+  - keycloak:8080
+provides:
+- sso
+- auth
+# Reuses the shared 'postgres' service (separate DB 'keycloak') + the traefik edge.
+# No dedicated keycloak-db is bundled — the operator must pre-create role+DB 'keycloak'
+# in the shared postgres (see integration_notes).
+requires:
+  capabilities:
+  - postgres_db
+  - reverse_proxy
+verification:
+  smoke:
+  - agmind render compose --profile core,security --domain ci.example.com --output /tmp/agmind-keycloak.yml
+  - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-keycloak.yml config --quiet
+  schema_refs:
+  - templates/schemas/service.json

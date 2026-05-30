@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: keycloak
+image: quay.io/keycloak/keycloak:26.4
+# index digest verified pullable (amd64 present) via `docker buildx imagetools inspect`
+digest: 9409c59bdfb65dbffa20b11e6f18b8abb9281d480c7ca402f51ed3d5977e6007
+tier: app
+purpose: SSO / OIDC + SAML identity provider — Keycloak 26.4 (2026-05)
+owner: agmind-core
+profiles:
+- security
+- full
+# Traefik fronts TLS on 443; Keycloak HTTP stays loopback-only (8082 free; 8080/8081 used by llama/embed).
+ports:
+- 127.0.0.1:8082:8080
+env:
+  # ---- Persistence: reuse the shared 'postgres' service, separate DB 'keycloak' ----
+  KC_DB: postgres
+  KC_DB_URL_HOST: postgres
+  KC_DB_URL_PORT: '5432'
+  KC_DB_URL_DATABASE: keycloak
+  KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-keycloak}
+  KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD is required}
+  # ---- Hostname / edge (Traefik terminates TLS, forwards X-Forwarded-* headers) ----
+  KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:-auth.agmind.dev}
+  # Relax absolute-URL strictness so the proxy-set scheme/host is honored.
+  KC_HOSTNAME_STRICT: 'false'
+  KC_HTTP_ENABLED: 'true'
+  # KC_PROXY is deprecated since 26; use the edge/header model. Traefik = trusted edge.
+  KC_PROXY_HEADERS: xforwarded
+  # ---- Health + metrics on the dedicated management interface (port 9000) ----
+  KC_HEALTH_ENABLED: 'true'
+  KC_METRICS_ENABLED: 'true'
+  # ---- Single-node cache (no Infinispan clustering on a single Strix Halo host) ----
+  KC_CACHE: local
+  # ---- First-boot bootstrap admin (rotate / delete after creating a real admin) ----
+  KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+  KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
+# Production server (NOT start-dev). Stock image: use plain `start`.
+# If you pre-build an augmented image (`kc.sh build`), switch to ["start","--optimized"].
+command:
+- start
+depends_on:
+- postgres
+provides:
+- sso
+- auth
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+# The keycloak image is UBI-micro based: NO curl, NO wget (verified). bash + grep
+# ARE present, and bash's /dev/tcp is compiled in (verified). Probe the management
+# readiness endpoint on port 9000 with a raw HTTP/1.1 request over /dev/tcp.
+# Verified live: returns "HTTP/1.1 200 OK" → rc=0; wrong port → rc=1.
+health:
+  test:
+  - CMD-SHELL
+  - 'exec 3<>/dev/tcp/localhost/9000 && echo -e "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "200 OK" <&3'
+  interval: 15s
+  timeout: 5s
+  retries: 10
+  # JVM + Quarkus + DB schema migration on first boot takes ~60-90s.
+  start_period: 90s
+routing:
+  host: auth.agmind.dev
+  # Public-facing IdP login endpoint: rate-limit + security-headers, no auth-in-front.
+  middleware_chain: chain-public
+  healthcheck_path: /health/ready
+observability:
+  prometheus_scrape: true
+  # Keycloak exposes Micrometer /metrics on the management port (9000), not the http port.
+  metrics_path: /metrics
+  metrics_port: 9000

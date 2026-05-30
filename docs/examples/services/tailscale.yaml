@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: tailscale
+image: tailscale/tailscale:v1.86.2
+digest: 241d9518b7e0b6e533dbd0117fcea15acb4174249210837f52b71615949ce9d2
+tier: edge
+purpose: Mesh VPN (WireGuard) for AGmind inter-node + remote operator access (2026-05)
+owner: agmind-core
+profiles:
+- vpn
+- full
+# No ports: tailscaled dials OUT to the coordination server and peers; nothing
+# is published on the host. Reachability is over the tailnet, not localhost.
+volumes:
+- /var/lib/agmind/tailscale:/var/lib/tailscale
+env:
+  # Secret — resolved from .env at runtime (see integration_notes). Use an
+  # ephemeral, pre-authorized, reusable tailnet auth key (tskey-auth-...).
+  TS_AUTHKEY: ${TAILSCALE_AUTHKEY:?TAILSCALE_AUTHKEY is required}
+  # Persisted node identity/state lives on the mounted volume above.
+  TS_STATE_DIR: /var/lib/tailscale
+  # Kernel networking mode: needs /dev/net/tun + NET_ADMIN/NET_RAW (see devices/
+  # cap_add). Set TS_USERSPACE=true to run fully in userspace (no device/caps) —
+  # see the tradeoff note in integration_notes.
+  TS_USERSPACE: ${TAILSCALE_USERSPACE:-false}
+  # Stable node name in the tailnet (defaults to this host's AGmind node id).
+  TS_HOSTNAME: ${TAILSCALE_HOSTNAME:-agmind-node}
+  # Subnet routes this node advertises (CIDR list) + any extra `tailscale up`
+  # flags (e.g. --advertise-exit-node, --accept-routes, --ssh). Empty by default.
+  TS_ROUTES: ${TAILSCALE_ROUTES:-}
+  TS_EXTRA_ARGS: ${TAILSCALE_EXTRA_ARGS:-}
+# Kernel-mode WireGuard datapath. Drop both /dev/net/tun and the caps below
+# only when TS_USERSPACE=true.
+devices:
+- /dev/net/tun
+cap_add:
+- NET_ADMIN
+- NET_RAW
+resources:
+  cpus: 1.0
+  mem_limit: 256m
+health:
+  # `tailscale` binary lives at /usr/local/bin/tailscale in the official image
+  # (verified). `status` exits non-zero until the node is authed + connected,
+  # so docker stays "starting" through TS_AUTHKEY login.
+  test:
+  - CMD
+  - tailscale
+  - status
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+
+# Phase O capabilities — single service, no component bundle, no depends_on.
+provides:
+- mesh_vpn
+- remote_access
