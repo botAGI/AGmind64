@@ -27,7 +27,9 @@ def loki_cfg() -> dict:
 
 def test_ruler_dir_on_writable_mount_not_ro_config(loki_cfg: dict) -> None:
     directory = loki_cfg["ruler"]["storage"]["local"]["directory"]
-    assert directory == "/loki/rules", "ruler dir must be on the writable /loki mount, not /etc/loki"
+    assert directory == "/loki/rules", (
+        "ruler dir must be on the writable /loki mount, not /etc/loki"
+    )
 
 
 def test_persistence_paths_under_mounted_loki(loki_cfg: dict) -> None:
