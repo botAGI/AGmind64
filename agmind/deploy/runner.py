@@ -7,6 +7,8 @@ automatic rollback если healthcheck не прошёл за timeout.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import shutil
@@ -14,7 +16,8 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,6 +68,43 @@ def _user_docker_config_dir() -> str | None:
     """
     candidate = os.environ.get("DOCKER_CONFIG") or os.path.join(os.path.expanduser("~"), ".docker")
     return candidate if os.path.isdir(candidate) else None
+
+
+@contextmanager
+def _deploy_lock(install_dir: Path) -> Iterator[bool]:
+    """Advisory single-flight lock around a deploy apply, keyed on *install_dir*.
+
+    Two concurrent `docker compose up` on the same project race to create the same
+    container names (the `/agmind-watchtower` Conflict). The TUI guard stops in-app
+    re-entry; this `flock` additionally serialises across PROCESSES (e.g. `agmind
+    deploy` started while the installer is mid-deploy). Yields True if acquired, False
+    if another deploy already holds it. The lock file lives under the system temp dir
+    (always writable by the invoking user, unlike root-owned /opt/agmind).
+    """
+    digest = hashlib.sha256(str(install_dir.resolve()).encode("utf-8")).hexdigest()[:16]
+    lock_path = Path(tempfile.gettempdir()) / f"agmind-deploy-{digest}.lock"
+    fd: int | None = None
+    try:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
+        except OSError as exc:
+            # Cannot create the lock file — do not block the deploy on lock infra.
+            log.debug("deploy lock unavailable (%s); proceeding without it", exc)
+            yield True
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False
+            return
+        yield True
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
 
 
 def _run_compose(
@@ -453,6 +493,62 @@ def _wait_healthy(
 
 
 def deploy(
+    profiles: list[str],
+    install_dir: Path = DEFAULT_INSTALL_DIR,
+    domain: str | None = None,
+    apply: bool = False,
+    no_prompt: bool = False,
+    healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
+    snapshot_reason: str = "",
+    services: list[str] | None = None,
+    progress: ProgressCallback | None = None,
+    sudo_password: str | None = None,
+    cancel_event: threading.Event | None = None,
+) -> DeployResult:
+    """Single-flight wrapper around :func:`_deploy_impl`.
+
+    A dry run (``apply=False``) is read-only and runs unguarded. An apply takes an
+    advisory flock keyed on ``install_dir`` so a second concurrent apply (in-app or
+    another process) cannot race the first into a duplicate ``docker compose up``.
+    """
+    if not apply:
+        return _deploy_impl(
+            profiles=profiles,
+            install_dir=install_dir,
+            domain=domain,
+            apply=apply,
+            no_prompt=no_prompt,
+            healthcheck_timeout=healthcheck_timeout,
+            snapshot_reason=snapshot_reason,
+            services=services,
+            progress=progress,
+            sudo_password=sudo_password,
+            cancel_event=cancel_event,
+        )
+    with _deploy_lock(install_dir) as acquired:
+        if not acquired:
+            if progress is not None:
+                try:
+                    progress("error", "another deploy is already in progress")
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("progress callback raised: %s (ignored)", exc)
+            return DeployResult(success=False, message="deploy already in progress")
+        return _deploy_impl(
+            profiles=profiles,
+            install_dir=install_dir,
+            domain=domain,
+            apply=apply,
+            no_prompt=no_prompt,
+            healthcheck_timeout=healthcheck_timeout,
+            snapshot_reason=snapshot_reason,
+            services=services,
+            progress=progress,
+            sudo_password=sudo_password,
+            cancel_event=cancel_event,
+        )
+
+
+def _deploy_impl(
     profiles: list[str],
     install_dir: Path = DEFAULT_INSTALL_DIR,
     domain: str | None = None,
