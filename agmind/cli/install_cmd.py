@@ -179,6 +179,7 @@ def register(app: typer.Typer) -> None:
         import getpass
 
         from agmind.cli.tui.setup_wizard import (
+            STATE_PATH,
             SetupState,
             run_setup_wizard,
         )
@@ -254,6 +255,19 @@ def register(app: typer.Typer) -> None:
                 initial.ctx_size = ctx_size
             if kv_cache:
                 initial.kv_cache_type = kv_cache
+        else:
+            # Interactive re-run (no explicit --from-state): pre-select the
+            # previously-deployed services/profiles so adding or replacing a component
+            # does not silently drop the running stack via `compose up --remove-orphans`.
+            # Secrets are not stored in state → re-prompted; CLI flags still win.
+            from agmind.cli.install_state import load_prior_setup_state
+
+            prior = load_prior_setup_state(STATE_PATH)
+            if prior is not None:
+                initial.services = prior.services
+                initial.profiles = prior.profiles
+                if not domain and prior.domain:
+                    initial.domain = prior.domain
         if not no_tui:
             # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
             ms = False if legacy_wizard else None  # None = default (multi-step)

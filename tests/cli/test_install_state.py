@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from agmind.cli.install_state import StateResolveError, load_setup_state_from_file
+from agmind.cli.install_state import (
+    StateResolveError,
+    load_prior_setup_state,
+    load_setup_state_from_file,
+)
 
 pytestmark = pytest.mark.backend_any
 
@@ -15,6 +19,33 @@ pytestmark = pytest.mark.backend_any
 def _write_state(path: Path, payload: dict[str, object]) -> Path:
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
+
+
+# ---------- load_prior_setup_state (interactive re-run pre-selection) ----------
+
+
+def test_prior_state_missing_returns_none(tmp_path: Path) -> None:
+    assert load_prior_setup_state(tmp_path / "absent.json") is None
+
+
+def test_prior_state_corrupt_returns_none_not_raises(tmp_path: Path) -> None:
+    bad = tmp_path / "setup-state.json"
+    bad.write_text("{broken json", encoding="utf-8")
+    # Best-effort: a corrupt prior state must NOT crash a fresh install — fall to defaults.
+    assert load_prior_setup_state(bad) is None
+
+
+def test_prior_state_loads_previously_selected_services(tmp_path: Path) -> None:
+    """Re-run must default to the previously-deployed selection so an incremental
+    re-run adds/replaces a component instead of dropping the running stack."""
+    state = _write_state(
+        tmp_path / "setup-state.json",
+        {"domain": "lab.example.com", "services": ["traefik", "postgres", "grafana"]},
+    )
+    prior = load_prior_setup_state(state)
+    assert prior is not None
+    assert prior.services == ["traefik", "postgres", "grafana"]
+    assert prior.domain == "lab.example.com"
 
 
 def test_missing_file_raises_read_error(tmp_path: Path) -> None:

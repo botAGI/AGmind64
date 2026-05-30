@@ -74,4 +74,21 @@ def load_setup_state_from_file(from_state: Path) -> SetupState:
     return state
 
 
-__all__ = ["StateResolveError", "load_setup_state_from_file"]
+def load_prior_setup_state(state_path: Path) -> SetupState | None:
+    """Best-effort load of the previously-saved setup state, for an interactive re-run.
+
+    Unlike :func:`load_setup_state_from_file` (the explicit ``--from-state`` path), this
+    NEVER raises: a missing or corrupt prior state just means "start from defaults". It
+    is used to pre-select the previously-deployed services so re-running the installer to
+    add/replace a component does not silently drop the running stack via
+    ``docker compose up --remove-orphans``. Returns None if absent/unreadable.
+    """
+    try:
+        if not state_path.exists():
+            return None
+        return SetupState.from_json(state_path)
+    except Exception:  # noqa: BLE001 — corrupt/old state → caller falls back to defaults
+        return None
+
+
+__all__ = ["StateResolveError", "load_prior_setup_state", "load_setup_state_from_file"]
