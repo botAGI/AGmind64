@@ -686,12 +686,34 @@ def _docker_compose_cmd(
     config: InstallConfig,
     args: list[str],
     env_file: Path | None = None,
+    progress: str | None = None,
 ) -> list[str]:
+    # `--progress`/`--env-file` are GLOBAL flags — they go before the subcommand.
+    global_flags = ["--progress", progress] if progress is not None else []
     env_args = ["--env-file", str(env_file)] if env_file is not None else []
-    compose = ["docker", "compose", *env_args, *args]
+    compose = ["docker", "compose", *global_flags, *env_args, *args]
     if config.sudo_password is None:
         return compose
     return ["sudo", "-S", "-p", "", "--", *compose]
+
+
+def _pull_progress_pct(line: str, services: set[str], pulled: set[str]) -> int | None:
+    """Coarse pull progress from a `docker compose --progress plain` line.
+
+    Compose emits ``<service> Pulled`` when a service image is fully pulled (and
+    layer lines like ``<sha> Downloading``/``Pull complete`` in between). Count
+    distinct completed *services* over the total; returns the new pct on a fresh
+    completion, else None. Best-effort and side-effecting (mutates *pulled*).
+    """
+    parts = line.split()
+    if len(parts) < 2 or parts[-1] != "Pulled":
+        return None
+    service = parts[0]
+    if service not in services or service in pulled:
+        return None
+    pulled.add(service)
+    total = len(services)
+    return int(len(pulled) / total * 100) if total else 0
 
 
 def _write_compose_env_file(path: Path, values: dict[str, str]) -> None:
@@ -1036,18 +1058,38 @@ class ImagePullStep(InstallStep):
             compose_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
             compose_env_file = tmpdir / ".env"
             _write_compose_env_file(compose_env_file, compose_env)
+            # NO --quiet: it suppressed every per-layer line and froze the bar at 0%
+            # during multi-GB pulls. --progress plain (global flag) streams readable,
+            # non-ANSI lines that RichLog can render; --policy missing keeps it idempotent.
             cmd = _docker_compose_cmd(
                 config,
-                ["pull", "--policy", "missing", "--quiet"],
+                ["pull", "--policy", "missing"],
                 env_file=compose_env_file,
+                progress="plain",
             )
-            # docker compose pull stderr содержит per-layer progress; stream его.
+            service_set = set(config.services)
+            pulled: set[str] = set()
+
+            def emit_pull_progress(line: str) -> None:
+                pct = _pull_progress_pct(line, service_set, pulled)
+                if pct is None:
+                    return
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.PROGRESS,
+                        f"pulled {len(pulled)}/{len(service_set)} images",
+                        pct=pct,
+                    )
+                )
+
             rc, _ = _stream_subprocess(
                 cmd,
                 callback,
                 self.step_id,
                 cwd=tmpdir,
                 stdin_payload=_sudo_stdin_payload(config),
+                extra_emit=emit_pull_progress,
                 cancel_event=self.cancel_event,
             )
 

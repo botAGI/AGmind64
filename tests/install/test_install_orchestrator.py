@@ -1341,15 +1341,17 @@ def test_image_pull_step_uses_runtime_env_from_install_dir(
     result = ImagePullStep().run(lambda _event: None, cfg)
 
     assert result.success
+    # Streamed pull: no --quiet (it froze the bar), --progress plain as a global flag.
     assert calls[0]["cmd"] == [
         "docker",
         "compose",
+        "--progress",
+        "plain",
         "--env-file",
         str(calls[0]["cwd"] / ".env"),  # type: ignore[operator]
         "pull",
         "--policy",
         "missing",
-        "--quiet",
     ]
     assert calls[0]["env"] is None
     assert "POSTGRES_PASSWORD=existing-postgres" in env_texts[0]
@@ -1497,12 +1499,13 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
         "--",
         "docker",
         "compose",
+        "--progress",
+        "plain",
         "--env-file",
         str(calls[1]["cwd"] / ".env"),  # type: ignore[operator]
         "pull",
         "--policy",
         "missing",
-        "--quiet",
     ]
     assert calls[0]["env"] is None
     assert calls[1]["env"] is None
