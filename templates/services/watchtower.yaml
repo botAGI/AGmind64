@@ -14,6 +14,9 @@ env:
   WATCHTOWER_CLEANUP: 'false'
   WATCHTOWER_SCHEDULE: 0 0 4 * * *
   WATCHTOWER_NO_RESTART: 'true'
+  # containrrr/watchtower 1.7.1's bundled Docker API client negotiates v1.25, which
+  # Docker Engine 29 rejects (min 1.44). Pin the client to a supported API version.
+  DOCKER_API_VERSION: '1.44'
 resources:
   cpus: 0.5
   mem_limit: 256m

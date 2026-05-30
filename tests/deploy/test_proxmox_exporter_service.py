@@ -50,7 +50,11 @@ def test_proxmox_exporter_is_opt_in_and_not_generic_observability() -> None:
     assert "observability" not in descriptor.profiles
     assert descriptor.ports == ["127.0.0.1:9221:9221"]
     assert descriptor.volumes == ["/etc/agmind/proxmox-exporter/pve.yml:/etc/pve.yml:ro"]
-    assert descriptor.command == ["/etc/pve.yml", "9221", "0.0.0.0"]
+    # pve-exporter 3.x: named flags (positional config/port/addr removed upstream).
+    assert descriptor.command == [
+        "--config.file=/etc/pve.yml",
+        "--web.listen-address=0.0.0.0:9221",
+    ]
 
 
 def test_proxmox_exporter_prometheus_metadata_matches_pve_exporter_contract() -> None:

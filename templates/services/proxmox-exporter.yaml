@@ -11,10 +11,11 @@ ports:
   - 127.0.0.1:9221:9221
 volumes:
   - /etc/agmind/proxmox-exporter/pve.yml:/etc/pve.yml:ro
+# prometheus-pve-exporter 3.x uses argparse named flags; the old positional
+# (config, port, addr) form is rejected ("unrecognized arguments").
 command:
-  - /etc/pve.yml
-  - "9221"
-  - 0.0.0.0
+  - --config.file=/etc/pve.yml
+  - --web.listen-address=0.0.0.0:9221
 resources:
   cpus: 0.5
   mem_limit: 256m

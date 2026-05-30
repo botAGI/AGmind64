@@ -11,6 +11,13 @@ ports:
 - 127.0.0.1:9001:9001
 volumes:
 - /var/lib/agmind/minio:/data
+# The minio image needs the `server` subcommand; without it the binary prints
+# USAGE and exits. --console-address pins the web console to the published 9001.
+command:
+- server
+- /data
+- --console-address
+- ":9001"
 env:
   MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
   MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
