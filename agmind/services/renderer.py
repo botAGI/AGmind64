@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import grp
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,28 @@ import yaml
 
 from agmind.core.domain import validate_domain
 from agmind.schemas import ServiceDescriptor
+
+# AMD-GPU groups that minimal container images (e.g. llama.cpp vulkan) do NOT carry in
+# their /etc/group. Docker resolves group_add NAMES against the container's group db, so
+# a name like `render` fails with "no matching entries in group file". Emit the host's
+# numeric GID instead (resolvable in any container). Defaults match the common
+# Strix-Halo/Debian layout when the rendering host lacks the group.
+_GPU_GROUP_DEFAULT_GID: dict[str, str] = {"render": "992", "video": "44"}
+
+
+def _resolve_group_add(group_add: list[str]) -> list[str]:
+    """Map AMD-GPU group names to the host's numeric GID; pass other groups through."""
+    resolved: list[str] = []
+    for name in group_add:
+        if name in _GPU_GROUP_DEFAULT_GID:
+            try:
+                resolved.append(str(grp.getgrnam(name).gr_gid))
+            except KeyError:
+                resolved.append(_GPU_GROUP_DEFAULT_GID[name])
+        else:
+            resolved.append(name)
+    return resolved
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SERVICES_DIR = REPO_ROOT / "templates" / "services"
@@ -283,7 +306,7 @@ def descriptor_to_compose_service(
     if d.devices:
         svc["devices"] = list(d.devices)
     if d.group_add:
-        svc["group_add"] = list(d.group_add)
+        svc["group_add"] = _resolve_group_add(list(d.group_add))
     if d.security_opt:
         svc["security_opt"] = list(d.security_opt)
     if d.cap_add:
