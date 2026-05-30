@@ -10,7 +10,9 @@ core:
 runtime:
   service_descriptors:
     - elasticsearch
+    - etcd
     - milvus
+    - milvus-minio
     - minio
     - mysql
     - postgres

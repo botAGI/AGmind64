@@ -10,6 +10,24 @@ ports:
 - 127.0.0.1:19530:19530
 volumes:
 - /var/lib/agmind/milvus:/var/lib/milvus
+# Standalone Milvus has NO default CMD — the image entrypoint is `/tini --`, so without
+# this it gets no program and prints tini usage then exits. `milvus run standalone`
+# starts the server against the external etcd + scoped minio (distributed backend).
+command:
+- milvus
+- run
+- standalone
+env:
+  ETCD_ENDPOINTS: etcd:2379
+  MINIO_ADDRESS: milvus-minio:9000
+  MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+  MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+  MINIO_USE_SSL: 'false'
+  MINIO_BUCKET_NAME: milvus
+  COMMON_STORAGETYPE: minio
+depends_on:
+- etcd
+- milvus-minio
 resources:
   cpus: 8.0
   mem_limit: 16g

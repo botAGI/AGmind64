@@ -36,6 +36,9 @@ def test_deployment_topology_report_combines_retrieval_and_compatibility_warning
             "llama-llm",
             "llama-embed",
             "milvus",
+            # milvus's distributed backends — selecting milvus requires them.
+            "etcd",
+            "milvus-minio",
             "postgres",
             "qdrant",
             "redis",
@@ -103,9 +106,11 @@ def test_deployment_topology_report_payload_has_stable_warning_counts() -> None:
         services=[
             "dify-api",
             "elasticsearch",
+            "etcd",
             "llama-embed",
             "llama-llm",
             "milvus",
+            "milvus-minio",
             "minio",
             "mysql",
             "postgres",
