@@ -48,6 +48,11 @@ _RUNTIME_SECRET_KEYS = (
     "HOMARR_SECRET_ENCRYPTION_KEY",
 )
 
+_ALERTMANAGER_TELEGRAM_KEYS = (
+    "AGMIND_ALERT_TELEGRAM_CHAT_ID",
+    "AGMIND_ALERT_TELEGRAM_BOT_TOKEN",
+)
+
 _RUNTIME_TARGET_GUARD_SCRIPT = r"""
 set -eu
 while [ "$#" -gt 0 ]; do
@@ -530,6 +535,8 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
     }
     for key in _RUNTIME_SECRET_KEYS:
         values[key] = existing_env.get(key) or generate_secret(32)
+    for key in _ALERTMANAGER_TELEGRAM_KEYS:
+        values[key] = existing_env.get(key, "")
     return values
 
 
@@ -1515,6 +1522,16 @@ class EnvWriteStep(InstallStep):
             "# ---- Rerank (cross-encoder ordering) ----",
             _env_line("AGMIND_RERANK_FILE", config.rerank_file or ""),
             _env_line("AGMIND_RERANK_CTX_SIZE", str(config.rerank_ctx_size)),
+            "",
+            "# ---- Alerting (optional Telegram receiver) ----",
+            _env_line(
+                "AGMIND_ALERT_TELEGRAM_CHAT_ID",
+                runtime_env["AGMIND_ALERT_TELEGRAM_CHAT_ID"],
+            ),
+            _env_line(
+                "AGMIND_ALERT_TELEGRAM_BOT_TOKEN",
+                runtime_env["AGMIND_ALERT_TELEGRAM_BOT_TOKEN"],
+            ),
             "",
             "# ---- Runtime service credentials (Compose requires non-empty values) ----",
             _env_line("POSTGRES_PASSWORD", runtime_env["POSTGRES_PASSWORD"]),

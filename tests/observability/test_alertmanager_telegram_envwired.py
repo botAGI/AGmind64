@@ -77,3 +77,38 @@ def test_stage_alertmanager_handles_unset_env(tmp_path: Path) -> None:
 
     assert (target / "tg_chat_id").read_text(encoding="utf-8") == ""
     assert (target / "tg_bot_token").read_text(encoding="utf-8") == ""
+
+
+def test_env_write_preserves_alertmanager_telegram_env_and_stages_files(
+    tmp_path: Path,
+) -> None:
+    from agmind.core.env import parse_env_file
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="",
+        services=["alertmanager"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "lib" / "agmind" / "models",
+        config_dir=tmp_path / "etc" / "agmind",
+    )
+    cfg.install_dir.mkdir(parents=True)
+    (cfg.install_dir / ".env").write_text(
+        "AGMIND_ALERT_TELEGRAM_CHAT_ID=-100123456\nAGMIND_ALERT_TELEGRAM_BOT_TOKEN=123:abc\n",
+        encoding="utf-8",
+    )
+
+    result = EnvWriteStep().run(lambda _event: None, cfg)
+
+    assert result.success, result.message
+    env = parse_env_file(cfg.install_dir / ".env")
+    assert env["AGMIND_ALERT_TELEGRAM_CHAT_ID"] == "-100123456"
+    assert env["AGMIND_ALERT_TELEGRAM_BOT_TOKEN"] == "123:abc"
+    assert (cfg.config_dir / "alertmanager" / "tg_chat_id").read_text(
+        encoding="utf-8"
+    ) == "-100123456"
+    assert (cfg.config_dir / "alertmanager" / "tg_bot_token").read_text(
+        encoding="utf-8"
+    ) == "123:abc"
