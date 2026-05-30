@@ -36,7 +36,7 @@ from agmind.services.renderer import (
 )
 
 # Progress callback: (step_id, message) — used by TUI DeployProgressScreen
-# step_id one of: 'render', 'diff', 'snapshot', 'compose_up', 'healthcheck',
+# step_id one of: 'render', 'diff', 'snapshot', 'pull', 'compose_up', 'healthcheck',
 #                'wait_healthy', 'success', 'rollback', 'error'
 ProgressCallback = Callable[[str, str], None]
 
@@ -155,6 +155,128 @@ def _run_compose_maybe_sudo(
     if sudo_password is None:
         return _run_compose(args, cwd=cwd)
     return _run_compose(args, cwd=cwd, sudo_password=sudo_password)
+
+
+def _kill_proc_group(proc: subprocess.Popen[str]) -> None:
+    """Best-effort terminate a streamed compose child and its process group.
+
+    The child may be `sudo` running docker as root; a non-root parent often cannot
+    signal a root process (EPERM), so this is best-effort — the flock single-flight
+    lock, not this kill, is the real guard against a concurrent `compose up`.
+    """
+    import signal
+
+    def _signal(sig: int) -> None:
+        try:
+            os.killpg(os.getpgid(proc.pid), sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                (proc.kill if sig == signal.SIGKILL else proc.terminate)()
+            except OSError:
+                pass
+
+    _signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        _signal(signal.SIGKILL)
+
+
+def _stream_compose(
+    args: list[str],
+    cwd: Path,
+    sudo_password: str | None = None,
+    on_line: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
+) -> tuple[int, str]:
+    """Run `docker compose` streaming stdout line-by-line. Returns (rc, tail).
+
+    Unlike the blocking :func:`_run_compose`, this uses Popen so the long pull/up
+    phases are observable (per-line progress via *on_line*) and interruptible (a
+    cancel watchdog + a between-line check kill the child when *cancel_event* fires).
+    Keep the short config/ps calls on :func:`_run_compose`. ``tail`` is the last lines
+    of output (for error messages).
+    """
+    env_file = cwd / ".env"
+    env_args = ["--env-file", str(env_file)] if env_file.exists() else []
+    compose_cmd = ["docker", "compose", *env_args, *args]
+    if sudo_password is not None:
+        docker_cfg = _user_docker_config_dir()
+        env_prefix = ["env", f"DOCKER_CONFIG={docker_cfg}"] if docker_cfg else []
+        cmd = ["sudo", "-S", "-p", "", "--", *env_prefix, *compose_cmd]
+    else:
+        cmd = compose_cmd
+    log.debug("streaming: %s (cwd=%s)", " ".join(cmd), cwd)
+
+    if cancel_event is not None and cancel_event.is_set():
+        return 130, "cancelled by user"
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return 127, str(exc)
+
+    tail: list[str] = []
+    stop_watch = threading.Event()
+
+    def _watchdog() -> None:
+        # Covers the hung-with-no-output case the between-line check below can't.
+        while not stop_watch.wait(0.25):
+            if cancel_event is not None and cancel_event.is_set():
+                _kill_proc_group(proc)
+                return
+
+    watcher: threading.Thread | None = None
+    if cancel_event is not None:
+        watcher = threading.Thread(target=_watchdog, name="agmind-compose-cancel", daemon=True)
+        watcher.start()
+
+    try:
+        if sudo_password is not None and proc.stdin is not None:
+            try:
+                proc.stdin.write(f"{sudo_password}\n")
+                proc.stdin.flush()
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+        if proc.stdout is not None:
+            for raw in proc.stdout:
+                if cancel_event is not None and cancel_event.is_set():
+                    _kill_proc_group(proc)
+                    break
+                line = raw.rstrip("\n")
+                tail.append(line)
+                del tail[:-80]
+                if on_line is not None and line:
+                    try:
+                        on_line(line)
+                    except Exception as exc:  # noqa: BLE001
+                        log.debug("on_line raised: %s (ignored)", exc)
+        rc = proc.wait()
+    finally:
+        stop_watch.set()
+        if watcher is not None:
+            watcher.join(timeout=1)
+        if proc.poll() is None:
+            _kill_proc_group(proc)
+        if proc.stdout is not None:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+
+    if cancel_event is not None and cancel_event.is_set():
+        return 130, "\n".join(tail) or "cancelled by user"
+    return rc, "\n".join(tail)
 
 
 def _read_text_maybe_sudo(
@@ -821,21 +943,23 @@ def _deploy_impl(
     log.info("wrote new compose to %s", compose_file)
     _emit("render", f"wrote {compose_file}")
 
-    # 5. docker compose up -d --remove-orphans
     service_names = _compose_service_names(new_compose)
-    _emit(
-        "compose_up",
-        f"running: docker compose up -d --remove-orphans ({len(service_names)} services)",
-    )
-    log.info("running docker compose up -d --remove-orphans for %d services", len(service_names))
-    rc, stdout, stderr = _run_compose_maybe_sudo(
-        ["up", "-d", "--remove-orphans", "--quiet-pull", *service_names],
+
+    # 5. Pull images as a VISIBLE, STREAMED phase (no --quiet-pull buried inside `up`).
+    # During a multi-GB pull this streams per-layer lines so the TUI isn't a frozen 0%;
+    # `up` then starts with --pull never (images are already local) and returns fast.
+    _emit("pull", f"pulling images for {len(service_names)} services")
+    log.info("pulling images for %d services", len(service_names))
+    pull_rc, pull_tail = _stream_compose(
+        ["--progress", "plain", "pull", "--policy", "missing", *service_names],
         cwd=install_dir,
         sudo_password=sudo_password,
+        on_line=lambda line: _emit("pull", line),
+        cancel_event=cancel_event,
     )
-    if rc != 0:
-        log.error("docker compose up failed (rc=%d): %s", rc, stderr)
-        _emit("error", f"docker compose up failed: {stderr[-200:]}")
+    if pull_rc != 0:
+        log.error("docker compose pull failed (rc=%d): %s", pull_rc, pull_tail)
+        _emit("error", f"docker compose pull failed: {pull_tail[-200:]}")
         rolled_back = False
         if snapshot is not None:
             _emit("rollback", "rolling back to snapshot")
@@ -844,7 +968,35 @@ def _deploy_impl(
             success=False,
             diff=diff,
             snapshot=snapshot,
-            message=f"docker compose up failed: {stderr[-500:]}",
+            message=f"docker compose pull failed: {pull_tail[-500:]}",
+            rollback_performed=rolled_back,
+        )
+
+    # 6. docker compose up -d --remove-orphans --pull never (streamed + cancellable)
+    _emit(
+        "compose_up",
+        f"running: docker compose up -d --remove-orphans ({len(service_names)} services)",
+    )
+    log.info("running docker compose up -d --remove-orphans for %d services", len(service_names))
+    rc, up_tail = _stream_compose(
+        ["up", "-d", "--remove-orphans", "--pull", "never", *service_names],
+        cwd=install_dir,
+        sudo_password=sudo_password,
+        on_line=lambda line: _emit("compose_up", line),
+        cancel_event=cancel_event,
+    )
+    if rc != 0:
+        log.error("docker compose up failed (rc=%d): %s", rc, up_tail)
+        _emit("error", f"docker compose up failed: {up_tail[-200:]}")
+        rolled_back = False
+        if snapshot is not None:
+            _emit("rollback", "rolling back to snapshot")
+            rolled_back = _rollback_to_snapshot(snapshot, install_dir, sudo_password=sudo_password)
+        return DeployResult(
+            success=False,
+            diff=diff,
+            snapshot=snapshot,
+            message=f"docker compose up failed: {up_tail[-500:]}",
             rollback_performed=rolled_back,
         )
 

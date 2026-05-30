@@ -915,6 +915,7 @@ def test_deploy_apply_writes_compose_via_sudo_helper(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args, **_kwargs: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_args, **_kwargs: (0, ""))
 
     def fake_write_text_maybe_sudo(
         path: Path,
@@ -996,6 +997,7 @@ def test_deploy_snapshot_uses_sudo_readable_env_copy(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args, **_kwargs: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_args, **_kwargs: (0, ""))
 
     def fake_read_text_maybe_sudo(path: Path, sudo_password: str | None = None) -> str:
         if path.name == ".env":
@@ -1092,11 +1094,11 @@ def test_deploy_apply_starts_rendered_services_by_name(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
 
-    def fake_run_compose(args: list[str], cwd: Path) -> tuple[int, str, str]:
+    def fake_stream_compose(args: list[str], **_kwargs: object) -> tuple[int, str]:
         calls.append(args)
-        return 0, "", ""
+        return 0, ""
 
-    monkeypatch.setattr(runner, "_run_compose", fake_run_compose)
+    monkeypatch.setattr(runner, "_stream_compose", fake_stream_compose)
 
     result = runner.deploy(
         profiles=["core"],
@@ -1106,7 +1108,11 @@ def test_deploy_apply_starts_rendered_services_by_name(
     )
 
     assert result.success
-    assert calls == [["up", "-d", "--remove-orphans", "--quiet-pull", "llama-llm", "qdrant"]]
+    # Streamed pull phase, then `up --pull never` (no silent --quiet-pull inside up).
+    assert calls == [
+        ["--progress", "plain", "pull", "--policy", "missing", "llama-llm", "qdrant"],
+        ["up", "-d", "--remove-orphans", "--pull", "never", "llama-llm", "qdrant"],
+    ]
 
 
 def test_rollback_writes_compose_and_env_via_sudo_helper(
@@ -1544,6 +1550,7 @@ def test_deploy_apply_no_prompt_bypasses_confirm(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     def fail_confirm(*_args: object, **_kwargs: object) -> bool:
         raise AssertionError("typer.confirm must NOT be called when no_prompt=True")
@@ -1582,6 +1589,7 @@ def test_deploy_apply_confirm_yes_proceeds(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     def fake_confirm(prompt: str, *args: object, **kwargs: object) -> bool:
         confirm_calls.append(prompt)
@@ -1633,6 +1641,7 @@ def test_deploy_apply_non_destructive_diff_does_not_prompt(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_a, **_k: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     def fail_confirm(*_args: object, **_kwargs: object) -> bool:
         raise AssertionError("typer.confirm must NOT be called for a non-destructive diff")

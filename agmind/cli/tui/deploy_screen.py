@@ -88,6 +88,7 @@ class DeployProgressScreen(Screen[DeployResult]):
         ("render", "Render compose"),
         ("diff", "Compute diff"),
         ("snapshot", "Snapshot current state"),
+        ("pull", "Pull images"),
         ("compose_up", "Docker compose up"),
         ("wait_healthy", "Wait for healthy services"),
     ]
@@ -169,12 +170,17 @@ class DeployProgressScreen(Screen[DeployResult]):
         """Run deploy в worker thread чтобы не блокировать UI loop."""
 
         def progress_cb(step: str, msg: str) -> None:
+            if not self.is_mounted:
+                # Screen dismissed while the worker was still streaming pull/up lines —
+                # query_one would raise on a torn-down screen; drop the late update.
+                return
             timestamp = datetime.now().strftime("%H:%M:%S")
             log_widget = self.query_one("#deploy-log", RichLog)
             color = {
                 "render": "cyan",
                 "diff": "blue",
                 "snapshot": "yellow",
+                "pull": "magenta",
                 "compose_up": "magenta",
                 "wait_healthy": "yellow",
                 "success": "green",
