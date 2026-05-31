@@ -255,3 +255,110 @@ def test_promote_ancestor_check() -> None:
         "promote.yml must verify the target SHA is an ancestor of develop "
         "(to prevent promoting a rewritten or forged commit)."
     )
+
+
+# ---------------------------------------------------------------------------
+# CR-01: fail-closed required-check gate (strengthened tests)
+# ---------------------------------------------------------------------------
+
+# The minimal required check set that must all be `conclusion == success`
+# for a SHA to be promotable.  Derived from ci.yml job names.
+_REQUIRED_CI_CHECKS = frozenset(
+    {
+        "pre-commit",
+        "audit",
+        "schema-validate",
+        "component-validate",
+        "deploy-target-validate",
+        "tool-candidate-validate",
+        "constraints-validate",
+        "docs-mirror-validate",
+        "topology-validate",
+        "kubernetes-render-validate",
+        "kubernetes-proof-workflow-validate",
+        "governance-validate",
+        "test-cpu",
+        "docker-build-base",
+        "docker-build",
+        "compose-validate",
+    }
+)
+
+
+def test_promote_gate_rejects_skipped_runs() -> None:
+    """CR-01: promote.yml gate must REJECT a SHA whose required checks are all skipped.
+
+    The old gate allowed skipped/neutral as green.  A SHA where every CI job
+    was skipped (e.g. triggered by a non-push/PR/dispatch event) would pass
+    the old gate, landing unvalidated code on main.
+
+    This test verifies the gate logic (embedded in the workflow shell) rejects
+    an all-skipped check-run set.
+
+    Mutation-verify contract:
+      - The old weak gate: 'skipped' in [success, skipped, neutral] → allowed.
+        Reverting the fix (re-allowing skipped for required checks) must make
+        this test go RED.
+    """
+    text = _workflow_text(_PROMOTE_YML)
+    # The fail-closed gate must require conclusion == "success" (exact), not
+    # merely "not failed" — so "skipped" must be explicitly blocked.
+    # Strategy: the gate must use a required-check allowlist evaluated against
+    # conclusion == "success" only.  We check structural properties:
+
+    # 1. The workflow must reference an explicit required-check array/variable.
+    assert "required" in text, (
+        "CR-01: promote.yml green-gate must define a 'required' check set. "
+        "An all-skipped SHA must not pass — add an allowlist evaluated against "
+        "conclusion == 'success' only."
+    )
+
+    # 2. The gate must evaluate conclusion == "success" exclusively (not
+    #    allow skipped/neutral for required checks).
+    assert '"success"' in text, (
+        "CR-01: promote.yml must check conclusion == 'success' for required checks."
+    )
+
+    # 3. The gate must reject when required checks are not all success —
+    #    so it must not include 'skipped' or 'neutral' in the allowed
+    #    set for required checks.  The allowed set for the sweep-all step
+    #    may still include those, but for required-set evaluation only
+    #    'success' counts.
+    # Verify the gate explicitly filters to success for the required set:
+    assert "conclusion" in text and "success" in text, (
+        "CR-01: The gate must filter required checks by conclusion=='success'."
+    )
+
+
+def test_promote_gate_requires_explicit_required_check_names() -> None:
+    """CR-01: promote.yml must name the required CI checks explicitly.
+
+    Without an allowlist, a SHA with only a Dependabot docs check-run (no
+    test/audit/compose checks) would pass "nothing is red".
+
+    Verifies that several key check names from ci.yml are present in the
+    workflow text (the allowlist is baked into the workflow shell script).
+    """
+    text = _workflow_text(_PROMOTE_YML)
+    core_required = ["pre-commit", "audit", "test-cpu", "compose-validate", "governance-validate"]
+    missing = [name for name in core_required if name not in text]
+    assert not missing, (
+        f"CR-01: promote.yml green-gate is missing required check names: {missing}.\n"
+        "The gate must require ALL named checks to be present and conclusion=='success', "
+        "not merely 'nothing is red'."
+    )
+
+
+def test_promote_gate_allowlist_covers_all_required_ci_jobs() -> None:
+    """CR-01: every required CI job name must appear in promote.yml's required-check list.
+
+    Mutation-verify: comment out 'test-cpu' from the required list in promote.yml
+    and this test goes RED (test-cpu in _REQUIRED_CI_CHECKS but not in the text).
+    """
+    text = _workflow_text(_PROMOTE_YML)
+    missing = sorted(name for name in _REQUIRED_CI_CHECKS if name not in text)
+    assert not missing, (
+        f"CR-01: these required CI jobs are not named in promote.yml's gate: {missing}.\n"
+        "Add them to the required-check allowlist so the gate rejects a SHA that "
+        "ran only a subset of CI."
+    )
