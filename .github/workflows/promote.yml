@@ -1,0 +1,95 @@
+name: promote
+
+# Green-gated fast-forward promotion of develop → main.
+#
+# Preserves SHA identity (no merge commit, no rebase). Requires:
+#   1. The target SHA is an ancestor of origin/develop (no forgery).
+#   2. All check-runs for that SHA are completed+green (skipped/neutral allowed).
+#   3. The fast-forward succeeds (main must be an ancestor of SHA).
+#
+# Usage (maintainer):
+#   gh workflow run promote.yml --field sha=<DEVELOP_SHA>
+#
+# This replaces the documented `promote/...` head-branch workaround by providing
+# an automatable, auditable gate in CI. The same SHA-identity invariant applies:
+# main ends at the exact commit object after promotion.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Exact develop commit SHA to promote to main (must be CI-green)"
+        required: true
+        type: string
+
+# Deny everything at workflow level; promote job opts in to exactly what it needs.
+permissions: {}
+
+jobs:
+  promote:
+    name: Promote develop → main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # push to main
+      checks: read       # read check-runs for the target SHA
+      actions: read      # read workflow runs (for check-run context)
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # Check out at the target SHA so git history is available.
+          ref: ${{ github.event.inputs.sha }}
+          # Use a token that can push to the protected main branch.
+          # The default GITHUB_TOKEN is sufficient when branch protection allows
+          # Actions to push (Settings → Branches → main → Allow GitHub Actions).
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify SHA is an ancestor of develop (no rewrite/forgery)
+        env:
+          SHA: ${{ github.event.inputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin develop
+          git merge-base --is-ancestor "$SHA" origin/develop \
+            || { echo "::error::SHA $SHA is not on develop"; exit 1; }
+
+      - name: Gate on all check-runs green for the target SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.inputs.sha }}
+        run: |
+          set -euo pipefail
+          # Fetch all check-runs for this commit; require >=1 run and all completed green.
+          # Allowed conclusions: success, skipped, neutral.
+          # Blocked: queued, in_progress, failure, cancelled, timed_out, action_required.
+          runs=$(gh api \
+            "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
+            --paginate \
+            --jq '.check_runs[] | {name, status, conclusion}')
+          [ -n "$runs" ] || { echo "::error::no check-runs found for $SHA"; exit 1; }
+          echo "Check-runs for $SHA:"
+          echo "$runs"
+          bad=$(echo "$runs" | jq -s '
+            map(select(
+              .status != "completed"
+              or (.conclusion as $c
+                  | ["success", "skipped", "neutral"] | index($c) | not)
+            )) | length')
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad check-run(s) not green for $SHA"
+            exit 1
+          fi
+          echo "All check-runs green for $SHA."
+
+      - name: Fast-forward main to the green SHA (preserve SHA identity)
+        env:
+          SHA: ${{ github.event.inputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout main
+          # --ff-only guarantees no merge commit; fails if main is not an ancestor
+          # of SHA (e.g. someone else pushed to main in the interim).
+          git merge --ff-only "$SHA"
+          git push origin main
+          echo "Promoted $SHA to main."

@@ -1,0 +1,305 @@
+name: release
+
+# Tag-triggered release pipeline.
+#
+# Builds + pushes the four AGmind backend images to GHCR, attaches
+# GitHub artifact attestations (SLSA provenance) and syft SBOMs, then
+# publishes a GitHub Release with wheel + binary + rendered compose +
+# catalog-<ver>.json + checksums.
+#
+# Opt-in mechanism: image build+push jobs gate the actual `push:` step
+# on the `vars.PUBLISH` repository variable (set to "true" in the repo
+# Settings → Variables → Actions to enable publishing).  Without the
+# variable the jobs still *build* and *attest* but do not push — making
+# the entire pipeline dry-run-provable on a tagged commit before the
+# maintainer opts in to GHCR publishing.
+#
+# All jobs run on ubuntu-latest (NOT the self-hosted box) so this pipeline
+# never blocks or gets blocked by the CI hardware queue.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Deny everything at the workflow level; each job opts in to exactly what
+# it needs (least-privilege per H.6 LOCKED decision).
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  # Self-built backend image namespace: agmind-base, agmind-cpu, agmind-vulkan, agmind-rocm
+  IMAGE_NS: ghcr.io/botagi/agmind
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 0. Derive version from tag; verify it matches agmind.__version__.
+  # ---------------------------------------------------------------------------
+  meta:
+    name: Derive release metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install package (version check only)
+        run: |
+          python -m pip install --quiet --no-deps -e .
+      - id: v
+        name: Verify tag == agmind.__version__
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          py=$(python -c "import agmind, sys; sys.stdout.write(agmind.__version__)")
+          if [ "$tag" != "$py" ]; then
+            echo "::error::tag v${tag} != agmind.__version__ ${py}" && exit 1
+          fi
+          echo "version=${tag}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # 1. Build the base image; capture its digest; attest SLSA provenance.
+  # ---------------------------------------------------------------------------
+  base:
+    name: Build base image
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # push to GHCR (gated on vars.PUBLISH)
+      id-token: write        # actions/attest-build-provenance OIDC
+      attestations: write    # write provenance attestation
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        name: Build (and push if PUBLISH)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          platforms: linux/amd64
+          # Push only when the maintainer has opted in via repo variable.
+          push: ${{ vars.PUBLISH == 'true' }}
+          provenance: false  # Explicit attest-build-provenance step below
+          sbom: false
+          tags: |
+            ${{ env.IMAGE_NS }}-base:${{ needs.meta.outputs.version }}
+            ${{ env.IMAGE_NS }}-base:latest
+      - name: Attest base image provenance (SLSA)
+        if: vars.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.IMAGE_NS }}-base
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # ---------------------------------------------------------------------------
+  # 2. Build cpu/vulkan/rocm backends from base@digest; SBOM + attest each.
+  # ---------------------------------------------------------------------------
+  backends:
+    name: Build backend (${{ matrix.backend }})
+    needs: [meta, base]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [cpu, vulkan, rocm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        name: Build ${{ matrix.backend }} (and push if PUBLISH)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.backend }}
+          platforms: linux/amd64
+          push: ${{ vars.PUBLISH == 'true' }}
+          provenance: false
+          sbom: false
+          build-args: |
+            BASE_IMAGE=${{ env.IMAGE_NS }}-base@${{ needs.base.outputs.digest }}
+          tags: |
+            ${{ env.IMAGE_NS }}-${{ matrix.backend }}:${{ needs.meta.outputs.version }}
+            ${{ env.IMAGE_NS }}-${{ matrix.backend }}:latest
+
+      - name: Generate SPDX SBOM for ${{ matrix.backend }}
+        uses: anchore/sbom-action@v0.22.0
+        with:
+          image: ${{ env.IMAGE_NS }}-${{ matrix.backend }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.backend }}.spdx.json
+          upload-artifact: false
+
+      - name: Attest ${{ matrix.backend }} image provenance (SLSA)
+        if: vars.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.IMAGE_NS }}-${{ matrix.backend }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Persist backend digest + SBOM for catalog / publish jobs
+        run: |
+          mkdir -p out
+          printf '%s' "${{ steps.build.outputs.digest }}" > "out/${{ matrix.backend }}.digest"
+          cp "sbom-${{ matrix.backend }}.spdx.json" out/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: backend-${{ matrix.backend }}
+          path: out/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 3. Python wheel + PyInstaller single-file binary; attest both.
+  # ---------------------------------------------------------------------------
+  artifacts:
+    name: Build Python artifacts
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel + sdist
+        run: |
+          python -m pip install --upgrade build pyinstaller
+          python -m build
+      - name: Build single-file binary
+        run: |
+          pip install -e .
+          pyinstaller --onefile --name agmind \
+            --collect-all agmind \
+            --collect-data agmind \
+            -p . agmind/__main__.py
+          mv dist/agmind dist/agmind-linux-amd64
+      - name: Attest wheel + binary provenance (SLSA)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/agmind-linux-amd64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: py-artifacts
+          path: dist/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. Assemble catalog-<ver>.json + rendered full compose; attest catalog.
+  # ---------------------------------------------------------------------------
+  catalog:
+    name: Render release catalog
+    needs: [meta, backends, artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install agmind
+        run: pip install -e .
+      - name: Download backend digest + SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-*
+          path: backends
+          merge-multiple: true
+
+      - name: Render full compose + emit catalog manifest
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          agmind render compose \
+            --profile core,rag,observability,automation,security \
+            --domain agmind.local \
+            --output release/docker-compose.full-${VER}.yml
+          agmind render catalog \
+            --version "${VER}" \
+            --source-ref "${{ github.ref_name }}" \
+            --backend-digests-dir backends \
+            --output release/catalog-${VER}.json
+
+      - name: Compute checksums
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          cd release
+          sha256sum * > checksums-${VER}.txt
+
+      - name: Attest catalog provenance (SLSA)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: release/catalog-${{ needs.meta.outputs.version }}.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: catalog
+          path: release/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 5. Publish the GitHub Release with all assets.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs: [meta, backends, artifacts, catalog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # create the GitHub Release
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            all/py-artifacts/*.whl
+            all/py-artifacts/*.tar.gz
+            all/py-artifacts/agmind-linux-amd64
+            all/catalog/docker-compose.full-*.yml
+            all/catalog/catalog-*.json
+            all/catalog/checksums-*.txt
+            all/backend-cpu/sbom-cpu.spdx.json
+            all/backend-vulkan/sbom-vulkan.spdx.json
+            all/backend-rocm/sbom-rocm.spdx.json
