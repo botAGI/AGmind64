@@ -141,8 +141,8 @@ markers = [
   "backend_rocm: tests requiring ROCm backend (gfx1151)",
   "backend_any: tests backend-agnostic",
   "slow: tests > 1s",
-  "integration: requires real hardware",
+  "integration: requires docker daemon / real-compose smoke",
 ]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m \"not integration\""
 # Phase J: pytest-asyncio для TUI tests (Textual Pilot async API)
 asyncio_mode = "auto"
