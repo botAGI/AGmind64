@@ -15,6 +15,7 @@ must already be present.
 Guard string (verbatim, from ci.yml:289-290):
     github.event.pull_request.head.repo.full_name == github.repository
 """
+
 from __future__ import annotations
 
 from pathlib import Path
