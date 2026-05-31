@@ -31,10 +31,7 @@ Mutation evidence (recorded in commit):
 
 from __future__ import annotations
 
-import grp
 from pathlib import Path
-from typing import Any
-from unittest.mock import patch
 
 import pytest
 import yaml
@@ -141,8 +138,8 @@ def test_only_edge_binds_non_loopback() -> None:
                     f"EDGE_PUBLIC may only bind ports {sorted(EDGE_PUBLIC_PORTS)}"
                 )
 
-    assert not violations, (
-        "C1 host-port contract violated:\n" + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "C1 host-port contract violated:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -175,8 +172,8 @@ def test_cap_add_allowlist() -> None:
                     f"{name}: cap_add {cap!r} not in allowlist "
                     f"(CAP_ADD_ALLOW[{name!r}]={sorted(allowed_caps)!r})"
                 )
-    assert not violations, (
-        "C2 cap_add contract violated:\n" + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "C2 cap_add contract violated:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -200,9 +197,8 @@ def test_security_opt_seccomp_unconfined_allowlist() -> None:
                         f"{name}: security_opt {opt!r} not in SECCOMP_UNCONFINED_ALLOW "
                         f"({sorted(SECCOMP_UNCONFINED_ALLOW)!r})"
                     )
-    assert not violations, (
-        "C2 seccomp=unconfined contract violated:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "C2 seccomp=unconfined contract violated:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -224,9 +220,8 @@ def test_security_opt_apparmor_unconfined_allowlist() -> None:
                         f"{name}: security_opt {opt!r} not in APPARMOR_UNCONFINED_ALLOW "
                         f"({sorted(APPARMOR_UNCONFINED_ALLOW)!r})"
                     )
-    assert not violations, (
-        "C2 apparmor:unconfined contract violated:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "C2 apparmor:unconfined contract violated:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -242,9 +237,7 @@ def test_no_privileged_anywhere() -> None:
         raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and raw.get("privileged"):
             violations.append(f"{yaml_path.stem}: privileged: true is not allowed")
-    assert not violations, (
-        "C2 privileged flag found:\n" + "\n".join(f"  - {v}" for v in violations)
-    )
+    assert not violations, "C2 privileged flag found:\n" + "\n".join(f"  - {v}" for v in violations)
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +300,8 @@ def test_group_add_renders_numeric_gid_for_all(monkeypatch: pytest.MonkeyPatch) 
                     f"would crash in a minimal image without /etc/group entry"
                 )
 
-    assert not violations, (
-        "group_add renders non-numeric GID in catalog:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "group_add renders non-numeric GID in catalog:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -395,9 +387,8 @@ def test_write_path_under_writable_volume() -> None:
                 f"ephemeral container FS and lost on restart (loki-ruler regression)"
             )
 
-    assert not violations, (
-        "loki write-path outside writable volume:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "loki write-path outside writable volume:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 
@@ -433,17 +424,19 @@ def test_secret_bind_mounts_are_readonly() -> None:
             parts = vol.split(":")
             src = parts[0]
             # Check if source is a secret path
-            is_secret = any(src.startswith(prefix) or src == prefix.rstrip("/") for prefix in secret_volume_prefixes)
+            is_secret = any(
+                src.startswith(prefix) or src == prefix.rstrip("/")
+                for prefix in secret_volume_prefixes
+            )
             if not is_secret:
                 continue
             # Determine mount mode
             mode = parts[-1] if len(parts) >= 3 and parts[-1] in ("ro", "rw") else "rw"
             if mode != "ro":
                 violations.append(
-                    f"{name}: secret mount {vol!r} must be :ro "
-                    f"(source {src!r} is a secret path)"
+                    f"{name}: secret mount {vol!r} must be :ro (source {src!r} is a secret path)"
                 )
 
-    assert not violations, (
-        "C4 secret-mount contract violated:\n" + "\n".join(f"  - {v}" for v in violations)
+    assert not violations, "C4 secret-mount contract violated:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )

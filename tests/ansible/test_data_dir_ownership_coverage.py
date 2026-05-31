@@ -137,9 +137,8 @@ def test_bootstrap_coverage_derived_from_catalog() -> None:
                 )
 
     errors = gaps + mismatches
-    assert not errors, (
-        "Bootstrap chown loop does not match the catalog:\n"
-        + "\n".join(f"  - {e}" for e in errors)
+    assert not errors, "Bootstrap chown loop does not match the catalog:\n" + "\n".join(
+        f"  - {e}" for e in errors
     )
 
 
