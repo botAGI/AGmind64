@@ -10,9 +10,11 @@ ports:
 - 127.0.0.1:8083:8080
 volumes:
 - /:/rootfs:ro
-- /var/run:/var/run:rw
+- /var/run/docker.sock:/var/run/docker.sock:ro
 - /sys:/sys:ro
 - /var/lib/docker/:/var/lib/docker:ro
+command:
+- --docker_only=true
 resources:
   cpus: 1.0
   mem_limit: 512m
