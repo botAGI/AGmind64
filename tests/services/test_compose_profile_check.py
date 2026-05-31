@@ -48,9 +48,8 @@ def test_all_13_profile_lanes_render_ok() -> None:
     report = validate_compose_profiles(ALL_PROFILE_SETS)
 
     failed_lanes = [lane for lane in report.lanes if not lane.ok]
-    assert not failed_lanes, (
-        "One or more compose profile lanes failed to render:\n"
-        + "\n".join(f"  {','.join(lane.profiles)}: {lane.error}" for lane in failed_lanes)
+    assert not failed_lanes, "One or more compose profile lanes failed to render:\n" + "\n".join(
+        f"  {','.join(lane.profiles)}: {lane.error}" for lane in failed_lanes
     )
     assert report.ok, (
         f"compose_profile_check reports {report.error_count} failed lane(s); "
@@ -122,8 +121,9 @@ def test_compose_profile_check_fails_on_nonexistent_profile() -> None:
     assert "nonexistent-profile-xyz-mutation" in bad_profiles, (
         f"Expected the mutated lane to be in failed list, got: {bad_profiles}"
     )
-    real_failed = [lane for lane in failed if "nonexistent-profile-xyz-mutation" not in lane.profiles]
-    assert not real_failed, (
-        f"Real profile lanes also failed during mutation test: "
-        + ", ".join(",".join(lane.profiles) for lane in real_failed)
+    real_failed = [
+        lane for lane in failed if "nonexistent-profile-xyz-mutation" not in lane.profiles
+    ]
+    assert not real_failed, "Real profile lanes also failed during mutation test: " + ", ".join(
+        ",".join(lane.profiles) for lane in real_failed
     )

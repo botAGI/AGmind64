@@ -256,10 +256,10 @@ def test_render_catalog_zero_digest_is_not_emitted_on_unpinned(
     regardless of the rc path.  All-real-catalog path must pass (no service is
     actually unpinned today).
     """
-    from agmind.cli.render_cmd import cmd_render_catalog
-
     import io
     from contextlib import redirect_stdout
+
+    from agmind.cli.render_cmd import cmd_render_catalog
 
     buf = io.StringIO()
     with redirect_stdout(buf):

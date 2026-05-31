@@ -91,7 +91,7 @@ def _normalise_path_key(path_str: str) -> str:
     stripped = path_str.rstrip("/")
     for prefix in _BOOTSTRAP_PATH_PREFIX_RE_PARTS:
         if stripped.startswith(prefix):
-            return stripped[len(prefix):]
+            return stripped[len(prefix) :]
     # Fallback: use the full path — collision is not possible and the test
     # will correctly flag it as a gap if the bootstrap item used a different
     # path convention.
