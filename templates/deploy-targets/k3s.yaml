@@ -10,6 +10,7 @@ runtime:
     - rag
     - observability
   excluded_services:
+    - cadvisor
     - dozzle
     - homarr
     - netdata
@@ -40,6 +41,8 @@ verification:
     - local-kubernetes-proof/k3s/summary.json
     - local-kubernetes-proof/k3s/checksums.txt
   expected_warnings:
+    - service: cadvisor
+      code: kubernetes-omitted
     - service: llama-embed
       code: amd-gpu-device-plugin
     - service: llama-llm

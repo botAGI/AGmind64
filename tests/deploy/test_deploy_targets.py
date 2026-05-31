@@ -248,6 +248,7 @@ def test_repository_deploy_targets_load() -> None:
     assert targets["k3s"].runtime.renderer == "agmind render kubernetes"
     assert targets["k3s"].status == "research"
     assert targets["k3s"].runtime.excluded_services == (
+        "cadvisor",
         "dozzle",
         "homarr",
         "netdata",
@@ -256,6 +257,7 @@ def test_repository_deploy_targets_load() -> None:
     )
     assert targets["k3s"].verification.expected_warning_codes == ()
     assert [item.model_dump() for item in targets["k3s"].verification.expected_warnings] == [
+        {"service": "cadvisor", "code": "kubernetes-omitted"},
         {"service": "llama-embed", "code": "amd-gpu-device-plugin"},
         {"service": "llama-llm", "code": "amd-gpu-device-plugin"},
         {"service": "llama-rerank", "code": "amd-gpu-device-plugin"},

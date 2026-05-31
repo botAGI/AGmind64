@@ -41,6 +41,7 @@ _SECRET_TOKEN_MARKERS = (
 )
 COMPOSE_ONLY_DOCKER_SOCKET_SERVICES = frozenset(
     {
+        "cadvisor",  # Docker-native metrics; Kubernetes uses metrics-server/node-exporter
         "dozzle",
         "homarr",
         "netdata",
