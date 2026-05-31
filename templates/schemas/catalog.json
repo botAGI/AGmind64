@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/botagi/AGmind64/schemas/catalog.json",
+  "title": "AGmind release catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "agmind_version", "generated_at", "services", "backends"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "agmind_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([.-].+)?$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_ref": {
+      "type": "string",
+      "description": "git tag/SHA the catalog was built from"
+    },
+    "services": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["image", "digest", "ref", "tier"],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "repo:tag (no digest)"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "ref": {
+            "type": "string",
+            "description": "image@digest — the pull-by-digest reference"
+          },
+          "tier": {
+            "enum": ["edge", "inference", "app", "storage", "ops"]
+          },
+          "profiles": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "backends": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "cpu", "vulkan", "rocm"],
+      "properties": {
+        "base": {
+          "$ref": "#/$defs/backend_entry"
+        },
+        "cpu": {
+          "$ref": "#/$defs/backend_entry"
+        },
+        "vulkan": {
+          "$ref": "#/$defs/backend_entry"
+        },
+        "rocm": {
+          "$ref": "#/$defs/backend_entry"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "backend_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "digest", "ref"],
+      "properties": {
+        "image": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "ref": { "type": "string" }
+      }
+    }
+  }
+}

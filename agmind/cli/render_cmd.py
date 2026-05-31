@@ -15,6 +15,7 @@ from __future__ import annotations
 import difflib
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -28,6 +29,107 @@ from agmind.services.renderer import (
     select_services,
     unknown_profiles,
 )
+
+# Placeholder digest written for backends not supplied via --backend-digests-dir.
+_BACKEND_PLACEHOLDER_DIGEST = "0" * 64
+
+# The four self-built backend image names (without registry prefix).
+_BACKEND_NAMES = ("base", "cpu", "vulkan", "rocm")
+
+# Registry namespace for self-built images.
+_GHCR_NS = "ghcr.io/botagi/agmind"
+
+
+def cmd_render_catalog(
+    version: str,
+    output: Path | None = None,
+    services_dir: Path = DEFAULT_SERVICES_DIR,
+    backend_digests_dir: Path | None = None,
+    source_ref: str = "",
+) -> int:
+    """Render a catalog-<ver>.json from service descriptors.
+
+    Each service entry carries::
+
+        {image, digest: "sha256:<64hex>", ref: fq_image(), tier, profiles}
+
+    The ``backends`` block is populated from ``<backend>.digest`` files inside
+    *backend_digests_dir* when provided; otherwise placeholder refs are emitted
+    so the verb is testable without a real GHCR push.
+
+    Returns:
+        0 success, 1 error.
+    """
+    try:
+        descriptors = load_descriptors(services_dir)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    # Build the services map.  Services without a digest are represented with
+    # ref == image (no @sha256: suffix) so the catalog is still valid JSON; the
+    # digest field will be absent from the entry (catalog schema requires it for
+    # services that are pinned — callers should treat missing digest as a gap).
+    services: dict[str, object] = {}
+    for name, desc in descriptors.items():
+        entry: dict[str, object] = {
+            "image": desc.image,
+            "tier": desc.tier,
+            "profiles": list(desc.profiles),
+        }
+        if desc.digest:
+            hex_digest = desc.digest
+            sha_digest = hex_digest if hex_digest.startswith("sha256:") else f"sha256:{hex_digest}"
+            entry["digest"] = sha_digest
+            entry["ref"] = desc.fq_image()
+        else:
+            # No digest pinned — emit ref without digest for transparency.
+            entry["digest"] = f"sha256:{'0' * 64}"
+            entry["ref"] = desc.image
+        services[name] = entry
+
+    # Build the backends block.
+    backends: dict[str, object] = {}
+    for backend in _BACKEND_NAMES:
+        image_tag = f"{_GHCR_NS}-{backend}:{version}"
+        if backend_digests_dir is not None:
+            digest_file = backend_digests_dir / f"{backend}.digest"
+            if digest_file.exists():
+                raw = digest_file.read_text(encoding="utf-8").strip()
+                sha_digest = raw if raw.startswith("sha256:") else f"sha256:{raw}"
+                backends[backend] = {
+                    "image": image_tag,
+                    "digest": sha_digest,
+                    "ref": f"{_GHCR_NS}-{backend}@{sha_digest}",
+                }
+                continue
+        # Placeholder (testable without a real push).
+        placeholder = f"sha256:{_BACKEND_PLACEHOLDER_DIGEST}"
+        backends[backend] = {
+            "image": image_tag,
+            "digest": placeholder,
+            "ref": f"{_GHCR_NS}-{backend}@{placeholder}",
+        }
+
+    catalog: dict[str, object] = {
+        "schema_version": 1,
+        "agmind_version": version,
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "services": services,
+        "backends": backends,
+    }
+    if source_ref:
+        catalog["source_ref"] = source_ref
+
+    content = json.dumps(catalog, indent=2, ensure_ascii=False) + "\n"
+
+    if output is None:
+        sys.stdout.write(content)
+        return 0
+
+    write_text_atomic(output, content)
+    print(f"✓ wrote {output} ({len(services)} services)")
+    return 0
 
 
 def cmd_render_compose(
@@ -209,6 +311,45 @@ def register(app: typer.Typer) -> None:
         no_args_is_help=True,
     )
     app.add_typer(render_app)
+
+    @render_app.command("catalog")
+    def render_catalog(
+        version: str = typer.Option(
+            ...,
+            "--version",
+            "-v",
+            help="Release version string (e.g. 0.2.0), written into the catalog",
+        ),
+        output: Path | None = typer.Option(
+            None, "--output", "-o", help="Output file (default: stdout)"
+        ),
+        backend_digests_dir: Path | None = typer.Option(
+            None,
+            "--backend-digests-dir",
+            help=(
+                "Directory with <backend>.digest files written by the release matrix jobs. "
+                "When absent, placeholder digests are emitted for testability."
+            ),
+        ),
+        source_ref: str = typer.Option(
+            "",
+            "--source-ref",
+            help="git tag/SHA the catalog was built from (informational, optional)",
+        ),
+    ) -> None:
+        """Render catalog-<ver>.json from ServiceDescriptor catalog.
+
+        Emits a schema-valid AGmind release catalog covering all service
+        descriptors (each with image, sha256 digest, fq_image ref, tier, and
+        profiles) plus the four self-built backend image entries.
+        """
+        rc = cmd_render_catalog(
+            version=version,
+            output=output,
+            backend_digests_dir=backend_digests_dir,
+            source_ref=source_ref,
+        )
+        raise typer.Exit(code=rc)
 
     @render_app.command("compose")
     def render_compose(
