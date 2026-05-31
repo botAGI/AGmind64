@@ -83,8 +83,10 @@ def cmd_render_catalog(
             entry["digest"] = sha_digest
             entry["ref"] = desc.fq_image()
         else:
-            # No digest pinned — emit ref without digest for transparency.
-            entry["digest"] = f"sha256:{'0' * 64}"
+            # No digest pinned — omit the digest key entirely so the catalog
+            # schema's `required: ["digest"]` rejects the entry as unpinned.
+            # Never emit sha256:000…0 which would masquerade as a real pin
+            # while ref still points at a mutable tag (WR-03 fail-open path).
             entry["ref"] = desc.image
         services[name] = entry
 
