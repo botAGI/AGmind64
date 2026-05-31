@@ -148,27 +148,35 @@ def test_topology_check_script_runs() -> None:
 
 
 def test_validate_topology_profiles_reports_standard_lanes_clean() -> None:
+    # H.4: default now validates all 13 isolation lanes via ALL_PROFILE_SETS
+    from agmind.services.profile_sets import ALL_PROFILE_SETS
+
     report = validate_topology_profiles()
 
     assert report.ok is True
-    assert tuple(item.profiles for item in report.profiles) == DEFAULT_TOPOLOGY_PROFILE_SETS
+    assert len(report.profiles) == 13
+    assert tuple(item.profiles for item in report.profiles) == ALL_PROFILE_SETS
     assert all(item.warning_count == 0 for item in report.profiles)
     assert report.warning_count == 0
-    assert report.info_count == 1
-    assert report.expected_info_count == 1
+    # Isolation-mode lanes promote dependency warnings to expected infos;
+    # count varies with the catalog — just assert all infos are expected.
     assert report.unexpected_info_count == 0
-    assert report.to_json()["info_count"] == 1
-    assert report.to_json()["expected_info_count"] == 1
-    assert report.to_json()["unexpected_info_count"] == 0
-    assert any(item.info_count == 1 for item in report.profiles if item.profiles == ("core", "rag"))
-    assert any(
-        item.expected_info_count == 1 and item.unexpected_info_count == 0
-        for item in report.profiles
-        if item.profiles == ("core", "rag")
-    )
     text = format_topology_check_report(report)
-    assert "core,rag: OK (13 services, warnings=0, info=1, expected_info=1)" in text
-    assert "topology OK: 5 profile sets" in text
+    assert "topology OK: 13 profile sets" in text
+
+    # Also verify the legacy 5-lane mode still works via explicit profile_sets arg
+    legacy_report = validate_topology_profiles(
+        profile_sets=DEFAULT_TOPOLOGY_PROFILE_SETS, isolation_mode=False
+    )
+    assert legacy_report.ok is True
+    assert len(legacy_report.profiles) == 5
+    assert tuple(item.profiles for item in legacy_report.profiles) == DEFAULT_TOPOLOGY_PROFILE_SETS
+    assert any(
+        item.info_count == 1 for item in legacy_report.profiles if item.profiles == ("core", "rag")
+    )
+    legacy_text = format_topology_check_report(legacy_report)
+    assert "core,rag: OK (13 services, warnings=0, info=1, expected_info=1)" in legacy_text
+    assert "topology OK: 5 profile sets" in legacy_text
 
 
 def test_validate_topology_profiles_reports_ambiguous_manual_profile_set() -> None:

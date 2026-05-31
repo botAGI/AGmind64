@@ -212,7 +212,9 @@ def test_governance_check_script_json_includes_structured_gate_payloads() -> Non
         "warning": 0,
         "blocker": 0,
     }
-    assert payload["summary"]["topology_expected_infos"] == 1
+    # H.4: topology now validates all 13 isolation lanes; isolation-mode promotes
+    # single-profile dependency warnings to expected infos (count ≥ 1).
+    assert payload["summary"]["topology_expected_infos"] >= 1
     assert payload["summary"]["topology_unexpected_infos"] == 0
     assert all(item["payload"] is not None for item in payload["checks"])
     deploy_targets = next(item for item in payload["checks"] if item["name"] == "deploy-targets")

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agmind.schemas import ServiceDescriptor
 from agmind.services.deployment_topology import (
     TopologyWarning,
     build_deployment_topology_report,
@@ -278,11 +279,114 @@ def _profile_key(profiles: tuple[str, ...]) -> str:
     return ",".join(profiles) or "<none>"
 
 
+# ---------------------------------------------------------------------------
+# Dep-graph closure guards
+# ---------------------------------------------------------------------------
+
+# Intentional cross-profile ``depends_on`` relationships documented here.
+# Each entry is a (consumer_service, dependency_service) pair.  These are
+# architectural design choices that require multi-profile deployments; they
+# are NOT bugs.  Add a new entry ONLY when a cross-profile dep is genuinely
+# intentional — this is the registry that lets the guard fail closed on
+# *unexpected* cross-profile deps.
+KNOWN_CROSS_PROFILE_DEPENDS: set[tuple[str, str]] = {
+    # nginx (core-nginx) is a reverse proxy for the dify stack (rag).
+    # Always deployed together: --profile core-nginx,rag
+    ("nginx", "dify-api"),
+    ("nginx", "dify-web"),
+}
+
+# Intentional cross-profile ``consumes`` relationships: (consumer, capability).
+# A consumer in profile P consuming a capability from a provider in profile Q
+# implies multi-profile deployment.  Document every such expected gap here.
+KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
+    # dify-api / dify-worker (rag) consume inference from llama-* (core).
+    # Always deployed together: --profile core,rag
+    ("dify-api", "llm_inference"),
+    ("dify-api", "embedding_inference"),
+    ("dify-api", "reranker"),
+    ("dify-api", "dify_external_kb"),  # ragflow (ragflow) → optional integration
+    ("dify-worker", "llm_inference"),
+    ("dify-worker", "embedding_inference"),
+    # openwebui (ui) needs an LLM backend (core).
+    ("openwebui", "llm_inference"),
+    # ragflow (ragflow) needs inference from llama-* (core).
+    ("ragflow", "llm_inference"),
+    ("ragflow", "embedding_inference"),
+    ("ragflow", "reranker"),
+}
+
+
+def check_depends_on_within_profile(
+    descriptors: dict[str, ServiceDescriptor],
+    *,
+    known_cross_profile: set[tuple[str, str]] = KNOWN_CROSS_PROFILE_DEPENDS,
+) -> list[str]:
+    """Return a list of cross-profile ``depends_on`` violations.
+
+    For each descriptor D and each name N in ``D.depends_on``:
+    - If N does not exist in ``descriptors``: violation (missing dep).
+    - If N exists but shares no profile with D AND the (D.name, N) pair is
+      NOT in ``known_cross_profile``: violation (unexpected cross-profile dep).
+
+    Returns:
+        A list of human-readable violation strings (empty → catalog is clean).
+    """
+    violations: list[str] = []
+    for name, desc in sorted(descriptors.items()):
+        for dep in desc.depends_on:
+            if dep not in descriptors:
+                violations.append(f"{name}: depends_on '{dep}' does not exist in the catalog")
+                continue
+            dep_desc = descriptors[dep]
+            shared = set(desc.profiles) & set(dep_desc.profiles)
+            if not shared and (name, dep) not in known_cross_profile:
+                violations.append(
+                    f"{name}: depends_on '{dep}' shares no compose profile "
+                    f"(consumer={sorted(desc.profiles)}, dep={sorted(dep_desc.profiles)})"
+                )
+    return violations
+
+
+def check_consumes_within_profile(
+    descriptors: dict[str, ServiceDescriptor],
+    *,
+    known_cross_profile: set[tuple[str, str]] = KNOWN_CROSS_PROFILE_CONSUMES,
+) -> list[str]:
+    """Return a list of cross-profile ``consumes`` satisfiability violations.
+
+    For each descriptor D and capability C in ``D.consumes``, at least one
+    provider P (i.e. C ∈ P.provides) must share a profile with D.  If no such
+    provider exists AND (D.name, C) is NOT in ``known_cross_profile``: violation.
+
+    Returns:
+        A list of human-readable violation strings (empty → catalog is clean).
+    """
+    violations: list[str] = []
+    for name, desc in sorted(descriptors.items()):
+        for cap in desc.consumes:
+            providers = [p for p in descriptors.values() if cap in p.provides]
+            satisfiable = any(set(desc.profiles) & set(p.profiles) for p in providers)
+            if not satisfiable and (name, cap) not in known_cross_profile:
+                provider_info = [
+                    f"{p.name}{sorted(p.profiles)}" for p in sorted(providers, key=lambda x: x.name)
+                ]
+                violations.append(
+                    f"{name}: consumes '{cap}' but no provider shares a profile "
+                    f"(consumer={sorted(desc.profiles)}, providers={provider_info})"
+                )
+    return violations
+
+
 __all__ = [
     "ALL_PROFILE_SETS",
     "DEFAULT_TOPOLOGY_PROFILE_SETS",
+    "KNOWN_CROSS_PROFILE_CONSUMES",
+    "KNOWN_CROSS_PROFILE_DEPENDS",
     "TopologyCheckReport",
     "TopologyProfileReport",
+    "check_consumes_within_profile",
+    "check_depends_on_within_profile",
     "format_topology_check_report",
     "main",
     "validate_topology_profiles",
