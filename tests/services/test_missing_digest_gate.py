@@ -177,3 +177,106 @@ def test_governance_digest_check_passes() -> None:
     assert report.ok, (
         "aggregate governance digest-pins check FAILED — some descriptors are unpinned."
     )
+
+
+# ---------------------------------------------------------------------------
+# WR-03: render_cmd must NOT emit a fake sha256:000…0 for un-pinned services
+# ---------------------------------------------------------------------------
+
+
+def test_render_catalog_refuses_fake_zero_digest_for_unpinned_service(
+    tmp_services_dir: Path,
+) -> None:
+    """WR-03 RED proof: render catalog must fail/omit rather than emit sha256:000…0.
+
+    Strip traefik's digest from the descriptor → cmd_render_catalog must either:
+      (a) return non-zero (fail-closed error path), OR
+      (b) omit the digest key entirely from the service entry (schema then
+          rejects it as missing required field).
+
+    It must NOT emit `digest: sha256:<64 zeros>` which masquerades as a real pin
+    and passes catalog JSON schema validation while `ref` points at a mutable tag.
+
+    Mutation-verify contract:
+      - Reverting the fix (restoring the `f"sha256:{'0' * 64}"` line) makes
+        this test fail: rc==0 and the entry carries all-zero digest.
+    """
+    from agmind.cli.render_cmd import cmd_render_catalog
+
+    traefik_path = tmp_services_dir / "traefik.yaml"
+    assert traefik_path.exists(), "traefik.yaml not found in tmp copy"
+
+    # Strip traefik's digest.
+    original_text = _strip_digest_from_yaml(traefik_path)
+
+    # Attempt to render.
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_render_catalog(version="0.0.0-test", services_dir=tmp_services_dir)
+
+    # Either: non-zero exit (hard fail), or zero exit but no all-zeros digest.
+    if rc == 0:
+        import json
+
+        output = buf.getvalue()
+        catalog = json.loads(output)
+        traefik_entry = catalog.get("services", {}).get("traefik", {})
+        fake_digest = "sha256:" + "0" * 64
+        assert traefik_entry.get("digest") != fake_digest, (
+            f"WR-03: render catalog emitted fake zero-digest for unpinned 'traefik': "
+            f"{traefik_entry.get('digest')!r}.\n"
+            "render catalog must either fail with rc!=0 or omit the digest key entirely "
+            "for un-pinned services — never synthesize a zero-hash that passes schema "
+            "validation while ref points at a mutable tag."
+        )
+        # If digest key is present and not zero, it should be absent (no key) for
+        # an un-pinned service.  rc==0 + no fake digest is acceptable only if the
+        # key is omitted (caller can detect missing digest as a gap).
+        assert "digest" not in traefik_entry, (
+            f"WR-03: render catalog should omit 'digest' for un-pinned 'traefik', "
+            f"but emitted: {traefik_entry.get('digest')!r}."
+        )
+    else:
+        # rc != 0: fail-closed — acceptable.
+        pass
+
+    # Restore.
+    traefik_path.write_text(original_text, encoding="utf-8")
+
+
+def test_render_catalog_zero_digest_is_not_emitted_on_unpinned(
+    tmp_services_dir: Path,
+) -> None:
+    """WR-03: the zero-sentinel digest sha256:000…0 must never appear in service entries.
+
+    Independently verifies that the fake-pin constant is not emitted for services,
+    regardless of the rc path.  All-real-catalog path must pass (no service is
+    actually unpinned today).
+    """
+    from agmind.cli.render_cmd import cmd_render_catalog
+
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_render_catalog(version="0.0.0-test", services_dir=tmp_services_dir)
+
+    assert rc == 0, f"render catalog failed on fully-pinned catalog: rc={rc}"
+
+    import json
+
+    catalog = json.loads(buf.getvalue())
+    fake_digest = "sha256:" + "0" * 64
+    fakes = [
+        name
+        for name, entry in catalog.get("services", {}).items()
+        if entry.get("digest") == fake_digest
+    ]
+    assert not fakes, (
+        f"WR-03: render catalog emitted fake zero-digest for services: {fakes}.\n"
+        "No service should carry sha256:000…0 — that is a sentinel, not a real pin."
+    )
