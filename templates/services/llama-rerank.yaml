@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: llama-rerank
 image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049
+digest: e359c01203861cf1d802795b8d443ed44660b6ff3f61ba04d7de6ead781c580a
 tier: inference
 purpose: Reranker (bge-reranker-v2-m3 / custom) via llama-server pooling=rank
 profiles:

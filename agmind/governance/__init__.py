@@ -22,6 +22,7 @@ DEFAULT_CHECKS = (
     "topology",
     "kubernetes-render",
     "kubernetes-proof-workflow",
+    "digest-pins",
 )
 
 CheckFn = Callable[[], int]
@@ -285,6 +286,7 @@ def _load_check_functions() -> dict[str, GovernanceCheckFunctions]:
         component_check,
         constraints_check,
         deploy_target_check,
+        digest_check,
         docs_mirror_check,
         kubernetes_proof_workflow_check,
         kubernetes_render_check,
@@ -324,6 +326,10 @@ def _load_check_functions() -> dict[str, GovernanceCheckFunctions]:
         "kubernetes-proof-workflow": GovernanceCheckFunctions(
             run=lambda: kubernetes_proof_workflow_check.main(()),
             run_json=lambda: kubernetes_proof_workflow_check.main(("--json",)),
+        ),
+        "digest-pins": GovernanceCheckFunctions(
+            run=lambda: digest_check.main(()),
+            run_json=lambda: digest_check.main(("--json",)),
         ),
     }
 

@@ -27,6 +27,7 @@ def test_governance_check_api_runs_all_m7_gates() -> None:
         "topology",
         "kubernetes-render",
         "kubernetes-proof-workflow",
+        "digest-pins",
     )
     assert report.ok is True
     assert tuple(result.name for result in report.results) == DEFAULT_CHECKS
@@ -48,7 +49,7 @@ def test_governance_cli_text_output(capsys: pytest.CaptureFixture[str]) -> None:
     assert "kubernetes-render: OK" in out
     assert "kubernetes-proof-workflow: OK" in out
     assert "docs-mirror: OK" in out
-    assert "governance OK: 8 checks (status=ok, warnings=0, infos=0, errors=0)" in out
+    assert "governance OK: 9 checks (status=ok, warnings=0, infos=0, errors=0)" in out
 
 
 def test_governance_cli_json_output(capsys: pytest.CaptureFixture[str]) -> None:
@@ -62,12 +63,12 @@ def test_governance_cli_json_output(capsys: pytest.CaptureFixture[str]) -> None:
     summary = payload["summary"]
 
     # Gate behaviour — exact (what the governance logic must guarantee).
-    assert summary["check_count"] == 8
-    assert summary["ok_count"] == 8
+    assert summary["check_count"] == 9
+    assert summary["ok_count"] == 9
     assert summary["failed_count"] == 0
     assert summary["health_status"] == "ok"
-    assert summary["status_counts"] == {"failed": 0, "warning": 0, "info": 0, "ok": 8}
-    assert summary["payload_count"] == 8
+    assert summary["status_counts"] == {"failed": 0, "warning": 0, "info": 0, "ok": 9}
+    assert summary["payload_count"] == 9
     assert summary["payload_error_count"] == 0
     assert summary["payload_error_checks"] == []
     assert summary["total_warnings"] == 0
@@ -117,6 +118,7 @@ def test_governance_cli_json_output(capsys: pytest.CaptureFixture[str]) -> None:
         "topology",
         "kubernetes-render",
         "kubernetes-proof-workflow",
+        "digest-pins",
     }
     assert all(
         item["ok"] and item["status"] == "ok" and item["errors"] == 0
@@ -131,6 +133,7 @@ def test_governance_cli_json_output(capsys: pytest.CaptureFixture[str]) -> None:
         "topology",
         "kubernetes-render",
         "kubernetes-proof-workflow",
+        "digest-pins",
     ]
     deploy_targets = next(item for item in payload["checks"] if item["name"] == "deploy-targets")
     topology = next(item for item in payload["checks"] if item["name"] == "topology")
@@ -167,7 +170,7 @@ def test_governance_check_script_json_includes_structured_gate_payloads() -> Non
 
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
-    assert payload["summary"]["payload_count"] == 8
+    assert payload["summary"]["payload_count"] == 9
     assert payload["summary"]["total_warnings"] == 0
     assert payload["summary"]["total_infos"] == 0
     assert payload["summary"]["total_errors"] == 0
@@ -176,7 +179,7 @@ def test_governance_check_script_json_includes_structured_gate_payloads() -> Non
         "failed": 0,
         "warning": 0,
         "info": 0,
-        "ok": 8,
+        "ok": 9,
     }
     assert payload["summary"]["failed_checks"] == []
     assert payload["summary"]["warning_checks"] == []
@@ -245,7 +248,7 @@ def test_governance_check_script_runs() -> None:
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    assert "governance OK: 8 checks (status=ok, warnings=0, infos=0, errors=0)" in result.stdout
+    assert "governance OK: 9 checks (status=ok, warnings=0, infos=0, errors=0)" in result.stdout
 
 
 def test_governance_failure_summary_marks_unknown_check_failed() -> None:
@@ -438,7 +441,7 @@ def test_governance_console_entrypoint_runs() -> None:
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    assert "governance OK: 8 checks (status=ok, warnings=0, infos=0, errors=0)" in result.stdout
+    assert "governance OK: 9 checks (status=ok, warnings=0, infos=0, errors=0)" in result.stdout
 
 
 def test_pre_commit_runs_governance_check_for_aggregate_files() -> None:
