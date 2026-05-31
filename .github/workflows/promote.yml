@@ -4,8 +4,16 @@ name: promote
 #
 # Preserves SHA identity (no merge commit, no rebase). Requires:
 #   1. The target SHA is an ancestor of origin/develop (no forgery).
-#   2. All check-runs for that SHA are completed+green (skipped/neutral allowed).
+#   2. Every required CI check for that SHA is completed with conclusion==success.
+#      Skipped/neutral/missing required checks are NOT green — gate fails CLOSED.
 #   3. The fast-forward succeeds (main must be an ancestor of SHA).
+#
+# Required checks (derived from ci.yml job names):
+#   pre-commit, audit, schema-validate, component-validate,
+#   deploy-target-validate, tool-candidate-validate, constraints-validate,
+#   docs-mirror-validate, topology-validate, kubernetes-render-validate,
+#   kubernetes-proof-workflow-validate, governance-validate, test-cpu,
+#   docker-build-base, docker-build, compose-validate
 #
 # Usage (maintainer):
 #   gh workflow run promote.yml --field sha=<DEVELOP_SHA>
@@ -59,9 +67,7 @@ jobs:
           SHA: ${{ github.event.inputs.sha }}
         run: |
           set -euo pipefail
-          # Fetch all check-runs for this commit; require >=1 run and all completed green.
-          # Allowed conclusions: success, skipped, neutral.
-          # Blocked: queued, in_progress, failure, cancelled, timed_out, action_required.
+          # Fetch all check-runs for this commit.
           runs=$(gh api \
             "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
             --paginate \
@@ -69,6 +75,41 @@ jobs:
           [ -n "$runs" ] || { echo "::error::no check-runs found for $SHA"; exit 1; }
           echo "Check-runs for $SHA:"
           echo "$runs"
+
+          # --- Fail-CLOSED required-set gate (CR-01) ---
+          # Every required CI check must be present AND conclusion == "success".
+          # skipped/neutral/missing count as NOT green for required checks.
+          required='[
+            "pre-commit",
+            "audit",
+            "schema-validate",
+            "component-validate",
+            "deploy-target-validate",
+            "tool-candidate-validate",
+            "constraints-validate",
+            "docs-mirror-validate",
+            "topology-validate",
+            "kubernetes-render-validate",
+            "kubernetes-proof-workflow-validate",
+            "governance-validate",
+            "test-cpu",
+            "docker-build-base",
+            "docker-build",
+            "compose-validate"
+          ]'
+          missing=$(echo "$runs" | jq -s --argjson req "$required" '
+            ($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name])
+            | length')
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::$missing required check(s) missing or not conclusion==success for $SHA"
+            echo "Required checks that are absent/skipped/non-success:"
+            echo "$runs" | jq -s --argjson req "$required" '
+              ($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name])'
+            exit 1
+          fi
+
+          # --- Secondary sweep: no run may be in a non-terminal state ---
+          # Blocked: queued, in_progress, failure, cancelled, timed_out, action_required.
           bad=$(echo "$runs" | jq -s '
             map(select(
               .status != "completed"
@@ -76,10 +117,10 @@ jobs:
                   | ["success", "skipped", "neutral"] | index($c) | not)
             )) | length')
           if [ "$bad" -ne 0 ]; then
-            echo "::error::$bad check-run(s) not green for $SHA"
+            echo "::error::$bad check-run(s) not in a terminal-green state for $SHA"
             exit 1
           fi
-          echo "All check-runs green for $SHA."
+          echo "All required check-runs are conclusion==success for $SHA."
 
       - name: Fast-forward main to the green SHA (preserve SHA identity)
         env:
