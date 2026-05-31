@@ -265,6 +265,9 @@ jobs:
           REDIS_PASSWORD=ci-redis-password
           HOMARR_SECRET_ENCRYPTION_KEY=ci-homarr-secret-encryption-key
           N8N_ENCRYPTION_KEY=ci-n8n-encryption-key
+          AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000
+          AUTHELIA_STORAGE_ENCRYPTION_KEY=ci-authelia-storage-encryption-key-00000000000000000
+          AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
           EOF
           for f in /tmp/compose-*.yml; do
             echo "=== Validating $f ==="

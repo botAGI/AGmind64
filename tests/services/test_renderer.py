@@ -93,7 +93,8 @@ def test_filter_by_profile_ragflow_includes_redis_runtime_dependency() -> None:
 
     assert "ragflow" in sel
     assert "redis" in sel
-    assert sel["redis"].profiles == ["rag", "ragflow"]
+    # redis also joins `security` (authelia session store); rag/ragflow unchanged.
+    assert sel["redis"].profiles == ["rag", "ragflow", "security"]
 
 
 def test_select_services_rejects_unknown_explicit_service_names() -> None:

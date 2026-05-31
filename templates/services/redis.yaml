@@ -7,6 +7,9 @@ purpose: Dify task queue + plugin cache — Redis 8 (2026-05-09)
 profiles:
 - rag
 - ragflow
+# authelia (security profile) uses redis as its session store + depends_on redis, so
+# redis must be selectable with `security` too (else security-alone fails to render).
+- security
 volumes:
 - /var/lib/agmind/redis:/data
 env:

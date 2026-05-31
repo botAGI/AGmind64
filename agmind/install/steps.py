@@ -53,6 +53,14 @@ _ALERTMANAGER_TELEGRAM_KEYS = (
     "AGMIND_ALERT_TELEGRAM_BOT_TOKEN",
 )
 
+# Authelia required secrets (read by the container as AUTHELIA_* env). 64-char so
+# Authelia's length warnings are satisfied; the redis session password reuses REDIS_PASSWORD.
+_AUTHELIA_SECRET_KEYS = (
+    "AUTHELIA_SESSION_SECRET",
+    "AUTHELIA_STORAGE_ENCRYPTION_KEY",
+    "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
+)
+
 _RUNTIME_TARGET_GUARD_SCRIPT = r"""
 set -eu
 while [ "$#" -gt 0 ]; do
@@ -221,6 +229,28 @@ def _stage_alertmanager_config(
         raise
 
 
+def _stage_authelia_config(authelia_src: Path, target_dir: Path, *, domain: str) -> None:
+    """Stage Authelia's configuration.yml + users_database.yml, substituting the domain.
+
+    Both ship with the __AGMIND_DOMAIN__ token (session cookie domain + admin email);
+    replace it with the install domain. Secrets are NOT here — Authelia reads them from
+    the runtime .env as AUTHELIA_* env. Staged atomically so a partial write never
+    replaces a good config dir; the dir is left WRITABLE (Authelia chowns it + writes
+    db.sqlite3/notification.txt at runtime).
+    """
+    staged = target_dir.with_name(f".{target_dir.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        staged.mkdir(parents=True, exist_ok=True)
+        for name in ("configuration.yml", "users_database.yml"):
+            text = (authelia_src / name).read_text(encoding="utf-8")
+            (staged / name).write_text(text.replace("__AGMIND_DOMAIN__", domain), encoding="utf-8")
+        _replace_path_atomic(staged, target_dir)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
 def _stage_directory_contents(source: Path, target: Path) -> None:
     staged = target.with_name(f".{target.name}.tmp")
     _cleanup_path(staged)
@@ -262,6 +292,12 @@ def _materialize_runtime_files(
         _stage_directory_contents(observability_dir / "loki", config.config_dir / "loki")
     if "alloy" in selected:
         _stage_directory_contents(observability_dir / "alloy", config.config_dir / "alloy")
+    if "authelia" in selected:
+        _stage_authelia_config(
+            templates_dir / "authelia",
+            config.config_dir / "authelia",
+            domain=config.domain,
+        )
     if "alertmanager" in selected:
         runtime_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
         _stage_alertmanager_config(
@@ -535,6 +571,8 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
     }
     for key in _RUNTIME_SECRET_KEYS:
         values[key] = existing_env.get(key) or generate_secret(32)
+    for key in _AUTHELIA_SECRET_KEYS:
+        values[key] = existing_env.get(key) or generate_secret(64)
     for key in _ALERTMANAGER_TELEGRAM_KEYS:
         values[key] = existing_env.get(key, "")
     return values
@@ -1545,6 +1583,17 @@ class EnvWriteStep(InstallStep):
             _env_line(
                 "HOMARR_SECRET_ENCRYPTION_KEY",
                 runtime_env["HOMARR_SECRET_ENCRYPTION_KEY"],
+            ),
+            "",
+            "# ---- Authelia (security profile) — read by the container as AUTHELIA_* ----",
+            _env_line("AUTHELIA_SESSION_SECRET", runtime_env["AUTHELIA_SESSION_SECRET"]),
+            _env_line(
+                "AUTHELIA_STORAGE_ENCRYPTION_KEY",
+                runtime_env["AUTHELIA_STORAGE_ENCRYPTION_KEY"],
+            ),
+            _env_line(
+                "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
+                runtime_env["AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET"],
             ),
         ]
         env_text = "\n".join(lines) + "\n"
