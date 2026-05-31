@@ -354,6 +354,58 @@ jobs:
             docker compose --env-file /tmp/agmind-compose-ci.env -f "$f" config --quiet
           done
 
+  # ---- Real-compose smoke lane (H.3) ----
+  # Renders the NON-GPU subset and runs docker compose up --wait to assert every
+  # container reaches healthy, then down -v always.  Catches perms/command/config/
+  # group_add crash-loops that 17 config-only jobs cannot detect.
+  # Isolation: -p agmind-ci (separate project/network from the live GPU stack).
+  # Fork-guarded: same pattern as test-strix-halo — fork PRs are skipped.
+  compose-up-smoke:
+    runs-on: [self-hosted, linux, x64]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [docker-build, compose-validate]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install agmind + dev
+        run: |
+          "$HOME/.local/bin/uv" --version
+          "$HOME/.local/bin/uv" venv --python python3 .venv
+          "$HOME/.local/bin/uv" pip install --python .venv/bin/python -c constraints/dev.txt -e ".[dev]"
+      - name: Write CI env file
+        run: |
+          cat > /tmp/agmind-compose-ci.env <<'EOF'
+          POSTGRES_PASSWORD=ci-postgres-password
+          GRAFANA_PASSWORD=ci-grafana-password
+          MYSQL_ROOT_PASSWORD=ci-mysql-root-password
+          MINIO_ROOT_USER=ci-minio
+          MINIO_ROOT_PASSWORD=ci-minio-password
+          REDIS_PASSWORD=ci-redis-password
+          HOMARR_SECRET_ENCRYPTION_KEY=ci-homarr-secret-encryption-key
+          N8N_ENCRYPTION_KEY=ci-n8n-encryption-key
+          AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000
+          AUTHELIA_STORAGE_ENCRYPTION_KEY=ci-authelia-storage-encryption-key-00000000000000000
+          AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
+          EOF
+      - name: Run compose-up-smoke integration tests
+        env:
+          AGMIND_CI: "1"
+        run: |
+          .venv/bin/python -m pytest -q \
+            -m integration \
+            tests/integration/test_compose_up_smoke.py \
+            --tb=short
+      - name: Teardown (belt-and-suspenders)
+        if: always()
+        run: |
+          # Belt-and-suspenders: the test's finally block already calls down -v,
+          # but we also tear down here in case the test process was killed mid-run.
+          docker compose -p agmind-ci down -v --remove-orphans 2>/dev/null || true
+
   # ---- Real Strix Halo hardware (self-hosted runner — same machine) ----
   # M5-followup: since все jobs теперь на self-hosted, этот тоже бежит на
   # каждом push/PR (но fork PRs пропускаются — security: чужой код не должен
