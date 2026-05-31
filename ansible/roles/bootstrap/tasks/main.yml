@@ -110,6 +110,8 @@
     - { path: "{{ agmind_data_dir }}/loki", owner: "10001", group: "10001" }
     - { path: "{{ agmind_data_dir }}/n8n", owner: "1000", group: "1000" }
     - { path: "{{ agmind_data_dir }}/elasticsearch", owner: "1000", group: "0" }
+    - { path: "{{ agmind_data_dir }}/dify/storage", owner: "1001", group: "1001" }
+    - { path: "{{ agmind_data_dir }}/docling-cache", owner: "1001", group: "1001" }
 
 - name: Set restrictive perms on agmind config dir
   ansible.builtin.file:

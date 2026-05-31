@@ -33,6 +33,9 @@ _EXPECTED = {
     "loki": ("10001", "10001"),
     "n8n": ("1000", "1000"),
     "elasticsearch": ("1000", "0"),
+    # dify-api (USER dify=1001) writes /app/api/storage; docling (USER 1001) its cache.
+    "storage": ("1001", "1001"),  # /var/lib/agmind/dify/storage
+    "docling-cache": ("1001", "1001"),
 }
 
 

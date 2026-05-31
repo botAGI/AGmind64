@@ -9,7 +9,10 @@ profiles:
 ports:
 - 127.0.0.1:5002:5001
 volumes:
-- /var/lib/agmind/docling-cache:/root/.cache
+# Image runs as uid 1001 with HOME=/opt/app-root/src and DOCLING_SERVE_ARTIFACTS_PATH
+# under .cache there — mount the real cache path (not /root/.cache, which persists
+# nothing). Host dir pre-created 1001:1001 in bootstrap so the non-root user can write.
+- /var/lib/agmind/docling-cache:/opt/app-root/src/.cache
 env:
   DOCLING_SERVE_ALLOW_CUSTOM_OCR_CONFIG: 'true'
 resources:

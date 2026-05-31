@@ -28,6 +28,10 @@ env:
 depends_on:
 - etcd
 - milvus-minio
+# Upstream milvus standalone compose ships this; jemalloc/Knowhere issue syscalls
+# Docker's default seccomp profile can restrict (intermittent crashes without it).
+security_opt:
+- seccomp:unconfined
 resources:
   cpus: 8.0
   mem_limit: 16g
