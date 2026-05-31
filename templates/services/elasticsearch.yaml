@@ -9,6 +9,10 @@ profiles:
 - ragflow
 volumes:
 - /var/lib/agmind/elasticsearch:/usr/share/elasticsearch/data
+run_as_uid: 1000
+run_as_gid: 0
+writable_mounts:
+- /var/lib/agmind/elasticsearch
 env:
   discovery.type: single-node
   xpack.security.enabled: 'false'

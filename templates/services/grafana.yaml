@@ -11,6 +11,10 @@ ports:
 volumes:
 - /etc/agmind/grafana/provisioning:/etc/grafana/provisioning:ro
 - /var/lib/agmind/grafana:/var/lib/grafana
+run_as_uid: 472
+# run_as_gid defaults to run_as_uid (472)
+writable_mounts:
+- /var/lib/agmind/grafana
 env:
   GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
   GF_PATHS_PROVISIONING: /etc/grafana/provisioning

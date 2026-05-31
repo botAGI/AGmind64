@@ -11,6 +11,10 @@ ports:
 volumes:
 - /etc/agmind/prometheus:/etc/prometheus:ro
 - /var/lib/agmind/prometheus:/prometheus
+run_as_uid: 65534
+# run_as_gid defaults to run_as_uid (65534)
+writable_mounts:
+- /var/lib/agmind/prometheus
 resources:
   cpus: 2.0
   mem_limit: 2g

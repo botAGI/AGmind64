@@ -10,6 +10,10 @@ ports:
 - 127.0.0.1:5001:5001
 volumes:
 - /var/lib/agmind/dify/storage:/app/api/storage
+run_as_uid: 1001
+# run_as_gid defaults to run_as_uid (1001)
+writable_mounts:
+- /var/lib/agmind/dify/storage
 env:
   MODE: api
   LOG_LEVEL: INFO

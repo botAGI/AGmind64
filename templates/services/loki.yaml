@@ -11,6 +11,10 @@ ports:
 volumes:
 - /etc/agmind/loki:/etc/loki:ro
 - /var/lib/agmind/loki:/loki
+run_as_uid: 10001
+# run_as_gid defaults to run_as_uid (10001)
+writable_mounts:
+- /var/lib/agmind/loki
 command:
 - -config.file=/etc/loki/loki.yml
 resources:

@@ -291,6 +291,36 @@ class ServiceDescriptor(BaseModel):
 
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
+    # ---- Ownership / data-dir hints (H.5) ----
+    run_as_uid: int | None = None
+    """Numeric UID the container image runs as (e.g. 65534 for prometheus, 472 for grafana).
+
+    OPTIONAL hint used by the derived bootstrap ownership-coverage test
+    (tests/ansible/test_data_dir_ownership_coverage.py) to assert the ansible
+    bootstrap pre-create loop owns every writable host-bind dir with the correct uid.
+
+    Root-running images (USER 0 / empty) leave this None — no bootstrap entry needed.
+    Known values: prometheus 65534, grafana 472, loki 10001, n8n 1000,
+    elasticsearch 1000, dify-api/docling 1001.
+    """
+
+    run_as_gid: int | None = None
+    """Numeric GID the container image runs as.  Defaults to run_as_uid when unset.
+
+    Set explicitly only when GID differs from UID (e.g. elasticsearch uid=1000, gid=0).
+    """
+
+    writable_mounts: list[str] = Field(default_factory=list)
+    """Host paths the container writes to as run_as_uid:run_as_gid.
+
+    OPTIONAL hint listing the SOURCE (host) side of volume bind-mounts that the
+    container user writes to.  The derived ownership-coverage test asserts the
+    bootstrap loop pre-creates each path with the correct owner.
+
+    Use the real absolute host path, e.g. '/var/lib/agmind/prometheus'.
+    Only include writable bind-mounts; :ro config mounts are not data dirs.
+    """
+
     # ---- Validators ----
     @field_validator("name")
     @classmethod

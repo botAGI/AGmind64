@@ -338,6 +338,37 @@
     },
     "observability": {
       "$ref": "#/$defs/ObservabilityConfig"
+    },
+    "run_as_uid": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run As Uid"
+    },
+    "run_as_gid": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run As Gid"
+    },
+    "writable_mounts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Writable Mounts",
+      "type": "array"
     }
   },
   "required": [

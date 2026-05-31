@@ -11,6 +11,10 @@ ports:
 - 127.0.0.1:5678:5678
 volumes:
 - /var/lib/agmind/n8n:/home/node/.n8n
+run_as_uid: 1000
+# run_as_gid defaults to run_as_uid (1000)
+writable_mounts:
+- /var/lib/agmind/n8n
 env:
   GENERIC_TIMEZONE: ${N8N_TIMEZONE:-UTC}
   N8N_DIAGNOSTICS_ENABLED: 'false'
