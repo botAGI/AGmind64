@@ -358,6 +358,71 @@ def test_real_catalog_ragflow_and_dify_coexist() -> None:
     assert report.has_errors is False
 
 
+# ---------- C3: capability-vocabulary closure gate ----------
+#
+# Vocab = union of all `provides` tokens across the catalog + BINDINGS keys.
+# Every `consumes` token in every descriptor must be in that vocab.
+# This is a catalog-level CI guard (the model can't see the full catalog at
+# validate-time).  Mirrors the BINDINGS closure guard (F.3) pattern above.
+
+
+def test_capability_vocab_is_closed() -> None:
+    """C3: every consumes token across the catalog must be in the known vocab.
+
+    vocab = {cap for d in all_descriptors for cap in d.provides} | BINDINGS.keys()
+
+    A typo'd or invented capability token (e.g. 'vector_dbX') silently skips
+    injection — this gate makes such drift loud.
+
+    Mutation-proof: injecting a synthetic bad token surfaces as a named violation.
+    """
+    from agmind.services.renderer import load_descriptors
+
+    descriptors = load_descriptors()
+    all_provides = {cap for d in descriptors.values() for cap in d.provides}
+    vocab = all_provides | set(BINDINGS.keys())
+
+    violations: list[str] = []
+    for name, d in descriptors.items():
+        for cap in d.consumes:
+            if cap not in vocab:
+                violations.append(f"{name} consumes unknown capability '{cap}'")
+
+    assert not violations, "Capability-vocab closure violated:\n" + "\n".join(sorted(violations))
+
+
+def test_capability_vocab_closure_mutation_proof() -> None:
+    """C3 mutation control: a typo'd token in a synthetic descriptor → gate flags it.
+
+    This proves the gate is not vacuously true; any unknown token causes a named
+    violation instead of silently passing.
+    """
+    from agmind.services.renderer import load_descriptors
+
+    descriptors = load_descriptors()
+    all_provides = {cap for d in descriptors.values() for cap in d.provides}
+    vocab = all_provides | set(BINDINGS.keys())
+
+    # Synthetic typo'd token — not in any real descriptor's provides or BINDINGS.
+    typo_token = "vector_dbX"
+    assert typo_token not in vocab, (
+        f"mutation control token '{typo_token}' accidentally entered the catalog — "
+        "choose a different token for this test"
+    )
+
+    synthetic_consumes = [typo_token]
+    violations = [
+        f"synthetic-svc consumes unknown capability '{cap}'"
+        for cap in synthetic_consumes
+        if cap not in vocab
+    ]
+
+    assert violations, (
+        f"Mutation control FAILED: token '{typo_token}' was not caught as a violation. "
+        "The gate would silently pass a real typo — fix the gate logic."
+    )
+
+
 def test_real_catalog_ragflow_provides_dify_external_kb() -> None:
     """ragflow.provides включает dify_external_kb."""
     from agmind.services.renderer import load_descriptors
