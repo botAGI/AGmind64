@@ -248,6 +248,164 @@ def test_full_path_keying_prevents_basename_collision() -> None:
     assert key_b == "bar/storage", f"Expected 'bar/storage', got {key_b!r}"
 
 
+# ---------------------------------------------------------------------------
+# A5: ROOT_WRITER_ALLOWLIST + writable_mounts↔volumes consistency
+# ---------------------------------------------------------------------------
+
+# Services that run as root (no run_as_uid) but have writable host bind-mounts
+# under /var/lib/agmind.  These have been individually verified to self-chown or
+# need no chown because they run as root (confirmed via docker image inspect and
+# live-stack health checks — see 08-CONTEXT.md bootstrap-coverage agent notes).
+#
+# NOTE: caddy is present now but will be REMOVED in plan 05 (B2) when the
+# core-caddy profile gets a proper Caddyfile and caddy gains a writable_mounts
+# entry; the allowlist entry is harmless until then.
+ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "postgres",
+        "redis",
+        "mysql",
+        "nginx",
+        "netdata",
+        "uptime-kuma",
+        "alertmanager",
+        "weaviate",
+        "etcd",
+        "minio",
+        "milvus-minio",
+        "qdrant",
+        "homarr",
+        "authelia",
+        "alloy",
+        "openwebui",
+        "portainer",
+        "traefik",
+        "caddy",
+        "milvus",
+        "n8n",
+    }
+)
+
+_AGMIND_DATA_PREFIX = "/var/lib/agmind/"
+
+
+def _writable_bind_sources(descriptor: ServiceDescriptor) -> list[str]:
+    """Return host-side source paths of writable bind-mounts under /var/lib/agmind.
+
+    A bind-mount is writable if its volume spec does NOT end with ':ro'.
+    """
+    sources: list[str] = []
+    for vol in descriptor.volumes:
+        parts = vol.split(":")
+        if len(parts) < 2:
+            continue
+        src = parts[0]
+        mode = parts[-1] if len(parts) == 3 else "rw"
+        if not src.startswith(_AGMIND_DATA_PREFIX):
+            continue
+        if mode == "ro":
+            continue
+        sources.append(src)
+    return sources
+
+
+def test_writable_bind_covered_by_bootstrap_or_allowlist() -> None:
+    """A5: every service with a writable host bind under /var/lib/agmind must be
+    EITHER in the bootstrap pre-create set (has a numeric uid entry) OR in the
+    explicit reviewed ROOT_WRITER_ALLOWLIST.
+
+    A non-root service (run_as_uid is set) not in the bootstrap set will crash:
+    Docker auto-creates the dir as root:root 0755, which the non-root UID cannot write.
+    A service with uid=None and writable binds must be in ROOT_WRITER_ALLOWLIST,
+    documenting the reviewed decision that it runs as root and self-chowns.
+
+    Fail-closed: adding a non-root service with writable_mounts to the catalog
+    without a bootstrap entry REDs this test.
+
+    Mutation-verified (out-of-tree): adding a synthetic non-root descriptor with
+    writable_mounts=['/var/lib/agmind/foo'], no run_as_uid, not in allowlist, and no
+    bootstrap entry causes this test to RED with an allowlist coverage gap.
+    """
+    descriptors = _load_descriptors()
+    bootstrap_entries = _load_bootstrap_chown_entries()
+
+    # Build the set of relative paths covered by the bootstrap pre-create loop.
+    bootstrap_paths: set[str] = set(bootstrap_entries.keys())
+
+    violations: list[str] = []
+
+    for name, descriptor in descriptors.items():
+        bind_sources = _writable_bind_sources(descriptor)
+        if not bind_sources:
+            continue
+
+        uid = descriptor.run_as_uid
+
+        for src in bind_sources:
+            rel_path = _normalise_path_key(src)
+
+            if uid is not None:
+                # Non-root service: bootstrap must have a chown entry for this path.
+                # (The existing test_bootstrap_coverage_derived_from_catalog already
+                # asserts this via writable_mounts; this check covers the volumes path.)
+                if rel_path not in bootstrap_paths:
+                    violations.append(
+                        f"{name}: writable bind {src!r} (uid={uid}) not in bootstrap "
+                        f"pre-create loop — Docker will create it as root:root and the "
+                        f"container will crash (permission denied)"
+                    )
+            else:
+                # Root-writer: must be in the reviewed allowlist.
+                if name not in ROOT_WRITER_ALLOWLIST:
+                    violations.append(
+                        f"{name}: has writable bind {src!r} but uid=None and is not in "
+                        f"ROOT_WRITER_ALLOWLIST — add to the allowlist after verifying it "
+                        f"runs as root and self-chowns (or set run_as_uid and add a "
+                        f"bootstrap entry)"
+                    )
+
+    assert not violations, "A5 bootstrap/allowlist coverage gap:\n" + "\n".join(
+        f"  - {v}" for v in violations
+    )
+
+
+def test_writable_volume_declared_in_writable_mounts() -> None:
+    """A5 companion: every writable /var/lib/agmind bind source in a descriptor's
+    volumes must also appear in that descriptor's writable_mounts field.
+
+    writable_mounts is the source of truth for the bootstrap pre-create derivation
+    (test_bootstrap_coverage_derived_from_catalog uses it).  A volume that writes
+    to /var/lib/agmind but is absent from writable_mounts is invisible to the
+    bootstrap coverage test, silently creating a gap.
+
+    This test closes that gap: volumes and writable_mounts must be consistent for
+    the /var/lib/agmind prefix.
+    """
+    descriptors = _load_descriptors()
+    violations: list[str] = []
+
+    for name, descriptor in descriptors.items():
+        if descriptor.run_as_uid is None:
+            # Root-writers are covered by test_writable_bind_covered_by_bootstrap_or_allowlist;
+            # they are not required to declare writable_mounts (they self-chown).
+            continue
+
+        bind_sources = _writable_bind_sources(descriptor)
+        declared_writable = set(descriptor.writable_mounts)
+
+        for src in bind_sources:
+            if src not in declared_writable:
+                violations.append(
+                    f"{name}: writable bind {src!r} is in volumes but not in "
+                    f"writable_mounts — add it so the bootstrap coverage test can "
+                    f"derive the chown requirement"
+                )
+
+    assert not violations, "A5 writable_mounts↔volumes parity violation:\n" + "\n".join(
+        f"  - {v}" for v in violations
+    )
+
+
 def test_run_as_uid_and_gid_are_numeric() -> None:
     """run_as_uid / run_as_gid must be numeric (positive int) when set.
 
