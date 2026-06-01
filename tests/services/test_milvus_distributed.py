@@ -51,6 +51,24 @@ def test_milvus_runs_standalone_with_external_backends() -> None:
     assert set(d.depends_on) >= {"etcd", "milvus-minio"}
 
 
+def test_milvus_storage_type_is_remote_not_deprecated_minio() -> None:
+    """Milvus v2.6 storage-V2 arrow filesystem init only accepts {local, remote,
+    opendal}; the legacy "minio" token panics at boot ("Unsupported storage
+    type: minio"). MinIO is still the *backend* via MINIO_ADDRESS — but the
+    storage TYPE must be the scheme value, not the backend name."""
+    d = load_descriptors()["milvus"]
+    storage_type = d.env.get("COMMON_STORAGETYPE", "remote")  # remote == v2.6 default
+    assert storage_type in {"local", "remote", "opendal"}, (
+        f"COMMON_STORAGETYPE={storage_type!r} rejected by Milvus v2.6 arrow filesystem"
+    )
+    assert storage_type != "minio", (
+        "'minio' is deprecated/removed in Milvus v2.6 — use 'remote' (backend "
+        "stays MinIO via MINIO_ADDRESS=milvus-minio:9000)"
+    )
+    # Sanity: the MinIO backend wiring that 'remote' consumes is still present.
+    assert d.env.get("MINIO_ADDRESS") == "milvus-minio:9000"
+
+
 def test_new_services_owned_by_stateful_component() -> None:
     contract = yaml.safe_load(
         (_REPO_ROOT / "templates" / "components" / "stateful-services.yaml").read_text("utf-8")

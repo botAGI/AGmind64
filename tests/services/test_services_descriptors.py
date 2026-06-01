@@ -76,6 +76,30 @@ def test_traefik_healthcheck_ping_endpoint_is_enabled() -> None:
         )
 
 
+def test_llama_llm_flash_attn_carries_required_value() -> None:
+    """The b9049 llama-server build made --flash-attn take a REQUIRED enum value
+    (on|off|auto). A bare --flash-attn swallows the following flag (--cache-type-k)
+    as its value and crash-loops the container. Guard that --flash-attn is always
+    immediately followed by a valid value token, never another flag (Правила #7)."""
+    data = yaml.safe_load((SERVICES_DIR / "llama-llm.yaml").read_text(encoding="utf-8"))
+    descriptor = ServiceDescriptor.model_validate(data)
+    cmd = [str(c) for c in (descriptor.command or [])]
+    valid = {"on", "off", "auto", "true", "false"}
+    for i, tok in enumerate(cmd):
+        # accept both --flash-attn on and --flash-attn=on
+        if tok.startswith("--flash-attn="):
+            assert tok.split("=", 1)[1].lower() in valid, f"bad --flash-attn value: {tok}"
+            break
+        if tok == "--flash-attn":
+            nxt = cmd[i + 1] if i + 1 < len(cmd) else None
+            assert nxt is not None and not nxt.startswith("-") and nxt.lower() in valid, (
+                "llama-llm passes a bare --flash-attn; the b9049 image requires a value "
+                f"(on|off/auto). Next token is {nxt!r} (a flag/missing) → server consumes "
+                "it as the flash-attn value and crash-loops"
+            )
+            break
+
+
 def test_llama_llm_healthcheck_start_period_allows_model_load() -> None:
     """A multi-GB LLM takes minutes to load into unified memory; the healthcheck
     start_period must be generous so docker does not mark llama-llm unhealthy mid-load
