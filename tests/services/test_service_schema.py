@@ -324,7 +324,8 @@ def test_full_descriptor_with_routing_and_observability() -> None:
             "ports": ["127.0.0.1:8080:8080"],
             "volumes": ["/var/lib/agmind/models:/models:ro"],
             "env": {"AMD_VULKAN_ICD": "RADV"},
-            "extra_args": ["--device=/dev/dri", "--group-add=video"],
+            "devices": ["/dev/dri"],
+            "group_add": ["video"],
             "resources": {"cpus": 8.0, "mem_limit": "64g"},
             "health": {
                 "test": ["CMD", "curl", "-f", "http://localhost:8080/health"],
