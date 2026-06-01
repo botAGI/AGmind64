@@ -27,9 +27,19 @@ after filtering (e.g. ``automation`` = only n8n) is skipped.
 
 Isolation
 ---------
-Project name ``-p agmind-ci`` keeps networks/containers/volumes separate
-from any live stack on the same host.  The CI env file carries dummy
-passwords (identical to those used in compose-validate).
+Project name ``-p agmind-ci`` scopes Compose-managed names. The rendered AGmind
+compose file also contains fixed ``container_name``, fixed host ports, a fixed
+network name, and bind mounts under ``/var/lib/agmind``; those bypass project
+scoping and can collide with or write into a live stack on the same self-hosted
+runner. The smoke rewrites those deploy-time fields before ``up``:
+
+* remove ``container_name`` so Compose generates ``agmind-ci-...`` names;
+* remove host ``ports`` because inter-container readiness does not need them;
+* remove the fixed default network name so ``-p`` scopes the network;
+* remap ``/var/lib/agmind`` bind mounts into the test temp directory.
+
+The CI env file carries dummy passwords (identical to those used in
+compose-validate).
 
 Opt-in marker
 -------------
@@ -122,11 +132,14 @@ _SMOKE_PROFILES = [
 # alone (dify-worker had RestartCount=49 and would pass a lucky --wait poll).
 _CRASH_LOOP_STATES = frozenset({"restarting", "exited", "unhealthy"})
 
-# Project isolation name — NEVER collides with the live stack.
+# Project isolation name. The smoke strips deploy-time fixed names/ports/binds
+# so this actually isolates from the live stack too.
 _PROJECT_NAME = "agmind-ci"
 
 # Wait timeout in seconds — matches 07-VALIDATION.md spec.
 _WAIT_TIMEOUT = 180
+
+_AGMIND_DATA_ROOT = Path("/var/lib/agmind")
 
 
 def _docker_available() -> bool:
@@ -139,6 +152,31 @@ def _docker_available() -> bool:
         timeout=10,
     )
     return result.returncode == 0
+
+
+def _restore_temp_permissions(path: Path) -> None:
+    """Return root-owned bind-mount leftovers to the runner user before rmtree."""
+    from agmind.services.renderer import load_descriptors
+
+    qdrant_ref = load_descriptors()["qdrant"].fq_image()
+    uid = os.getuid()
+    gid = os.getgid()
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{path}:/cleanup",
+            "--entrypoint",
+            "/bin/sh",
+            qdrant_ref,
+            "-c",
+            f"chmod -R a+rwX /cleanup || true; chown -R {uid}:{gid} /cleanup || true",
+        ],
+        capture_output=True,
+        timeout=60,
+    )
 
 
 def _render_compose(profile: str, output_path: Path, domain: str = "ci.example.com") -> None:
@@ -167,6 +205,7 @@ def _render_compose(profile: str, output_path: Path, domain: str = "ci.example.c
 # services (redis-auth, milvus storageType, perms, command/healthcheck-vs-image).
 _INSTALL_SETUP_SERVICES = frozenset(
     {
+        "traefik",  # needs staged dynamic config, CF token, and owns host ports 80/443
         "prometheus",  # needs staged /etc/prometheus/prometheus.yml
         "grafana",  # needs staged provisioning dir + uid-472 data dir
         "loki",  # needs staged loki config
@@ -178,16 +217,41 @@ _INSTALL_SETUP_SERVICES = frozenset(
 )
 
 
-def _filter_unbootable_services(compose_path: Path) -> int:
+def _rewrite_agmind_bind_mount(spec: str, data_root: Path) -> str:
+    """Redirect ``/var/lib/agmind`` bind mounts into the smoke temp directory."""
+    parts = spec.split(":")
+    if len(parts) < 2:
+        return spec
+
+    host = Path(parts[0])
+    try:
+        rel = host.relative_to(_AGMIND_DATA_ROOT)
+    except ValueError:
+        return spec
+
+    mapped = data_root / rel
+    mapped.mkdir(parents=True, exist_ok=True)
+    # The smoke does not run the installer bootstrap chown step. World-writable
+    # temp dirs keep the runtime smoke focused on image command/config/health
+    # regressions; ownership is covered separately by the bootstrap gate.
+    mapped.chmod(0o777)
+    parts[0] = str(mapped)
+    return ":".join(parts)
+
+
+def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
     """Drop services that can't boot from a bare ``docker compose up`` and return
     the count of services that REMAIN.
 
     Removes ``llama-*`` (need GPU + a downloaded GGUF model) and
     ``_INSTALL_SETUP_SERVICES`` (need agmind-install config materialization /
     data-dir chown). Dangling ``depends_on`` references to removed services are
-    cleaned up. The remaining set is the subset that boots from committed
-    descriptors alone — where the phase's deploy-blocker classes actually live. A
-    lane that becomes empty (e.g. ``automation`` = only n8n) is skipped by the caller.
+    cleaned up. Fixed deploy-time names/ports/binds/network fields are rewritten
+    so ``-p agmind-ci`` can isolate the smoke stack from live ``agmind-*``
+    services on the same self-hosted runner. The remaining set is the subset
+    that boots from committed descriptors alone — where the phase's
+    deploy-blocker classes actually live. A lane that becomes empty (e.g.
+    ``automation`` = only n8n) is skipped by the caller.
     """
     import yaml  # available because agmind[dev] includes PyYAML
 
@@ -202,10 +266,24 @@ def _filter_unbootable_services(compose_path: Path) -> int:
     for k in removed:
         del services[k]
 
+    networks = data.get("networks")
+    if isinstance(networks, dict):
+        default_network = networks.get("default")
+        if isinstance(default_network, dict):
+            default_network.pop("name", None)
+
     # Also remove dangling depends_on references to any removed service.
     for svc in services.values():
         if not isinstance(svc, dict):
             continue
+        svc.pop("container_name", None)
+        svc.pop("ports", None)
+        volumes = svc.get("volumes")
+        if isinstance(volumes, list):
+            svc["volumes"] = [
+                _rewrite_agmind_bind_mount(volume, data_root) if isinstance(volume, str) else volume
+                for volume in volumes
+            ]
         deps = svc.get("depends_on")
         if isinstance(deps, dict):
             for dep_key in removed:
@@ -216,6 +294,53 @@ def _filter_unbootable_services(compose_path: Path) -> int:
     with compose_path.open("w", encoding="utf-8") as fh:
         yaml.dump(data, fh, default_flow_style=False, allow_unicode=True)
     return len(services)
+
+
+def test_filter_unbootable_services_rewrites_live_stack_fields(tmp_path: Path) -> None:
+    """Regression: ``-p agmind-ci`` cannot isolate fixed deploy-time fields.
+
+    A live stack may already own ``agmind-qdrant``. The smoke must remove fixed
+    container names before ``docker compose up`` so Compose can generate
+    project-scoped names such as ``agmind-ci-qdrant-1``. It must also avoid live
+    host ports, the live ``agmind`` network, and live ``/var/lib/agmind`` bind
+    mounts.
+    """
+    import yaml
+
+    compose_path = tmp_path / "compose.yml"
+    data_root = tmp_path / "data"
+    compose_path.write_text(
+        yaml.safe_dump(
+            {
+                "services": {
+                    "qdrant": {
+                        "image": "qdrant/qdrant:v1.18.0",
+                        "container_name": "agmind-qdrant",
+                        "ports": ["127.0.0.1:6333:6333"],
+                        "volumes": ["/var/lib/agmind/qdrant:/qdrant/storage"],
+                    },
+                    "llama-llm": {
+                        "image": "ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049",
+                        "container_name": "agmind-llama-llm",
+                    },
+                },
+                "networks": {"default": {"name": "agmind", "driver": "bridge"}},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    remaining = _filter_unbootable_services(compose_path, data_root)
+
+    assert remaining == 1
+    rendered = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert set(rendered["services"]) == {"qdrant"}
+    qdrant = rendered["services"]["qdrant"]
+    assert "container_name" not in qdrant
+    assert "ports" not in qdrant
+    assert qdrant["volumes"] == [f"{data_root}/qdrant:/qdrant/storage"]
+    assert "name" not in rendered["networks"]["default"]
 
 
 def _compose_cmd(
@@ -377,7 +502,7 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
         # Strip services that can't boot from a bare compose up (GPU/model llama-*,
         # config-materialization + data-dir-chown services). A lane left empty is
         # validated only by the full `agmind install`, so skip it here.
-        remaining = _filter_unbootable_services(compose_file)
+        remaining = _filter_unbootable_services(compose_file, tmp / "data")
         if remaining == 0:
             pytest.skip(
                 f"[{profile}] only install-setup services remain after filtering — "
@@ -386,6 +511,18 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
             )
 
         # Belt: validate compose config before up (surface config errors fast)
+        subprocess.run(
+            _compose_cmd(
+                "down",
+                "-v",
+                "--remove-orphans",
+                compose_file=compose_file,
+                env_file=env_file,
+                profile=profile,
+            ),
+            capture_output=True,
+            timeout=60,
+        )
         config_result = subprocess.run(
             _compose_cmd(
                 "config",
@@ -446,6 +583,7 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                 _compose_cmd(
                     "down",
                     "-v",
+                    "--remove-orphans",
                     compose_file=compose_file,
                     env_file=env_file,
                     profile=profile,
@@ -453,3 +591,4 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                 capture_output=True,
                 timeout=60,
             )
+            _restore_temp_permissions(tmp)

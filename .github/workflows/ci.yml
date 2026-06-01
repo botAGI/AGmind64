@@ -355,7 +355,9 @@ jobs:
   # Renders the NON-GPU subset and runs docker compose up --wait to assert every
   # container reaches healthy, then down -v always.  Catches perms/command/config/
   # group_add crash-loops that 17 config-only jobs cannot detect.
-  # Isolation: -p agmind-ci (separate project/network from the live GPU stack).
+  # Isolation: the test rewrites fixed deploy fields (container_name, host ports,
+  # network name, /var/lib/agmind bind mounts) before using -p agmind-ci, so it
+  # does not collide with or write into the live GPU stack on the self-hosted runner.
   # Fork-guarded: same pattern as test-strix-halo — fork PRs are skipped.
   compose-up-smoke:
     runs-on: [self-hosted, linux, x64]
