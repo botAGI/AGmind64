@@ -188,3 +188,26 @@ def test_depends_on_targets_exist(service_files: list[Path]) -> None:
         data = yaml.safe_load(p.read_text(encoding="utf-8"))
         for dep in data.get("depends_on") or []:
             assert dep in available, f"{p.stem} depends on '{dep}' which is not defined"
+
+
+def test_elasticsearch_ragflow_search_index_chain_is_wired() -> None:
+    """B4 (plan 08-09): the elasticsearch→ragflow ``search_index`` capability chain
+    must be fully wired so ragflow's ES connection env is injected by the renderer
+    (rather than hardcoded). Verified at execution against the live stack: ragflow's
+    ES connection comes from this binding (ragflow.yaml declares no literal ES_HOST/
+    ES_PORT — they are injected here). Guards the chain the C3 vocab gate does not.
+    """
+    from agmind.services.capability_bindings import BINDINGS
+
+    es = yaml.safe_load((SERVICES_DIR / "elasticsearch.yaml").read_text(encoding="utf-8"))
+    ragflow = yaml.safe_load((SERVICES_DIR / "ragflow.yaml").read_text(encoding="utf-8"))
+
+    # 1. Capability ends are declared on both descriptors.
+    assert "search_index" in (es.get("provides") or []), "elasticsearch must provide search_index"
+    assert "search_index" in (ragflow.get("consumes") or []), "ragflow must consume search_index"
+
+    # 2. The binding injects ragflow's ES connection env (DOC_ENGINE/ES_HOST/ES_PORT).
+    injected = BINDINGS["search_index"]["elasticsearch"]["ragflow"]
+    assert injected["DOC_ENGINE"] == "elasticsearch"
+    assert injected["ES_HOST"] == "elasticsearch"
+    assert injected["ES_PORT"] == "9200"
