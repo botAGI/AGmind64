@@ -285,6 +285,30 @@ def test_depends_on_must_match_name_pattern() -> None:
     _minimal_descriptor(depends_on=["llama-q4", "qdrant"])
 
 
+# ---------- extra_args validation (C1 fail-closed gate) ----------
+
+
+def test_extra_args_non_empty_rejected() -> None:
+    """C1: non-empty extra_args must raise ValidationError (fail-closed).
+
+    The renderer silently drops extra_args; keeping it accepted silently ships
+    misconfigured containers.  The validator makes the failure loud at
+    schema-validation time.
+    """
+    with pytest.raises(ValidationError, match="extra_args is unsupported"):
+        _minimal_descriptor(extra_args=["--foo"])
+
+
+def test_extra_args_empty_allowed() -> None:
+    """C1: omitted or empty extra_args remain valid (zero-impact back-compat)."""
+    # omitted → default []
+    d1 = _minimal_descriptor()
+    assert d1.extra_args == []
+    # explicit empty list
+    d2 = _minimal_descriptor(extra_args=[])
+    assert d2.extra_args == []
+
+
 # ---------- Full descriptor with all sub-models ----------
 
 
