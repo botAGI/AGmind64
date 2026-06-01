@@ -7,7 +7,6 @@ ServiceDescriptor (Pydantic v2), конвертирует в legacy Service data
 
 Profile system:
 - core           — минимум для inference (llama-* + qdrant + traefik)
-- core-caddy     — alternative с Caddy вместо Traefik
 - core-nginx     — alternative с Nginx (для setup без публичного домена)
 - rag            — core + Dify + Postgres + Redis + Docling
 - rag-weaviate   — RAG с Weaviate вместо Qdrant

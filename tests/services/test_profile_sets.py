@@ -50,10 +50,10 @@ def test_all_profile_sets_match_live_profiles() -> None:
     )
 
 
-def test_all_profile_sets_covers_all_13_profiles() -> None:
-    """Spot check: exactly 13 profiles are declared in ALL_PROFILE_SETS."""
-    assert len(ALL_PROFILE_SETS) == 13, (
-        f"Expected 13 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
+def test_all_profile_sets_covers_all_12_profiles() -> None:
+    """Spot check: exactly 12 profiles are declared in ALL_PROFILE_SETS."""
+    assert len(ALL_PROFILE_SETS) == 12, (
+        f"Expected 12 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
         f"Current: {[','.join(ps) for ps in ALL_PROFILE_SETS]}"
     )
 

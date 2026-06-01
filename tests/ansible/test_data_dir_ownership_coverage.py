@@ -257,9 +257,6 @@ def test_full_path_keying_prevents_basename_collision() -> None:
 # need no chown because they run as root (confirmed via docker image inspect and
 # live-stack health checks — see 08-CONTEXT.md bootstrap-coverage agent notes).
 #
-# NOTE: caddy is present now but will be REMOVED in plan 05 (B2) when the
-# core-caddy profile gets a proper Caddyfile and caddy gains a writable_mounts
-# entry; the allowlist entry is harmless until then.
 ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
     {
         "postgres",
@@ -280,7 +277,6 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         "openwebui",
         "portainer",
         "traefik",
-        "caddy",
         "milvus",
         "n8n",
     }

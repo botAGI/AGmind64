@@ -1,4 +1,4 @@
-"""Shared canonical profile-set list for all 13 AGmind isolaton lanes.
+"""Shared canonical profile-set list for all 12 AGmind isolaton lanes.
 
 Single source of truth consumed by:
   - ``topology_checks.validate_topology_profiles`` (default argument)
@@ -15,7 +15,6 @@ from __future__ import annotations
 ALL_PROFILE_SETS: tuple[tuple[str, ...], ...] = (
     ("core",),
     ("core-nginx",),
-    ("core-caddy",),
     ("rag",),
     ("rag-milvus",),
     ("rag-weaviate",),

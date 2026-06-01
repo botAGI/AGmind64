@@ -221,7 +221,7 @@ def test_component_check_script_json_output() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["contract_count"] == 10
-    assert payload["service_count"] == 42
+    assert payload["service_count"] == 41
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

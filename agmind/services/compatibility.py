@@ -78,7 +78,7 @@ def check_service_compatibility(
 
     # ---- 1. Hard conflicts ----
     # Removed: original "conflicts_with" model was based on выдуманных предположений
-    # (ragflow ⟂ dify, qdrant ⟂ milvus, traefik ⟂ caddy). After research все эти
+    # (ragflow ⟂ dify, qdrant ⟂ milvus). After research все эти
     # сервисы могут coexist. Field оставлен в schema для backward compat / future
     # реальных кейсов где docker compose буквально не может стартовать — но default
     # checker этим не пользуется.
