@@ -15,9 +15,15 @@ Subset selection
 Profiles: ``core``, ``core,observability``, ``core,rag``,
           ``rag-milvus``, ``rag-weaviate``, ``security``,
           ``automation``, ``ragflow``  (eight lanes)
-Exclusions: all service names starting with ``llama-`` (no GPU on the
-smoke box; GPU images require /dev/dri + /dev/kfd which the self-hosted
-lane may not expose).
+Exclusions: services that can't boot from a bare ``docker compose up`` —
+``llama-*`` (need GPU + a downloaded GGUF model) and the install-setup set
+``_INSTALL_SETUP_SERVICES`` (prometheus/grafana/loki/alloy/alertmanager/
+authelia/n8n — need ``agmind install`` config materialization or a bootstrap
+data-dir chown). Those are validated by the full ``agmind install`` (DoD
+criterion 3) + the A5 ownership gate, not this bare-compose smoke. The active
+lane profiles are passed via ``docker compose --profile`` so the rendered
+compose-level ``profiles:`` keys actually select services; a lane left empty
+after filtering (e.g. ``automation`` = only n8n) is skipped.
 
 Isolation
 ---------
@@ -149,12 +155,39 @@ def _render_compose(profile: str, output_path: Path, domain: str = "ci.example.c
     output_path.write_text(composed, encoding="utf-8")
 
 
-def _filter_llama_services(compose_path: Path) -> None:
-    """Remove all llama-* services from the rendered compose file in-place.
+# Services that CANNOT boot from a bare ``docker compose up`` because they require
+# ``agmind install`` prerequisite steps the smoke does NOT perform — config
+# materialization (``_materialize_runtime_files`` stages their config file) or a
+# bootstrap data-dir chown for their non-root uid. Without those they fatal-crash
+# on missing config / unwritable data dir (verified: authelia "configuration
+# errors", prometheus/grafana/loki/alloy/alertmanager restart, n8n uid-1001 dir).
+# They are validated by the full ``agmind install`` (clean-room / DoD criterion 3)
+# + the A5 data-dir-ownership gate + config staging — NOT by this bare-compose
+# smoke, which targets the deploy-blocker classes that live in the config-free
+# services (redis-auth, milvus storageType, perms, command/healthcheck-vs-image).
+_INSTALL_SETUP_SERVICES = frozenset(
+    {
+        "prometheus",  # needs staged /etc/prometheus/prometheus.yml
+        "grafana",  # needs staged provisioning dir + uid-472 data dir
+        "loki",  # needs staged loki config
+        "alloy",  # needs staged alloy config
+        "alertmanager",  # needs staged alertmanager.yml
+        "authelia",  # needs staged /config/{configuration,users_database}.yml
+        "n8n",  # needs bootstrap-chowned uid-1001 data dir
+    }
+)
 
-    This keeps the non-GPU subset safe to run on a host without /dev/dri
-    GPU access.  The filter is intentionally simple: drop any top-level
-    service key whose name starts with ``llama-``.
+
+def _filter_unbootable_services(compose_path: Path) -> int:
+    """Drop services that can't boot from a bare ``docker compose up`` and return
+    the count of services that REMAIN.
+
+    Removes ``llama-*`` (need GPU + a downloaded GGUF model) and
+    ``_INSTALL_SETUP_SERVICES`` (need agmind-install config materialization /
+    data-dir chown). Dangling ``depends_on`` references to removed services are
+    cleaned up. The remaining set is the subset that boots from committed
+    descriptors alone — where the phase's deploy-blocker classes actually live. A
+    lane that becomes empty (e.g. ``automation`` = only n8n) is skipped by the caller.
     """
     import yaml  # available because agmind[dev] includes PyYAML
 
@@ -162,26 +195,27 @@ def _filter_llama_services(compose_path: Path) -> None:
         data = yaml.safe_load(fh)
 
     if not isinstance(data, dict):
-        return
+        return 0
 
     services = data.get("services", {})
-    llama_keys = [k for k in services if k.startswith("llama-")]
-    for k in llama_keys:
+    removed = [k for k in services if k.startswith("llama-") or k in _INSTALL_SETUP_SERVICES]
+    for k in removed:
         del services[k]
 
-    # Also remove dangling depends_on references to llama-* services
-    for svc_name, svc in services.items():
+    # Also remove dangling depends_on references to any removed service.
+    for svc in services.values():
         if not isinstance(svc, dict):
             continue
         deps = svc.get("depends_on")
         if isinstance(deps, dict):
-            for dep_key in llama_keys:
+            for dep_key in removed:
                 deps.pop(dep_key, None)
         elif isinstance(deps, list):
-            svc["depends_on"] = [d for d in deps if d not in llama_keys]
+            svc["depends_on"] = [d for d in deps if d not in removed]
 
     with compose_path.open("w", encoding="utf-8") as fh:
         yaml.dump(data, fh, default_flow_style=False, allow_unicode=True)
+    return len(services)
 
 
 def _compose_cmd(
@@ -340,8 +374,16 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
         # Render the compose file
         _render_compose(profile, compose_file)
 
-        # Strip GPU-only services (llama-*)
-        _filter_llama_services(compose_file)
+        # Strip services that can't boot from a bare compose up (GPU/model llama-*,
+        # config-materialization + data-dir-chown services). A lane left empty is
+        # validated only by the full `agmind install`, so skip it here.
+        remaining = _filter_unbootable_services(compose_file)
+        if remaining == 0:
+            pytest.skip(
+                f"[{profile}] only install-setup services remain after filtering — "
+                "validated by the full `agmind install` (DoD criterion 3), not the "
+                "bare-compose smoke"
+            )
 
         # Belt: validate compose config before up (surface config errors fast)
         config_result = subprocess.run(
