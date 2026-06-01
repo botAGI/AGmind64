@@ -140,7 +140,7 @@ def format_report(report: ComposeProfileCheckReport) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point: render all 13 profile lanes, return 0 on success."""
+    """Entry point: render all 12 profile lanes, return 0 on success."""
     args = list(argv if argv is not None else sys.argv[1:])
     as_json = "--json" in args
 

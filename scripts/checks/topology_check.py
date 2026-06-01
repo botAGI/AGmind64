@@ -68,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print("=== Pass 1: isolation sweep (all 13 profiles) ===")
+        print("=== Pass 1: isolation sweep (all 12 profiles) ===")
         print(format_topology_check_report(report_isolation))
         print("=== Pass 2: strict multi-profile validation ===")
         print(format_topology_check_report(report_strict))

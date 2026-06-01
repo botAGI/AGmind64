@@ -1,7 +1,7 @@
 """Task H.6 (3): missing-digest governance gate — fail-closed, mutation-verified.
 
 The digest-pins check returns FAIL (non-zero + error_count > 0) when any
-deploy-facing descriptor lacks a `digest:` field.  All 42 current descriptors
+deploy-facing descriptor lacks a `digest:` field.  All 41 current descriptors
 are deploy-facing.  This gate was previously absent; it now surfaces as a
 governance ERROR (not WARN) — preventing mutable-tag images from entering deploy.
 
@@ -76,7 +76,7 @@ def test_digest_check_passes_on_pinned_catalog() -> None:
     from scripts.checks.digest_check import check_digest_pins
 
     issues, service_count = check_digest_pins()
-    assert service_count == 42, f"expected 42 descriptors, got {service_count}"
+    assert service_count == 41, f"expected 41 descriptors, got {service_count}"
     assert issues == [], (
         f"digest check found {len(issues)} unpinned descriptor(s): {[i['service'] for i in issues]}"
     )
