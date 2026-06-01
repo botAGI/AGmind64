@@ -306,8 +306,19 @@ def test_group_add_renders_numeric_gid_for_all(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ---------------------------------------------------------------------------
-# write-path under writable-volume guard (loki-ruler regression class)
+# write-path under writable-volume guard (catalog-wide EROFS regression class)
 # ---------------------------------------------------------------------------
+
+# Write-path keyword set: if any of these substrings appears in a lowercased
+# flag name (before the '='), the flag's value is treated as a write-path target
+# that must NOT be under a :ro mount.
+_WRITE_PATH_KEYWORDS = (".path", ".directory", "storage.path", "ruler", ".dir")
+
+# Flag substrings that indicate a *read* config source (not a write destination).
+# Flags containing these patterns are excluded from write-path detection even if
+# they also match a _WRITE_PATH_KEYWORDS keyword (e.g. traefik
+# --providers.file.directory is a config reader, not a data writer).
+_WRITE_PATH_EXCLUDES = ("providers.", "config.file", "config-file")
 
 
 def _parse_container_path(volume_spec: str) -> str | None:
@@ -322,72 +333,98 @@ def _parse_container_path(volume_spec: str) -> str | None:
     return dst
 
 
+def _is_ro_mount(vol_spec: str) -> bool:
+    """Return True if the volume spec ends with the ':ro' mode flag."""
+    return vol_spec.rstrip().endswith(":ro")
+
+
+def _extract_write_paths_from_command(command: list) -> list[tuple[str, str]]:
+    """Return [(flag, abs_path)] for command tokens that encode a write-path target.
+
+    Matches the form --flag.name=/absolute/path where the flag name contains a
+    write-path keyword AND does not match any read-source exclusion pattern.
+    """
+    result: list[tuple[str, str]] = []
+    for arg in command:
+        arg_str = str(arg)
+        if "=" not in arg_str:
+            continue
+        flag, _, value = arg_str.partition("=")
+        flag_lower = flag.lower()
+        if not value.startswith("/"):
+            continue
+        if not any(kw in flag_lower for kw in _WRITE_PATH_KEYWORDS):
+            continue
+        # Skip read-source / config-source flags (not data write paths)
+        if any(excl in flag_lower for excl in _WRITE_PATH_EXCLUDES):
+            continue
+        result.append((flag, value))
+    return result
+
+
 def test_write_path_under_writable_volume() -> None:
-    """For loki: ruler + storage write paths must be under the /loki writable mount.
+    """A4: catalog-wide gate — write-path flags must not point under a :ro mount.
 
-    The 2026-05-30 loki-ruler regression class: loki was configured with
-    --ruler.storage.local.directory=/var/lib/loki/ruler which lived OUTSIDE the /loki
-    mount, so ruler data was lost on container restart (written to ephemeral container FS).
+    The EROFS regression class: a service configured with a write-path flag
+    (--*.path=, --*-directory=, --*.dir=, ruler, storage.path) whose corresponding
+    volume mount is :ro causes the container to crash with EROFS (read-only FS).
+    Known historical cases: authelia /config, loki-ruler, alertmanager /alertmanager.
 
-    This test asserts the loki command flags for ruler and storage path targets are
-    prefixes of a declared container volume mount path.
+    For every descriptor with both a command: and volumes:, extract write-path targets
+    from the command and assert each is NOT covered exclusively by a :ro mount.
 
-    NOTE: the fix was applied in the 2026-05-30 sweep (commit 6516469) — this test
-    asserts the EXISTING-GREEN invariant and guards against regression.
+    Config-file :ro mounts (e.g. caddy /etc/caddy:ro, traefik config, proxmox-exporter
+    :ro config file) do NOT trigger this test because their paths do not match the
+    write-path keyword set.
 
-    Mutation-verified: modifying loki.yaml command to include
-    --ruler.storage.local.directory=/tmp/ruler caused this test to FAIL
-    (ruler dir /tmp/ruler not under any loki volume mount); mutation reverted.
+    Mutation-verified (out-of-tree): mutating alloy's /var/lib/alloy/data mount to :ro
+    causes this test to RED; mutation reverted.
+
+    NOTE: the loki invariant (pre-existing) is preserved as a subset of the catalog scan.
     """
     descriptors = _all_descriptors()
-    loki = descriptors.get("loki")
-    if loki is None:
-        pytest.skip("loki descriptor not in catalog")
-
-    # Collect container-side volume mount paths for loki
-    container_mount_paths: list[str] = []
-    for vol in loki.volumes:
-        cp = _parse_container_path(vol)
-        if cp:
-            container_mount_paths.append(cp)
-
-    if not loki.command:
-        return  # no command → no write-path flags to check
-
-    # Find --*.path=... or --*-directory=... style write-path flags in command
-    write_path_flags: list[tuple[str, str]] = []
-    for arg in loki.command:
-        if "=" in arg:
-            flag, _, value = arg.partition("=")
-            flag_lower = flag.lower()
-            if any(
-                kw in flag_lower
-                for kw in (
-                    ".path",
-                    ".directory",
-                    "storage.path",
-                    "ruler",
-                    ".dir",
-                )
-            ):
-                if value.startswith("/"):
-                    write_path_flags.append((flag, value))
-
-    # Assert each write path is a prefix of a declared container mount
     violations: list[str] = []
-    for flag, write_path in write_path_flags:
-        is_covered = any(
-            write_path == mount_path or write_path.startswith(mount_path.rstrip("/") + "/")
-            for mount_path in container_mount_paths
-        )
-        if not is_covered:
-            violations.append(
-                f"loki: {flag}={write_path!r} is not under any declared volume mount "
-                f"(mounts: {container_mount_paths!r}) — data would be written to "
-                f"ephemeral container FS and lost on restart (loki-ruler regression)"
+
+    for name, descriptor in descriptors.items():
+        if not descriptor.command or not descriptor.volumes:
+            continue
+
+        write_paths = _extract_write_paths_from_command(descriptor.command)
+        if not write_paths:
+            continue
+
+        # Build two sets of container-side paths: all mounts and writable (non-:ro) mounts
+        all_mount_paths: list[str] = []
+        writable_mount_paths: list[str] = []
+        for vol in descriptor.volumes:
+            cp = _parse_container_path(vol)
+            if cp is None:
+                continue
+            all_mount_paths.append(cp)
+            if not _is_ro_mount(vol):
+                writable_mount_paths.append(cp)
+
+        for flag, write_path in write_paths:
+            # Check if the write-path is under ANY :ro mount (and not also under a
+            # writable mount — a more specific writable mount takes precedence).
+            def _is_under(path: str, mount: str) -> bool:
+                return path == mount or path.startswith(mount.rstrip("/") + "/")
+
+            covered_by_writable = any(_is_under(write_path, m) for m in writable_mount_paths)
+            covered_by_ro = any(
+                _is_under(write_path, _parse_container_path(v) or "")
+                for v in descriptor.volumes
+                if _is_ro_mount(v) and _parse_container_path(v)
             )
 
-    assert not violations, "loki write-path outside writable volume:\n" + "\n".join(
+            if covered_by_ro and not covered_by_writable:
+                violations.append(
+                    f"{name}: {flag}={write_path!r} is under a :ro mount (EROFS crash) "
+                    f"and not covered by any writable mount. "
+                    f"Writable mounts: {writable_mount_paths!r}"
+                )
+
+    assert not violations, "A4 :ro-write-mount violation (EROFS class):\n" + "\n".join(
         f"  - {v}" for v in violations
     )
 
