@@ -69,6 +69,7 @@ dev = [
   "pre-commit>=4.0,<5",
   "types-PyYAML>=6.0,<7",
   "types-psutil>=7.0,<8",
+  "jsonschema>=4.0,<5",  # tests/services/test_catalog_render.py validates catalog JSON Schema
 ]
 
 [project.scripts]

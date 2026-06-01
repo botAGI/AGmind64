@@ -6,4 +6,3 @@
   community.docker.docker_compose_v2:
     project_src: "{{ agmind_install_dir }}"
     state: present
-
