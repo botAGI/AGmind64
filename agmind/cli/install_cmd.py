@@ -317,6 +317,10 @@ def register(app: typer.Typer) -> None:
                 wizard_state.sudo_password = sudo_pw
 
         # 3. Resolve final model repo/file (curated or custom) — для каждого role.
+        # If no CLI LLM override is supplied, respect wizard/from-state "skip"
+        # choices before building the install config.
+        if not model_repo and not model_file:
+            wizard_state.normalize_model_fields_and_services(drop_unselected_model_files=True)
         final_repo, final_file = wizard_state.resolve_model_repo_file()
         # CLI flags override wizard LLM values if provided (kept legacy semantics).
         if model_repo:
@@ -325,6 +329,16 @@ def register(app: typer.Typer) -> None:
             final_file = model_file
         embed_repo, embed_file = wizard_state.resolve_embed_repo_file()
         rerank_repo, rerank_file = wizard_state.resolve_rerank_repo_file()
+        selected_services = set(wizard_state.services)
+        if "llama-llm" not in selected_services:
+            final_repo = None
+            final_file = None
+        if "llama-embed" not in selected_services:
+            embed_repo = None
+            embed_file = None
+        if "llama-rerank" not in selected_services:
+            rerank_repo = None
+            rerank_file = None
 
         config = InstallConfig(
             domain=wizard_state.domain,

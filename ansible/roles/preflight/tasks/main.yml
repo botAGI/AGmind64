@@ -31,7 +31,7 @@
       VRAM (ROCm/issues/5444). Install HWE:
         sudo apt install --install-recommends linux-generic-hwe-24.04
   when: >
-    (kernel_check.stdout | regex_replace('^(\d+\.\d+\.\d+).*', '\1') is version('6.17.0', '<'))
+    (kernel_check.stdout is version('6.17.0', '<'))
 
 - name: Detect AMD Strix Halo iGPU (gfx1151)
   ansible.builtin.shell: |

@@ -480,6 +480,45 @@ def test_resolve_model_repo_file_unknown_id_fallback() -> None:
     assert file == "alt.gguf"
 
 
+def test_resolve_model_repo_file_skip_clears_repo_and_file() -> None:
+    """model_id='skip' is an explicit installer choice, not a stale custom fallback."""
+    s = SetupState(model_id="skip", model_repo="old/repo", model_file="old.gguf")
+
+    assert s.resolve_model_repo_file() == ("", "")
+
+
+def test_state_for_submit_prunes_llm_service_when_main_llm_skipped() -> None:
+    """Skip main LLM must survive service dependency expansion."""
+    detected = DetectedHardware(
+        ram_gb=128,
+        gpu_name="x",
+        is_strix_halo=True,
+        vulkan_present=True,
+        rocm_present=True,
+        docker_present=True,
+        recommended_tier="XL",
+    )
+    app = AgmindSetupApp(
+        detected=detected,
+        initial_state=SetupState(
+            domain="x.example",
+            cf_api_token="x" * 30,
+            model_id="skip",
+            model_repo="old/repo",
+            model_file="old.gguf",
+            services=["dify-api"],
+        ),
+        multi_step=True,
+    )
+
+    state = app._state_for_submit()
+
+    assert "dify-api" in state.services
+    assert "llama-llm" not in state.services
+    assert state.model_repo == ""
+    assert state.model_file == ""
+
+
 def test_state_json_roundtrip_phase_n_fields(tmp_path: pytest.TempPathFactory) -> None:
     """Phase N.G fields сохраняются и читаются обратно через to_json/from_json."""
     from pathlib import Path

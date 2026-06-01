@@ -126,6 +126,10 @@ _USER_DATA_DIR = Path.home() / ".local" / "share" / "agmind"
 STATE_PATH = _USER_DATA_DIR / "setup-state.json"
 TOKEN_PATH = _USER_DATA_DIR / "cf_dns_api_token"
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
+MODEL_SKIP_ID = "skip"
+MODEL_CUSTOM_ID = "custom"
+MODEL_SKIP_OPTION = ("Leave empty / skip main LLM download", MODEL_SKIP_ID)
+MODEL_CUSTOM_OPTION = ("Custom HuggingFace…", MODEL_CUSTOM_ID)
 
 
 # Smart defaults — production set:
@@ -210,6 +214,40 @@ class SetupState:
     cluster_replicate: bool = False
     """True → wizard ConfirmScreen генерирует Ansible inventory + replicates на peers."""
 
+    def normalize_model_fields_and_services(
+        self,
+        *,
+        drop_unselected_model_files: bool = False,
+    ) -> None:
+        """Resolve model ids and keep model files/services internally consistent."""
+        self.model_repo, self.model_file = self.resolve_model_repo_file()
+        self.embed_repo, self.embed_file = self.resolve_embed_repo_file()
+        self.rerank_repo, self.rerank_file = self.resolve_rerank_repo_file()
+
+        if drop_unselected_model_files:
+            selected = set(self.services)
+            if "llama-llm" not in selected:
+                self.model_repo = ""
+                self.model_file = ""
+            if "llama-embed" not in selected:
+                self.embed_repo = ""
+                self.embed_file = ""
+            if "llama-rerank" not in selected:
+                self.rerank_repo = ""
+                self.rerank_file = ""
+
+        skip_services = {
+            service
+            for service, file_name in (
+                ("llama-llm", self.model_file),
+                ("llama-embed", self.embed_file),
+                ("llama-rerank", self.rerank_file),
+            )
+            if not file_name
+        }
+        if skip_services:
+            self.services = [name for name in self.services if name not in skip_services]
+
     def to_json(self, path: Path) -> None:
         """Save state (БЕЗ cf_api_token — он в secret file)."""
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +279,9 @@ class SetupState:
 
     @staticmethod
     def _resolve_repo_file(model_id: str, raw_repo: str, raw_file: str) -> tuple[str, str]:
-        if model_id == "custom":
+        if model_id == MODEL_SKIP_ID:
+            return "", ""
+        if model_id == MODEL_CUSTOM_ID:
             return raw_repo, raw_file
         from agmind.install.models import find_by_id
 
@@ -714,7 +754,8 @@ class AgmindSetupApp(App[SetupState | None]):
 
             yield Label("Model", classes="section")
             model_options = models_for_wizard()
-            model_options.append(("Custom HuggingFace…", "custom"))
+            model_options.append(MODEL_SKIP_OPTION)
+            model_options.append(MODEL_CUSTOM_OPTION)
             yield Select(
                 model_options,
                 id="model-select",
@@ -839,7 +880,10 @@ class AgmindSetupApp(App[SetupState | None]):
         model_repo = self.query_one("#model-repo-input", Input).value.strip()
         model_file = self.query_one("#model-file-input", Input).value.strip()
         # If curated id selected — resolve repo+file из catalog (overrides empty inputs)
-        if model_id != "custom":
+        if model_id == MODEL_SKIP_ID:
+            model_repo = ""
+            model_file = ""
+        elif model_id != MODEL_CUSTOM_ID:
             from agmind.install.models import find_by_id
 
             entry = find_by_id(model_id)
@@ -870,7 +914,7 @@ class AgmindSetupApp(App[SetupState | None]):
         except ValueError:
             parallel_slots = 1
 
-        return SetupState(
+        state = SetupState(
             domain=domain,
             cf_api_token=cf_token,
             sudo_password=sudo_password,
@@ -887,6 +931,8 @@ class AgmindSetupApp(App[SetupState | None]):
             threads=threads,
             parallel_slots=parallel_slots,
         )
+        state.normalize_model_fields_and_services(drop_unselected_model_files=True)
+        return state
 
     def _state_for_submit(self) -> SetupState:
         """Return the current setup state for Apply/Preview.
@@ -899,6 +945,7 @@ class AgmindSetupApp(App[SetupState | None]):
             return self._collect_state()
         self.state.services = expand_selected_services_for_setup(list(self.state.services))
         self.state.profiles = []
+        self.state.normalize_model_fields_and_services(drop_unselected_model_files=True)
         return self.state
 
     def _validate(self, state: SetupState) -> list[str]:

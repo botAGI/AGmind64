@@ -217,6 +217,7 @@ class ModelScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         from textual.widgets import Rule
 
+        from agmind.cli.tui.setup_wizard import MODEL_CUSTOM_OPTION, MODEL_SKIP_OPTION
         from agmind.install.models import (
             CTX_SIZE_PRESETS,
             KV_CACHE_TYPES,
@@ -236,7 +237,8 @@ class ModelScreen(Screen[None]):
             # ---- LLM section ----
             yield Label("<LLM> TOKEN GENERATION", classes="model-section-header")
             llm_options = models_for_wizard(kind="llm")
-            llm_options.append(("Custom HuggingFace…", "custom"))
+            llm_options.append(MODEL_SKIP_OPTION)
+            llm_options.append(MODEL_CUSTOM_OPTION)
             yield Select(
                 llm_options,
                 id="llm-model-select",
@@ -392,6 +394,7 @@ class ModelScreen(Screen[None]):
         return str(value) if value is not None else default
 
     def _save_and_advance(self) -> None:
+        from agmind.cli.tui.setup_wizard import MODEL_CUSTOM_ID, MODEL_SKIP_ID
         from agmind.install.models import find_by_id
 
         state = self.app.state
@@ -400,7 +403,10 @@ class ModelScreen(Screen[None]):
         state.model_id = self._read_str("llm-model-select", state.model_id)
         state.model_repo = self.query_one("#llm-model-repo-input", Input).value.strip()
         state.model_file = self.query_one("#llm-model-file-input", Input).value.strip()
-        if state.model_id != "custom":
+        if state.model_id == MODEL_SKIP_ID:
+            state.model_repo = ""
+            state.model_file = ""
+        elif state.model_id != MODEL_CUSTOM_ID:
             entry = find_by_id(state.model_id)
             if entry is not None:
                 state.model_repo, state.model_file = entry.repo, entry.file
@@ -430,6 +436,7 @@ class ModelScreen(Screen[None]):
             if entry is not None:
                 state.rerank_repo, state.rerank_file = entry.repo, entry.file
         state.rerank_ctx_size = self._read_int("rerank-ctx-size-select", state.rerank_ctx_size)
+        state.normalize_model_fields_and_services()
 
         self.app.push_screen(ServicesScreen())
 
@@ -627,11 +634,13 @@ class ServicesScreen(Screen[None]):
 
         services = expand_selected_services_for_setup(self._checked_service_names())
         self.app.state.services = services
+        self.app.state.normalize_model_fields_and_services()
         departments = self._departments()
         if self.department_index < len(departments) - 1:
             self.app.push_screen(ServicesScreen(self.department_index + 1))
             return
-        if not services:
+        self.app.state.normalize_model_fields_and_services(drop_unselected_model_files=True)
+        if not self.app.state.services:
             self.app.notify("Выбери хотя бы один service", severity="error")
             return
         self.app.push_screen(ConfirmScreen())
@@ -675,6 +684,18 @@ class ConfirmScreen(Screen[None]):
         topology_block = ""
         if topology_lines:
             topology_block = "\n".join(f"  {item}" for item in topology_lines) + "\n"
+        llm_block = (
+            (
+                f"  LLM ................ {state.model_id}\n"
+                f"      REPO/FILE ...... {state.model_repo}/{state.model_file}\n"
+                f"      CTX SIZE ....... {state.ctx_size}\n"
+                f"      KV CACHE ....... {state.kv_cache_type}\n"
+                f"      CPU THREADS .... {state.threads}\n"
+                f"      PARALLEL SLOTS . {state.parallel_slots}\n"
+            )
+            if state.model_file
+            else "  LLM ................ [dim]skipped (no model)[/dim]\n"
+        )
         rerank_block = (
             (
                 f"  RERANK ............. {state.rerank_model_id}\n"
@@ -691,12 +712,7 @@ class ConfirmScreen(Screen[None]):
             f"  CF API TOKEN ....... {'*' * 8} ({len(state.cf_api_token)} CHARS)\n"
             f"  BACKEND ............ {state.backend}\n"
             f"{line}\n"
-            f"  LLM ................ {state.model_id}\n"
-            f"      REPO/FILE ...... {state.model_repo}/{state.model_file}\n"
-            f"      CTX SIZE ....... {state.ctx_size}\n"
-            f"      KV CACHE ....... {state.kv_cache_type}\n"
-            f"      CPU THREADS .... {state.threads}\n"
-            f"      PARALLEL SLOTS . {state.parallel_slots}\n"
+            f"{llm_block}"
             f"{line}\n"
             f"  EMBED .............. {state.embed_model_id}\n"
             f"      REPO/FILE ...... {state.embed_repo}/{state.embed_file}\n"

@@ -171,26 +171,41 @@ def cmd_download(
                 return 1
             print(f"  [{label}] {local.name} already present ({size_gb:.2f} GB)")
             continue
-        print(f"  [{label}] downloading {spec.hf_url}  ({spec.size_gb} GB) → {local}")
-        try:
-            urlretrieve(spec.hf_url, str(local))
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [{label}] FAILED: {exc}", file=sys.stderr)
-            return 1
-        # G.5: verify content checksum before activation when the spec pins a sha256.
-        # urlretrieve writes directly to the FINAL path, so a mismatch must unlink the
-        # poisoned file rather than leave it in place (GOTCHA G.5-b). Empty sha256 → no
-        # verification (back-compat: unpinned entries download as before).
-        if spec.sha256:
-            actual = _file_sha256(local)
-            if actual != spec.sha256:
-                local.unlink(missing_ok=True)
+        partial = local.with_name(f".{local.name}.part")
+        if force:
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError as exc:
                 print(
-                    f"  [{label}] FAILED: sha256 mismatch — expected {spec.sha256}, "
-                    f"got {actual} (removed {local})",
+                    f"  [{label}] FAILED: failed to remove partial download {partial}: {exc}",
                     file=sys.stderr,
                 )
                 return 1
+        print(f"  [{label}] downloading {spec.hf_url}  ({spec.size_gb} GB) → {local}")
+        try:
+            urlretrieve(spec.hf_url, str(partial))
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [{label}] FAILED: {exc}", file=sys.stderr)
+            return 1
+        try:
+            # G.5: verify content checksum before activation when the spec pins a sha256.
+            # Empty sha256 → no verification (back-compat: unpinned entries download as before).
+            if spec.sha256:
+                actual = _file_sha256(partial)
+                if actual != spec.sha256:
+                    partial.unlink(missing_ok=True)
+                    print(
+                        f"  [{label}] FAILED: sha256 mismatch — expected {spec.sha256}, "
+                        f"got {actual} (removed {partial})",
+                        file=sys.stderr,
+                    )
+                    return 1
+            partial.replace(local)
+        except OSError as exc:
+            print(
+                f"  [{label}] FAILED: failed to activate downloaded model: {exc}", file=sys.stderr
+            )
+            return 1
         print(f"  [{label}] OK")
 
     return 0
@@ -373,11 +388,37 @@ def cmd_pull(
         print("ERROR: curl not installed", file=sys.stderr)
         return 1
 
+    partial = target.with_name(f".{target.name}.part")
+    if force:
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError as exc:
+            print(f"ERROR: failed to remove partial download {partial}: {exc}", file=sys.stderr)
+            return 1
+
     print(f"Downloading {url}")
     print(f"  → {target}")
     try:
         rc = subprocess.run(
-            ["curl", "-fL", "-C", "-", "-o", str(target), "--progress-bar", "--retry", "3", url],
+            [
+                "curl",
+                "-fL",
+                "-C",
+                "-",
+                "-o",
+                str(partial),
+                "--progress-bar",
+                "--retry",
+                "3",
+                "--retry-connrefused",
+                "--connect-timeout",
+                "30",
+                "--speed-limit",
+                "1024",
+                "--speed-time",
+                "60",
+                url,
+            ],
             check=False,
         ).returncode
     except OSError as exc:
@@ -387,6 +428,10 @@ def cmd_pull(
         print(f"ERROR: curl rc={rc}", file=sys.stderr)
         return 1
     try:
+        if not partial.exists():
+            print(f"ERROR: curl finished but partial file is missing: {partial}", file=sys.stderr)
+            return 1
+        partial.replace(target)
         size_gib = target.stat().st_size / 1024**3
     except OSError as exc:
         print(f"ERROR: failed to inspect downloaded model {target}: {exc}", file=sys.stderr)

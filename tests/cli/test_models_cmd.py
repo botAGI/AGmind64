@@ -450,6 +450,46 @@ def test_pull_reports_curl_oserror_without_traceback(
     assert not (models_dir / "model.gguf").exists()
 
 
+def test_pull_failed_curl_keeps_partial_out_of_final_target(
+    models_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[list[str]] = []
+
+    class FakeProc:
+        def __init__(self, returncode: int) -> None:
+            self.returncode = returncode
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        target_idx = cmd.index("-o") + 1
+        output = Path(cmd[target_idx])
+        if len(calls) == 1:
+            output.write_bytes(b"partial")
+            return FakeProc(18)
+        output.write_bytes(b"complete")
+        return FakeProc(0)
+
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/curl")
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    rc = models_cmd.cmd_pull(repo="example/repo", file="model.gguf")
+
+    assert rc == 1
+    assert not (models_dir / "model.gguf").exists()
+    assert (models_dir / ".model.gguf.part").read_bytes() == b"partial"
+
+    rc = models_cmd.cmd_pull(repo="example/repo", file="model.gguf")
+
+    assert rc == 0
+    assert (models_dir / "model.gguf").read_bytes() == b"complete"
+    assert not (models_dir / ".model.gguf.part").exists()
+    assert len(calls) == 2
+    out = capsys.readouterr()
+    assert "curl rc=18" in out.err
+
+
 # ---------- cmd_rm ----------
 
 

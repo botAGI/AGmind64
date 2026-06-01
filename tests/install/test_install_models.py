@@ -253,6 +253,26 @@ def test_download_sha256_mismatch_raises_and_unlinks(
     assert not (tmp_path / "model.gguf").exists(), "poisoned file must be unlinked"
 
 
+def test_download_failure_keeps_partial_out_of_final_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Interrupted legacy registry download must not poison the final model path."""
+    spec = _make_spec("")
+    models_cmd = _patch_download(monkeypatch, spec=spec, payload=b"", models_dir=tmp_path)
+
+    def fake_urlretrieve(url: str, filename: str) -> tuple[str, object]:
+        Path(filename).write_bytes(b"partial")
+        raise RuntimeError("network cut")
+
+    monkeypatch.setattr(models_cmd, "urlretrieve", fake_urlretrieve)
+
+    rc = models_cmd.cmd_download("S")
+
+    assert rc != 0
+    assert not (tmp_path / "model.gguf").exists()
+    assert (tmp_path / ".model.gguf.part").read_bytes() == b"partial"
+
+
 def test_download_empty_sha256_skips_verify(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

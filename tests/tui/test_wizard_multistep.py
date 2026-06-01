@@ -214,6 +214,83 @@ async def test_multistep_navigate_domain_to_model(
 
 
 @pytest.mark.asyncio
+async def test_multistep_model_screen_can_skip_main_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The main LLM selector exposes an explicit skip choice and clears stale values."""
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
+    initial = SetupState(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        model_repo="old/repo",
+        model_file="old.gguf",
+    )
+    app = AgmindSetupApp(detected=_detected(), initial_state=initial, multi_step=True)
+    async with app.run_test(size=(140, 60)) as pilot:
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")  # Domain -> Model
+        await pilot.pause(0.1)
+
+        from textual.widgets import Select
+
+        from agmind.cli.tui.wizard_screens import ModelScreen, ServicesScreen
+
+        assert isinstance(app.screen, ModelScreen)
+        llm_select = app.screen.query_one("#llm-model-select", Select)
+        options = [(str(label), value) for label, value in llm_select._options]
+        assert any("skip" in label.lower() and value == "skip" for label, value in options)
+
+        llm_select.value = "skip"
+        await pilot.press("alt+n")
+        await pilot.pause(0.1)
+
+        assert isinstance(app.screen, ServicesScreen)
+        assert app.state.model_id == "skip"
+        assert app.state.model_repo == ""
+        assert app.state.model_file == ""
+        assert "llama-llm" not in app.state.services
+
+
+@pytest.mark.asyncio
+async def test_services_screen_blocks_when_only_skipped_llm_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If skip prunes the only selected service, Services must not advance to Confirm."""
+    monkeypatch.setenv("AGMIND_LOGO_DISABLE_ANIMATION", "1")
+    initial = SetupState(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        model_id="skip",
+        services=["llama-llm"],
+    )
+    app = AgmindSetupApp(detected=_detected(), initial_state=initial, multi_step=True)
+    async with app.run_test(size=(140, 60)) as pilot:
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")  # Domain -> Model
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")  # Model -> Services
+        await pilot.pause(0.1)
+
+        from textual.widgets import Checkbox
+
+        from agmind.cli.tui.wizard_screens import ServicesScreen
+
+        assert isinstance(app.screen, ServicesScreen)
+        while app.screen.current_department_key != "model_runtime":
+            await pilot.press("alt+n")
+            await pilot.pause(0.1)
+            assert isinstance(app.screen, ServicesScreen)
+
+        app.screen.query_one("#svc-llama_llm", Checkbox).value = True
+        await pilot.pause(0.1)
+        await pilot.press("alt+n")
+        await pilot.pause(0.1)
+
+        assert isinstance(app.screen, ServicesScreen)
+        assert app.state.services == []
+
+
+@pytest.mark.asyncio
 async def test_multistep_back_button_returns_to_previous(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

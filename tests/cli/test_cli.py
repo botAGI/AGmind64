@@ -529,6 +529,59 @@ def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> N
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_dry_run_from_state_skip_model_prunes_llm_service(tmp_path: object) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    state_file = tmp_path / "setup-state.json"  # type: ignore[operator]
+    token_file = tmp_path / "cf-token"  # type: ignore[operator]
+    state_file.write_text(
+        json.dumps(
+            {
+                "domain": "old.example.com",
+                "services": ["traefik", "llama-llm", "qdrant"],
+                "profiles": [],
+                "model_id": "skip",
+                "model_repo": "old/repo",
+                "model_file": "old.gguf",
+            }
+        ),
+        encoding="utf-8",
+    )
+    token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
+    token_file.chmod(0o600)
+
+    cli_app = _make_app()
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app,
+        [
+            "install",
+            "--no-tui",
+            "--dry-run",
+            "--from-state",
+            str(state_file),
+            "--domain",
+            "lab.example.com",
+            "--cf-token-file",
+            str(token_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.split("\n", 1)[1])
+    assert payload["model_repo"] is None
+    assert payload["model_file"] is None
+    assert payload["embed_repo"] is None
+    assert payload["embed_file"] is None
+    assert payload["rerank_repo"] is None
+    assert payload["rerank_file"] is None
+    assert "llama-llm" not in payload["services"]
+    assert "traefik" in payload["services"]
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_dry_run_from_state_rejects_unknown_service(tmp_path: object) -> None:
     from typer.testing import CliRunner
 
