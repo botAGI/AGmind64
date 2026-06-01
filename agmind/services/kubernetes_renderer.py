@@ -365,12 +365,32 @@ def _container_for_descriptor(descriptor: ServiceDescriptor) -> dict[str, Any]:
     ports = _container_ports(descriptor)
     if ports:
         container["ports"] = ports
+    resolved_env = _resolved_env_for_descriptor(descriptor)
+    env_entries: list[dict[str, Any]] = []
+    env_names: set[str] = set()
     if descriptor.env:
-        resolved_env = _resolved_env_for_descriptor(descriptor)
-        container["env"] = [
-            _env_entry_for_descriptor(descriptor, name, value, resolved_env)
-            for name, value in sorted(descriptor.env.items())
-        ]
+        for name, value in sorted(descriptor.env.items()):
+            env_entries.append(_env_entry_for_descriptor(descriptor, name, value, resolved_env))
+            env_names.add(name)
+    # Secrets referenced only in command args (e.g. redis --requirepass) are surfaced as
+    # $(NAME) by _command_for_descriptor; k8s substitutes those from the container env, so
+    # define them here via secretKeyRef even when the descriptor has no matching env key.
+    for secret_name in _command_secret_env_names(descriptor, resolved_env):
+        if secret_name not in env_names:
+            env_entries.append(
+                {
+                    "name": secret_name,
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": f"agmind-{descriptor.name}-env",
+                            "key": secret_name,
+                        }
+                    },
+                }
+            )
+            env_names.add(secret_name)
+    if env_entries:
+        container["env"] = env_entries
     if descriptor.command:
         container["args"] = _command_for_descriptor(descriptor)
     security_context = _container_security_context_for_descriptor(descriptor)
@@ -491,8 +511,7 @@ def _command_for_descriptor(descriptor: ServiceDescriptor) -> list[str]:
     if descriptor.name != "traefik" or descriptor.command is None:
         resolved_env = _resolved_env_for_descriptor(descriptor)
         return [
-            _resolve_interpolated_value(arg, resolved_env) or arg
-            for arg in (descriptor.command or [])
+            _command_arg_for_kubernetes(arg, resolved_env) for arg in (descriptor.command or [])
         ]
 
     rewritten: list[str] = []
@@ -507,7 +526,51 @@ def _command_for_descriptor(descriptor: ServiceDescriptor) -> list[str]:
     if not added_kubernetes_provider and _has_docker_socket_volume(descriptor):
         rewritten.insert(0, "--providers.kubernetesingress=true")
     resolved_env = _resolved_env_for_descriptor(descriptor)
-    return [_resolve_interpolated_value(arg, resolved_env) or arg for arg in rewritten]
+    return [_command_arg_for_kubernetes(arg, resolved_env) for arg in rewritten]
+
+
+def _command_arg_for_kubernetes(arg: str, resolved_env: dict[str, str]) -> str:
+    """Resolve a command arg for the Kubernetes render.
+
+    ``${VAR:-default}`` forms resolve to their literal value. A secret-marked
+    ``${SECRET}`` with no usable default is rewritten to the k8s downward-substitution
+    form ``$(SECRET)`` — k8s substitutes it from the container env, which carries a
+    matching ``secretKeyRef`` (see ``_command_secret_env_names``). This mirrors the
+    silent secret resolution the env path already does. Non-secret unresolved ``${...}``
+    tokens are left literal so ``collect_portability_warnings`` still flags them.
+    """
+    resolved = _resolve_interpolated_value(arg, resolved_env)
+    if resolved is not None:
+        return resolved
+
+    def _substitute(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if _is_secret_placeholder_token(token):
+            return f"$({_placeholder_name(token)})"
+        return match.group(0)
+
+    return _PLACEHOLDER_RE.sub(_substitute, arg)
+
+
+def _command_secret_env_names(
+    descriptor: ServiceDescriptor, resolved_env: dict[str, str]
+) -> list[str]:
+    """Secret placeholder names referenced (without a usable default) in command args.
+
+    ``_command_arg_for_kubernetes`` surfaces these as ``$(NAME)`` substitutions, so the
+    container env must define each via a ``secretKeyRef`` for k8s to substitute at start.
+    Returns names in first-seen order, de-duplicated.
+    """
+    names: list[str] = []
+    for arg in descriptor.command or []:
+        if _resolve_interpolated_value(arg, resolved_env) is not None:
+            continue
+        for token in _PLACEHOLDER_RE.findall(arg):
+            if _is_secret_placeholder_token(token):
+                name = _placeholder_name(token)
+                if name not in names:
+                    names.append(name)
+    return names
 
 
 def _docker_socket_replaced_by_kubernetes_provider(descriptor: ServiceDescriptor) -> bool:
@@ -722,9 +785,9 @@ def _is_secret_placeholder_token(token: str) -> bool:
 
 
 def _placeholder_name(token: str) -> str:
-    if ":-" in token:
-        return token.split(":-", 1)[0]
-    return token
+    # Strip any compose guard/default suffix (${VAR:-x}, ${VAR:?err}, ${VAR:+y}). Env
+    # var names never contain ':', so the bare name is everything before the first ':'.
+    return token.split(":", 1)[0]
 
 
 def _hostpath_type(host_path: str) -> str:

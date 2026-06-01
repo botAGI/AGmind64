@@ -139,6 +139,39 @@ def test_render_kubernetes_warns_about_non_portable_fields() -> None:
     assert any("environment interpolation" in message for message in messages)
 
 
+def test_render_kubernetes_resolves_secret_command_arg_to_downward_substitution() -> None:
+    """A secret-marked ${...} in a command arg must resolve like secret env already does:
+    rewritten to the k8s ``$(NAME)`` downward-substitution form plus a synthesized
+    ``secretKeyRef`` env entry, with NO command-interpolation warning. Mirrors the
+    existing env secret path (08-04 redis --requirepass)."""
+    descriptor = _descriptor(
+        name="redis",
+        image="redis:7.4.1",
+        command=["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"],
+        env={},
+    )
+
+    result = render_kubernetes([descriptor], namespace="agmind")
+    container = _objects_by_kind(result.objects)["Deployment"]["spec"]["template"]["spec"][
+        "containers"
+    ][0]
+
+    # 1. command arg uses k8s downward substitution, not the compose ${...} form.
+    assert container["args"] == ["redis-server", "--requirepass", "$(REDIS_PASSWORD)"]
+
+    # 2. env carries the secret as a secretKeyRef so k8s can substitute $(REDIS_PASSWORD).
+    assert {
+        "name": "REDIS_PASSWORD",
+        "valueFrom": {"secretKeyRef": {"name": "agmind-redis-env", "key": "REDIS_PASSWORD"}},
+    } in container["env"]
+
+    # 3. the secret is resolved, not deferred — no command-interpolation warning.
+    assert not any(
+        warning.service == "redis" and warning.code == "command-interpolation"
+        for warning in result.warnings
+    )
+
+
 def test_render_kubernetes_warning_metadata_is_actionable() -> None:
     descriptor = _descriptor(
         name="llama-llm",
