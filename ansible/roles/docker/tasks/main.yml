@@ -19,9 +19,11 @@
   ansible.builtin.set_fact:
     docker_compose_detected_version: >-
       {{
-        docker_compose_version.stdout
-        | regex_search('[0-9]+(\\.[0-9]+){1,2}')
-        | default('0.0.0', true)
+        (
+          docker_compose_version.stdout | trim | split | last | regex_replace('^v', '')
+        )
+        if (docker_compose_version.stdout | trim | length > 0)
+        else '0.0.0'
       }}
 
 - name: Ensure Docker apt keyring dir exists
@@ -79,14 +81,21 @@
   failed_when: false
   changed_when: false
   check_mode: false
+  retries: 5
+  delay: 2
+  until: >
+    docker_compose_final_version_cmd.rc == 0 and
+    (docker_compose_final_version_cmd.stdout | trim | length) > 0
 
 - name: Parse final Docker Compose plugin version
   ansible.builtin.set_fact:
     docker_compose_final_version: >-
       {{
-        docker_compose_final_version_cmd.stdout
-        | regex_search('[0-9]+(\\.[0-9]+){1,2}')
-        | default('0.0.0', true)
+        (
+          docker_compose_final_version_cmd.stdout | trim | split | last | regex_replace('^v', '')
+        )
+        if (docker_compose_final_version_cmd.stdout | trim | length > 0)
+        else '0.0.0'
       }}
 
 - name: Assert Docker Compose plugin version is supported

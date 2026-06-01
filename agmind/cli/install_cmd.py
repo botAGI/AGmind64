@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import stat
+import subprocess
 from pathlib import Path
 
 import typer
@@ -40,6 +41,20 @@ def _read_option_text_file(
     except OSError as exc:
         typer.echo(f"ERROR: cannot read {option_name} {path}: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+
+
+def _sudo_nopasswd_available() -> bool:
+    try:
+        completed = subprocess.run(
+            ["sudo", "-n", "true"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def register(app: typer.Typer) -> None:
@@ -306,15 +321,18 @@ def register(app: typer.Typer) -> None:
                     for error in validation_errors:
                         typer.echo(f"ERROR: {error}", err=True)
                     raise typer.Exit(code=2)
-                try:
-                    sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
-                except (EOFError, KeyboardInterrupt):
-                    typer.echo("\naborted: sudo password не введён", err=True)
-                    raise typer.Exit(code=2)
-                if not sudo_pw:
-                    typer.echo("aborted: empty sudo password", err=True)
-                    raise typer.Exit(code=2)
-                wizard_state.sudo_password = sudo_pw
+                if _sudo_nopasswd_available():
+                    wizard_state.sudo_password = ""
+                else:
+                    try:
+                        sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
+                    except (EOFError, KeyboardInterrupt):
+                        typer.echo("\naborted: sudo password не введён", err=True)
+                        raise typer.Exit(code=2)
+                    if not sudo_pw:
+                        typer.echo("aborted: empty sudo password", err=True)
+                        raise typer.Exit(code=2)
+                    wizard_state.sudo_password = sudo_pw
 
         # 3. Resolve final model repo/file (curated or custom) — для каждого role.
         # If no CLI LLM override is supplied, respect wizard/from-state "skip"
@@ -386,8 +404,9 @@ def register(app: typer.Typer) -> None:
 
             orchestrator = InstallOrchestrator(config=config, steps=steps, callback=cli_cb)
             result = orchestrator.run()
-            typer.echo(f"Runtime credentials: {config.install_dir / '.env'} (chmod 600)")
-            typer.echo("Values are not printed in the installer summary.")
+            if result.success:
+                typer.echo(f"Runtime credentials: {config.install_dir / '.env'} (chmod 600)")
+                typer.echo("Values are not printed in the installer summary.")
             raise typer.Exit(code=0 if result.success else 1)
 
         from textual.app import App

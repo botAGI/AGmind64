@@ -17,14 +17,12 @@
     virtualenv: "{{ agmind_install_dir }}/venv"
   become_user: "{{ agmind_user }}"
 
-- name: Install agmind package (editable, dev extras)
+- name: Install agmind package (dev extras)
   ansible.builtin.pip:
     name:
-      - "file://{{ playbook_dir }}/../[dev]"
+      - "agmind[dev] @ file://{{ playbook_dir }}/.."
     virtualenv: "{{ agmind_install_dir }}/venv"
     state: present
-    editable: true
-  become_user: "{{ agmind_user }}"
 
 - name: Create /usr/local/bin/agmind wrapper
   ansible.builtin.copy:

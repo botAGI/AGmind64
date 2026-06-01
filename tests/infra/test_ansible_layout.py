@@ -178,3 +178,11 @@ def test_inventory_default_is_localhost() -> None:
     text = (_ANSIBLE_DIR / "inventory" / "hosts.yml").read_text()
     assert "localhost" in text
     assert "ansible_connection: local" in text
+
+
+def test_localhost_inventory_uses_system_python_for_become_user_tasks() -> None:
+    """Local become_user tasks must not execute a venv inside the operator home dir."""
+    text = (_ANSIBLE_DIR / "inventory" / "hosts.yml").read_text()
+
+    assert "ansible_python_interpreter: /usr/bin/python3" in text
+    assert 'ansible_python_interpreter: "{{ ansible_playbook_python }}"' not in text

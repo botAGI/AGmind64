@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agmind.cli.tui.setup_wizard import SetupState
+from agmind.cli.tui.setup_wizard import SetupState, expand_selected_services_for_setup
 
 
 class StateResolveError(Exception):
@@ -67,6 +67,10 @@ def load_setup_state_from_file(from_state: Path) -> SetupState:
             raise StateResolveError(
                 "unknown selected services in --from-state: " + ", ".join(missing_services)
             )
+        try:
+            state.services = expand_selected_services_for_setup(list(state.services))
+        except ValueError as exc:
+            raise StateResolveError(f"invalid selected services in --from-state: {exc}") from exc
 
     if not state.services and not state.profiles:
         raise StateResolveError("no selected services in --from-state")

@@ -5,9 +5,12 @@ from __future__ import annotations
 import os
 import stat
 import subprocess
+import urllib.error
 from dataclasses import dataclass, field
 from datetime import timedelta
+from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -289,6 +292,7 @@ def test_default_steps_list_is_stable() -> None:
     ids = [step.step_id for step in s]
     assert ids == [
         "doctor",
+        "cloudflare_token",
         "bootstrap",
         "env_write",
         "compose_config",
@@ -331,6 +335,126 @@ def test_env_write_step_materializes_runtime_files(tmp_path: Path) -> None:
     assert (cfg.config_dir / "loki" / "loki.yml").exists()
     assert (cfg.config_dir / "alloy" / "config.alloy").exists()
     assert (cfg.config_dir / "alertmanager" / "alertmanager.yml").exists()
+
+
+def test_cloudflare_token_step_skips_when_traefik_not_selected(tmp_path: Path) -> None:
+    from agmind.install.steps import CloudflareTokenStep
+
+    cfg = _make_config(tmp_path)
+    cfg.services = ["qdrant"]
+    result = CloudflareTokenStep().run(lambda _event: None, cfg)
+
+    assert result.success
+    assert "not selected" in result.message
+
+
+def test_cloudflare_token_step_fails_invalid_token_without_leaking_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agmind.install import steps
+    from agmind.install.steps import CloudflareTokenStep
+
+    token = "cf-secret-token-" + "X" * 32
+
+    def fake_urlopen(request: Any, timeout: float) -> Any:
+        del timeout
+        assert token in request.headers["Authorization"]
+        body = b'{"success":false,"errors":[{"code":1000,"message":"Invalid API Token"}]}'
+        raise urllib.error.HTTPError(
+            request.full_url,
+            401,
+            "Unauthorized",
+            hdrs=None,
+            fp=BytesIO(body),
+        )
+
+    monkeypatch.setattr(steps.urllib.request, "urlopen", fake_urlopen)
+    cfg = _make_config(tmp_path)
+    cfg.cf_api_token = token
+
+    result = CloudflareTokenStep().run(lambda _event: None, cfg)
+
+    assert not result.success
+    assert "Cloudflare token validation failed" in result.message
+    assert "Invalid API Token" in result.message
+    assert token not in result.message
+
+
+def test_cloudflare_token_step_requires_access_to_domain_zone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agmind.install import steps
+    from agmind.install.steps import CloudflareTokenStep
+
+    calls: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self.payload = payload
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return self.payload
+
+    def fake_urlopen(request: Any, timeout: float) -> FakeResponse:
+        del timeout
+        calls.append(request.full_url)
+        if request.full_url.endswith("/user/tokens/verify"):
+            return FakeResponse(b'{"success":true,"result":{"status":"active"}}')
+        if "name=lab.example.com" in request.full_url:
+            return FakeResponse(b'{"success":true,"result":[]}')
+        if "name=example.com" in request.full_url:
+            return FakeResponse(b'{"success":true,"result":[{"id":"zone","name":"example.com"}]}')
+        raise AssertionError(request.full_url)
+
+    monkeypatch.setattr(steps.urllib.request, "urlopen", fake_urlopen)
+    cfg = _make_config(tmp_path)
+
+    result = CloudflareTokenStep().run(lambda _event: None, cfg)
+
+    assert result.success
+    assert "zone access OK (example.com)" in result.message
+    assert any("name=lab.example.com" in call for call in calls)
+    assert any("name=example.com" in call for call in calls)
+
+
+def test_cloudflare_token_step_fails_when_no_zone_candidate_is_accessible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agmind.install import steps
+    from agmind.install.steps import CloudflareTokenStep
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return b'{"success":true,"result":[]}'
+
+    def fake_urlopen(request: Any, timeout: float) -> FakeResponse:
+        del request, timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(steps.urllib.request, "urlopen", fake_urlopen)
+    cfg = _make_config(tmp_path)
+
+    result = CloudflareTokenStep().run(lambda _event: None, cfg)
+
+    assert not result.success
+    assert "cannot access an active Cloudflare zone" in result.message
+    assert "lab.example.com" in result.message
+    assert "example.com" in result.message
 
 
 def test_env_write_step_preserves_runtime_config_on_copytree_failure(

@@ -24,7 +24,7 @@
       - lsb-release
       - net-tools
       - lsof
-      - lspci
+      - pciutils
     state: present
 
 - name: Install Vulkan tooling (per R2/R3)

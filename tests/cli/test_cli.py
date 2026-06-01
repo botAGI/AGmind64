@@ -398,6 +398,108 @@ def test_install_no_tui_prints_runtime_credentials_path(
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_no_tui_uses_passwordless_sudo_without_prompt(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.install.orchestrator import InstallResult
+
+    token_file = tmp_path / "cf-token"  # type: ignore[operator]
+    token_file.write_text("super-secret-token-with-length-40-abcdef", encoding="utf-8")
+    token_file.chmod(0o600)
+    captured: dict[str, object] = {}
+
+    def fail_getpass(prompt: str) -> str:
+        raise AssertionError(f"sudo prompt should not run with passwordless sudo: {prompt}")
+
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("getpass.getpass", fail_getpass)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(self) -> InstallResult:
+            return InstallResult(success=True, steps=(), message="install ok")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    cli_app = _make_app()
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app,
+        [
+            "install",
+            "--no-tui",
+            "--domain",
+            "lab.example.com",
+            "--cf-token-file",
+            str(token_file),
+            "--model-file",
+            "model.gguf",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert config.sudo_password == ""
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_no_tui_hides_runtime_credentials_path_on_failure(
+    tmp_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.install.orchestrator import InstallResult, InstallStepResult
+
+    token_file = tmp_path / "cf-token"  # type: ignore[operator]
+    token_file.write_text("super-secret-token-with-length-40-abcdef", encoding="utf-8")
+    token_file.chmod(0o600)
+
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    class FakeOrchestrator:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def run(self) -> InstallResult:
+            return InstallResult(
+                success=False,
+                steps=(InstallStepResult("bootstrap", False, "boom"),),
+                message="failed at step 'bootstrap': boom",
+            )
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    cli_app = _make_app()
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app,
+        [
+            "install",
+            "--no-tui",
+            "--domain",
+            "lab.example.com",
+            "--cf-token-file",
+            str(token_file),
+            "--model-file",
+            "model.gguf",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Runtime credentials:" not in result.output
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_no_tui_requires_cf_token_before_sudo_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -524,7 +626,7 @@ def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> N
     payload = json.loads(result.output.split("\n", 1)[1])
     assert payload["domain"] == "lab.example.com"
     assert payload["install_dir"] == str(install_dir)
-    assert payload["services"] == ["traefik", "llama-llm", "qdrant"]
+    assert set(payload["services"]) == {"traefik", "llama-llm", "qdrant"}
     assert "super-secret-token" not in result.output
 
 
@@ -579,6 +681,63 @@ def test_install_dry_run_from_state_skip_model_prunes_llm_service(tmp_path: obje
     assert payload["rerank_file"] is None
     assert "llama-llm" not in payload["services"]
     assert "traefik" in payload["services"]
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_dry_run_from_state_expands_service_dependencies(tmp_path: object) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    state_file = tmp_path / "setup-state.json"  # type: ignore[operator]
+    token_file = tmp_path / "cf-token"  # type: ignore[operator]
+    state_file.write_text(
+        json.dumps(
+            {
+                "domain": "old.example.com",
+                "services": ["dify-api"],
+                "profiles": [],
+                "model_id": "qwen36-a3b-q4km",
+            }
+        ),
+        encoding="utf-8",
+    )
+    token_file.write_text("super-secret-token-with-length-40-abcdef\n", encoding="utf-8")
+    token_file.chmod(0o600)
+
+    cli_app = _make_app()
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_app,
+        [
+            "install",
+            "--no-tui",
+            "--dry-run",
+            "--from-state",
+            str(state_file),
+            "--domain",
+            "lab.example.com",
+            "--cf-token-file",
+            str(token_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output.split("\n", 1)[1])
+    services = set(payload["services"])
+    assert {
+        "dify-api",
+        "dify-web",
+        "dify-worker",
+        "dify-plugin-daemon",
+        "dify-sandbox",
+        "postgres",
+        "redis",
+        "qdrant",
+        "llama-llm",
+        "llama-embed",
+    }.issubset(services)
+    assert payload["model_file"] == "Qwen3.6-35B-A3B-Q4_K_M.gguf"
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
