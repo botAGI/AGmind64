@@ -188,11 +188,22 @@ def _compose_cmd(
     *extra_args: str,
     compose_file: Path,
     env_file: Path,
+    profile: str = "",
 ) -> list[str]:
-    """Build a ``docker compose`` command list."""
+    """Build a ``docker compose`` command list.
+
+    ``profile`` (comma-separated lane, e.g. ``"core,observability"``) activates
+    the rendered compose-level ``profiles:`` keys. The renderer stamps EVERY
+    service with its AGmind profile(s), so ``docker compose up`` selects nothing
+    and errors ``no service selected`` unless the lane's profiles are activated.
+    """
+    profile_flags: list[str] = []
+    for name in (p.strip() for p in profile.split(",") if p.strip()):
+        profile_flags += ["--profile", name]
     return [
         "docker",
         "compose",
+        *profile_flags,
         "-p",
         _PROJECT_NAME,
         "-f",
@@ -268,6 +279,7 @@ def _assert_no_crash_loops(profile: str, compose_file: Path, env_file: Path) -> 
             "json",
             compose_file=compose_file,
             env_file=env_file,
+            profile=profile,
         ),
         capture_output=True,
         text=True,
@@ -338,6 +350,7 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                 "--quiet",
                 compose_file=compose_file,
                 env_file=env_file,
+                profile=profile,
             ),
             capture_output=True,
             text=True,
@@ -360,6 +373,7 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                     f"--wait-timeout={_WAIT_TIMEOUT}",
                     compose_file=compose_file,
                     env_file=env_file,
+                    profile=profile,
                 ),
                 capture_output=True,
                 text=True,
@@ -392,6 +406,7 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                     "-v",
                     compose_file=compose_file,
                     env_file=env_file,
+                    profile=profile,
                 ),
                 capture_output=True,
                 timeout=60,

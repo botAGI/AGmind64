@@ -18,11 +18,15 @@ resources:
   cpus: 4.0
   mem_limit: 8g
 health:
+  # qdrant/qdrant image ships NO curl/wget (only bash/sh) — a curl healthcheck
+  # fails 'executable file not found' forever → qdrant perma-unhealthy. Use a
+  # bash /dev/tcp connect to the HTTP port (qdrant binds 6333 only once serving).
   test:
   - CMD
-  - curl
-  - -f
-  - http://localhost:6333/healthz
+  - bash
+  - -c
+  - exec 3<>/dev/tcp/127.0.0.1/6333
+  start_period: 10s
 
 # Phase O capabilities
 provides:
