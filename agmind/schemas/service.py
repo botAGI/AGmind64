@@ -322,16 +322,6 @@ class ServiceDescriptor(BaseModel):
     """
 
     # ---- Validators ----
-    @field_validator("extra_args")
-    @classmethod
-    def _reject_extra_args(cls, v: list[str]) -> list[str]:
-        if v:
-            raise ValueError(
-                "extra_args is unsupported by the renderer and silently dropped. "
-                "Use command/devices/group_add/security_opt/cap_add instead."
-            )
-        return v
-
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:

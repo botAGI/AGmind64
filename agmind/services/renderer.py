@@ -412,48 +412,6 @@ def descriptors_with_capability_env(
     return resolved
 
 
-def _check_unresolved_consumes(
-    selected: dict[str, ServiceDescriptor],
-) -> None:
-    """Fail-closed on unresolved non-optional consumes (C2 — Wave C renderer hardening).
-
-    For each selected service, for each capability it consumes:
-    - Skip if cap is in OPTIONAL_MISSING_CAPABILITIES (e.g. dify_external_kb, reranker).
-    - Skip if (service_name, cap) is in KNOWN_CROSS_PROFILE_CONSUMES (e.g. dify-api
-      consuming llm_inference from llama-llm in a different profile — always co-deployed).
-    - Otherwise: resolve the provider; if None → raise ValueError naming the consumer + cap.
-
-    This mirrors the existing missing-depends_on raise in render_to_string() and converts
-    a silent half-configured container into a loud render-time failure.
-    """
-    from agmind.services.compatibility import (
-        OPTIONAL_MISSING_CAPABILITIES,
-        resolve_capability_provider_for_consumer,
-    )
-    from agmind.services.topology_checks import KNOWN_CROSS_PROFILE_CONSUMES
-
-    unresolved: list[tuple[str, str]] = []
-    for name, d in selected.items():
-        for cap in d.consumes:
-            if cap in OPTIONAL_MISSING_CAPABILITIES:
-                continue
-            if (name, cap) in KNOWN_CROSS_PROFILE_CONSUMES:
-                continue
-            provider = resolve_capability_provider_for_consumer(selected, cap, name)
-            if provider is None:
-                unresolved.append((name, cap))
-
-    if unresolved:
-        details = "; ".join(
-            f"'{name}' consumes '{cap}' but no provider is selected"
-            for name, cap in sorted(unresolved)
-        )
-        raise ValueError(
-            f"Unresolved capability consumes in render — add the provider to your profile "
-            f"selection or mark it optional: {details}"
-        )
-
-
 def render_compose(
     descriptors: list[ServiceDescriptor],
     traefik_enabled: bool = True,
@@ -466,12 +424,6 @@ def render_compose(
         traefik_enabled: добавлять Traefik labels из routing config
         network_name: имя shared bridge сети
     """
-    selected_by_name_pre = {d.name: d for d in descriptors}
-    # C2: fail-closed on unresolved non-optional consumes (Wave C renderer hardening).
-    # Must run BEFORE descriptors_with_capability_env so the check uses the raw descriptor
-    # set (not the env-merged copy) — the provider resolution logic is the same either way.
-    _check_unresolved_consumes(selected_by_name_pre)
-
     resolved_descriptors = descriptors_with_capability_env(descriptors)
 
     services_block_local: dict[str, Any] = {}
