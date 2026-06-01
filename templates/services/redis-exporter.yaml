@@ -8,6 +8,9 @@ profiles:
 - observability
 env:
   REDIS_ADDR: redis://redis:6379
+  # B1: redis runs with --requirepass; oliver006/redis_exporter reads REDIS_PASSWORD
+  # separately from REDIS_ADDR (confirmed per exporter README §3e of B1 research).
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 resources:
   cpus: 0.5
   mem_limit: 256m

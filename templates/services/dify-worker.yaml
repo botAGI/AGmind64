@@ -6,11 +6,31 @@ tier: app
 purpose: Dify celery worker
 profiles:
 - rag
+volumes:
+# B6: dify-worker uses the same storage path as dify-api (same image, uid 1001).
+# bootstrap already pre-creates /var/lib/agmind/dify/storage at uid 1001.
+- /var/lib/agmind/dify/storage:/app/api/storage
+run_as_uid: 1001
+# run_as_gid defaults to run_as_uid (1001)
+writable_mounts:
+- /var/lib/agmind/dify/storage
 env:
   MODE: worker
   LOG_LEVEL: INFO
   DB_HOST: postgres
+  # B6: dify-worker needs full DB creds (mirrors dify-api; same postgres DB).
+  DB_PORT: '5432'
+  DB_USERNAME: dify
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  DB_DATABASE: dify
   REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  # B1: redis runs with --requirepass; worker reads REDIS_PASSWORD for direct redis ops.
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+  # B1+B6: Celery does NOT read REDIS_PASSWORD — it reads only CELERY_BROKER_URL.
+  # The URL must embed the credential with empty-username prefix (`:` before password).
+  # Matches dify upstream shared.env.example: redis://:difyai123456@redis:6379/1
+  CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/1
 depends_on:
 - postgres
 - redis

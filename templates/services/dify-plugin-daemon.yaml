@@ -14,6 +14,9 @@ env:
   DB_DATABASE: dify
   REDIS_HOST: redis
   REDIS_PORT: '6379'
+  # B1: redis runs with --requirepass; dify-plugin-daemon reads REDIS_PASSWORD
+  # (confirmed from dify-plugin-daemon/.env.example: REDIS_PASSWORD=difyai123456).
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
   SERVER_PORT: '5002'
   # SERVER_KEY here MUST equal PLUGIN_DAEMON_KEY on dify-api (shared var);
   # DIFY_INNER_API_KEY MUST equal INNER_API_KEY_FOR_PLUGIN on dify-api.
