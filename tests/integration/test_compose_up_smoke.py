@@ -6,11 +6,15 @@ Renders the NON-GPU AGmind subset to a temp compose file, runs
 ``docker compose -p agmind-ci -f <file> --env-file <ci-env> up -d --wait
 --wait-timeout 180``, asserts every container reaches healthy (compose
 --wait fails if any container with a healthcheck exits or never becomes
-healthy), then ALWAYS runs ``down -v`` in a finally block.
+healthy), then runs a post-wait ``docker compose ps --format json``
+assertion that catches no-healthcheck crash-loops (State in restarting/
+exited/unhealthy), and ALWAYS runs ``down -v`` in a finally block.
 
 Subset selection
 ----------------
-Profiles: ``core``, ``core,observability``, ``core,rag``  (three lanes)
+Profiles: ``core``, ``core,observability``, ``core,rag``,
+          ``rag-milvus``, ``rag-weaviate``, ``security``,
+          ``automation``, ``ragflow``  (eight lanes)
 Exclusions: all service names starting with ``llama-`` (no GPU on the
 smoke box; GPU images require /dev/dri + /dev/kfd which the self-hosted
 lane may not expose).
@@ -43,6 +47,16 @@ dir is EROFS — then render and run the smoke:
        sub-process cannot write, making the container never reach healthy).
     4. Revert the change and re-run to confirm GREEN.
 
+To prove the crash-loop assertion (post-wait ps check) catches no-healthcheck
+crash-loops (I.1 evidence for the dify-worker class):
+
+    1. Add ``command: ["false"]`` to any service without a healthcheck, e.g.
+       dify-worker in ``templates/services/dify.yaml``.
+    2. Render and run the affected smoke lane.
+    3. Assert the test FAILS with the crash-looping containers named in the
+       assertion message (State=exited or State=restarting).
+    4. Revert the command change and re-run to confirm GREEN.
+
 This procedure is the self-hosted lane's manual RED evidence (the test
 infrastructure verifies the mechanism; the self-hosted runner confirms the
 real crash-loop classes).
@@ -50,6 +64,7 @@ real crash-loop classes).
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -79,12 +94,27 @@ _CI_ENV_CONTENT = textwrap.dedent("""\
     AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
 """)
 
-# Non-GPU profile lanes — the three compose profile strings to smoke.
+# Non-GPU profile lanes — compose profile strings to smoke.
+# The first three are the original lanes; the next five cover descriptor fixes
+# in Phase 08 (milvus/weaviate/authelia/n8n/ragflow boot-validate) and
+# confirm the redis-auth fix in plan 08-04 (ragflow/security lanes must boot
+# without AUTH errors).
 _SMOKE_PROFILES = [
     "core",
     "core,observability",
     "core,rag",
+    "rag-milvus",
+    "rag-weaviate",
+    "security",
+    "automation",
+    "ragflow",
 ]
+
+# Container states that indicate a crash-loop or failed start.
+# ``--wait`` is blind to services with no healthcheck: a container that is
+# restarting or has already exited after a crash is NOT detected by --wait
+# alone (dify-worker had RestartCount=49 and would pass a lucky --wait poll).
+_CRASH_LOOP_STATES = frozenset({"restarting", "exited", "unhealthy"})
 
 # Project isolation name — NEVER collides with the live stack.
 _PROJECT_NAME = "agmind-ci"
@@ -173,6 +203,93 @@ def _compose_cmd(
     ]
 
 
+def _parse_ps_json(stdout: str) -> list[dict[str, object]]:
+    """Parse ``docker compose ps --format json`` output robustly.
+
+    Docker Compose v2 emits one JSON object per line (JSON-lines format).
+    Older versions may emit a single JSON array.  Both forms are handled:
+
+    1. Try to parse each non-empty line as an independent JSON object.
+    2. If that yields nothing or raises, fall back to ``json.loads`` of the
+       entire stdout (JSON-array form).
+
+    Returns a list of container-info dicts.  An unparseable line is silently
+    skipped so a stray blank or debug line does not abort the assertion.
+    """
+    containers: list[dict[str, object]] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                containers.append(obj)
+            elif isinstance(obj, list):
+                # The whole output was a JSON array on the first non-empty line.
+                containers.extend(item for item in obj if isinstance(item, dict))
+                return containers
+        except json.JSONDecodeError:
+            pass  # skip non-JSON lines (e.g., debug output)
+
+    if containers:
+        return containers
+
+    # Final fallback: try to parse the entire stdout as a JSON array.
+    try:
+        parsed = json.loads(stdout)
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+    except json.JSONDecodeError:
+        pass
+
+    return containers
+
+
+def _assert_no_crash_loops(profile: str, compose_file: Path, env_file: Path) -> None:
+    """Assert no container is in a crash-loop or failed state after ``up --wait``.
+
+    ``docker compose up -d --wait`` returns 0 if every container with a
+    ``healthcheck:`` becomes healthy.  It is BLIND to containers with no
+    healthcheck: they are marked ``running`` the moment the process starts,
+    regardless of whether the process immediately crashes and restarts.
+
+    This function runs ``docker compose ps --format json``, collects any
+    container whose ``State`` is in ``_CRASH_LOOP_STATES``, and fails with a
+    clear message naming each offending container and its state.
+
+    The function is tolerant of empty ``ps`` output (no containers) and of
+    docker compose versions that emit either JSON-lines or a JSON array.
+    """
+    ps_result = subprocess.run(
+        _compose_cmd(
+            "ps",
+            "--format",
+            "json",
+            compose_file=compose_file,
+            env_file=env_file,
+        ),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    # A non-zero ps returncode is unexpected but not a crash-loop per se; let
+    # the assertion below handle the empty container list case gracefully.
+    containers = _parse_ps_json(ps_result.stdout)
+    bad = [
+        {"Name": c.get("Name", "<unknown>"), "State": c.get("State", "<unknown>")}
+        for c in containers
+        if c.get("State") in _CRASH_LOOP_STATES
+    ]
+    assert not bad, (
+        f"[{profile}] containers in crash-loop state after compose up --wait:\n"
+        + "\n".join(f"  {b['Name']}: State={b['State']}" for b in bad)
+        + "\n\nThis catches no-healthcheck crash-loops (e.g., dify-worker "
+        "RestartCount=49 class) that --wait cannot detect.\n"
+        f"Full ps stdout:\n{ps_result.stdout[-3000:]}"
+    )
+
+
 @pytest.fixture(scope="module")
 def _skip_if_no_docker() -> None:
     """Skip the entire module when Docker is unavailable."""
@@ -182,15 +299,23 @@ def _skip_if_no_docker() -> None:
 
 @pytest.mark.parametrize("profile", _SMOKE_PROFILES)
 def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # noqa: PT019
-    """Render → up --wait → assert returncode 0 → down -v.
+    """Render → up --wait → no-restart assertion → down -v.
 
     Each lane renders the NON-GPU compose subset, starts it with
     ``--wait --wait-timeout 180`` (compose fails non-zero if any
     healthchecked container does not reach ``healthy`` within the window),
-    then tears down unconditionally.
+    then runs a ``docker compose ps --format json`` assertion that catches
+    no-healthcheck crash-loops (dify-worker RestartCount=49 class), then
+    tears down unconditionally.
+
+    Profiles: core, core,observability, core,rag (original three lanes) +
+    rag-milvus, rag-weaviate, security, automation, ragflow (Phase 08 lanes
+    confirming milvus/weaviate/authelia/n8n/ragflow boot-validate and the
+    redis-auth fix from plan 08-04).
 
     This test catches the perms / command / config / group_add crash-loop
-    classes documented in DEPLOY-BLOCKERS-2026-05-30.md.
+    classes documented in DEPLOY-BLOCKERS-2026-05-30.md, plus the
+    no-healthcheck restart class (T-08-14).
     """
     with tempfile.TemporaryDirectory(prefix="agmind-smoke-") as tmpdir:
         tmp = Path(tmpdir)
@@ -241,6 +366,24 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                 timeout=_WAIT_TIMEOUT + 30,
                 env={**os.environ, "AGMIND_CI": "1"},
             )
+
+            assert up_result is not None
+            assert up_result.returncode == 0, (
+                f"[{profile}] compose up --wait failed (returncode={up_result.returncode}).\n"
+                f"A container did not reach 'healthy' within {_WAIT_TIMEOUT}s — "
+                "check perms/command/config/group_add for crash-loop classes.\n"
+                f"stdout: {up_result.stdout[-4000:]}\n"
+                f"stderr: {up_result.stderr[-4000:]}"
+            )
+
+            # Post-wait crash-loop assertion: --wait is blind to containers with no
+            # healthcheck.  A container can enter ``running`` momentarily, pass the
+            # --wait poll, then immediately restart (RestartCount=49 class, e.g.
+            # dify-worker).  Run ``ps --format json`` and assert no container is in
+            # a crash-loop state.  Handles both docker compose v2 output shapes:
+            #   * JSON-lines (one JSON object per line) — modern compose
+            #   * Single JSON array — some older compose versions
+            _assert_no_crash_loops(profile, compose_file, env_file)
         finally:
             # ALWAYS tear down — belt-and-suspenders even if up was interrupted.
             subprocess.run(
@@ -253,12 +396,3 @@ def test_compose_up_smoke(profile: str, _skip_if_no_docker: None) -> None:  # no
                 capture_output=True,
                 timeout=60,
             )
-
-        assert up_result is not None
-        assert up_result.returncode == 0, (
-            f"[{profile}] compose up --wait failed (returncode={up_result.returncode}).\n"
-            f"A container did not reach 'healthy' within {_WAIT_TIMEOUT}s — "
-            "check perms/command/config/group_add for crash-loop classes.\n"
-            f"stdout: {up_result.stdout[-4000:]}\n"
-            f"stderr: {up_result.stderr[-4000:]}"
-        )
