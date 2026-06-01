@@ -11,7 +11,7 @@
 → интерактивный wizard в терминале с auto-detect железа, валидацией ввода
    (домен contains '.', CF token ≥20 chars), preview изменений, one-click apply.
 
-Сохраняет state в `/var/lib/agmind/setup-state.json` для re-run + позволяет
+Сохраняет state в `~/.local/share/agmind/setup-state.json` для re-run + позволяет
 non-interactive deploy через `agmind setup --from-state file.json`.
 """
 
@@ -987,8 +987,11 @@ class AgmindSetupApp(App[SetupState | None]):
                 "Docker не установлен — установи docker-ce + docker-compose-plugin "
                 "или запусти bootstrap step"
             )
-        # Phase O.A (revised): compat issues — warnings only, не блокируют Apply.
-        # См. ADR-0011 amendment.
+        compatibility = self._check_compatibility(state)
+        if compatibility is not None and compatibility.has_errors:
+            for issue in compatibility.by_severity("error"):
+                label = issue.capability or issue.kind
+                errors.append(f"missing capability {label}: {issue.message}")
         return errors
 
     def _check_dependencies(self, state: SetupState) -> dict[str, list[str]]:

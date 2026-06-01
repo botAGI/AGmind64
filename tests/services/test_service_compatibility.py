@@ -96,13 +96,14 @@ def test_dify_multiple_vector_providers_warns_about_ambiguous_backend() -> None:
     )
 
 
-def test_missing_capability_warning() -> None:
+def test_missing_capability_error() -> None:
     selected = {
         "dify-api": _desc("dify-api", consumes=["vector_db"]),
     }
     report = check_service_compatibility(selected)
-    warns = report.by_severity("warning")
-    assert any(i.kind == "missing_capability" and i.capability == "vector_db" for i in warns)
+    errors = report.by_severity("error")
+    assert report.has_errors is True
+    assert any(i.kind == "missing_capability" and i.capability == "vector_db" for i in errors)
 
 
 def test_optional_dify_external_kb_gap_is_info_not_warning() -> None:
@@ -515,6 +516,21 @@ def test_real_catalog_dify_capability_consumers_are_runtime_services_only() -> N
     assert provider_caps <= set(all_d["dify-worker"].consumes)
     for service_name in ("dify-web", "dify-sandbox", "dify-plugin-daemon"):
         assert provider_caps.isdisjoint(all_d[service_name].consumes)
+
+
+def test_real_catalog_dify_worker_gets_embedding_provider_env() -> None:
+    """Dify worker performs RAG indexing, so it must receive the embed endpoint too."""
+    from agmind.services.renderer import load_descriptors, select_services
+
+    all_d = load_descriptors()
+    selected = select_services(
+        all_d,
+        services=["dify-worker", "llama-embed", "qdrant", "postgres", "redis"],
+    )
+    injected = inject_capability_env(selected)
+
+    assert injected["dify-worker"]["EMBEDDING_PROVIDER_BASE_URL"] == ("http://llama-embed:8080/v1")
+    assert injected["dify-worker"]["EMBEDDING_PROVIDER_API_KEY"] == "sk-no-key-needed"
 
 
 def test_real_catalog_milvus_does_not_inject_into_ragflow() -> None:

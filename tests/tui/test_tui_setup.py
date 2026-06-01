@@ -116,6 +116,30 @@ def test_detect_hardware_ignores_lspci_oserror(monkeypatch: pytest.MonkeyPatch) 
     assert detected.is_strix_halo is False
 
 
+def test_validate_blocks_non_optional_missing_capability() -> None:
+    app = AgmindSetupApp(
+        detected=DetectedHardware(
+            ram_gb=128,
+            gpu_name="x",
+            is_strix_halo=True,
+            vulkan_present=True,
+            rocm_present=True,
+            docker_present=True,
+            recommended_tier="XL",
+        ),
+        initial_state=SetupState(
+            domain="lab.example.com",
+            cf_api_token="X" * 40,
+            services=["dify-api"],
+        ),
+    )
+
+    errors = app._validate(app.state)
+
+    assert any("missing capability" in error for error in errors)
+    assert any("vector_db" in error for error in errors)
+
+
 # ---------- Validation ----------
 
 

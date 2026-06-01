@@ -100,17 +100,15 @@ def test_llama_llm_flash_attn_carries_required_value() -> None:
             break
 
 
-def test_llama_llm_healthcheck_start_period_allows_model_load() -> None:
-    """A multi-GB LLM takes minutes to load into unified memory; the healthcheck
-    start_period must be generous so docker does not mark llama-llm unhealthy mid-load
-    and trigger a false deploy rollback (BREA02). The schema default (10s) is far too
-    short — failures begin ~10s in and the container flips unhealthy ~100s in, long
-    before a 35B GGUF has finished loading."""
-    data = yaml.safe_load((SERVICES_DIR / "llama-llm.yaml").read_text(encoding="utf-8"))
+@pytest.mark.parametrize("service_name", ["llama-llm", "llama-embed", "llama-rerank"])
+def test_llama_server_healthcheck_start_period_allows_model_load(service_name: str) -> None:
+    """All llama-server roles expose /health and need generous first-load grace."""
+    data = yaml.safe_load((SERVICES_DIR / f"{service_name}.yaml").read_text(encoding="utf-8"))
     descriptor = ServiceDescriptor.model_validate(data)
-    assert descriptor.health is not None, "llama-llm must declare a healthcheck"
+    assert descriptor.health is not None, f"{service_name} must declare a healthcheck"
+    assert descriptor.health.test == ["CMD", "curl", "-f", "http://localhost:8080/health"]
     assert _duration_seconds(descriptor.health.start_period) >= 300, (
-        f"llama-llm health.start_period={descriptor.health.start_period} too short "
+        f"{service_name} health.start_period={descriptor.health.start_period} too short "
         "for first-run model load"
     )
 

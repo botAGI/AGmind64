@@ -75,9 +75,9 @@ Last local readiness pass: 2026-05-26.
 - Compose rendering uses health-aware dependency gates: services wait for
   healthy Postgres/Redis/MySQL/MinIO/etc. when the dependency descriptor has a
   healthcheck, reducing fresh-deploy startup races.
-- The `full` profile is intentionally blocked by deploy conflict checks until
-  the alternative edge proxies are split; use `core,observability` first, then
-  add `rag` after models and secrets are ready.
+- The `full` profile renders again after the alternative edge proxy cleanup, but
+  fresh installs should still prefer a staged rollout: start with
+  `core,observability`, verify models and secrets, then add `rag`/other profiles.
 - Local cluster status sees this node as `beelinknode-GTR-Pro` on
   `192.168.1.151`; `agmind cluster inspect` now reports both AGmind mDNS peers
   and raw LAN neighbor candidates from the local neighbor table.

@@ -33,6 +33,8 @@ def test_service_profile_values_stable() -> None:
     expected = {
         "core",
         "rag",
+        "rag-milvus",
+        "rag-weaviate",
         "ragflow",
         "ui",
         "automation",
@@ -303,6 +305,14 @@ def test_services_for_profile_string_arg() -> None:
     core_enum = services_for_profile(ServiceProfile.CORE)
     core_str = services_for_profile("core")
     assert {s.name for s in core_enum} == {s.name for s in core_str}
+
+
+def test_services_for_profile_accepts_rag_alternative_profiles() -> None:
+    milvus = {service.name for service in services_for_profile("rag-milvus")}
+    weaviate = {service.name for service in services_for_profile("rag-weaviate")}
+
+    assert "milvus" in milvus
+    assert "weaviate" in weaviate
 
 
 def test_services_for_profile_full_is_union() -> None:

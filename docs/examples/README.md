@@ -31,7 +31,7 @@ render compose → diff vs current → snapshot → docker compose up -d --remov
 - A **confirmation gate** prompts before any removal/recreation (unless `--no-prompt`),
   and a **snapshot + auto-rollback** covers a failed healthcheck.
 - **Selection is remembered**: a re-run pre-selects your previously-deployed services
-  (from `/var/lib/agmind/setup-state.json`), so you *add* a component to the existing
+  (from `~/.local/share/agmind/setup-state.json`), so you *add* a component to the existing
   set instead of accidentally dropping services. Deploy the **full desired set** (the
   gate protects you if you don't), or use `agmind deploy --service A --service B …`.
 

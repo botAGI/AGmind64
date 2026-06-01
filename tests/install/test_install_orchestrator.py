@@ -296,7 +296,6 @@ def test_default_steps_list_is_stable() -> None:
         "bootstrap",
         "env_write",
         "compose_config",
-        "image_pull",
         "model_pull",
         "deploy",
     ]
@@ -1594,6 +1593,7 @@ def test_compose_config_and_image_pull_use_sudo_safe_runtime_env_reader(
 
     monkeypatch.setattr(steps, "_parse_existing_runtime_env", fake_runtime_env)
     monkeypatch.setattr(steps, "_stream_subprocess", fake_stream_subprocess)
+    monkeypatch.setattr(steps, "_user_docker_config_dir", lambda: None)
 
     assert ComposeConfigStep().run(lambda _event: None, cfg).success
     assert ImagePullStep().run(lambda _event: None, cfg).success
@@ -1685,7 +1685,8 @@ def test_default_steps_validate_compose_before_real_image_pull() -> None:
 
     assert "compose_config" in step_ids
     assert step_ids.index("env_write") < step_ids.index("compose_config")
-    assert step_ids.index("compose_config") < step_ids.index("image_pull")
+    assert "image_pull" not in step_ids
+    assert step_ids.index("compose_config") < step_ids.index("deploy")
 
 
 def test_default_steps_all_have_label() -> None:

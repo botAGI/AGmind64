@@ -382,6 +382,7 @@ def test_runner_run_compose_uses_env_file_when_present(
         capture_output: bool,
         text: bool,
         check: bool,
+        timeout: int | None = None,
     ) -> subprocess.CompletedProcess[str]:
         calls.append(
             {
@@ -390,6 +391,7 @@ def test_runner_run_compose_uses_env_file_when_present(
                 "capture_output": capture_output,
                 "text": text,
                 "check": check,
+                "timeout": timeout,
             }
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -411,6 +413,7 @@ def test_runner_run_compose_uses_env_file_when_present(
             "capture_output": True,
             "text": True,
             "check": False,
+            "timeout": runner.COMPOSE_SHORT_TIMEOUT,
         }
     ]
 
@@ -427,6 +430,7 @@ def test_runner_run_compose_can_use_sudo_password(
         text: bool,
         check: bool,
         input: str | None = None,
+        timeout: int | None = None,
     ) -> subprocess.CompletedProcess[str]:
         calls.append(
             {
@@ -436,6 +440,7 @@ def test_runner_run_compose_can_use_sudo_password(
                 "text": text,
                 "check": check,
                 "input": input,
+                "timeout": timeout,
             }
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -448,6 +453,7 @@ def test_runner_run_compose_can_use_sudo_password(
 
     assert calls[0]["cmd"] == ["sudo", "-S", "-p", "", "--", "docker", "compose", "ps"]
     assert calls[0]["input"] == "pw\n"
+    assert calls[0]["timeout"] == runner.COMPOSE_SHORT_TIMEOUT
     assert "pw" not in calls[0]["cmd"]
 
 
@@ -496,6 +502,26 @@ def test_runner_run_compose_reports_oserror_without_traceback(
     assert rc == 127
     assert stdout == ""
     assert "docker denied" in stderr
+
+
+def test_runner_run_compose_times_out_short_commands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append({"cmd": cmd, **kwargs})
+        raise subprocess.TimeoutExpired(cmd, timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    rc, stdout, stderr = runner._run_compose(["ps"], cwd=tmp_path)
+
+    assert rc == 124
+    assert stdout == ""
+    assert "timed out" in stderr
+    assert calls[0]["timeout"] == runner.COMPOSE_SHORT_TIMEOUT
 
 
 def test_deploy_apply_validates_compose_before_replacing_file(

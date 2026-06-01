@@ -105,6 +105,10 @@ BINDINGS: CapabilityBindings = {
                 "EMBEDDING_PROVIDER_BASE_URL": "http://llama-embed:8080/v1",
                 "EMBEDDING_PROVIDER_API_KEY": "sk-no-key-needed",
             },
+            "dify-worker": {
+                "EMBEDDING_PROVIDER_BASE_URL": "http://llama-embed:8080/v1",
+                "EMBEDDING_PROVIDER_API_KEY": "sk-no-key-needed",
+            },
             "ragflow": {
                 # RAGFlow: configured per-tenant в UI, env shortcut:
                 "EMBEDDING_ENDPOINT": "http://llama-embed:8080/v1",

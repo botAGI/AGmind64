@@ -25,6 +25,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from agmind.config.env import write_env
+from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
 from agmind.core.secrets import generate_secret, write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
@@ -777,7 +778,14 @@ def _docker_compose_cmd(
     compose = ["docker", "compose", *global_flags, *env_args, *args]
     if config.sudo_password is None:
         return compose
+    docker_config = _user_docker_config_dir()
+    if docker_config:
+        compose = ["env", f"DOCKER_CONFIG={docker_config}", *compose]
     return ["sudo", "-S", "-p", "", "--", *compose]
+
+
+def _user_docker_config_dir() -> str | None:
+    return user_docker_config_dir()
 
 
 def _pull_progress_pct(line: str, services: set[str], pulled: set[str]) -> int | None:
@@ -1392,6 +1400,7 @@ class ModelDownloadStep(InstallStep):
     SPEED_RE = re.compile(r"(\d+\.?\d*)\s*([KMG])\s")
     MIN_VALID_SIZE = 100 * 1024 * 1024  # 100 MiB — filter empty placeholders / partial
     MIN_VALID_SIZE_SMALL = 10 * 1024 * 1024  # 10 MiB — для embed/rerank (BGE-M3 = 600 MiB)
+    DISK_SPACE_BUFFER_BYTES = 256 * 1024 * 1024
 
     @staticmethod
     def _fallback_dirs(config: InstallConfig) -> list[Path]:
@@ -1431,6 +1440,42 @@ class ModelDownloadStep(InstallStep):
             if cand.exists() and cand.stat().st_size >= min_size:
                 return cand, f"found in fallback {fb}"
         return None, "not present anywhere"
+
+    @staticmethod
+    def _expected_download_size_bytes(repo: str, file_name: str, min_size: int) -> int:
+        """Best-effort expected download size without network calls."""
+        try:
+            from agmind.install.models import CURATED_MODELS
+        except Exception:  # noqa: BLE001
+            return min_size
+        for entry in CURATED_MODELS:
+            if entry.repo == repo and entry.file == file_name and entry.size_gib > 0:
+                return int(entry.size_gib * 1024 * 1024 * 1024)
+        return min_size
+
+    def _check_model_disk_space(
+        self,
+        *,
+        role: str,
+        repo: str,
+        file_name: str,
+        target: Path,
+        partial: Path,
+        min_size: int,
+    ) -> str | None:
+        expected_size = self._expected_download_size_bytes(repo, file_name, min_size)
+        partial_size = partial.stat().st_size if partial.exists() else 0
+        remaining = max(expected_size - partial_size, min_size)
+        buffer = max(self.DISK_SPACE_BUFFER_BYTES, expected_size // 20)
+        free = shutil.disk_usage(target.parent).free
+        if free >= remaining + buffer:
+            return None
+        free_mb = free // (1024 * 1024)
+        needed_mb = (remaining + buffer) // (1024 * 1024)
+        return (
+            f"{role}: not enough free space in {target.parent} for {file_name}: "
+            f"{free_mb} MiB free, need at least {needed_mb} MiB"
+        )
 
     def _download_one(
         self,
@@ -1492,6 +1537,16 @@ class ModelDownloadStep(InstallStep):
                     target.replace(partial)
             except OSError as exc:
                 return False, f"{role}: cannot stage partial model download: {exc}"
+        disk_error = self._check_model_disk_space(
+            role=role,
+            repo=repo,
+            file_name=file_name,
+            target=target,
+            partial=partial,
+            min_size=min_size,
+        )
+        if disk_error is not None:
+            return False, disk_error
         if shutil.which("curl") is None:
             return False, f"{role}: curl not found on PATH (required to download models)"
         cmd = [
@@ -1835,9 +1890,8 @@ def default_steps() -> list[InstallStep]:
         DoctorStep(),
         CloudflareTokenStep(),
         BootstrapStep(),
-        EnvWriteStep(),  # before ImagePullStep — compose parses ${VAR:?} guards
-        ComposeConfigStep(),  # fail fast before real image pulls
-        ImagePullStep(),
+        EnvWriteStep(),  # before compose/deploy — compose parses ${VAR:?} guards
+        ComposeConfigStep(),  # fail fast before deploy runner pulls images
         ModelDownloadStep(),
         DeployStep(),
     ]

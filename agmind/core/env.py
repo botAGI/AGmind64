@@ -127,6 +127,8 @@ def compose_env_quote(value: str) -> str:
     This intentionally differs from :func:`shell_quote` (POSIX single-quote
     escaping for a shell), whose contract is unrelated to compose env-files.
     """
+    if "\n" in value or "\r" in value:
+        raise ValueError("compose env-file values must not contain literal newline characters")
     if value and _COMPOSE_BARE_SAFE.match(value):
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')

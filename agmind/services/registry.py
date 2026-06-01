@@ -37,6 +37,8 @@ class ServiceProfile(str, Enum):
 
     CORE = "core"
     RAG = "rag"
+    RAG_MILVUS = "rag-milvus"
+    RAG_WEAVIATE = "rag-weaviate"
     RAGFLOW = "ragflow"
     UI = "ui"
     AUTOMATION = "automation"

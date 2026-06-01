@@ -40,7 +40,9 @@ def test_docker_compose_version_parser_handles_short_and_verbose_output() -> Non
 
 def test_docker_compose_final_version_recheck_retries_after_package_install() -> None:
     recheck = next(
-        task for task in _docker_tasks() if task.get("name") == "Re-check Docker Compose plugin version"
+        task
+        for task in _docker_tasks()
+        if task.get("name") == "Re-check Docker Compose plugin version"
     )
 
     assert recheck["retries"] == 5

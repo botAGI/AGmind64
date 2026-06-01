@@ -43,6 +43,40 @@ def test_docker_compose_cmd_no_progress_by_default(tmp_path: Path) -> None:
     assert "--progress" not in _docker_compose_cmd(cfg, ["config"])
 
 
+def test_docker_compose_cmd_sudo_forwards_invoking_user_docker_auth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Installer sudo-pull must keep docker login credentials."""
+    cfg = _cfg(tmp_path, ["redis"])
+    cfg.sudo_password = "pw"
+    monkeypatch.setattr(
+        steps,
+        "_user_docker_config_dir",
+        lambda: "/home/op/.docker",
+        raising=False,
+    )
+
+    cmd = _docker_compose_cmd(cfg, ["pull", "--policy", "missing"], progress="plain")
+
+    assert cmd == [
+        "sudo",
+        "-S",
+        "-p",
+        "",
+        "--",
+        "env",
+        "DOCKER_CONFIG=/home/op/.docker",
+        "docker",
+        "compose",
+        "--progress",
+        "plain",
+        "pull",
+        "--policy",
+        "missing",
+    ]
+
+
 def test_pull_progress_pct_counts_completed_services() -> None:
     services = {"redis", "postgres", "traefik"}
     pulled: set[str] = set()

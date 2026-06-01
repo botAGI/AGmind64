@@ -162,17 +162,18 @@ def build_deployment_topology_report(
     services = tuple(sorted(selected))
     warnings = list(_dependency_warnings(selected, all_descriptors))
     compatibility = check_service_compatibility(dict(selected))
-    warnings.extend(
-        TopologyWarning(
-            source="compatibility",
-            severity=issue.severity,
-            kind=issue.kind,
-            services=issue.services,
-            capability=issue.capability,
-            message=issue.message,
+    for severity in ("error", "warning"):
+        warnings.extend(
+            TopologyWarning(
+                source="compatibility",
+                severity=issue.severity,
+                kind=issue.kind,
+                services=issue.services,
+                capability=issue.capability,
+                message=issue.message,
+            )
+            for issue in compatibility.by_severity(severity)
         )
-        for issue in compatibility.by_severity("warning")
-    )
     infos = tuple(
         TopologyWarning(
             source="compatibility",

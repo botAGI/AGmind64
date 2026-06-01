@@ -339,14 +339,20 @@ def register(app: typer.Typer) -> None:
         # choices before building the install config.
         if not model_repo and not model_file:
             wizard_state.normalize_model_fields_and_services(drop_unselected_model_files=True)
-        final_repo, final_file = wizard_state.resolve_model_repo_file()
+        resolved_repo, resolved_file = wizard_state.resolve_model_repo_file()
+        final_repo: str | None = resolved_repo
+        final_file: str | None = resolved_file
         # CLI flags override wizard LLM values if provided (kept legacy semantics).
         if model_repo:
             final_repo = model_repo
         if model_file:
             final_file = model_file
-        embed_repo, embed_file = wizard_state.resolve_embed_repo_file()
-        rerank_repo, rerank_file = wizard_state.resolve_rerank_repo_file()
+        resolved_embed_repo, resolved_embed_file = wizard_state.resolve_embed_repo_file()
+        embed_repo: str | None = resolved_embed_repo
+        embed_file: str | None = resolved_embed_file
+        resolved_rerank_repo, resolved_rerank_file = wizard_state.resolve_rerank_repo_file()
+        rerank_repo: str | None = resolved_rerank_repo
+        rerank_file: str | None = resolved_rerank_file
         selected_services = set(wizard_state.services)
         if "llama-llm" not in selected_services:
             final_repo = None

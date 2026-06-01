@@ -272,6 +272,42 @@ def test_curl_command_has_network_timeout_guards(
     assert "--speed-time" in cmd
 
 
+def test_download_fails_before_curl_when_models_dir_lacks_free_space(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agmind.install.steps as steps_mod
+
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []))
+    monkeypatch.setattr(
+        ModelDownloadStep,
+        "_expected_download_size_bytes",
+        staticmethod(lambda _repo, _file_name, _min_size: 200 * 1024 * 1024),
+        raising=False,
+    )
+
+    class Usage:
+        total = 300 * 1024 * 1024
+        used = 260 * 1024 * 1024
+        free = 40 * 1024 * 1024
+
+    monkeypatch.setattr(steps_mod.shutil, "disk_usage", lambda _path: Usage())
+    called: list[object] = []
+
+    def fake_stream(*args: object, **kwargs: object) -> tuple[int, list[str]]:
+        called.append((args, kwargs))
+        return (0, [])
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+
+    assert not result.success
+    assert "not enough free space" in result.message
+    assert called == []
+
+
 def test_download_fails_cleanly_when_curl_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

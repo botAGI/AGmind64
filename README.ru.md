@@ -74,9 +74,9 @@ agmind cluster inspect --timeout 10
 - Compose-render теперь использует health-aware dependency gates: сервисы ждут
   healthy Postgres/Redis/MySQL/MinIO/etc., если у dependency descriptor есть
   healthcheck. Это снижает startup races на fresh deploy.
-- Профиль `full` намеренно блокируется deploy conflict checks, пока
-  альтернативные edge-proxy не разделены; сначала используй `core,observability`,
-  затем добавляй `rag`, когда готовы модели и секреты.
+- Профиль `full` снова рендерится после cleanup альтернативных edge-proxy, но
+  для fresh install безопаснее staged rollout: сначала `core,observability`,
+  затем `rag`/другие профили после проверки моделей и секретов.
 - Локальный cluster status видит эту ноду как `beelinknode-GTR-Pro` на
   `192.168.1.151`; `agmind cluster inspect` теперь показывает и AGmind mDNS
   peers, и сырые LAN neighbor candidates из локальной neighbor table.

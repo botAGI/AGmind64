@@ -117,6 +117,11 @@ def test_env_line_roundtrips_embedded_double_quote() -> None:
     assert parse_env_text(_env_line("FOO", v))["FOO"] == v
 
 
+def test_env_line_rejects_literal_newline_value() -> None:
+    with pytest.raises(ValueError, match="literal newline"):
+        _env_line("SECRET", "line1\nline2")
+
+
 def test_env_line_simple_value_byte_identical_bare() -> None:
     """G.7-a idempotency: simple alnum/_- values stay bare (no quotes).
 

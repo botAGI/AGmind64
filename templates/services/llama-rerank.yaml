@@ -38,6 +38,15 @@ group_add:
 resources:
   cpus: 4.0
   mem_limit: 8g
+health:
+  test:
+  - CMD
+  - curl
+  - -f
+  - http://localhost:8080/health
+  start_period: 600s
+  interval: 15s
+  retries: 5
 routing:
   host: rerank.agmind.dev
   middleware_chain: chain-llm

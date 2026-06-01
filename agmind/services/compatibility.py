@@ -6,20 +6,17 @@ research user'a (RAGFlow ↔ Dify плагин существует, vector DBs 
 если хотя бы один из них не публикуется на 80/443) — выяснилось что почти
 все declared conflicts были выдуманы.
 
-Текущая модель — **только soft warnings**:
+Текущая модель — warnings для неоднозначностей и hard errors для выбора,
+который renderer всё равно не сможет собрать:
 1. `redundant_provider` (warning) — 2+ сервисов с одинаковой capability
    (e.g. qdrant + milvus в одном compose). Не блокирующая — user может
    использовать для разных проектов внутри одного стека.
 2. `ambiguous_dify_vector_provider` (warning) — Dify stack active while 2+
    Dify vector DB providers are selected. Не блокирующая, but operator should
    choose one active `VECTOR_STORE` for Dify API/worker.
-3. `missing_capability` (warning) — consumer объявляет consumes=['vector_db']
-   но никто не provides — env injection не сработает, но docker compose
-   ещё может стартовать (сервис со стандартными defaults).
-
-Hard `error` severity больше **не выдаётся** — мы перестали выдумывать
-конфликты, оставляя decision за user'ом. Wizard НЕ блокирует Apply на
-основе compat report.
+3. `missing_capability` (error) — consumer объявляет consumes=['vector_db']
+   но никто не provides. Renderer fail-closed на таком выборе, поэтому wizard
+   тоже блокирует Apply до deploy.
 """
 
 from __future__ import annotations
@@ -37,7 +34,7 @@ OPTIONAL_MISSING_CAPABILITIES = frozenset({"dify_external_kb", "reranker"})
 class CompatIssue:
     """One detected compatibility problem."""
 
-    severity: str  # 'error' (hard conflict) | 'warning' (redundancy) | 'info' (missing)
+    severity: str  # 'error' (hard blocker) | 'warning' (redundancy) | 'info' (optional)
     kind: str  # conflict | redundant_provider | ambiguous_* | missing_capability
     services: tuple[str, ...]
     capability: str | None
@@ -139,7 +136,7 @@ def check_service_compatibility(
             optional = cap in OPTIONAL_MISSING_CAPABILITIES
             issues.append(
                 CompatIssue(
-                    severity="info" if optional else "warning",
+                    severity="info" if optional else "error",
                     kind="optional_missing_capability" if optional else "missing_capability",
                     services=tuple(sorted(consumers)),
                     capability=cap,

@@ -25,6 +25,7 @@ import typer
 import yaml
 
 from agmind.components.checks import check_deploy_conflicts
+from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.logging import logger
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
@@ -44,6 +45,7 @@ log = logger(__name__)
 
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 DEFAULT_HEALTHCHECK_TIMEOUT = 300  # 5 min
+COMPOSE_SHORT_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -66,8 +68,7 @@ def _user_docker_config_dir() -> str | None:
     invoking user's authenticated config (via `env DOCKER_CONFIG=...`) makes the pulls
     authenticated and dodges the anon limit.
     """
-    candidate = os.environ.get("DOCKER_CONFIG") or os.path.join(os.path.expanduser("~"), ".docker")
-    return candidate if os.path.isdir(candidate) else None
+    return user_docker_config_dir()
 
 
 @contextmanager
@@ -133,6 +134,7 @@ def _run_compose(
                 text=True,
                 check=False,
                 input=f"{sudo_password}\n",
+                timeout=COMPOSE_SHORT_TIMEOUT,
             )
         else:
             result = subprocess.run(
@@ -141,7 +143,10 @@ def _run_compose(
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=COMPOSE_SHORT_TIMEOUT,
             )
+    except subprocess.TimeoutExpired as exc:
+        return 124, "", f"docker compose {' '.join(args)} timed out after {exc.timeout}s"
     except OSError as exc:
         return 127, "", str(exc)
     return result.returncode, result.stdout, result.stderr
