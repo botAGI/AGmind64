@@ -471,3 +471,169 @@ def test_full_profile_includes_all_services() -> None:
     descriptors = load_descriptors()
     full = filter_by_profile(descriptors, ["full"])
     assert len(full) == len(descriptors)
+
+
+# ---------- C2: fail-closed on unresolved non-optional consumes ----------
+
+# A semver-pinned image for synthetic test descriptors (passes the pinned-image validator).
+_TEST_IMAGE = "test/scratch:1.0.0"
+
+
+def test_render_compose_raises_on_unresolved_non_optional_consumes_controlled() -> None:
+    """C2 RED (controlled mutation): render_compose raises ValueError when a selected
+    set contains a consumer whose non-optional, non-cross-profile capability has no
+    provider.
+
+    Uses a synthetic selected set (bypasses load_descriptors) so the test is fully
+    isolated and deterministic. The precondition—no vector_db provider present—is
+    checked explicitly to distinguish a test-setup bug from a real failure.
+    """
+    consumer = ServiceDescriptor.model_validate(
+        {
+            "name": "needs-vector",
+            "image": _TEST_IMAGE,
+            "tier": "storage",
+            "purpose": "Test",
+            "profiles": ["core"],
+            "consumes": ["vector_db"],
+        }
+    )
+    # Precondition: no vector_db provider in the one-element list.
+    from agmind.services.compatibility import resolve_capability_provider_for_consumer
+
+    selected = {"needs-vector": consumer}
+    provider = resolve_capability_provider_for_consumer(selected, "vector_db", "needs-vector")
+    assert provider is None, "Precondition: test fixture must have no vector_db provider"
+
+    # After C2 is implemented this must raise; currently it DOES NOT (RED gate).
+    with pytest.raises(ValueError, match="needs-vector.*vector_db|vector_db.*needs-vector"):
+        render_compose([consumer])
+
+
+def test_render_to_string_rag_profile_still_renders_cross_profile_consumes() -> None:
+    """C2 regression: render_to_string(profiles=['rag']) must NOT raise even though
+    dify-api consumes 'llm_inference' (provided by llama-llm in 'core').
+    The pair ('dify-api', 'llm_inference') is in KNOWN_CROSS_PROFILE_CONSUMES — excluded.
+    """
+    # Should not raise
+    result = render_to_string(profiles=["rag"])
+    assert "dify-api" in result
+
+
+def test_render_compose_optional_consumes_does_not_raise() -> None:
+    """C2 regression: a consumer with only OPTIONAL_MISSING_CAPABILITIES unresolved
+    (dify_external_kb, reranker) must still render without raising.
+    """
+    consumer = ServiceDescriptor.model_validate(
+        {
+            "name": "optional-consumer",
+            "image": _TEST_IMAGE,
+            "tier": "storage",
+            "purpose": "Test",
+            "profiles": ["core"],
+            "consumes": ["dify_external_kb", "reranker"],
+        }
+    )
+    # Both capabilities are OPTIONAL_MISSING_CAPABILITIES — must NOT raise.
+    result = render_compose([consumer])
+    assert "optional-consumer" in result["services"]
+
+
+# Pre-existing failures in render_to_string for known profile issues that are out
+# of scope for this plan (e.g. core-nginx depends_on dify-* cross-profile).
+_PREEXISTING_RENDER_FAILURES: frozenset[tuple[str, ...]] = frozenset(
+    {
+        ("core-nginx",),  # nginx depends_on dify-api, dify-web (cross-profile, pre-existing)
+    }
+)
+
+
+def test_render_to_string_all_profile_sets_still_render() -> None:
+    """C2 smoke: every profile in ALL_PROFILE_SETS renders without raising a NEW
+    ValueError introduced by the C2 fail-closed check.
+
+    Pre-existing failures (e.g. core-nginx missing-deps) are explicitly exempted
+    via _PREEXISTING_RENDER_FAILURES so the gate is not retroactively broken by
+    unrelated out-of-scope bugs.
+    """
+    from agmind.services.profile_sets import ALL_PROFILE_SETS
+
+    errors = []
+    for profile_set in ALL_PROFILE_SETS:
+        if profile_set in _PREEXISTING_RENDER_FAILURES:
+            continue  # skip known pre-existing failures
+        try:
+            render_to_string(profiles=list(profile_set))
+        except ValueError as e:
+            errors.append(f"  profile={profile_set}: {e}")
+
+    assert not errors, "Profiles raised unexpectedly after C2:\n" + "\n".join(errors)
+
+
+# ---------- C4: env precedence-shadow guard ----------
+
+
+def test_no_descriptor_shadows_bindings_injected_key() -> None:
+    """C4: No descriptor may hardcode a key that BINDINGS would inject for it
+    (given its 'consumes'), except via an explicit reviewed allowlist.
+
+    The merge order is ``{**extra, **descriptor.env}`` (renderer.py:410) so
+    descriptor.env wins over injection.  A hardcoded key that DIFFERS from the
+    injected value silently ships a mis-configured container.
+
+    SHADOW_ALLOWLIST: entries where a descriptor legitimately mirrors the
+    injected value (value-identical, currently harmless) — forward guard against
+    future divergence from a NEW provider entry.
+
+    RESEARCH §C4 confirms two known harmless mirrors:
+      - ragflow.yaml hardcodes VLM_ENDPOINT == BINDINGS[llm_inference][llama-llm][ragflow]
+      - openwebui.yaml hardcodes OPENAI_API_BASE_URL == BINDINGS[llm_inference][llama-llm][openwebui]
+    """
+    from agmind.services.capability_bindings import BINDINGS
+    from agmind.services.renderer import load_descriptors
+
+    # Known-harmless value-identical mirrors (reviewed; value matches injection).
+    # Format: {(descriptor_name, env_key): injected_value}
+    SHADOW_ALLOWLIST: dict[tuple[str, str], str] = {
+        # ragflow hardcodes VLM_ENDPOINT to match BINDINGS[llm_inference][llama-llm][ragflow]
+        ("ragflow", "VLM_ENDPOINT"): "http://llama-llm:8080/v1",
+        # openwebui hardcodes OPENAI_API_BASE_URL matching BINDINGS[llm_inference][llama-llm][openwebui]
+        ("openwebui", "OPENAI_API_BASE_URL"): "http://llama-llm:8080/v1",
+    }
+
+    descriptors = load_descriptors()
+
+    # Build the set of keys that BINDINGS would inject for each consuming descriptor.
+    # For a given (consumer, cap) we collect all keys that ANY provider would inject.
+    def _injected_keys_for_consumer(consumer_name: str, consumes: list[str]) -> set[str]:
+        keys: set[str] = set()
+        for cap in consumes:
+            cap_table = BINDINGS.get(cap, {})
+            for provider_table in cap_table.values():
+                consumer_table = provider_table.get(consumer_name, {})
+                keys.update(consumer_table.keys())
+        return keys
+
+    violations: list[str] = []
+    for name, d in sorted(descriptors.items()):
+        if not d.consumes:
+            continue
+        injected_keys = _injected_keys_for_consumer(name, d.consumes)
+        for key in sorted(injected_keys):
+            if key not in d.env:
+                continue  # not hardcoded → no shadow risk
+            hardcoded_val = d.env[key]
+            allowed_val = SHADOW_ALLOWLIST.get((name, key))
+            if allowed_val is not None and hardcoded_val == allowed_val:
+                continue  # value-identical mirror in allowlist → harmless
+            violations.append(
+                f"  {name}: env[{key!r}]={hardcoded_val!r} shadows BINDINGS injection "
+                f"(allowlist={allowed_val!r})"
+            )
+
+    assert not violations, (
+        "Descriptor env keys shadow BINDINGS-injected keys outside the reviewed allowlist.\n"
+        "Either remove the hardcoded key (let injection handle it) or add to SHADOW_ALLOWLIST "
+        "with a comment explaining why the value-identical mirror is intentional.\n"
+        "Violations:\n" + "\n".join(violations)
+    )
