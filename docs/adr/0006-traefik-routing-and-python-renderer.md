@@ -41,6 +41,7 @@ Phase H'.B завершила split монолитного `services.yaml` на 
 - ➖ Docker auto-discovery — community plugin, не first-party
 - ➖ Меньше middleware из коробки (forwardAuth, ratelimit с ipStrategy)
 - Решено в deep-dive 01: Traefik лучше для 32-service стека
+> Superseded by Phase 08: caddy removed from the catalog (user decision).
 
 ## Решение
 

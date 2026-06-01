@@ -158,7 +158,7 @@ def _host_port_of(port_spec: str) -> str | None:
 def test_no_port_conflicts_within_profile(service_files: list[Path]) -> None:
     """Within each profile, host-side порты не должны конфликтовать.
 
-    Альтернативные сервисы (caddy в `core-caddy` vs nginx в `core`) могут
+    Альтернативные сервисы (nginx в `core-nginx` vs traefik в `core`) могут
     переиспользовать порты, потому что активируются раздельно.
     """
     # profile -> {host_port -> service_name}

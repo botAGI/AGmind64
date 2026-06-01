@@ -386,7 +386,7 @@ def test_each_service_has_profile_assignment(svc: Service | None) -> None:
     if svc is None:
         pytest.skip("No services in registry")
     valid_profiles = {p.value for p in ServiceProfile}
-    # Allow alternative-of-base profiles: `core-caddy` (caddy вместо nginx),
+    # Allow alternative-of-base profiles: `core-nginx` (nginx вместо traefik),
     # `rag-weaviate` (weaviate вместо qdrant), `rag-milvus`, etc.
     alt_prefix = ("core-", "rag-", "ragflow-", "ui-")
     for p in svc.profiles:

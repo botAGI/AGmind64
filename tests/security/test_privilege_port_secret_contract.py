@@ -45,7 +45,7 @@ SERVICES_DIR = Path(__file__).resolve().parents[2] / "templates" / "services"
 
 # ---- C1: only edge services may bind non-loopback ----
 # EDGE_PUBLIC may bind host 80 / 443 (no IP prefix = 0.0.0.0 / any interface).
-EDGE_PUBLIC = {"traefik", "nginx", "caddy"}
+EDGE_PUBLIC = {"traefik", "nginx"}
 EDGE_PUBLIC_PORTS = {80, 443}
 
 # ---- C2: cap_add allowlist (fail-closed) ----
@@ -99,7 +99,7 @@ def test_only_edge_binds_non_loopback() -> None:
     """C1: Only EDGE_PUBLIC services may bind non-loopback ports (80/443 only).
 
     A port entry without an IP prefix (e.g. '80:80', '443:443') binds on
-    0.0.0.0 (all interfaces) and is visible on the LAN.  Only traefik/nginx/caddy
+    0.0.0.0 (all interfaces) and is visible on the LAN.  Only traefik/nginx
     are allowed to do this, and only on ports 80 and 443.
 
     Any other service with a non-loopback bind fails CI.  This prevents internal
@@ -373,9 +373,8 @@ def test_write_path_under_writable_volume() -> None:
     For every descriptor with both a command: and volumes:, extract write-path targets
     from the command and assert each is NOT covered exclusively by a :ro mount.
 
-    Config-file :ro mounts (e.g. caddy /etc/caddy:ro, traefik config, proxmox-exporter
-    :ro config file) do NOT trigger this test because their paths do not match the
-    write-path keyword set.
+    Config-file :ro mounts (e.g. traefik config, proxmox-exporter :ro config file)
+    do NOT trigger this test because their paths do not match the write-path keyword set.
 
     Mutation-verified (out-of-tree): mutating alloy's /var/lib/alloy/data mount to :ro
     causes this test to RED; mutation reverted.

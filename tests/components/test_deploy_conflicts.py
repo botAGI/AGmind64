@@ -53,9 +53,9 @@ def test_same_explicit_bind_ip_conflicts() -> None:
     assert conflicts[0].detail == "8080"
 
 
-def test_traefik_and_caddy_report_host_port_conflicts() -> None:
+def test_traefik_and_nginx_report_host_port_conflicts() -> None:
     all_descriptors = load_descriptors()
-    selected = select_services(all_descriptors, services=["traefik", "caddy"])
+    selected = select_services(all_descriptors, services=["traefik", "nginx"])
 
     report = check_deploy_conflicts(selected)
 

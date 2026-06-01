@@ -121,7 +121,7 @@ agmind install --list-models
 Перед изменением `/opt/agmind` на чистом хосте запусти:
 
 Начинай с `core,observability` или `core,rag,observability`. Не используй
-`--profile full` для первого теста хоста: он выбирает Caddy, Nginx и Traefik
+`--profile full` для первого теста хоста: он выбирает Nginx и Traefik
 вместе, а deploy теперь останавливает этот конфликт host ports 80/443 до Docker.
 
 ```bash

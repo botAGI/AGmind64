@@ -556,12 +556,12 @@ def test_real_catalog_es_injects_doc_engine_into_ragflow() -> None:
     assert rf_env.get("ES_HOST") == "elasticsearch"
 
 
-def test_real_catalog_traefik_and_caddy_no_hard_error() -> None:
-    """traefik + caddy теперь не error — port collision это deploy issue, не service."""
+def test_real_catalog_traefik_and_nginx_no_hard_error() -> None:
+    """traefik + nginx не error — port collision это deploy issue, не service."""
     from agmind.services.renderer import load_descriptors, select_services
 
     all_d = load_descriptors()
-    selected = select_services(all_d, services=["traefik", "caddy"])
+    selected = select_services(all_d, services=["traefik", "nginx"])
     report = check_service_compatibility(selected)
     assert report.has_errors is False
     # Но warning о redundant reverse_proxy ожидается:
