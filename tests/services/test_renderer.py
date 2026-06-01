@@ -325,10 +325,14 @@ def test_render_compose_smoke_core_profile() -> None:
 
 def test_render_compose_waits_for_healthy_runtime_dependencies() -> None:
     descriptors = load_descriptors()
+    # C2: dify-api consumes vector_db — must include a provider (qdrant) so
+    # _check_unresolved_consumes does not raise. The test focus is depends_on
+    # rendering, not capability resolution.
     selected = [
         descriptors["dify-api"],
         descriptors["postgres"],
         descriptors["redis"],
+        descriptors["qdrant"],  # provides vector_db for dify-api
     ]
 
     compose = render_compose(selected, traefik_enabled=False)
@@ -347,9 +351,12 @@ def test_render_compose_waits_for_healthy_runtime_dependencies() -> None:
 
 def test_render_compose_keeps_started_condition_for_dependencies_without_healthcheck() -> None:
     descriptors = load_descriptors()
+    # C2: dify-api consumes vector_db — include qdrant as provider so the
+    # fail-closed consumes check does not raise (test focus is depends_on semantics).
     selected = [
         descriptors["dify-web"],
         descriptors["dify-api"],
+        descriptors["qdrant"],  # provides vector_db for dify-api
     ]
 
     compose = render_compose(selected, traefik_enabled=False)
