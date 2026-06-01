@@ -289,10 +289,12 @@ def _profile_key(profiles: tuple[str, ...]) -> str:
 # are NOT bugs.  Add a new entry ONLY when a cross-profile dep is genuinely
 # intentional — this is the registry that lets the guard fail closed on
 # *unexpected* cross-profile deps.
-# Empty: nginx's former cross-profile depends_on dify-api/dify-web was removed in
-# phase 08 (it violated Правила §12: edge proxies must not hard-depend on app
-# upstreams). No descriptor currently declares an intentional cross-profile
-# depends_on; the guard fail-closes on any new one.
+# Empty: nginx was removed from the catalog in phase 08 (user decision — same
+# defect class as caddy: no conf.d template, crashes on health check). Its former
+# cross-profile depends_on dify-api/dify-web had already been dropped (violated
+# Правила §12: edge proxies must not hard-depend on app upstreams). No descriptor
+# currently declares an intentional cross-profile depends_on; the guard
+# fail-closes on any new one.
 KNOWN_CROSS_PROFILE_DEPENDS: set[tuple[str, str]] = set()
 
 # Intentional cross-profile ``consumes`` relationships: (consumer, capability).

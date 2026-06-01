@@ -121,9 +121,7 @@ agmind install --list-models
 
 Run these before touching `/opt/agmind` on a clean host:
 
-Start with `core,observability` or `core,rag,observability`. Do not use
-`--profile full` for the first host test: it selects Nginx and Traefik
-together, and deploy now stops that 80/443 host-port collision before Docker.
+Start with `core,observability` or `core,rag,observability`.
 
 ```bash
 agmind doctor --json

@@ -6,8 +6,8 @@ registering it in ``agmind/services/profile_sets.py``, this test fails CI
 before the new profile is silently missed by topology/render validation.
 
 Mutation-verify RED contract (documented here for CI traceability):
-  - Inject a 14th profile by monkeypatching ``available_profiles`` to return
-    the real set plus ``{"test-only-14th"}`` → the parity assertion FAILS.
+  - Inject a 12th profile by monkeypatching ``available_profiles`` to return
+    the real set plus ``{"test-only-12th"}`` → the parity assertion FAILS.
   - Revert → GREEN.
 """
 
@@ -50,10 +50,10 @@ def test_all_profile_sets_match_live_profiles() -> None:
     )
 
 
-def test_all_profile_sets_covers_all_12_profiles() -> None:
-    """Spot check: exactly 12 profiles are declared in ALL_PROFILE_SETS."""
-    assert len(ALL_PROFILE_SETS) == 12, (
-        f"Expected 12 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
+def test_all_profile_sets_covers_all_11_profiles() -> None:
+    """Spot check: exactly 11 profiles are declared in ALL_PROFILE_SETS."""
+    assert len(ALL_PROFILE_SETS) == 11, (
+        f"Expected 11 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
         f"Current: {[','.join(ps) for ps in ALL_PROFILE_SETS]}"
     )
 
@@ -72,8 +72,8 @@ def test_all_profile_sets_are_single_profile_isolation_lanes() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_profile_sets_guard_fails_on_undeclared_14th_profile() -> None:
-    """Mutation-verify: guard fails closed if a 14th profile appears in catalog.
+def test_profile_sets_guard_fails_on_undeclared_12th_profile() -> None:
+    """Mutation-verify: guard fails closed if a 12th profile appears in catalog.
 
     Injects a synthetic ghost profile into the live set and confirms that the
     parity assertion raises AssertionError.  No monkeypatching of the real
@@ -81,16 +81,16 @@ def test_profile_sets_guard_fails_on_undeclared_14th_profile() -> None:
     """
     descriptors = load_descriptors()
     live = available_profiles(descriptors)
-    # Synthetic mutation: add a 14th profile that is not declared in ALL_PROFILE_SETS
-    augmented_live = live | {"test-only-14th"}
+    # Synthetic mutation: add a 12th profile that is not declared in ALL_PROFILE_SETS
+    augmented_live = live | {"test-only-12th"}
     declared = all_profile_names()
 
     live_only = sorted(augmented_live - declared)
     declared_only: list[str] = sorted(declared - augmented_live)
 
     # Confirm the ghost profile is in the "live-only" gap set
-    assert "test-only-14th" in live_only, (
-        f"Synthetic injection failed — 'test-only-14th' not in live_only: {live_only}"
+    assert "test-only-12th" in live_only, (
+        f"Synthetic injection failed — 'test-only-12th' not in live_only: {live_only}"
     )
 
     # Confirm the parity assertion WOULD fail when the gap is present

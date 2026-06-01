@@ -53,17 +53,6 @@ def test_same_explicit_bind_ip_conflicts() -> None:
     assert conflicts[0].detail == "8080"
 
 
-def test_traefik_and_nginx_report_host_port_conflicts() -> None:
-    all_descriptors = load_descriptors()
-    selected = select_services(all_descriptors, services=["traefik", "nginx"])
-
-    report = check_deploy_conflicts(selected)
-
-    issues = [issue for issue in report.issues if issue.kind == "host_port_conflict"]
-    assert {issue.detail for issue in issues} == {"80", "443"}
-    assert all(issue.severity == "error" for issue in issues)
-
-
 def test_traefik_alone_has_no_deploy_conflicts() -> None:
     all_descriptors = load_descriptors()
     selected = select_services(all_descriptors, services=["traefik"])

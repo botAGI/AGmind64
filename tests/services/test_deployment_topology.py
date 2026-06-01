@@ -148,13 +148,13 @@ def test_topology_check_script_runs() -> None:
 
 
 def test_validate_topology_profiles_reports_standard_lanes_clean() -> None:
-    # H.4: default now validates all 12 isolation lanes via ALL_PROFILE_SETS
+    # H.4: default now validates all 11 isolation lanes via ALL_PROFILE_SETS
     from agmind.services.profile_sets import ALL_PROFILE_SETS
 
     report = validate_topology_profiles()
 
     assert report.ok is True
-    assert len(report.profiles) == 12
+    assert len(report.profiles) == 11
     assert tuple(item.profiles for item in report.profiles) == ALL_PROFILE_SETS
     assert all(item.warning_count == 0 for item in report.profiles)
     assert report.warning_count == 0
@@ -162,7 +162,7 @@ def test_validate_topology_profiles_reports_standard_lanes_clean() -> None:
     # count varies with the catalog — just assert all infos are expected.
     assert report.unexpected_info_count == 0
     text = format_topology_check_report(report)
-    assert "topology OK: 12 profile sets" in text
+    assert "topology OK: 11 profile sets" in text
 
     # Also verify the legacy 5-lane mode still works via explicit profile_sets arg
     legacy_report = validate_topology_profiles(

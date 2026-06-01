@@ -1,4 +1,4 @@
-"""Shared canonical profile-set list for all 12 AGmind isolaton lanes.
+"""Shared canonical profile-set list for all 11 AGmind isolaton lanes.
 
 Single source of truth consumed by:
   - ``topology_checks.validate_topology_profiles`` (default argument)
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 ALL_PROFILE_SETS: tuple[tuple[str, ...], ...] = (
     ("core",),
-    ("core-nginx",),
     ("rag",),
     ("rag-milvus",),
     ("rag-weaviate",),
@@ -31,6 +30,10 @@ ALL_PROFILE_SETS: tuple[tuple[str, ...], ...] = (
 Order matches the canonical catalog order (core-first, then features, then
 full). Each tuple is intentionally a single profile so every profile can be
 exercised in isolation without pulling in unrelated services.
+
+Note: ``core-nginx`` was removed in Phase 08 (user decision: nginx removed
+from catalog — same defect class as caddy: no templates/nginx/ conf.d, boots
+default page, fails /_nginx_health health check).
 """
 
 # ---------------------------------------------------------------------------

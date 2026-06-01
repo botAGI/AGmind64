@@ -335,7 +335,6 @@ _PROFILE_DESCRIPTIONS: dict[str, str] = {
     "automation": "n8n workflow automation",
     "observability": "Prometheus + Grafana + Loki + Alertmanager",
     "security": "Authelia + fail2ban",
-    "core-nginx": "Core с Nginx (без публичного домена)",
     "rag-weaviate": "RAG с Weaviate вместо Qdrant",
     "rag-milvus": "RAG с Milvus вместо Qdrant",
     "full": "Все профили вместе",
@@ -408,7 +407,7 @@ def _service_department_for(name: str, tier: str, profiles: list[str]) -> str:
         return "model_runtime"
     if tier == "storage":
         return "data"
-    if tier == "edge" or name in {"traefik", "nginx"}:
+    if tier == "edge" or name == "traefik":
         return "core"
     if profile_set & {"rag", "ragflow", "ui", "automation"} or tier == "app":
         return "rag_agents"
@@ -813,7 +812,7 @@ class AgmindSetupApp(App[SetupState | None]):
 
     @staticmethod
     def _slug(name: str) -> str:
-        """Convert profile name (может содержать дефисы типа core-nginx) → CSS-safe id."""
+        """Convert profile name (может содержать дефисы типа rag-milvus) → CSS-safe id."""
         return name.replace("-", "_")
 
     def _collect_state(self) -> SetupState:

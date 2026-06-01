@@ -1051,6 +1051,13 @@ def test_deploy_snapshot_uses_sudo_readable_env_copy(
 def test_deploy_blocks_deploy_level_conflicts_before_render(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """deploy() blocks on host-port conflicts before calling render_to_string.
+
+    Injects a synthetic conflict report so the test does not depend on any
+    particular pair of services being present in the catalog.
+    """
+    from agmind.components.checks import DeployIssue, DeployReport
+
     rendered = False
 
     def fake_render_to_string(**_kwargs: object) -> str:
@@ -1058,10 +1065,31 @@ def test_deploy_blocks_deploy_level_conflicts_before_render(
         rendered = True
         return "services: {}\n"
 
+    def fake_check_deploy_conflicts(_selected: object) -> DeployReport:
+        return DeployReport(
+            issues=(
+                DeployIssue(
+                    severity="error",
+                    kind="host_port_conflict",
+                    services=("svc-a", "svc-b"),
+                    detail="80",
+                    message="Host port 80 is published by svc-a and svc-b",
+                ),
+                DeployIssue(
+                    severity="error",
+                    kind="host_port_conflict",
+                    services=("svc-a", "svc-b"),
+                    detail="443",
+                    message="Host port 443 is published by svc-a and svc-b",
+                ),
+            )
+        )
+
     monkeypatch.setattr(runner, "render_to_string", fake_render_to_string)
+    monkeypatch.setattr(runner, "check_deploy_conflicts", fake_check_deploy_conflicts)
 
     result = runner.deploy(
-        profiles=["full"],
+        profiles=["core"],
         install_dir=tmp_path,
         domain="ci.example.com",
         apply=False,

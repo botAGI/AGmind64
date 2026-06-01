@@ -21,7 +21,7 @@
 - **qdrant**, **weaviate**, **milvus** — три vector DB. Один достаточен.
   Раньше user мог по ошибке выбрать все три → 3 запущенных vector DB,
   один реально используется.
-- **traefik**, **nginx** — два reverse proxy. Аналогично.
+- **traefik** — единственный reverse proxy в каталоге (nginx и caddy удалены в Phase 08).
   > Superseded by Phase 08: caddy removed from the catalog (user decision).
 - **Главное**: user выбрал milvus → Dify и RAGflow должны автоматически
   знать **MILVUS_URI**, **VECTOR_STORE=milvus**. Сейчас env vars
@@ -78,8 +78,8 @@ Annotated 18 production descriptors:
 | qdrant           | `vector_db`                        | weaviate, milvus       | —                                     |
 | weaviate         | `vector_db`                        | qdrant, milvus         | —                                     |
 | milvus           | `vector_db`                        | qdrant, weaviate       | —                                     |
-| traefik          | `reverse_proxy`, `tls_termination` | nginx                  | —                                     |
-| nginx            | `reverse_proxy`                    | traefik                | —                                     |
+| traefik          | `reverse_proxy`, `tls_termination` | —                      | —                                     |
+| ~~nginx~~        | ~~`reverse_proxy`~~                | ~~traefik~~            | > Superseded by Phase 08: nginx removed from the catalog (user decision — same defect class as caddy: no conf.d template, crashes on /_nginx_health). |
 | ~~caddy~~        | ~~`reverse_proxy`, `tls_termination`~~ | ~~traefik, nginx~~ | > Superseded by Phase 08: caddy removed from the catalog (user decision). |
 | ragflow          | `rag_stack`                        | dify-* (5 services)    | llm_inference, embedding, vector_db   |
 | dify-api/web/... | `dify_stack`                       | ragflow                | llm_inference, embedding, vector_db   |
@@ -157,7 +157,7 @@ consumers, resolves provider per capability через
   проверяет это.
 - **Hard conflicts блокируются раньше**: traefik + nginx = ошибка в
   wizard, не silent поломка docker compose up.
-  > Superseded by Phase 08: caddy removed from the catalog (user decision).
+  > Superseded by Phase 08: caddy and nginx both removed from the catalog (user decision).
 - **Redundancy detected**: qdrant + weaviate + milvus = warning, user
   видит почему 3 vector DB лишние.
 - **Decoupled mapping**: добавить новый vector DB (например chroma) =
@@ -212,7 +212,7 @@ consumers, resolves provider per capability через
 |----------------------------|---------------------|---------------------------------------------------------------|
 | ragflow ⟂ dify-*           | "не сосуществуют"   | [marketplace.dify.ai/plugin/witmeng/ragflow-api](https://marketplace.dify.ai/plugin/witmeng/ragflow-api) — официальный plugin для интеграции |
 | qdrant ⟂ weaviate ⟂ milvus | "fatal conflict"     | Разные ports (6333/8080/19530), могут coexist для разных consumer'ов |
-| traefik ⟂ nginx            | "fatal conflict"     | Port-level conflict ТОЛЬКО при mapping 80/443 у обоих наружу — это deploy concern, не service. > Superseded by Phase 08: caddy removed from the catalog (user decision). |
+| traefik ⟂ nginx            | "fatal conflict"     | Port-level conflict ТОЛЬКО при mapping 80/443 у обоих наружу — это deploy concern, не service. > Superseded by Phase 08: caddy and nginx both removed from the catalog (user decision). |
 
 **Все три convicted как fakes.** `conflicts_with` field оставлен в schema
 для backward compat но **никем не заполнен** в production descriptors.

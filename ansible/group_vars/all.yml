@@ -72,7 +72,7 @@ agmind_credentials_filename: credentials.txt
 agmind_credentials_mode: "0600"
 
 # ---- Reverse proxy (Phase H'.C: Traefik default) ----
-agmind_proxy: traefik  # traefik (default, ADR-0006) | nginx (core-nginx profile)
+agmind_proxy: traefik  # traefik (default, ADR-0006)
 agmind_proxy_http_port: 80
 agmind_proxy_https_port: 443
 

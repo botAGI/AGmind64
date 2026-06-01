@@ -547,16 +547,15 @@ def test_render_compose_optional_consumes_does_not_raise() -> None:
 
 
 # Known render_to_string failures to exempt from the all-profiles smoke. EMPTY:
-# the former core-nginx carve-out (nginx hard depends_on dify-* cross-profile) was
-# resolved in phase 08 by removing nginx's §12-violating depends_on. Every selectable
-# profile must now render — add an entry here ONLY for a genuinely deferred, documented
-# render failure.
+# nginx and the core-nginx profile were removed in phase 08 (no templates/nginx/ conf.d,
+# same defect class as caddy). Every remaining selectable profile renders — add an entry
+# here ONLY for a genuinely deferred, documented render failure.
 _PREEXISTING_RENDER_FAILURES: frozenset[tuple[str, ...]] = frozenset()
 
 
 def test_render_to_string_all_profile_sets_still_render() -> None:
     """Every profile in ALL_PROFILE_SETS renders without raising — including the C2
-    fail-closed check and the standalone core-nginx lane (gap #13).
+    fail-closed check across all 11 remaining lanes.
 
     There are currently NO exempted profiles: _PREEXISTING_RENDER_FAILURES is empty,
     so a regression that breaks any profile's render fails this gate immediately.

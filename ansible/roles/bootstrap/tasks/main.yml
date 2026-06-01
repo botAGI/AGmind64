@@ -87,7 +87,6 @@
     - "{{ agmind_data_dir }}/qdrant"
     - "{{ agmind_data_dir }}/postgres"
     - "{{ agmind_data_dir }}/redis"
-    - "{{ agmind_config_dir }}/nginx"
     - "{{ agmind_config_dir }}/prometheus"
     - "{{ agmind_config_dir }}/grafana"
     - "{{ agmind_config_dir }}/loki"

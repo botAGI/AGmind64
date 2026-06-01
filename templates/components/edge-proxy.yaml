@@ -2,7 +2,7 @@
 id: edge-proxy
 kind: edge
 core:
-  upstream: Traefik, Nginx, and Authelia release streams
+  upstream: Traefik and Authelia release streams
   recommended_version: 2026-05-23-r20
   current_pin: 2026-05-23-r20
   update_policy: compatible-minor
@@ -10,11 +10,9 @@ core:
 runtime:
   service_descriptors:
     - authelia
-    - nginx
     - traefik
   compose_profiles:
     - core
-    - core-nginx
     - security
   ports:
     - http:80

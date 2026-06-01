@@ -45,7 +45,7 @@ SERVICES_DIR = Path(__file__).resolve().parents[2] / "templates" / "services"
 
 # ---- C1: only edge services may bind non-loopback ----
 # EDGE_PUBLIC may bind host 80 / 443 (no IP prefix = 0.0.0.0 / any interface).
-EDGE_PUBLIC = {"traefik", "nginx"}
+EDGE_PUBLIC = {"traefik"}
 EDGE_PUBLIC_PORTS = {80, 443}
 
 # ---- C2: cap_add allowlist (fail-closed) ----
@@ -99,8 +99,8 @@ def test_only_edge_binds_non_loopback() -> None:
     """C1: Only EDGE_PUBLIC services may bind non-loopback ports (80/443 only).
 
     A port entry without an IP prefix (e.g. '80:80', '443:443') binds on
-    0.0.0.0 (all interfaces) and is visible on the LAN.  Only traefik/nginx
-    are allowed to do this, and only on ports 80 and 443.
+    0.0.0.0 (all interfaces) and is visible on the LAN.  Only traefik
+    is allowed to do this, and only on ports 80 and 443.
 
     Any other service with a non-loopback bind fails CI.  This prevents internal
     services from being accidentally exposed on the LAN after a copy-paste error.

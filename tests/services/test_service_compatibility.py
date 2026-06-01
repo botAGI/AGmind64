@@ -556,19 +556,6 @@ def test_real_catalog_es_injects_doc_engine_into_ragflow() -> None:
     assert rf_env.get("ES_HOST") == "elasticsearch"
 
 
-def test_real_catalog_traefik_and_nginx_no_hard_error() -> None:
-    """traefik + nginx не error — port collision это deploy issue, не service."""
-    from agmind.services.renderer import load_descriptors, select_services
-
-    all_d = load_descriptors()
-    selected = select_services(all_d, services=["traefik", "nginx"])
-    report = check_service_compatibility(selected)
-    assert report.has_errors is False
-    # Но warning о redundant reverse_proxy ожидается:
-    warns = report.by_severity("warning")
-    assert any(i.kind == "redundant_provider" and i.capability == "reverse_proxy" for i in warns)
-
-
 def test_real_catalog_ragflow_pin_is_explicit_baseline() -> None:
     """ragflow stays explicitly pinned until the v1 migration is verified."""
     from agmind.services.renderer import load_descriptors

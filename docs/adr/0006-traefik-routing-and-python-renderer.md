@@ -66,7 +66,7 @@ Phase H'.B завершила split монолитного `services.yaml` на 
 5. **TLS options в file provider**: `no-http2` для SSE endpoints (см. deep-dive 01 §1).
 6. **Logging defaults включены**: `json-file 50m × 3 файла` на каждом сервисе (предотвращает 100GB log bloat).
 7. **YAML anchors для logging**: PyYAML safe_dump использует anchors (`&id001` / `*id001`) автоматически — экономит ~40% размера compose файла.
-8. **Nginx → `core-nginx` alternative profile**: Traefik default в `core`, nginx остался как opt-in fallback (для setup без публичного домена).
+8. **Nginx → `core-nginx` alternative profile**: Traefik default в `core`, nginx был opt-in fallback (для setup без публичного домена). > Superseded by Phase 08: nginx removed from the catalog (user decision — same defect class as caddy).
 9. **Ansible role calls `agmind render compose`** вместо Jinja2 lookup — single source of truth.
 
 ### Public services с Traefik routing
@@ -125,6 +125,6 @@ Phase H'.B завершила split монолитного `services.yaml` на 
 Если Python renderer показал проблемы:
 1. `agmind render compose` остаётся, но Ansible role переключается обратно на `docker-compose.yml.j2` (старый шаблон не удалён до Phase H'.E).
 2. ServiceDescriptor может конвертироваться в legacy Service через `to_legacy_service()` — старый Jinja2 продолжит работать.
-3. Traefik service descriptor можно временно вынести в `core-traefik` alternative profile, nginx обратно в `core`.
+3. Traefik service descriptor можно временно вынести в `core-traefik` alternative profile. (nginx удалён из каталога в Phase 08 — не применимо как вариант отката.)
 
 Точки отката не блокируют ни одну продакшен фичу.

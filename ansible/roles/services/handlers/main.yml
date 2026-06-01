@@ -7,8 +7,3 @@
     project_src: "{{ agmind_install_dir }}"
     state: present
 
-- name: reload nginx
-  community.docker.docker_container_exec:
-    container: nginx
-    command: nginx -s reload
-  failed_when: false

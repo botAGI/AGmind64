@@ -262,7 +262,6 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         "postgres",
         "redis",
         "mysql",
-        "nginx",
         "netdata",
         "uptime-kuma",
         "alertmanager",

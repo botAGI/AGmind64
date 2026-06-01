@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 ServiceTier = Literal["edge", "inference", "app", "storage", "ops"]
 """Логическая группа сервиса.
 
-- edge: reverse proxy, auth gateway (Traefik, Nginx, Authelia)
+- edge: reverse proxy, auth gateway (Traefik, Authelia)
 - inference: compute backends — model serving only (llama-server, vLLM, Infinity)
 - app: AI applications над inference (Dify, RAGFlow, Open WebUI, Docling)
 - storage: state (Postgres, Redis, Qdrant, Weaviate, MinIO, Elasticsearch)
