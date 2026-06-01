@@ -10,10 +10,15 @@ profiles:
 # authelia (security profile) uses redis as its session store + depends_on redis, so
 # redis must be selectable with `security` too (else security-alone fails to render).
 - security
+# B1: activate server-side auth via --requirepass. The official redis:alpine image does
+# NOT read REDIS_PASSWORD env (that is a Bitnami convention) — only this command flag
+# activates authentication. env.REDIS_PASSWORD was removed because it was silently ignored.
+command:
+- redis-server
+- --requirepass
+- ${REDIS_PASSWORD}
 volumes:
 - /var/lib/agmind/redis:/data
-env:
-  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 resources:
   cpus: 2.0
   mem_limit: 2g
@@ -21,6 +26,9 @@ health:
   test:
   - CMD
   - redis-cli
+  - --no-auth-warning
+  - -a
+  - ${REDIS_PASSWORD}
   - ping
   interval: 10s
 

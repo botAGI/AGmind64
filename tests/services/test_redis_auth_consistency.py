@@ -47,10 +47,13 @@ def _all_service_names() -> list[str]:
 
 
 def _service_uses_redis(descriptor: dict) -> bool:
-    """Return True if the service has REDIS_HOST env OR depends_on redis."""
+    """Return True if the service has REDIS_HOST or REDIS_ADDR env OR depends_on redis.
+
+    redis-exporter uses REDIS_ADDR instead of REDIS_HOST — both indicate redis usage.
+    """
     env = descriptor.get("env") or {}
     depends_on = descriptor.get("depends_on") or []
-    return "REDIS_HOST" in env or "redis" in depends_on
+    return "REDIS_HOST" in env or "REDIS_ADDR" in env or "redis" in depends_on
 
 
 def _service_carries_redis_credential(descriptor: dict) -> bool:
@@ -58,10 +61,15 @@ def _service_carries_redis_credential(descriptor: dict) -> bool:
 
     Acceptable forms:
       - `REDIS_PASSWORD: ${...}` in env (explicit password var)
+      - `AUTHELIA_SESSION_REDIS_PASSWORD: ${...}` in env (Authelia uses koanf env mapping)
       - `CELERY_BROKER_URL: redis://:${...PASSWORD...}@redis...` (embedded in URL)
     """
     env = descriptor.get("env") or {}
     if "REDIS_PASSWORD" in env:
+        return True
+    # Authelia uses koanf env convention: session.redis.password →
+    # AUTHELIA_SESSION_REDIS_PASSWORD (confirmed in 08-RESEARCH-B1 §2e)
+    if "AUTHELIA_SESSION_REDIS_PASSWORD" in env:
         return True
     celery_url = env.get("CELERY_BROKER_URL", "")
     # Must embed a non-empty password in the URL: redis://:${...}@redis...
