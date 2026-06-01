@@ -575,3 +575,55 @@ def test_real_catalog_ragflow_pin_is_explicit_baseline() -> None:
 
     all_d = load_descriptors()
     assert all_d["ragflow"].image == "infiniflow/ragflow:v0.25.5"
+
+
+# ---------- B7: observability-profile co-deploy (08-06) ----------
+
+
+def test_observability_profile_includes_its_backends() -> None:
+    """B7: observability-alone must co-deploy postgres + redis so exporters have backends.
+
+    postgres-exporter hard-points DATA_SOURCE_NAME=@postgres and redis-exporter
+    hard-points REDIS_ADDR=redis://redis:6379.  Without the backends in the same
+    profile the exporters ship with no targets to scrape.
+
+    LOCKED mechanism: add `- observability` to profiles of both backend descriptors
+    (shared-profile co-deploy, NO cross-profile depends_on — Правила §12 hard-raise).
+    """
+    from agmind.services.renderer import load_descriptors, render_to_string, select_services
+
+    all_d = load_descriptors()
+
+    # 1. postgres + redis declare the observability profile.
+    assert "observability" in all_d["postgres"].profiles, (
+        "postgres.yaml must have 'observability' in profiles (B7 shared-profile co-deploy)"
+    )
+    assert "observability" in all_d["redis"].profiles, (
+        "redis.yaml must have 'observability' in profiles (B7 shared-profile co-deploy)"
+    )
+
+    # 2. select_services for the observability profile includes both backends.
+    selected = select_services(all_d, profiles=["observability"])
+    assert "postgres" in selected, (
+        "select_services(observability) must include postgres — exporter needs its backend"
+    )
+    assert "redis" in selected, (
+        "select_services(observability) must include redis — exporter needs its backend"
+    )
+
+    # 3. render_to_string does NOT raise for observability-alone (guards Правила §12 —
+    #    cross-profile depends_on would hard-raise here).
+    rendered = render_to_string(profiles=["observability"])
+    assert "postgres" in rendered, "rendered observability compose must contain postgres service"
+    assert "redis" in rendered, "rendered observability compose must contain redis service"
+
+    # 4. Neither postgres nor redis gained a cross-profile depends_on (Правила §12 guard).
+    postgres_depends = all_d["postgres"].depends_on
+    redis_depends = all_d["redis"].depends_on
+    cross_profile_obs = {"postgres-exporter", "redis-exporter", "prometheus", "grafana", "loki"}
+    assert not cross_profile_obs.intersection(postgres_depends), (
+        f"postgres must not have observability-profile depends_on — got {postgres_depends}"
+    )
+    assert not cross_profile_obs.intersection(redis_depends), (
+        f"redis must not have observability-profile depends_on — got {redis_depends}"
+    )
