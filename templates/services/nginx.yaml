@@ -12,9 +12,10 @@ ports:
 volumes:
 - /etc/agmind/nginx:/etc/nginx/conf.d:ro
 - /var/lib/agmind/nginx-cache:/var/cache/nginx
-depends_on:
-- dify-api
-- dify-web
+# No hard depends_on the dify stack: per Правила §12 a reverse proxy must not
+# hard-depend on its app upstreams (it would break the standalone `core-nginx`
+# render — nginx вместо traefik). Mirrors traefik, which reaches upstreams via
+# discovery + the app's own `routing:` labels rather than depends_on.
 resources:
   cpus: 2.0
   mem_limit: 256m

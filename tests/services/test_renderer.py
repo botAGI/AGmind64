@@ -546,35 +546,33 @@ def test_render_compose_optional_consumes_does_not_raise() -> None:
     assert "optional-consumer" in result["services"]
 
 
-# Pre-existing failures in render_to_string for known profile issues that are out
-# of scope for this plan (e.g. core-nginx depends_on dify-* cross-profile).
-_PREEXISTING_RENDER_FAILURES: frozenset[tuple[str, ...]] = frozenset(
-    {
-        ("core-nginx",),  # nginx depends_on dify-api, dify-web (cross-profile, pre-existing)
-    }
-)
+# Known render_to_string failures to exempt from the all-profiles smoke. EMPTY:
+# the former core-nginx carve-out (nginx hard depends_on dify-* cross-profile) was
+# resolved in phase 08 by removing nginx's §12-violating depends_on. Every selectable
+# profile must now render — add an entry here ONLY for a genuinely deferred, documented
+# render failure.
+_PREEXISTING_RENDER_FAILURES: frozenset[tuple[str, ...]] = frozenset()
 
 
 def test_render_to_string_all_profile_sets_still_render() -> None:
-    """C2 smoke: every profile in ALL_PROFILE_SETS renders without raising a NEW
-    ValueError introduced by the C2 fail-closed check.
+    """Every profile in ALL_PROFILE_SETS renders without raising — including the C2
+    fail-closed check and the standalone core-nginx lane (gap #13).
 
-    Pre-existing failures (e.g. core-nginx missing-deps) are explicitly exempted
-    via _PREEXISTING_RENDER_FAILURES so the gate is not retroactively broken by
-    unrelated out-of-scope bugs.
+    There are currently NO exempted profiles: _PREEXISTING_RENDER_FAILURES is empty,
+    so a regression that breaks any profile's render fails this gate immediately.
     """
     from agmind.services.profile_sets import ALL_PROFILE_SETS
 
     errors = []
     for profile_set in ALL_PROFILE_SETS:
         if profile_set in _PREEXISTING_RENDER_FAILURES:
-            continue  # skip known pre-existing failures
+            continue  # skip known deferred failures (currently none)
         try:
             render_to_string(profiles=list(profile_set))
         except ValueError as e:
             errors.append(f"  profile={profile_set}: {e}")
 
-    assert not errors, "Profiles raised unexpectedly after C2:\n" + "\n".join(errors)
+    assert not errors, "Profiles raised unexpectedly:\n" + "\n".join(errors)
 
 
 # ---------- C4: env precedence-shadow guard ----------

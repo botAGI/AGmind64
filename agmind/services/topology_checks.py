@@ -289,12 +289,11 @@ def _profile_key(profiles: tuple[str, ...]) -> str:
 # are NOT bugs.  Add a new entry ONLY when a cross-profile dep is genuinely
 # intentional — this is the registry that lets the guard fail closed on
 # *unexpected* cross-profile deps.
-KNOWN_CROSS_PROFILE_DEPENDS: set[tuple[str, str]] = {
-    # nginx (core-nginx) is a reverse proxy for the dify stack (rag).
-    # Always deployed together: --profile core-nginx,rag
-    ("nginx", "dify-api"),
-    ("nginx", "dify-web"),
-}
+# Empty: nginx's former cross-profile depends_on dify-api/dify-web was removed in
+# phase 08 (it violated Правила §12: edge proxies must not hard-depend on app
+# upstreams). No descriptor currently declares an intentional cross-profile
+# depends_on; the guard fail-closes on any new one.
+KNOWN_CROSS_PROFILE_DEPENDS: set[tuple[str, str]] = set()
 
 # Intentional cross-profile ``consumes`` relationships: (consumer, capability).
 # A consumer in profile P consuming a capability from a provider in profile Q
