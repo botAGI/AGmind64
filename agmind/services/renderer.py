@@ -43,16 +43,33 @@ _GPU_GROUP_DEFAULT_GID: dict[str, str] = {"render": "992", "video": "44"}
 
 
 def _resolve_group_add(group_add: list[str]) -> list[str]:
-    """Map AMD-GPU group names to the host's numeric GID; pass other groups through."""
+    """Resolve every group to a numeric host GID (resolvable in any container).
+
+    Docker resolves group_add NAMES against the CONTAINER's /etc/group, which
+    minimal images lack -> the container crashes ("unable to find group <name>").
+    So we always emit numeric GIDs: already-numeric entries pass through; names
+    are resolved via the render host's group db. GPU groups keep a known-GID
+    fallback when the render host itself lacks the group. Any other unresolvable
+    name fails the render LOUDLY instead of shipping a crash-looping container
+    (Правила Карпатого #9 — group_add must render numeric, never a bare name).
+    """
     resolved: list[str] = []
     for name in group_add:
-        if name in _GPU_GROUP_DEFAULT_GID:
-            try:
-                resolved.append(str(grp.getgrnam(name).gr_gid))
-            except KeyError:
+        if str(name).isdigit():
+            resolved.append(str(name))
+            continue
+        try:
+            resolved.append(str(grp.getgrnam(name).gr_gid))
+        except KeyError:
+            if name in _GPU_GROUP_DEFAULT_GID:
                 resolved.append(_GPU_GROUP_DEFAULT_GID[name])
-        else:
-            resolved.append(name)
+            else:
+                raise ValueError(
+                    f"group_add '{name}' has no numeric GID on the render host and "
+                    f"no known fallback; it would render as an unresolvable NAME and "
+                    f"crash the container. Add a fallback GID or use a numeric GID "
+                    f"in the descriptor."
+                )
     return resolved
 
 

@@ -46,6 +46,9 @@ _RUNTIME_SECRET_KEYS = (
     "REDIS_PASSWORD",
     "N8N_ENCRYPTION_KEY",
     "HOMARR_SECRET_ENCRYPTION_KEY",
+    # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
+    "DIFY_PLUGIN_DAEMON_KEY",
+    "DIFY_PLUGIN_INNER_API_KEY",
 )
 
 _ALERTMANAGER_TELEGRAM_KEYS = (
@@ -963,10 +966,13 @@ class BootstrapStep(InstallStep):
                 self.ANSIBLE_TAGS,
                 "--extra-vars",
                 f"@{vars_path}",
+                # Use the repo inventory (localhost ∈ agmind_nodes/agmind_master
+                # + agmind_* vars). A bare `-i localhost,` puts localhost only in
+                # the implicit `all` group, so the bootstrap play (hosts:
+                # agmind_nodes) matches ZERO hosts and silently no-ops every task
+                # incl. the data-dir chown — leaving dirs root:root → crash-loops.
                 "-i",
-                "localhost,",
-                "--connection",
-                "local",
+                "inventory/hosts.yml",
             ]
 
             proc = subprocess.Popen(
@@ -1583,6 +1589,14 @@ class EnvWriteStep(InstallStep):
             _env_line(
                 "HOMARR_SECRET_ENCRYPTION_KEY",
                 runtime_env["HOMARR_SECRET_ENCRYPTION_KEY"],
+            ),
+            _env_line(
+                "DIFY_PLUGIN_DAEMON_KEY",
+                runtime_env["DIFY_PLUGIN_DAEMON_KEY"],
+            ),
+            _env_line(
+                "DIFY_PLUGIN_INNER_API_KEY",
+                runtime_env["DIFY_PLUGIN_INNER_API_KEY"],
             ),
             "",
             "# ---- Authelia (security profile) — read by the container as AUTHELIA_* ----",

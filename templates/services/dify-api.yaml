@@ -19,8 +19,17 @@ env:
   LOG_LEVEL: INFO
   DB_HOST: postgres
   DB_PORT: '5432'
+  # Pin AGmind's actual postgres creds (POSTGRES_USER=dify); without these the
+  # image defaults to postgres/difyai123456 and mismatches our postgres.
+  DB_USERNAME: dify
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  DB_DATABASE: dify
   REDIS_HOST: redis
   REDIS_PORT: '6379'
+  # Inner-API handshake with dify-plugin-daemon — keys MUST match the daemon side.
+  PLUGIN_DAEMON_KEY: ${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}
+  PLUGIN_DAEMON_URL: http://dify-plugin-daemon:5002
+  INNER_API_KEY_FOR_PLUGIN: ${DIFY_PLUGIN_INNER_API_KEY:-changeme-inner-api-key}
 depends_on:
 - postgres
 - redis

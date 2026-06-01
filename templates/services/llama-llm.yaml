@@ -39,6 +39,7 @@ command:
 - -ngl
 - '999'
 - --flash-attn
+- 'on'
 - --cache-type-k
 - ${AGMIND_LLM_KV_CACHE:-${AGMIND_KV_CACHE:-q8_0}}
 - --cache-type-v

@@ -53,15 +53,26 @@ def test_gpu_group_names_fall_back_to_default_gid_when_absent(
         raise KeyError(name)
 
     monkeypatch.setattr(renderer.grp, "getgrnam", _missing)
-    svc = renderer.descriptor_to_compose_service(
-        _descriptor(group_add=["video", "render", "docker"])
-    )
-    # GPU groups fall back to sane defaults (numeric, so still resolvable); a
-    # non-GPU group name passes through unchanged.
-    assert svc["group_add"] == ["44", "992", "docker"]
+    svc = renderer.descriptor_to_compose_service(_descriptor(group_add=["video", "render"]))
+    # GPU groups fall back to sane numeric defaults when the render host lacks them.
+    assert svc["group_add"] == ["44", "992"]
 
 
-def test_non_gpu_group_passes_through(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_non_gpu_group_resolves_to_numeric_gid(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Any host group (e.g. docker) must render NUMERIC, never pass through as a
+    # bare name — a name crashes minimal images ("unable to find group docker").
     monkeypatch.setattr(renderer.grp, "getgrnam", lambda name: _Grp(1234))
     svc = renderer.descriptor_to_compose_service(_descriptor(group_add=["docker"]))
-    assert svc["group_add"] == ["docker"]
+    assert svc["group_add"] == ["1234"]
+    assert all(g.isdigit() for g in svc["group_add"]), "group_add must be all-numeric"
+
+
+def test_unresolvable_group_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A name with no host GID and no known GPU fallback must raise at render time,
+    # never silently emit a crash-looping bare NAME into the rendered compose.
+    def _missing(name: str) -> _Grp:
+        raise KeyError(name)
+
+    monkeypatch.setattr(renderer.grp, "getgrnam", _missing)
+    with pytest.raises(ValueError, match="unresolvable NAME"):
+        renderer.descriptor_to_compose_service(_descriptor(group_add=["nosuchgroup"]))

@@ -8,7 +8,19 @@ profiles:
 - rag
 env:
   DB_HOST: postgres
+  DB_PORT: '5432'
+  DB_USERNAME: dify
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  DB_DATABASE: dify
   REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  SERVER_PORT: '5002'
+  # SERVER_KEY here MUST equal PLUGIN_DAEMON_KEY on dify-api (shared var);
+  # DIFY_INNER_API_KEY MUST equal INNER_API_KEY_FOR_PLUGIN on dify-api.
+  SERVER_KEY: ${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}
+  DIFY_INNER_API_URL: http://dify-api:5001
+  DIFY_INNER_API_KEY: ${DIFY_PLUGIN_INNER_API_KEY:-changeme-inner-api-key}
+  PLUGIN_WORKING_PATH: /app/storage/cwd
 depends_on:
 - postgres
 - redis

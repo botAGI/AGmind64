@@ -24,7 +24,10 @@ env:
   MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
   MINIO_USE_SSL: 'false'
   MINIO_BUCKET_NAME: milvus
-  COMMON_STORAGETYPE: minio
+  # Milvus v2.6 storage-V2 arrow-filesystem accepts only [local, remote, opendal];
+  # the legacy "minio" token is removed and panics at boot ("Unsupported storage
+  # type: minio"). MinIO stays the backend via MINIO_ADDRESS; the TYPE is "remote".
+  COMMON_STORAGETYPE: remote
 depends_on:
 - etcd
 - milvus-minio
