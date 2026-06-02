@@ -32,6 +32,18 @@ def generate_secret(length: int = 32) -> str:
     return stdlib_secrets.token_urlsafe(length)
 
 
+def generate_hex_secret(nbytes: int = 32) -> str:
+    """Cryptographically secure random secret as a lowercase hex string.
+
+    Returns ``2 * nbytes`` hex characters (e.g. nbytes=32 → 64 hex chars). Some
+    services require a strict hex-charset, fixed-length key and reject the
+    URL-safe base64 output of :func:`generate_secret` (e.g. homarr's
+    SECRET_ENCRYPTION_KEY must be exactly 64 hex chars, else it aborts at boot
+    with "Invalid environment variables").
+    """
+    return stdlib_secrets.token_hex(nbytes)
+
+
 def write_private_text(path: Path, content: str) -> None:
     """Write secret text atomically, created mode 0600, with temp cleanup."""
     write_text_atomic(path, content, mode=stat.S_IRUSR | stat.S_IWUSR)

@@ -27,7 +27,7 @@ from pathlib import Path
 from agmind.config.env import write_env
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
-from agmind.core.secrets import generate_secret, write_private_text
+from agmind.core.secrets import generate_hex_secret, generate_secret, write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import (
     DEFAULT_REPO_ROOT,
@@ -582,6 +582,12 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
         values[key] = existing_env.get(key) or generate_secret(32)
     for key in _AUTHELIA_SECRET_KEYS:
         values[key] = existing_env.get(key) or generate_secret(64)
+    # homarr's SECRET_ENCRYPTION_KEY must be EXACTLY 64 hex chars; the base64
+    # token_urlsafe output of generate_secret (43 chars, non-hex) makes homarr abort
+    # at boot ("SECRET_ENCRYPTION_KEY has to be 64 characters ... hex format").
+    values["HOMARR_SECRET_ENCRYPTION_KEY"] = (
+        existing_env.get("HOMARR_SECRET_ENCRYPTION_KEY") or generate_hex_secret(32)
+    )
     for key in _ALERTMANAGER_TELEGRAM_KEYS:
         values[key] = existing_env.get(key, "")
     return values

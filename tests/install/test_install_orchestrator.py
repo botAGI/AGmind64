@@ -994,6 +994,12 @@ def test_env_write_step_writes_file(tmp_path: object) -> None:
         "HOMARR_SECRET_ENCRYPTION_KEY",
     ):
         assert parsed[key]
+    # homarr aborts at boot unless SECRET_ENCRYPTION_KEY is EXACTLY 64 hex chars
+    # (the base64 token_urlsafe output is 43 non-hex chars -> "Invalid environment
+    # variables" 500). Live-deploy regression 2026-06-02.
+    homarr_key = parsed["HOMARR_SECRET_ENCRYPTION_KEY"]
+    assert len(homarr_key) == 64, f"homarr key must be 64 chars, got {len(homarr_key)}"
+    assert all(c in "0123456789abcdef" for c in homarr_key), "homarr key must be hex"
     assert parsed["MINIO_ROOT_USER"] == "agmind"
     assert parsed["N8N_TIMEZONE"] == "UTC"
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
