@@ -7,7 +7,11 @@ purpose: Container management UI — 2026-05-11
 profiles:
 - observability
 ports:
-- 127.0.0.1:9443:9443
+# Route traefik to Portainer's HTTP listener (:9000), NOT 9443 — 9443 is HTTPS-ONLY, so
+# traefik probing it over HTTP gets 400 "Client sent an HTTP request to an HTTPS server"
+# → backend marked DOWN → 502 at portainer.<domain>. Host port 9444 (9000/9001 are taken
+# by minio / minio-console). Edge TLS is terminated by traefik.
+- 127.0.0.1:9444:9000
 volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/portainer:/data
@@ -16,4 +20,5 @@ resources:
   mem_limit: 512m
 routing:
   host: portainer.agmind.dev
-  healthcheck_path: /
+  # unauthenticated 200-JSON endpoint on the HTTP listener (/api/status on older builds)
+  healthcheck_path: /api/system/status

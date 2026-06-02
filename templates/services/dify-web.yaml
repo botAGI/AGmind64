@@ -20,3 +20,7 @@ routing:
   host: dify.agmind.dev
   middleware_chain: chain-llm
   sse: true
+  # dify-web is a Next.js app with NO /health route → the /health default 404s → traefik
+  # marks the backend DOWN and drops it (502 at dify.<domain>). / returns 307→/apps, which
+  # is inside traefik's healthy 2XX-3XX range. Same class as the ragflow healthcheck fix.
+  healthcheck_path: /
