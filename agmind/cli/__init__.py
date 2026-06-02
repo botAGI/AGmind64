@@ -47,6 +47,7 @@ def _make_app() -> typer.Typer:
     # `import agmind.cli` stays cheap and does not require typer. Call order
     # determines the order commands/groups appear in `agmind --help`.
     from agmind.cli import (
+        access_cmd,
         ci_cmd,
         cluster_cmd,
         core_cmd,
@@ -79,6 +80,7 @@ def _make_app() -> typer.Typer:
     models_cmd.register(app)
     ops_cmd.register(app)
     migrate_cmd.register(app)
+    access_cmd.register(app)
     return app
 
 

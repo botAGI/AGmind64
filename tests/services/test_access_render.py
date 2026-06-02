@@ -44,8 +44,13 @@ def _entry(
 
 def test_credentials_txt_shows_login_and_real_password() -> None:
     report = [
-        _entry("grafana", "https://grafana.lab.test", login="admin", password="s3cret",
-               password_env="GRAFANA_PASSWORD"),
+        _entry(
+            "grafana",
+            "https://grafana.lab.test",
+            login="admin",
+            password="s3cret",
+            password_env="GRAFANA_PASSWORD",
+        ),
     ]
     txt = render_credentials_txt(report)
     assert "grafana" in txt
@@ -63,8 +68,13 @@ def test_credentials_txt_register_on_first_login() -> None:
 
 def test_credentials_txt_password_env_fallback_when_value_missing() -> None:
     report = [
-        _entry("grafana", "https://g.lab.test", login="admin", password=None,
-               password_env="GRAFANA_PASSWORD"),
+        _entry(
+            "grafana",
+            "https://g.lab.test",
+            login="admin",
+            password=None,
+            password_env="GRAFANA_PASSWORD",
+        ),
     ]
     txt = render_credentials_txt(report)
     assert "GRAFANA_PASSWORD" in txt  # point operator at the env var when value unknown
@@ -80,7 +90,9 @@ def test_credentials_txt_model_endpoint_block() -> None:
 
 def test_credentials_txt_generated_at_header_optional() -> None:
     report = [_entry("grafana", "https://g.test", login="admin", password="x")]
-    assert "2026-06-03T00:00:00Z" in render_credentials_txt(report, generated_at="2026-06-03T00:00:00Z")
+    assert "2026-06-03T00:00:00Z" in render_credentials_txt(
+        report, generated_at="2026-06-03T00:00:00Z"
+    )
     # omitted when not provided (deterministic body)
     assert "generated" not in render_credentials_txt(report).lower()
 
@@ -97,8 +109,13 @@ def test_credentials_txt_lan_only_ssh_hint() -> None:
 
 def test_endpoint_lines_have_urls_and_hints_no_secrets() -> None:
     report = [
-        _entry("grafana", "https://grafana.lab.test", login="admin", password="s3cret",
-               password_env="GRAFANA_PASSWORD"),
+        _entry(
+            "grafana",
+            "https://grafana.lab.test",
+            login="admin",
+            password="s3cret",
+            password_env="GRAFANA_PASSWORD",
+        ),
         _entry("openwebui", "https://chat.lab.test", first_login_register=True),
         _entry("llama-llm", "https://llama.lab.test", api_kind="openai"),
     ]
