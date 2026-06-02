@@ -54,6 +54,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(templates/services/|agmind/services/deployment_topology\.py|agmind/services/topology_checks\.py|agmind/services/retrieval_policy\.py|agmind/services/compatibility\.py|agmind/services/renderer\.py|agmind/cli/render_cmd\.py|scripts/checks/topology_check\.py$)
+      - id: agmind-healthcheck-tool-check
+        name: AGmind A6 healthcheck tool-in-image check
+        entry: .venv/bin/python scripts/checks/healthcheck_tool_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/services/|scripts/checks/healthcheck_tool_check\.py$)
       - id: agmind-governance-check
         name: AGmind aggregate governance check
         entry: .venv/bin/python scripts/checks/governance_check.py

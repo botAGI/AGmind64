@@ -485,7 +485,7 @@ def test_ci_runs_governance_summary_gate() -> None:
     assert "topology-validate" in workflow
     assert "kubernetes-proof-workflow-validate" in workflow
     assert (
-        "needs: [docs-mirror-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]"
+        "needs: [docs-mirror-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, healthcheck-tool-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]"
         in workflow
     )
     assert "scripts/checks/docs_mirror_check.py" in workflow

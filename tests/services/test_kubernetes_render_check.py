@@ -408,6 +408,6 @@ def test_ci_runs_kubernetes_render_gate() -> None:
     assert "kubernetes-render-validate" in workflow
     assert "scripts/checks/kubernetes_render_check.py" in workflow
     assert (
-        "needs: [docs-mirror-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]"
+        "needs: [docs-mirror-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, healthcheck-tool-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]"
         in workflow
     )
