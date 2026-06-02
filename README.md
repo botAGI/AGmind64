@@ -273,6 +273,9 @@ Current manual-review items from the local report:
 ```bash
 agmind doctor
 agmind status
+agmind endpoints                 # published services: URL + state
+agmind open grafana              # print a service URL (SSH-pipeable)
+agmind creds show                # logins + passwords (root-only, masked)
 agmind cluster inspect --timeout 10
 agmind status --tui
 agmind logs llama-llm -f
