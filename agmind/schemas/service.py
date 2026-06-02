@@ -124,6 +124,19 @@ class RoutingConfig(BaseModel):
     healthcheck_path: str = "/health"
     """Путь для Traefik active healthchecks (отдельно от Docker healthcheck)."""
 
+    path_prefixes: tuple[str, ...] = ()
+    """Если non-empty → router rule = ``Host(`host`) && (PathPrefix(`p0`) || PathPrefix(`p1`) …)``.
+    Пустой кортеж = Host-only rule (текущее поведение). tuple (НЕ list) — модель frozen=True.
+
+    Для multi-component приложения на ОДНОМ хосте (Dify: /console/api,/api,/v1,/files,/mcp,
+    /triggers → dify-api; /, /explore → dify-web). Парный host-only router с низким priority
+    ловит остальное."""
+
+    priority: int = 0
+    """Traefik router priority. 0 = Traefik default (сортировка по длине rule). Higher wins.
+    HIGH на prefix-scoped router, LOW на catch-all router того же хоста — иначе catch-all
+    (Host-only) может перехватить path-scoped запросы."""
+
 
 class ObservabilityConfig(BaseModel):
     """Auto-discovery hints для observability stack.

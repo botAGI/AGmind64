@@ -152,6 +152,19 @@
           "default": "/health",
           "title": "Healthcheck Path",
           "type": "string"
+        },
+        "path_prefixes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Path Prefixes",
+          "type": "array"
+        },
+        "priority": {
+          "default": 0,
+          "title": "Priority",
+          "type": "integer"
         }
       },
       "required": [

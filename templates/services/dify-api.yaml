@@ -42,6 +42,25 @@ depends_on:
 resources:
   cpus: 4.0
   mem_limit: 4g
+# Dify is multi-component on ONE host: traefik path-routes these prefixes to dify-api:5001
+# (priority 100) and everything else (/, /explore, static) falls to the dify-web catch-all
+# router (priority 1) on the same host. Path list = Dify 1.14.2's own nginx default.conf
+# (/console/api,/api,/v1,/files,/mcp,/triggers,/socket.io → api; /explore → web). Without
+# this the browser's /console/api calls hit dify-web (404) → /install hangs forever.
+routing:
+  host: dify.agmind.dev
+  middleware_chain: chain-llm
+  sse: true
+  healthcheck_path: /health
+  priority: 100
+  path_prefixes:
+  - /console/api
+  - /api
+  - /v1
+  - /files
+  - /mcp
+  - /triggers
+  - /socket.io
 
 # Phase O capabilities (revised post-research, ADR-0011 amendment)
 # Dify coexists с RAGFlow и может consume его как external KB через

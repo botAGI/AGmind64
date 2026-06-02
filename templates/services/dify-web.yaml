@@ -24,3 +24,8 @@ routing:
   # marks the backend DOWN and drops it (502 at dify.<domain>). / returns 307→/apps, which
   # is inside traefik's healthy 2XX-3XX range. Same class as the ragflow healthcheck fix.
   healthcheck_path: /
+  # Catch-all on dify.<domain>: LOW priority so the path-scoped dify-api router (priority 100)
+  # wins for /console/api,/api,/v1,/files,/mcp,/triggers,/socket.io; everything else (/,
+  # /explore, static) lands here. Without an explicit priority traefik could rank this
+  # host-only rule above dify-api and steal the API paths.
+  priority: 1

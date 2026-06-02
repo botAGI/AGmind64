@@ -165,6 +165,35 @@ def test_traefik_labels_basic_routing() -> None:
     assert labels["traefik.http.services.qdrant.loadbalancer.healthcheck.path"] == "/health"
 
 
+def test_traefik_labels_path_prefixes_and_priority() -> None:
+    """Multi-component-on-one-host (Dify): path_prefixes scope the router rule to specific
+    paths and priority ranks it above the host-only catch-all sibling."""
+    d = _minimal_descriptor(
+        name="dify-api",
+        routing={
+            "host": "dify.agmind.dev",
+            "middleware_chain": "chain-llm",
+            "path_prefixes": ["/console/api", "/api", "/v1"],
+            "priority": 100,
+        },
+    )
+    labels = render_traefik_labels(d)
+    assert labels["traefik.http.routers.dify-api.rule"] == (
+        "Host(`dify.agmind.dev`) && "
+        "(PathPrefix(`/console/api`) || PathPrefix(`/api`) || PathPrefix(`/v1`))"
+    )
+    assert labels["traefik.http.routers.dify-api.priority"] == "100"
+
+
+def test_traefik_labels_no_priority_label_when_zero() -> None:
+    """priority=0 (default) emits NO priority label and a plain Host-only rule — every
+    existing host-only service's labels stay byte-identical (regression guard)."""
+    d = _minimal_descriptor(routing={"host": "qdrant.agmind.dev"})
+    labels = render_traefik_labels(d)
+    assert not any(k.endswith(".priority") for k in labels)
+    assert labels["traefik.http.routers.qdrant.rule"] == "Host(`qdrant.agmind.dev`)"
+
+
 def test_traefik_labels_sse_safe() -> None:
     """SSE routing должен добавить flushinterval=1ms и no-http2."""
     d = _minimal_descriptor(

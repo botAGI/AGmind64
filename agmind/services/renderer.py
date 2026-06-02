@@ -202,14 +202,25 @@ def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
 
     name = d.name
     routing = d.routing
+    # Multi-component-on-one-host (Dify): path_prefixes scope this router to specific paths
+    # (Host && (PathPrefix(a) || PathPrefix(b) …)); priority ranks it above the host-only
+    # catch-all sibling. Empty path_prefixes → plain Host(...) rule (unchanged for every
+    # other service).
+    if routing.path_prefixes:
+        prefix_expr = " || ".join(f"PathPrefix(`{p}`)" for p in routing.path_prefixes)
+        rule = f"Host(`{routing.host}`) && ({prefix_expr})"
+    else:
+        rule = f"Host(`{routing.host}`)"
     labels: dict[str, str] = {
         "traefik.enable": "true",
-        f"traefik.http.routers.{name}.rule": f"Host(`{routing.host}`)",
+        f"traefik.http.routers.{name}.rule": rule,
         f"traefik.http.routers.{name}.entrypoints": "websecure",
         f"traefik.http.routers.{name}.tls": "true",
         f"traefik.http.routers.{name}.tls.certresolver": "le",
         f"traefik.http.routers.{name}.middlewares": f"{routing.middleware_chain}@file",
     }
+    if routing.priority:
+        labels[f"traefik.http.routers.{name}.priority"] = str(routing.priority)
 
     # Port — берём container-side первого port mapping
     container_port = _first_container_port(d)
