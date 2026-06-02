@@ -23,6 +23,16 @@ env:
   AUTHELIA_SESSION_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 depends_on:
 - redis
+# Authelia's OWN login portal must be routed at auth.<domain> WITH a cert. Without this
+# routing block the renderer emits no traefik router for it, so the forwardAuth redirect
+# target (https://auth.<domain>, from configuration.yml) has no router/cert → browsers get
+# ERR_SSL_UNRECOGNIZED_NAME_ALERT and SSO is dead for EVERY protected service.
+# chain-public = rate-limit + security-headers, NO authelia gating (the portal cannot sit
+# behind itself → infinite redirect loop). Health is /api/health on Authelia 4.x.
+routing:
+  host: auth.agmind.dev
+  middleware_chain: chain-public
+  healthcheck_path: /api/health
 resources:
   cpus: 1.0
   mem_limit: 512m
