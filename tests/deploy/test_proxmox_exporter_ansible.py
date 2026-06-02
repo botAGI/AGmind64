@@ -91,7 +91,10 @@ def test_services_role_renders_proxmox_config_without_logging_secret() -> None:
     template = task["ansible.builtin.template"]
     assert template["src"] == "proxmox-pve.yml.j2"
     assert template["dest"] == "{{ agmind_config_dir }}/proxmox-exporter/pve.yml"
-    assert template["mode"] == "0640"
+    # 0644 (not 0640): the file is bind-mounted directly into the prometheus-pve-exporter
+    # container, which runs as non-root uid 101 ("other") and must read it or it crashes
+    # with PermissionError. Host confidentiality is preserved by the 0750 parent dir.
+    assert template["mode"] == "0644"
     assert task.get("no_log") is True
     conditions = " ".join(task["when"])
     assert "'proxmox' in agmind_profiles" in conditions

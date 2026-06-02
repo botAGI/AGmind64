@@ -36,6 +36,9 @@ routing:
   host: rag.agmind.dev
   middleware_chain: chain-llm
   sse: true
+  # RAGFlow v0.25.5 serves health at /api/v1/system/healthz (not the /health default);
+  # the default probe 404s -> traefik drops the backend from routing (502 at the edge).
+  healthcheck_path: /api/v1/system/healthz
 
 # Phase O capabilities (revised — see ADR-0011 amendment)
 # RAGFlow's vector store options per verified ragflow/docker/.env (2026-05-20):

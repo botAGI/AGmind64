@@ -24,6 +24,10 @@ env:
   DIFY_INNER_API_URL: http://dify-api:5001
   DIFY_INNER_API_KEY: ${DIFY_PLUGIN_INNER_API_KEY:-changeme-inner-api-key}
   PLUGIN_WORKING_PATH: /app/storage/cwd
+  # PLUGIN_REMOTE_INSTALLING_ENABLED defaults true in the image; without HOST/PORT
+  # the daemon panics at startup. Match the langgenius reference compose defaults.
+  PLUGIN_REMOTE_INSTALLING_HOST: 0.0.0.0
+  PLUGIN_REMOTE_INSTALLING_PORT: '5003'
 depends_on:
 - postgres
 - redis

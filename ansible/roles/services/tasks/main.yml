@@ -74,7 +74,11 @@
     dest: "{{ agmind_config_dir }}/proxmox-exporter/pve.yml"
     owner: root
     group: "{{ agmind_group }}"
-    mode: "0640"
+    # File is bind-mounted directly into the container (pve.yml:/etc/pve.yml:ro);
+    # the prometheus-pve-exporter image runs as non-root uid 101, which is "other"
+    # for this file. 0640 -> PermissionError crash at boot. 0644 lets uid 101 read
+    # it; confidentiality is preserved by the 0750 parent dir gating host access.
+    mode: "0644"
   when:
     - "'proxmox' in agmind_profiles"
     - not (agmind_proxmox_exporter_existing_config | default(false) | bool)
