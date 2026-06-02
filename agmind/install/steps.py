@@ -1890,6 +1890,51 @@ class EnvWriteStep(InstallStep):
         )
 
 
+class CredentialsStep(InstallStep):
+    """Write ``${install_dir}/credentials.txt`` (chmod 600) from descriptors + rendered ``.env``.
+
+    Final, best-effort step: gives the operator a persistent, human-readable list of URLs /
+    logins / passwords plus copy-paste OpenAI-compatible model-endpoint blocks. Never fails the
+    install — the stack is already deployed; this is a convenience artifact.
+    """
+
+    step_id = "credentials"
+    label = "Write credentials.txt"
+
+    def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
+        start = time.monotonic()
+        from datetime import UTC, datetime
+
+        from agmind.services.access import build_access_report, render_credentials_txt
+        from agmind.services.renderer import load_descriptors
+
+        try:
+            selected = set(config.services)
+            descriptors = {n: d for n, d in load_descriptors().items() if n in selected}
+            env_path = config.install_dir / ".env"
+            env = parse_env_file(env_path) if env_path.exists() else {}
+            report = build_access_report(descriptors, env, domain=config.domain)
+            generated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            text = render_credentials_txt(
+                report, generated_at=generated_at, llama_model=config.model_file
+            )
+            creds_path = config.install_dir / "credentials.txt"
+            write_private_text(creds_path, text)
+        except Exception as exc:  # noqa: BLE001 — never fail install on a convenience artifact
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=True,
+                message=f"credentials.txt skipped ({exc})",
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+        return InstallStepResult(
+            step_id=self.step_id,
+            success=True,
+            message=f"credentials.txt written ({len(report)} endpoints)",
+            elapsed=timedelta(seconds=time.monotonic() - start),
+        )
+
+
 def default_steps() -> list[InstallStep]:
     """Stock install pipeline. Order matters."""
     return [
@@ -1900,6 +1945,7 @@ def default_steps() -> list[InstallStep]:
         ComposeConfigStep(),  # fail fast before deploy runner pulls images
         ModelDownloadStep(),
         DeployStep(),
+        CredentialsStep(),  # final: persist credentials.txt for the operator
     ]
 
 
@@ -1907,6 +1953,7 @@ __all__ = [
     "BootstrapStep",
     "CloudflareTokenStep",
     "ComposeConfigStep",
+    "CredentialsStep",
     "DeployStep",
     "DoctorStep",
     "EnvWriteStep",

@@ -107,6 +107,21 @@ def test_builder_model_endpoint_flag() -> None:
     assert report[0].is_model_endpoint is True
 
 
+def test_builder_substitutes_install_domain() -> None:
+    descriptors = {"grafana": _svc("grafana", host="grafana.agmind.dev")}
+    report = build_access_report(descriptors, {}, domain="lab.example.com")
+    assert report[0].url == "https://grafana.lab.example.com"
+
+
+def test_builder_keeps_host_when_domain_is_placeholder_or_none() -> None:
+    descriptors = {"grafana": _svc("grafana", host="grafana.agmind.dev")}
+    assert build_access_report(descriptors, {})[0].url == "https://grafana.agmind.dev"
+    assert (
+        build_access_report(descriptors, {}, domain="agmind.dev")[0].url
+        == "https://grafana.agmind.dev"
+    )
+
+
 def test_builder_is_sorted_by_service_name() -> None:
     descriptors = {
         "zeta": _svc("zeta", host="z.test"),

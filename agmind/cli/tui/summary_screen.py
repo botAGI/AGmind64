@@ -165,6 +165,21 @@ class SummaryScreen(Screen[None]):
             "  Credentials are not printed in summary; read the env file on host."
         )
 
+    def _endpoint_lines(self) -> list[str]:
+        """Real per-service endpoint lines from descriptors + the rendered .env (best-effort)."""
+        try:
+            from agmind.core.env import parse_env_file
+            from agmind.services.access import build_access_report, render_endpoint_lines
+            from agmind.services.renderer import load_descriptors
+
+            selected = set(self.services)
+            descriptors = {n: d for n, d in load_descriptors().items() if n in selected}
+            env_path = self.install_dir / ".env"
+            env = parse_env_file(env_path) if env_path.exists() else {}
+            return render_endpoint_lines(build_access_report(descriptors, env, domain=self.domain))
+        except Exception:  # noqa: BLE001 — summary must never crash on a presentation helper
+            return []
+
     def _next_steps_text(self) -> str:
         profiles_csv = ",".join(self.profiles)
         selection_flags = (
@@ -173,19 +188,28 @@ class SummaryScreen(Screen[None]):
             else f"        --profile {profiles_csv}"
         )
         if self.mode == "deploy_success":
+            endpoint_lines = self._endpoint_lines()
+            endpoints_block = (
+                "\n".join(endpoint_lines)
+                if endpoint_lines
+                else f"      https://<service>.{self.domain}"
+            )
+            creds_path = self.install_dir / "credentials.txt"
             return (
                 "━━━━━━ What to do next ━━━━━━\n"
                 "\n"
-                "  • Check live status:\n"
-                f"      agmind status\n"
+                "  • Your services (URL — login hint):\n"
+                f"{endpoints_block}\n"
                 "\n"
-                "  • View logs of any service:\n"
-                f"      agmind logs llama-llm --follow\n"
+                f"  • Credentials (URLs + passwords): {creds_path} (chmod 600)\n"
                 "\n"
-                "  • Open services in browser:\n"
-                f"      https://grafana.{self.domain}\n"
-                f"      https://chat.{self.domain}\n"
-                f"      https://llama.{self.domain}\n"
+                "  • Re-view access any time:\n"
+                "      agmind endpoints        # reachable services + state\n"
+                "      agmind creds show       # logins + passwords (root, masked)\n"
+                "\n"
+                "  • Status / logs:\n"
+                "      agmind status\n"
+                "      agmind logs <service> --follow\n"
                 "\n"
                 "  • Update config — re-run wizard:\n"
                 "      agmind setup"

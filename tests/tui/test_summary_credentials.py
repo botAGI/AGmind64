@@ -118,10 +118,54 @@ def test_summary_screen_prefers_agmind_log_commands(tmp_path: Path) -> None:
         install_dir=tmp_path / "agmind",
     )._next_steps_text()
 
-    assert "agmind logs llama-llm --follow" in success
+    assert "agmind logs <service> --follow" in success
     assert "agmind logs --tail 200" in failure
     assert "docker logs" not in success
     assert "docker logs" not in failure
+
+
+def test_summary_deploy_success_lists_real_endpoints_and_access_cli(tmp_path: Path) -> None:
+    install_dir = tmp_path / "agmind"
+    install_dir.mkdir()
+    (install_dir / ".env").write_text("GRAFANA_PASSWORD=topsecret\n", encoding="utf-8")
+    screen = SummaryScreen(
+        mode="deploy_success",
+        domain="lab.test",
+        profiles=["observability"],
+        backend="vulkan",
+        model_tier="L",
+        state_path=tmp_path / "state.json",
+        token_path=tmp_path / "cf-token",
+        install_dir=install_dir,
+        services=["grafana", "llama-llm"],
+    )
+
+    text = screen._next_steps_text()
+
+    # real endpoints (domain-substituted), not the old hardcoded grafana/chat/llama trio
+    assert "https://grafana.lab.test" in text
+    assert "https://llama.lab.test" in text
+    # re-view CLI + persisted credentials path are surfaced
+    assert "agmind endpoints" in text
+    assert "agmind creds show" in text
+    assert "credentials.txt" in text
+    # never leak a secret into the summary
+    assert "topsecret" not in text
+
+
+def test_summary_deploy_success_falls_back_without_services(tmp_path: Path) -> None:
+    screen = SummaryScreen(
+        mode="deploy_success",
+        domain="lab.test",
+        profiles=["core"],
+        backend="auto",
+        model_tier="XL",
+        state_path=tmp_path / "state.json",
+        token_path=tmp_path / "cf-token",
+        install_dir=tmp_path / "agmind",
+    )
+    text = screen._next_steps_text()
+    assert "https://<service>.lab.test" in text  # graceful fallback, no crash
 
 
 def test_summary_screen_full_install_command_keeps_cf_token_out_of_argv(
