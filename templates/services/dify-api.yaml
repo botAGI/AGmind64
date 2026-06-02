@@ -17,6 +17,10 @@ writable_mounts:
 env:
   MODE: api
   LOG_LEVEL: INFO
+  # Run Flask-Migrate `db upgrade` on boot. Without this Dify's schema is never created
+  # (relation "dify_setups" does not exist) → every console/API call 500s and the web UI
+  # /install page hangs. The api container is the single migration owner (NOT the worker).
+  MIGRATION_ENABLED: 'true'
   DB_HOST: postgres
   DB_PORT: '5432'
   # Pin AGmind's actual postgres creds (POSTGRES_USER=dify); without these the
