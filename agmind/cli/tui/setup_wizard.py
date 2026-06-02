@@ -989,8 +989,16 @@ class AgmindSetupApp(App[SetupState | None]):
             )
         compatibility = self._check_compatibility(state)
         if compatibility is not None and compatibility.has_errors:
+            llm_skipped = (state.model_id or "").strip().lower() == "skip"
             for issue in compatibility.by_severity("error"):
                 label = issue.capability or issue.kind
+                # "Infra now, LLM later": when the user intentionally skipped the main
+                # LLM (model_id=skip), services consuming llm_inference (dify/openwebui/
+                # ragflow) deploy DEGRADED (no chat model) rather than broken — the same
+                # outcome as the headless --from-state installer, which does not enforce
+                # this. Don't hard-block an explicit choice; other capabilities still error.
+                if llm_skipped and issue.capability == "llm_inference":
+                    continue
                 errors.append(f"missing capability {label}: {issue.message}")
         return errors
 
@@ -1042,7 +1050,14 @@ class AgmindSetupApp(App[SetupState | None]):
             return None
 
     def _set_status(self, msg: str, kind: str = "") -> None:
-        widget = self.query_one("#status-msg", Static)
+        # The multi-step wizard (M4, the default) has NO #status-msg widget — only the
+        # legacy single-screen wizard does. query_one raised NoMatches and aborted the
+        # ENTIRE TUI on any validation-error path (e.g. confirm → submit). The error is
+        # already surfaced via notify() toasts, so no-op when the status bar is absent.
+        status_widgets = self.query("#status-msg")
+        if not status_widgets:
+            return
+        widget = status_widgets.first(Static)
         widget.update(msg)
         widget.set_classes(f"status-msg {kind}" if kind else "")
 
