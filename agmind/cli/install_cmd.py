@@ -293,9 +293,15 @@ def register(app: typer.Typer) -> None:
                 install_mode=not dry_run,
                 require_sudo_password=not dry_run,
             )
-            if wizard_state is None:
+            if wizard_state is None and not dry_run:
+                # A dry-run TUI run ends on the SummaryScreen whose quit returns None —
+                # that is a normal completion, not a cancel. Only treat None as cancelled
+                # for a real (install) run.
                 typer.echo("aborted: wizard cancelled", err=True)
                 raise typer.Exit(code=1)
+            if dry_run:
+                typer.echo("dry-run: wizard complete (no bootstrap/pull/deploy)")
+                raise typer.Exit(code=0)
             if not dry_run:
                 install_result = getattr(wizard_state, "_install_result", None)
                 if install_result is None:

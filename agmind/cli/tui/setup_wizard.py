@@ -1129,10 +1129,40 @@ class AgmindSetupApp(App[SetupState | None]):
             self._set_status("❌ " + "; ".join(errors), kind="error")
             return
 
+        # M5.4.3: write the cluster Ansible inventory when replicate-to-peers is enabled.
+        # Done HERE (not only in ConfirmScreen.action_apply) so the Ctrl+S submit path —
+        # which the App's priority binding routes straight to action_submit, bypassing
+        # ConfirmScreen.action_apply — also generates it.
+        if getattr(state, "cluster_replicate", False):
+            try:
+                from agmind.cluster.inventory import write_inventory
+
+                peers = list(getattr(self, "cluster_peers", []))
+                path = write_inventory(peers)
+                self.notify(
+                    f"Cluster inventory: {path} ({len(peers)} peers)",
+                    title="Replicate enabled",
+                    severity="information",
+                    timeout=8.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.notify(
+                    f"Failed to write inventory: {exc}",
+                    title="Cluster replicate",
+                    severity="warning",
+                    timeout=8.0,
+                )
+
         # Save state (excluded cf_api_token) к ~/.local/share/agmind/
         try:
             state.to_json(STATE_PATH)
         except OSError as exc:
+            # notify() (not just _set_status, which is a no-op in the multi-step wizard)
+            # so Apply doesn't appear silently dead when ~/.local/share/agmind is not
+            # writable (e.g. root-owned from a prior `sudo agmind` run) or the disk is full.
+            self.notify(
+                f"couldn't save state: {exc}", title="Cannot apply", severity="error", timeout=10.0
+            )
             self._set_status(f"⚠️ couldn't save state: {exc}", kind="error")
             return
 
@@ -1140,6 +1170,9 @@ class AgmindSetupApp(App[SetupState | None]):
         try:
             write_private_text(TOKEN_PATH, state.cf_api_token)
         except OSError as exc:
+            self.notify(
+                f"couldn't save token: {exc}", title="Cannot apply", severity="error", timeout=10.0
+            )
             self._set_status(f"⚠️ couldn't save token: {exc}", kind="error")
             return
 

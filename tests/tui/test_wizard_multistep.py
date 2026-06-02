@@ -575,3 +575,17 @@ async def test_help_screen_open_close(monkeypatch: pytest.MonkeyPatch) -> None:
         await pilot.press("escape")
         await pilot.pause(0.1)
         assert isinstance(app.screen, DomainScreen)
+
+
+def test_legal_select_value_coerces_off_list_value() -> None:
+    """Regression (TUI audit 2026-06-02): Textual Select(allow_blank=False) raises on mount
+    when its initial value isn't a known option, which crashed the whole ModelScreen for a
+    saved state carrying a since-removed curated model id / off-list number. The helper must
+    pass through legal values and fall back to the first option for off-list ones."""
+    from agmind.cli.tui.wizard_screens import _legal_select_value
+
+    opts = [("Label A", "a"), ("Label B", "b")]
+    assert _legal_select_value("b", opts) == "b"  # legal → unchanged
+    assert _legal_select_value("removed-model-id", opts) == "a"  # off-list → first option
+    assert _legal_select_value("16384", [("16k", "16384")]) == "16384"
+    assert _legal_select_value("x", []) == "x"  # no options → passthrough (no crash)

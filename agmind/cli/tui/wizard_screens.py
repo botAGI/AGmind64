@@ -40,6 +40,21 @@ from agmind.services.retrieval_policy import DIFY_VECTOR_PROVIDERS
 # ---- Shared helpers (M5.3) ----
 
 
+def _legal_select_value(value: object, options: list) -> object:  # type: ignore[type-arg]
+    """Coerce a Select's initial value to a legal option.
+
+    Textual's Select(allow_blank=False) assigns the given value on mount and RAISES
+    (InvalidSelectValue) if it isn't among the option values — which crashes the whole
+    ModelScreen. This happens when app.state carries an off-list value: a hand-edited /
+    older saved setup-state.json, or a curated model id that was removed from the catalog.
+    Return the value when it matches an option, else fall back to the first option's value.
+    """
+    option_values = [opt[1] for opt in options]
+    if value in option_values:
+        return value
+    return option_values[0] if option_values else value
+
+
 def _format_hardware_panel(d) -> str:  # type: ignore[no-untyped-def]
     """M5.3.2: panel layout вместо single-line dim — Fallout pip-boy table.
 
@@ -242,7 +257,7 @@ class ModelScreen(Screen[None]):
             yield Select(
                 llm_options,
                 id="llm-model-select",
-                value=state.model_id,
+                value=_legal_select_value(state.model_id, llm_options),
                 allow_blank=False,
             )
             yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
@@ -260,28 +275,28 @@ class ModelScreen(Screen[None]):
             yield Select(
                 list(ctx_options),
                 id="llm-ctx-size-select",
-                value=str(state.ctx_size),
+                value=_legal_select_value(str(state.ctx_size), ctx_options),
                 allow_blank=False,
             )
             yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
                 list(kv_options),
                 id="llm-kv-cache-select",
-                value=state.kv_cache_type,
+                value=_legal_select_value(state.kv_cache_type, kv_options),
                 allow_blank=False,
             )
             yield Label(t("wizard.section.threads"), classes="section")
             yield Select(
                 threads_options,
                 id="llm-threads-select",
-                value=str(state.threads),
+                value=_legal_select_value(str(state.threads), threads_options),
                 allow_blank=False,
             )
             yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
                 list(parallel_options),
                 id="llm-parallel-select",
-                value=str(state.parallel_slots),
+                value=_legal_select_value(str(state.parallel_slots), parallel_options),
                 allow_blank=False,
             )
 
@@ -293,7 +308,7 @@ class ModelScreen(Screen[None]):
             yield Select(
                 embed_options,
                 id="embed-model-select",
-                value=state.embed_model_id,
+                value=_legal_select_value(state.embed_model_id, embed_options),
                 allow_blank=False,
             )
             yield Static(t("wizard.section.custom_hf_hint"), classes="hint")
@@ -311,21 +326,21 @@ class ModelScreen(Screen[None]):
             yield Select(
                 list(ctx_options),
                 id="embed-ctx-size-select",
-                value=str(state.embed_ctx_size),
+                value=_legal_select_value(str(state.embed_ctx_size), ctx_options),
                 allow_blank=False,
             )
             yield Label(t("wizard.section.kv_cache"), classes="section")
             yield Select(
                 list(kv_options),
                 id="embed-kv-cache-select",
-                value=state.embed_kv_cache,
+                value=_legal_select_value(state.embed_kv_cache, kv_options),
                 allow_blank=False,
             )
             yield Label(t("wizard.section.parallel"), classes="section")
             yield Select(
                 list(parallel_options),
                 id="embed-parallel-select",
-                value=str(state.embed_parallel),
+                value=_legal_select_value(str(state.embed_parallel), parallel_options),
                 allow_blank=False,
             )
 
@@ -337,7 +352,7 @@ class ModelScreen(Screen[None]):
             yield Select(
                 rerank_options,
                 id="rerank-model-select",
-                value=state.rerank_model_id,
+                value=_legal_select_value(state.rerank_model_id, rerank_options),
                 allow_blank=False,
             )
             yield Static(
@@ -358,7 +373,7 @@ class ModelScreen(Screen[None]):
             yield Select(
                 list(ctx_options),
                 id="rerank-ctx-size-select",
-                value=str(state.rerank_ctx_size),
+                value=_legal_select_value(str(state.rerank_ctx_size), ctx_options),
                 allow_blank=False,
             )
 
@@ -740,28 +755,11 @@ class ConfirmScreen(Screen[None]):
         self.app.pop_screen()
 
     def action_apply(self) -> None:
-        # M5.4.3: если user выбрал replicate-to-peers — сгенерируй Ansible inventory.
-        if getattr(self.app.state, "cluster_replicate", False):
-            try:
-                from agmind.cluster.inventory import write_inventory
-
-                peers = list(self.app.cluster_peers)
-                path = write_inventory(peers)
-                self.app.notify(
-                    f"Cluster inventory: {path} ({len(peers)} peers)",
-                    title="Replicate enabled",
-                    severity="information",
-                    timeout=8.0,
-                )
-            except Exception as exc:  # noqa: BLE001
-                self.app.notify(
-                    f"Failed to write inventory: {exc}",
-                    title="Cluster replicate",
-                    severity="warning",
-                    timeout=8.0,
-                )
-        # Hand off to original action_submit (saves state + push install).
-        # Pop confirm screen first чтобы action_submit видел "root" app.
+        # Hand off to action_submit (it writes the cluster inventory when replicate is
+        # enabled, saves state, and starts the install). Pop confirm first so action_submit
+        # sees the "root" app. NB: the cluster-inventory write lives in action_submit, not
+        # here, so the Ctrl+S priority-binding path (which calls action_submit directly,
+        # bypassing this method) also generates it.
         self.app.pop_screen()
         self.app.action_submit()
 

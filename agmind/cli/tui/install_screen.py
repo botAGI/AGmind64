@@ -15,6 +15,7 @@ import threading
 from datetime import datetime
 from typing import ClassVar
 
+from rich.markup import escape
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -235,23 +236,25 @@ class InstallProgressScreen(Screen[InstallResult]):
         ts = datetime.now().strftime("%H:%M:%S")
         if event.kind is ProgressKind.STEP_START:
             self._update_step(event.step_id, "running")
-            log_widget.write(f"[dim]{ts}[/dim] [yellow]▶ {event.text}[/yellow]")
+            log_widget.write(f"[dim]{ts}[/dim] [yellow]▶ {escape(event.text)}[/yellow]")
             # Reset progress bar для нового шага
             self.query_one("#step-progress-bar", ProgressBar).update(progress=0)
         elif event.kind is ProgressKind.STEP_DONE:
             self._update_step(event.step_id, "success")
-            log_widget.write(f"[dim]{ts}[/dim] [green]✓ {event.step_id}: {event.text}[/green]")
+            log_widget.write(
+                f"[dim]{ts}[/dim] [green]✓ {event.step_id}: {escape(event.text)}[/green]"
+            )
             self.query_one("#step-progress-bar", ProgressBar).update(progress=100)
         elif event.kind is ProgressKind.STEP_ERROR:
             self._update_step(event.step_id, "error")
-            log_widget.write(f"[dim]{ts}[/dim] [red]✗ {event.step_id}: {event.text}[/red]")
+            log_widget.write(f"[dim]{ts}[/dim] [red]✗ {event.step_id}: {escape(event.text)}[/red]")
         elif event.kind is ProgressKind.PROGRESS:
             if event.progress_pct is not None:
                 self.query_one("#step-progress-bar", ProgressBar).update(
                     progress=event.progress_pct
                 )
         else:  # LOG
-            log_widget.write(f"[dim]{ts}[/dim] {event.text}")
+            log_widget.write(f"[dim]{ts}[/dim] {escape(event.text)}")
 
     def _finalize(self) -> None:
         # Always release the single-flight slot first: the worker body has returned, so
@@ -270,11 +273,11 @@ class InstallProgressScreen(Screen[InstallResult]):
             status.update("⚠️  Install finished without result")
             status.set_classes("status-line error")
         elif result.success:
-            status.update(f"✅ {result.message}")
+            status.update(f"✅ {escape(result.message)}")
             status.set_classes("status-line success")
             log_widget.write(f"[green]{self._final_operator_hint()}[/green]")
         else:
-            status.update(f"❌ {result.message}")
+            status.update(f"❌ {escape(result.message)}")
             status.set_classes("status-line error")
             log_widget.write(f"[yellow]{self._final_operator_hint()}[/yellow]")
             log_widget.write(
