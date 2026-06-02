@@ -10,10 +10,14 @@ on:
 permissions:
   contents: read
 
-# Cancel in-flight runs for same PR/branch (save Actions minutes)
+# Cancel in-flight runs for the same ref to save Actions minutes and avoid
+# pileups on the single self-hosted runner. NEVER cancel on `main` (promotion
+# runs must complete), but cancel superseded PR and develop/feature-branch runs —
+# the old `== 'pull_request'` guard let develop pushes serialize and stall behind
+# a stuck queued run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ---- Static checks via pre-commit hooks (single gate для всего consistency) ----
