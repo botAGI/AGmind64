@@ -86,7 +86,6 @@
     - "{{ agmind_data_dir }}/models"
     - "{{ agmind_data_dir }}/qdrant"
     - "{{ agmind_data_dir }}/postgres"
-    - "{{ agmind_data_dir }}/redis"
     - "{{ agmind_config_dir }}/prometheus"
     - "{{ agmind_config_dir }}/grafana"
     - "{{ agmind_config_dir }}/loki"
@@ -112,6 +111,13 @@
     - { path: "{{ agmind_data_dir }}/elasticsearch", owner: "1000", group: "0" }
     - { path: "{{ agmind_data_dir }}/dify/storage", owner: "1001", group: "1001" }
     - { path: "{{ agmind_data_dir }}/docling-cache", owner: "1001", group: "1001" }
+    # redis:alpine runs as uid 999 and writes dump.rdb to the MOUNT ROOT (/data). Its
+    # `redis-server --requirepass` command + non-root start means the image does NOT
+    # self-chown /data, so the dir MUST be pre-owned by 999 — otherwise bgsave fails with
+    # "Permission denied", redis enters MISCONF (writes disabled) and Authelia (whose
+    # session store is redis) crash-loops → the whole SSO login goes down. (Was previously
+    # in the agmind-chown loop above → 997-owned → exactly this failure.)
+    - { path: "{{ agmind_data_dir }}/redis", owner: "999", group: "1000" }
 
 - name: Set restrictive perms on agmind config dir
   ansible.builtin.file:
