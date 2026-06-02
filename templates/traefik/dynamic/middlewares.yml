@@ -11,21 +11,28 @@
 
 http:
   middlewares:
-    # Base ratelimit: 10 req/min per source IP
+    # Per-source-IP flood protection. NOTE: a browser loads a whole SPA (Authelia portal,
+    # Grafana, Dify, OpenWebUI…) as a BURST of 20-50 asset requests at once — the old
+    # average:10/period:1m with no burst → traefik defaults burst to 1 → every page load
+    # after the first request got 429 "Too Many Requests" (the portal was unusable). burst
+    # must comfortably cover a page-load fan-out. Login brute-force is handled separately by
+    # Authelia's own regulation, so this only needs to stop genuine floods.
     default-ratelimit:
       rateLimit:
-        average: 10
-        period: 1m
+        average: 100
+        period: 1s
+        burst: 200
         sourceCriterion:
           ipStrategy:
             depth: 1
 
-    # Tighter limit для LLM (дороже compute)
+    # LLM endpoints (compute-heavier) — a bit tighter sustained rate, but burst still must
+    # cover a UI page-load (openwebui/dify-web stream via SSE but the asset fan-out bursts).
     llm-ratelimit:
       rateLimit:
-        average: 30
-        period: 1m
-        burst: 5
+        average: 60
+        period: 1s
+        burst: 120
         sourceCriterion:
           ipStrategy:
             depth: 1
