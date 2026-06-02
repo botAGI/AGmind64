@@ -585,9 +585,9 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
     # homarr's SECRET_ENCRYPTION_KEY must be EXACTLY 64 hex chars; the base64
     # token_urlsafe output of generate_secret (43 chars, non-hex) makes homarr abort
     # at boot ("SECRET_ENCRYPTION_KEY has to be 64 characters ... hex format").
-    values["HOMARR_SECRET_ENCRYPTION_KEY"] = (
-        existing_env.get("HOMARR_SECRET_ENCRYPTION_KEY") or generate_hex_secret(32)
-    )
+    values["HOMARR_SECRET_ENCRYPTION_KEY"] = existing_env.get(
+        "HOMARR_SECRET_ENCRYPTION_KEY"
+    ) or generate_hex_secret(32)
     for key in _ALERTMANAGER_TELEGRAM_KEYS:
         values[key] = existing_env.get(key, "")
     return values

@@ -36,7 +36,16 @@ SOCK = "/var/run/docker.sock"
 # cadvisor now mounts /var/run/docker.sock:ro (hardened in Task 2) instead of /var/run:rw.
 # alloy added 2026-06-02: config.alloy uses discovery.docker + loki.source.docker
 # (host=unix:///var/run/docker.sock) for container log shipping — dead without the socket.
-SOCK_ALLOW = {"traefik", "watchtower", "dozzle", "portainer", "homarr", "netdata", "cadvisor", "alloy"}
+SOCK_ALLOW = {
+    "traefik",
+    "watchtower",
+    "dozzle",
+    "portainer",
+    "homarr",
+    "netdata",
+    "cadvisor",
+    "alloy",
+}
 
 
 def _all_descriptors() -> dict[str, ServiceDescriptor]:

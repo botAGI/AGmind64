@@ -248,6 +248,7 @@ def test_repository_deploy_targets_load() -> None:
     assert targets["k3s"].runtime.renderer == "agmind render kubernetes"
     assert targets["k3s"].status == "research"
     assert targets["k3s"].runtime.excluded_services == (
+        "alloy",
         "cadvisor",
         "dozzle",
         "homarr",

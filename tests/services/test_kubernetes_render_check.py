@@ -104,8 +104,8 @@ def test_kubernetes_render_check_reports_research_target() -> None:
     assert target.target_id == "k3s"
     assert target.renderer == "agmind render kubernetes"
     assert target.ok is True
-    assert target.object_count == 36
-    assert target.deployment_count == 22
+    assert target.object_count == 35
+    assert target.deployment_count == 21
     assert target.service_count == 13
     assert target.warning_count == 3
     assert target.warning_summary["blocker"] == 0
@@ -256,8 +256,8 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
 
     assert payload["ok"] is True
     assert payload["targets"][0]["target_id"] == "k3s"
-    assert payload["targets"][0]["object_count"] == 36
-    assert payload["targets"][0]["deployment_count"] == 22
+    assert payload["targets"][0]["object_count"] == 35
+    assert payload["targets"][0]["deployment_count"] == 21
     assert payload["targets"][0]["service_count"] == 13
     assert payload["targets"][0]["warning_count"] == 3
     assert payload["targets"][0]["warning_summary"]["blocker"] == 0
