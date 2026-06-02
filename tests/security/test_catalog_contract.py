@@ -30,11 +30,13 @@ SERVICES_DIR = Path(__file__).resolve().parents[2] / "templates" / "services"
 
 # ---- C3: docker.sock mount allowlist ----
 SOCK = "/var/run/docker.sock"
-# 7 direct sock-mounters after Task 2 cadvisor hardening (verified 2026-05-31):
+# 8 direct sock-mounters (verified 2026-06-02):
 # traefik.yaml:15, watchtower.yaml:11, dozzle.yaml:13, portainer.yaml:12,
 # homarr.yaml:13, netdata.yaml:21 — all mount the socket :ro (Task 1 baseline).
 # cadvisor now mounts /var/run/docker.sock:ro (hardened in Task 2) instead of /var/run:rw.
-SOCK_ALLOW = {"traefik", "watchtower", "dozzle", "portainer", "homarr", "netdata", "cadvisor"}
+# alloy added 2026-06-02: config.alloy uses discovery.docker + loki.source.docker
+# (host=unix:///var/run/docker.sock) for container log shipping — dead without the socket.
+SOCK_ALLOW = {"traefik", "watchtower", "dozzle", "portainer", "homarr", "netdata", "cadvisor", "alloy"}
 
 
 def _all_descriptors() -> dict[str, ServiceDescriptor]:

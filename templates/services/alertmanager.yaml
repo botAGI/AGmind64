@@ -10,6 +10,11 @@ ports:
 - 127.0.0.1:9093:9093
 volumes:
 - /etc/agmind/alertmanager:/etc/alertmanager:ro
+- /var/lib/agmind/alertmanager:/alertmanager
+run_as_uid: 65534
+# run_as_gid defaults to run_as_uid (65534)
+writable_mounts:
+- /var/lib/agmind/alertmanager
 resources:
   cpus: 1.0
   mem_limit: 512m

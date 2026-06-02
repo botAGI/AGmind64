@@ -105,6 +105,7 @@
     mode: "0755"
   loop:
     - { path: "{{ agmind_data_dir }}/prometheus", owner: "65534", group: "65534" }
+    - { path: "{{ agmind_data_dir }}/alertmanager", owner: "65534", group: "65534" }
     - { path: "{{ agmind_data_dir }}/grafana", owner: "472", group: "472" }
     - { path: "{{ agmind_data_dir }}/loki", owner: "10001", group: "10001" }
     - { path: "{{ agmind_data_dir }}/n8n", owner: "1000", group: "1000" }

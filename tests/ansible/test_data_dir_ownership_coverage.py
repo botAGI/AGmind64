@@ -264,7 +264,6 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         "mysql",
         "netdata",
         "uptime-kuma",
-        "alertmanager",
         "weaviate",
         "etcd",
         "minio",

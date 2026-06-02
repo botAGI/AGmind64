@@ -8,6 +8,7 @@ profiles:
 - observability
 volumes:
 - /etc/agmind/alloy:/etc/alloy:ro
+- /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/log:/var/log:ro
 - /var/lib/docker/containers:/var/lib/docker/containers:ro
 - /var/lib/agmind/alloy:/var/lib/alloy/data
