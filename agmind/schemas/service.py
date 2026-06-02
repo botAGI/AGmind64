@@ -138,6 +138,34 @@ class RoutingConfig(BaseModel):
     (Host-only) может перехватить path-scoped запросы."""
 
 
+class AccessConfig(BaseModel):
+    """Operator access metadata for a web-UI / model-endpoint service.
+
+    Drives the post-install summary, ``credentials.txt``, and the ``agmind endpoints`` /
+    ``agmind creds show`` commands. The URL comes from :class:`RoutingConfig`; secret *values*
+    come from the rendered ``.env`` (resolved via ``password_env``) and are never stored here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    login: str | None = None
+    """Default username (e.g. ``admin``). ``None`` = no login / account created on first visit."""
+
+    password_env: str | None = None
+    """Name of the ``.env`` var holding the admin password (e.g. ``GRAFANA_PASSWORD``).
+    ``None`` = no managed password (register-on-first-login or unauthenticated)."""
+
+    first_login_register: bool = False
+    """``True`` → operator creates the admin / registers an account on first login."""
+
+    lan_only: bool = False
+    """``True`` → not reachable through the public reverse proxy; emit an ``ssh -L`` hint."""
+
+    api_kind: Literal["openai"] | None = None
+    """If set, the service exposes a machine API (OpenAI-compatible) → render a copy-paste
+    "Add Model" block in credentials.txt instead of a human login."""
+
+
 class ObservabilityConfig(BaseModel):
     """Auto-discovery hints для observability stack.
 
@@ -301,6 +329,10 @@ class ServiceDescriptor(BaseModel):
     # ---- Auto-discovery hints ----
     routing: RoutingConfig | None = None
     """Если задано — сервис публикуется через Traefik. None = internal-only."""
+
+    access: AccessConfig | None = None
+    """Operator access metadata (login / password_env / register / lan_only / api_kind).
+    None = no operator-facing login (internal/infra service)."""
 
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 

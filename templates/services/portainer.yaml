@@ -18,6 +18,8 @@ volumes:
 resources:
   cpus: 1.0
   mem_limit: 512m
+access:
+  first_login_register: true
 routing:
   host: portainer.agmind.dev
   # unauthenticated 200-JSON endpoint on the HTTP listener (/api/status on older builds)

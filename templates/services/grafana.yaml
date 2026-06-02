@@ -24,6 +24,9 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 1g
+access:
+  login: admin
+  password_env: GRAFANA_PASSWORD
 routing:
   host: grafana.agmind.dev
   healthcheck_path: /api/health

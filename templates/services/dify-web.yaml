@@ -16,6 +16,8 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 2g
+access:
+  first_login_register: true
 routing:
   host: dify.agmind.dev
   middleware_chain: chain-llm

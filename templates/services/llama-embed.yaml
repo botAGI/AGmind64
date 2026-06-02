@@ -55,6 +55,8 @@ health:
   start_period: 600s
   interval: 15s
   retries: 5
+access:
+  api_kind: openai
 routing:
   host: embed.agmind.dev
   middleware_chain: chain-llm

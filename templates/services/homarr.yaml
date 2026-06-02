@@ -17,6 +17,8 @@ env:
 resources:
   cpus: 1.0
   mem_limit: 1g
+access:
+  first_login_register: true
 routing:
   host: homarr.agmind.dev
   middleware_chain: chain-internal

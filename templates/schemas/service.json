@@ -1,5 +1,60 @@
 {
   "$defs": {
+    "AccessConfig": {
+      "additionalProperties": false,
+      "description": "Operator access metadata for a web-UI / model-endpoint service.\n\nDrives the post-install summary, ``credentials.txt``, and the ``agmind endpoints`` /\n``agmind creds show`` commands. The URL comes from :class:`RoutingConfig`; secret *values*\ncome from the rendered ``.env`` (resolved via ``password_env``) and are never stored here.",
+      "properties": {
+        "login": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Login"
+        },
+        "password_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Password Env"
+        },
+        "first_login_register": {
+          "default": false,
+          "title": "First Login Register",
+          "type": "boolean"
+        },
+        "lan_only": {
+          "default": false,
+          "title": "Lan Only",
+          "type": "boolean"
+        },
+        "api_kind": {
+          "anyOf": [
+            {
+              "const": "openai",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Kind"
+        }
+      },
+      "title": "AccessConfig",
+      "type": "object"
+    },
     "HealthCheck": {
       "additionalProperties": false,
       "description": "Docker healthcheck definition (compose v3 format).\n\nИспользуется тремя потребителями (deep-dive 04 §5):\n- Docker compose: для restart logic\n- Traefik: для исключения unhealthy из роутинга\n- Prometheus blackbox: для алертинга",
@@ -342,6 +397,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/RoutingConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "access": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AccessConfig"
         },
         {
           "type": "null"

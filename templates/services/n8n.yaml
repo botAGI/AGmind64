@@ -44,6 +44,8 @@ health:
   timeout: 10s
   retries: 5
   start_period: 40s
+access:
+  first_login_register: true
 routing:
   host: n8n.agmind.dev
   middleware_chain: chain-internal

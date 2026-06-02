@@ -32,6 +32,8 @@ depends_on:
 resources:
   cpus: 8.0
   mem_limit: 16g
+access:
+  first_login_register: true
 routing:
   host: rag.agmind.dev
   middleware_chain: chain-llm

@@ -13,6 +13,7 @@ JSON Schema export для VSCode/IDE autocomplete:
 """
 
 from agmind.schemas.service import (
+    AccessConfig,
     HealthCheck,
     ObservabilityConfig,
     ResourceLimits,
@@ -22,6 +23,7 @@ from agmind.schemas.service import (
 )
 
 __all__ = [
+    "AccessConfig",
     "HealthCheck",
     "ObservabilityConfig",
     "ResourceLimits",
