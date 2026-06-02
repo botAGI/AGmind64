@@ -120,7 +120,7 @@ command:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setattr("agmind.deploy.gc.__file__", str(repo_root / "agmind" / "deploy" / "gc.py"))
+    monkeypatch.setattr("agmind.deploy.gc.data_root", lambda: repo_root)
 
     used = _scan_used_models()
 
@@ -134,7 +134,7 @@ def test_scan_used_models_raises_on_malformed_descriptor(
     services_dir = repo_root / "templates" / "services"
     services_dir.mkdir(parents=True)
     (services_dir / "broken.yaml").write_text("name: broken\n  bad: : :\n", encoding="utf-8")
-    monkeypatch.setattr("agmind.deploy.gc.__file__", str(repo_root / "agmind" / "deploy" / "gc.py"))
+    monkeypatch.setattr("agmind.deploy.gc.data_root", lambda: repo_root)
 
     with pytest.raises(ValueError, match="broken.yaml"):
         _scan_used_models()

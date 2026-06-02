@@ -13,6 +13,7 @@ from pathlib import Path
 import typer
 
 from agmind import __version__
+from agmind.core.paths import data_root
 
 
 def register(app: typer.Typer) -> None:
@@ -89,9 +90,11 @@ def register(app: typer.Typer) -> None:
     def audit() -> None:
         """Run audit_forbidden.py (forbid legacy patterns in main tree)."""  # audit: allow rule-self-reference
         import subprocess
+        import sys
 
+        script = data_root() / "scripts" / "checks" / "audit_forbidden.py"
         result = subprocess.run(
-            ["python3", "scripts/checks/audit_forbidden.py", "--fail"],
+            [sys.executable, str(script), "--fail"],
             check=False,
         )
         raise typer.Exit(code=result.returncode)

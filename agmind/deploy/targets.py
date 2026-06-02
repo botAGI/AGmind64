@@ -9,6 +9,8 @@ from typing import Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from agmind.core.paths import data_root
+
 RuntimeKind = Literal["compose", "kubernetes", "nomad"]
 ProvisionerKind = Literal["none", "opentofu-proxmox", "external"]
 ConfiguratorKind = Literal["ansible", "helm", "kustomize", "talosctl", "kubectl", "none"]
@@ -19,7 +21,7 @@ TargetStatus = Literal["supported", "experimental", "research"]
 _ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 _TOKEN_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = data_root()
 DEFAULT_DEPLOY_TARGETS_DIR = REPO_ROOT / "templates" / "deploy-targets"
 
 

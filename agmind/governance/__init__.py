@@ -8,10 +8,11 @@ import sys
 from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from agmind.core.paths import data_root
+
+REPO_ROOT = data_root()
 
 DEFAULT_CHECKS = (
     "docs-mirror",

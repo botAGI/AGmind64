@@ -9,6 +9,8 @@ from typing import Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from agmind.core.paths import data_root
+
 CandidateStatus = Literal["candidate", "accepted", "deferred", "rejected"]
 CandidateCategory = Literal[
     "creative-ai",
@@ -29,7 +31,7 @@ _ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 _TOKEN_RE = re.compile(r"^[a-z][a-z0-9_.-]*$")
 _PORT_RE = re.compile(r"^[0-9]{2,5}(/[a-z]+)?$")
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = data_root()
 DEFAULT_TOOL_CANDIDATES_DIR = REPO_ROOT / "templates" / "tool-candidates"
 
 

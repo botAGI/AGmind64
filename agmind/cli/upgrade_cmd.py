@@ -23,10 +23,11 @@ import typer
 
 from agmind.core.files import write_text_atomic
 from agmind.core.logging import logger
+from agmind.core.paths import data_root
 
 log = logger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = data_root()
 SERVICES_DIR = REPO_ROOT / "templates" / "services"
 COMPONENTS_DIR = REPO_ROOT / "templates" / "components"
 HOLDS_FILE = REPO_ROOT / "templates" / "version_holds.yaml"

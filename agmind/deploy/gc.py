@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agmind.core.logging import logger
+from agmind.core.paths import data_root
 
 log = logger(__name__)
 
@@ -323,7 +324,7 @@ def _scan_used_models() -> set[str]:
     Также скан templates/models.yaml если он существует (legacy catalog).
     """
     used: set[str] = set()
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = data_root()
 
     # Сервисные дескрипторы
     services_dir = repo_root / "templates" / "services"

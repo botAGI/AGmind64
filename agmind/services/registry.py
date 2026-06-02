@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from agmind.core.logging import logger
+from agmind.core.paths import data_root
 
 log = logger(__name__)
 
@@ -138,7 +139,7 @@ class Service:
         return self.image
 
 
-_DEFAULT_SERVICES_DIR = Path(__file__).parent.parent.parent / "templates" / "services"
+_DEFAULT_SERVICES_DIR = data_root() / "templates" / "services"
 # Legacy compat — старый монолитный yaml (удалён в Phase H'.E, но переменная
 # держится для тестов которые до сих пор её упоминают).
 _DEFAULT_REGISTRY_PATH = _DEFAULT_SERVICES_DIR.parent / "services.yaml"

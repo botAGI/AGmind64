@@ -32,6 +32,7 @@ from typing import Any
 import yaml
 
 from agmind.core.domain import validate_domain
+from agmind.core.paths import data_root
 from agmind.schemas import ServiceDescriptor
 
 # AMD-GPU groups that minimal container images (e.g. llama.cpp vulkan) do NOT carry in
@@ -73,7 +74,7 @@ def _resolve_group_add(group_add: list[str]) -> list[str]:
     return resolved
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = data_root()
 DEFAULT_SERVICES_DIR = REPO_ROOT / "templates" / "services"
 
 # Compose-spec без `version:` field — современный формат (2026).

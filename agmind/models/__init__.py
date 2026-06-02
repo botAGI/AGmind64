@@ -16,6 +16,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 from agmind.core.logging import logger
+from agmind.core.paths import data_root
 
 log = logger(__name__)
 
@@ -35,7 +36,7 @@ _TIER_RAM_THRESHOLDS_GB: dict[Tier, int] = {
     "XXL": 160,  # 128 GB+ с большим UMA budget
 }
 
-_DEFAULT_MODELS_YAML = Path(__file__).resolve().parents[2] / "templates" / "models.yaml"
+_DEFAULT_MODELS_YAML = data_root() / "templates" / "models.yaml"
 
 
 @dataclass(frozen=True)

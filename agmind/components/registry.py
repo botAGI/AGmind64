@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from agmind.components.contracts import ComponentContract
+from agmind.core.paths import data_root
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = data_root()
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / "templates" / "components"
 
 

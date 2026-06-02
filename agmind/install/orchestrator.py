@@ -24,13 +24,17 @@ from enum import Enum
 from pathlib import Path
 
 from agmind.core.logging import logger
+from agmind.core.paths import data_root
 
 log = logger(__name__)
 
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 DEFAULT_MODELS_DIR = Path("/var/lib/agmind/models")
 DEFAULT_CONFIG_DIR = Path("/etc/agmind")
-DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
+# Data root (templates/ + ansible/): repo root in a checkout, the package dir in
+# a wheel. Kept named DEFAULT_REPO_ROOT for byte-stable re-exports (steps.py /
+# verify.py) and tests. See agmind.core.paths.data_root.
+DEFAULT_REPO_ROOT = data_root()
 
 
 class ProgressKind(str, Enum):

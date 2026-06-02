@@ -89,10 +89,63 @@ npu = "agmind.compute.backends.npu_stub:NPUStubBackend"
 Documentation = "https://github.com/botAGI/AGmind64"
 Repository = "https://github.com/botAGI/AGmind64"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["agmind*"]
-exclude = ["legacy*", "tests*", "scripts*", "docs*"]
+# Explicit package list (not `packages.find`): the data trees below are mapped
+# into the `agmind` namespace via `package-dir`, and setuptools only ships them
+# when they are declared packages. tests/core/test_data_root.py guards this list
+# against drift (every agmind subpackage must be declared; the 3 data dirs must
+# be wired as package-data).
+[tool.setuptools]
+packages = [
+  "agmind",
+  "agmind.addons",
+  "agmind.ci",
+  "agmind.cli",
+  "agmind.cli.tui",
+  "agmind.cluster",
+  "agmind.components",
+  "agmind.compute",
+  "agmind.compute.backends",
+  "agmind.compute.backends._engines",
+  "agmind.compute.clients",
+  "agmind.config",
+  "agmind.core",
+  "agmind.deploy",
+  "agmind.diagnostics",
+  "agmind.governance",
+  "agmind.i18n",
+  "agmind.install",
+  "agmind.migrations",
+  "agmind.migrations.versions",
+  "agmind.models",
+  "agmind.observability",
+  "agmind.ops",
+  "agmind.schemas",
+  "agmind.services",
+  # Data trees bundled *inside* the wheel so an installed `agmind` can run
+  # `agmind install` (templates/ + ansible/) and maintenance commands
+  # (scripts/). In an editable checkout, data_root() still uses the repo tree.
+  "agmind.templates",
+  "agmind.ansible",
+  "agmind.scripts",
+]
+
+[tool.setuptools.package-dir]
+"agmind.templates" = "templates"
+"agmind.ansible" = "ansible"
+"agmind.scripts" = "scripts"
+
+[tool.setuptools.package-data]
+"agmind.templates" = ["**/*"]
+"agmind.ansible" = ["**/*"]
+"agmind.scripts" = ["**/*"]
+
+[tool.setuptools.exclude-package-data]
+# Keep gitignored runtime caches and bytecode out of the wheel. ansible/.galaxy
+# (downloaded collections) and ansible/.facts_cache are installed/created at
+# runtime, never shipped.
+"agmind.ansible" = [".galaxy/**", ".facts_cache/**", "**/__pycache__/**", "**/*.pyc"]
+"agmind.scripts" = ["**/__pycache__/**", "**/*.pyc"]
+"agmind.templates" = ["**/__pycache__/**", "**/*.pyc"]
 
 [tool.ruff]
 line-length = 100
