@@ -78,6 +78,16 @@ class RestoreResult:
     metadata: dict[str, object]
 
 
+@dataclass(frozen=True)
+class PlanRow:
+    """One row of a read-only restore plan (`restore_plan`)."""
+
+    label: str
+    kind: str  # "file" | "dir" | "data" | "missing"
+    target: str  # resolved destination path ("" if unknown)
+    detail: str  # size / child count / data kind
+
+
 def default_sources(
     install_dir: Path = DEFAULT_INSTALL_DIR,
     user_dir: Path = DEFAULT_USER_DIR,
@@ -386,6 +396,57 @@ def read_metadata(backup_path: Path) -> dict[str, object]:
             return dict(payload)
     except tarfile.TarError as exc:
         raise ValueError(f"invalid backup archive: {backup_path} ({exc})") from exc
+
+
+def restore_plan(
+    backup_path: Path,
+    install_dir: Path = DEFAULT_INSTALL_DIR,
+    user_dir: Path = DEFAULT_USER_DIR,
+    system_dir: Path = DEFAULT_SYSTEM_DIR,
+    labels: list[str] | None = None,
+) -> list[PlanRow]:
+    """Read-only plan of what ``restore_backup`` would do — never mutates anything.
+
+    One row per included label (filtered to ``labels`` when given), classifying the
+    archive member (file/dir/data) and resolving the destination from
+    ``default_sources``. Used by ``agmind restore --dry-run``.
+    """
+    backup_path = Path(backup_path)
+    metadata = read_metadata(backup_path)
+    included_raw = metadata.get("included", [])
+    included = [str(x) for x in included_raw] if isinstance(included_raw, list) else []
+    by_label = {s.label: s for s in default_sources(install_dir, user_dir, system_dir)}
+    raw_data = metadata.get("data", [])
+    data_meta = (
+        {str(m.get("label")): m for m in raw_data if isinstance(m, dict)}
+        if isinstance(raw_data, list)
+        else {}
+    )
+    wanted = set(labels) if labels else None
+
+    rows: list[PlanRow] = []
+    with tarfile.open(backup_path, "r:gz") as tar:
+        names = {m.name: m for m in tar.getmembers()}
+        for label in included:
+            if wanted is not None and label not in wanted:
+                continue
+            target = str(by_label[label].path) if label in by_label else ""
+            if label in data_meta:
+                kind = str(data_meta[label].get("kind", "data"))
+                rows.append(PlanRow(label, "data", target, kind))
+                continue
+            arcname = _safe_member_name(label)
+            member = names.get(arcname)
+            if member is not None and member.isfile():
+                rows.append(PlanRow(label, "file", target, f"{member.size} bytes"))
+                continue
+            children = [m for n, m in names.items() if n.startswith(f"{arcname}/") and m.isfile()]
+            if children or (member is not None and member.isdir()):
+                total = sum(c.size for c in children)
+                rows.append(PlanRow(label, "dir", target, f"{len(children)} files, {total} bytes"))
+            else:
+                rows.append(PlanRow(label, "missing", target, "not in archive"))
+    return rows
 
 
 def verify_backup(backup_path: Path) -> list[str]:

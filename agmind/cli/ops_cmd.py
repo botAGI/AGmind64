@@ -25,6 +25,7 @@ from agmind.ops.backup import (
     default_sources,
     read_metadata,
     restore_backup,
+    restore_plan,
     verify_backup,
 )
 from agmind.ops.exec import logs as do_logs
@@ -151,6 +152,8 @@ def cmd_restore(
     user_dir: Path = DEFAULT_USER_DIR,
     system_dir: Path = DEFAULT_SYSTEM_DIR,
     ask_sudo_password: bool = False,
+    dry_run: bool = False,
+    labels: list[str] | None = None,
 ) -> int:
     backup_path = Path(backup_path)
     if not backup_path.exists():
@@ -168,6 +171,32 @@ def cmd_restore(
     print(f"agmind restore: backup from {metadata.get('created_at', '?')}")
     print(f"  format v{metadata.get('format_version', '?')}")
     print(f"  includes: {', '.join(included) or '<none>'}")
+
+    # Validate --label values up-front (a typo'd label would otherwise silently
+    # restore nothing, since restore_backup skips labels with no destination).
+    if labels:
+        unknown = [lbl for lbl in labels if lbl not in included]
+        if unknown:
+            print(
+                f"agmind restore: unknown label(s): {', '.join(unknown)}; "
+                f"available: {', '.join(included) or '<none>'}",
+                file=sys.stderr,
+            )
+            return 2
+
+    if dry_run:
+        rows = restore_plan(
+            backup_path,
+            install_dir=install_dir,
+            user_dir=user_dir,
+            system_dir=system_dir,
+            labels=labels,
+        )
+        print("\nRestore plan (dry-run):")
+        for row in rows:
+            print(f"  {row.label:<14} {row.kind:<8} {row.target or '<no target>'}  ({row.detail})")
+        print("\nno changes made (dry-run).")
+        return 0
 
     # L.E.5: detect running deployment ДО overwrite — restore поверх работающего
     # compose'а гарантированно ломает container'ы (compose файл меняется на лету).
@@ -188,6 +217,9 @@ def cmd_restore(
             return 1
 
     sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
+    if labels:
+        wanted = set(labels)
+        sources = [s for s in sources if s.label in wanted]
     try:
         result = restore_backup(
             backup_path=backup_path,
@@ -199,6 +231,11 @@ def cmd_restore(
         return 1
 
     print(f"✓ restored {len(result.extracted)}: {', '.join(result.extracted) or '<none>'}")
+
+    # A selective (--label) restore skips the whole-deployment hints below — they
+    # only apply to a full restore.
+    if labels:
+        return 0
 
     # L.E.1: hint про cf_dns_api_token — он не в backup'е, secret.
     token_path = user_dir / "cf_dns_api_token"
@@ -334,6 +371,15 @@ def register(app: typer.Typer) -> None:
     def restore(
         backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
         yes: bool = typer.Option(False, "-y", "--yes", help="Skip interactive confirmation."),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="Print the restore plan and exit without changing anything."
+        ),
+        label: list[str] | None = typer.Option(
+            None,
+            "--label",
+            help="Restore only these config categories (repeatable; e.g. --label env "
+            "--label descriptors). Default: all included.",
+        ),
         ask_sudo_password: bool = typer.Option(
             False,
             "--ask-sudo-password",
@@ -342,7 +388,13 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Restore deployment from `agmind backup` archive (Phase L.E)."""
         raise typer.Exit(
-            code=cmd_restore(backup_file, yes=yes, ask_sudo_password=ask_sudo_password)
+            code=cmd_restore(
+                backup_file,
+                yes=yes,
+                ask_sudo_password=ask_sudo_password,
+                dry_run=dry_run,
+                labels=label,
+            )
         )
 
     ops_app = typer.Typer(
