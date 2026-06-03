@@ -2,6 +2,10 @@
 
 Детальный setup AGmind на AMD Strix Halo (gfx1151).
 
+> No internet on the target host? See
+> [`docs/installation/offline-install.md`](installation/offline-install.md) for
+> the air-gap path (`docker save`/`load` + `AGMIND_OFFLINE=1`).
+
 ## Recommended clean TUI install
 
 Для новой ручной установки сначала докажи рендер и зависимости без мутаций,

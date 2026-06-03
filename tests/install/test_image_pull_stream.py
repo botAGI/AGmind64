@@ -116,3 +116,54 @@ def test_image_pull_streams_plain_without_quiet(
     assert "--quiet" not in cmd, "the silent --quiet flag must be gone (it froze the bar)"
     assert "--progress" in cmd and cmd[cmd.index("--progress") + 1] == "plain"
     assert cmd.index("--progress") < cmd.index("pull")
+
+
+def _run_pull_capturing_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    from agmind.services import renderer
+
+    monkeypatch.setattr(
+        renderer,
+        "render_to_string",
+        lambda **_kw: "services:\n  redis:\n    image: redis:8.4.3-alpine\n",
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_stream(cmd: list[str], callback: object, step_id: str, **_kw: object):
+        captured["cmd"] = cmd
+        return 0, []
+
+    monkeypatch.setattr(steps, "_stream_subprocess", fake_stream)
+    result = ImagePullStep().run(lambda _e: None, _cfg(tmp_path, ["redis"]))
+    assert result.success
+    return captured["cmd"]
+
+
+def test_image_pull_online_default_uses_policy_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AGMIND_OFFLINE", raising=False)
+    cmd = _run_pull_capturing_cmd(tmp_path, monkeypatch)
+    assert cmd[cmd.index("--policy") + 1] == "missing"
+
+
+def test_image_pull_offline_uses_policy_never(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # AGMIND_OFFLINE must keep the pull off the network (docker save/load strips
+    # the RepoDigest, so `--policy missing` would re-pull and fail air-gap).
+    monkeypatch.setenv("AGMIND_OFFLINE", "1")
+    cmd = _run_pull_capturing_cmd(tmp_path, monkeypatch)
+    assert cmd[cmd.index("--policy") + 1] == "never"
+
+
+def test_offline_enabled_truthy_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.install.steps import _offline_install_enabled
+
+    for val in ("1", "true", "TRUE", "yes", "on"):
+        monkeypatch.setenv("AGMIND_OFFLINE", val)
+        assert _offline_install_enabled() is True
+    for val in ("", "0", "false", "no"):
+        monkeypatch.setenv("AGMIND_OFFLINE", val)
+        assert _offline_install_enabled() is False
+    monkeypatch.delenv("AGMIND_OFFLINE", raising=False)
+    assert _offline_install_enabled() is False

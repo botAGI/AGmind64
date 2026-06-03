@@ -1379,6 +1379,18 @@ class ComposeConfigStep(InstallStep):
         )
 
 
+def _offline_install_enabled() -> bool:
+    """True when ``AGMIND_OFFLINE`` requests an air-gap install (no network pulls).
+
+    docker save/load strips an image's RepoDigest, so a digest-pinned
+    ``compose pull --policy missing`` re-pulls from the network and fails in an
+    air-gap. When offline we switch the pull to ``--policy never`` (a no-op skip;
+    DeployStep already runs ``up --pull never``), so preloaded images are used
+    and missing ones surface at deploy time rather than hanging on the network.
+    """
+    return os.environ.get("AGMIND_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 class ImagePullStep(InstallStep):
     """`docker compose pull` после bootstrap (user уже в docker group).
 
@@ -1428,9 +1440,21 @@ class ImagePullStep(InstallStep):
             # NO --quiet: it suppressed every per-layer line and froze the bar at 0%
             # during multi-GB pulls. --progress plain (global flag) streams readable,
             # non-ANSI lines that RichLog can render; --policy missing keeps it idempotent.
+            # AGMIND_OFFLINE → --policy never so an air-gap install never hits the network
+            # (images are preloaded via `docker load`; see docs/installation/offline-install.md).
+            offline = _offline_install_enabled()
+            if offline:
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.LOG,
+                        "AGMIND_OFFLINE: skipping network pull (--policy never); "
+                        "images must be preloaded via `docker load`",
+                    )
+                )
             cmd = _docker_compose_cmd(
                 config,
-                ["pull", "--policy", "missing"],
+                ["pull", "--policy", "never" if offline else "missing"],
                 env_file=compose_env_file,
                 progress="plain",
             )
