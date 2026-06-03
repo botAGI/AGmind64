@@ -52,6 +52,7 @@ def _make_app() -> typer.Typer:
         cluster_cmd,
         core_cmd,
         deploy_cmd,
+        estimate_cmd,
         governance_cmd,
         install_cmd,
         migrate_cmd,
@@ -76,6 +77,7 @@ def _make_app() -> typer.Typer:
     governance_cmd.register(app)
     render_cmd.register(app)
     cluster_cmd.register(app)
+    estimate_cmd.register(app)
     upgrade_cmd.register(app)
     models_cmd.register(app)
     ops_cmd.register(app)
