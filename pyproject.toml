@@ -127,17 +127,22 @@ packages = [
   "agmind.templates",
   "agmind.ansible",
   "agmind.scripts",
+  # docs/ is bundled so doc-reading commands (`agmind troubleshoot`) resolve
+  # data_root()/docs/ in a wheel install, not only an editable checkout.
+  "agmind.docs",
 ]
 
 [tool.setuptools.package-dir]
 "agmind.templates" = "templates"
 "agmind.ansible" = "ansible"
 "agmind.scripts" = "scripts"
+"agmind.docs" = "docs"
 
 [tool.setuptools.package-data]
 "agmind.templates" = ["**/*"]
 "agmind.ansible" = ["**/*"]
 "agmind.scripts" = ["**/*"]
+"agmind.docs" = ["**/*"]
 
 [tool.setuptools.exclude-package-data]
 # Keep gitignored runtime caches and bytecode out of the wheel. ansible/.galaxy

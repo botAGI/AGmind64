@@ -88,7 +88,15 @@ def test_data_dirs_are_bundled_as_package_data() -> None:
         ("agmind.templates", "templates"),
         ("agmind.ansible", "ansible"),
         ("agmind.scripts", "scripts"),
+        ("agmind.docs", "docs"),
     ):
         assert name in st["packages"], f"{name} missing from packages"
         assert st["package-dir"][name] == src, f"{name} package-dir mismatch"
         assert st["package-data"][name], f"{name} has no package-data glob"
+
+
+def test_docs_resolve_under_data_root() -> None:
+    # `agmind troubleshoot` reads data_root()/docs/TROUBLESHOOTING.md, so the
+    # docs tree must be locatable in both layouts (bundled as agmind.docs in a
+    # wheel, repo-root docs/ in a checkout).
+    assert (data_root() / "docs" / "TROUBLESHOOTING.md").is_file()
