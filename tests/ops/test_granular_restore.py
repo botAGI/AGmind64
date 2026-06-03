@@ -104,12 +104,19 @@ def test_cmd_restore_invalid_label_hard_errors(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(pytest.importorskip("typer") is None, reason="typer not installed")
-def test_restore_help_exposes_dry_run_and_label() -> None:
+def test_restore_cli_accepts_dry_run_and_label() -> None:
+    # Behavioral wiring check, robust to rich-rendered help (which wraps by
+    # terminal width). A missing backup makes cmd_restore return 2 ("file not
+    # found") — which it only reaches if --dry-run/--label are accepted options;
+    # an unknown option would be a typer usage error before cmd_restore runs.
     from typer.testing import CliRunner
 
     from agmind.cli import _make_app
 
-    result = CliRunner().invoke(_make_app(), ["restore", "--help"])
-    assert result.exit_code == 0
-    assert "--dry-run" in result.output
-    assert "--label" in result.output
+    result = CliRunner().invoke(
+        _make_app(),
+        ["restore", "/no/such/agmind-backup.tar.gz", "--dry-run", "--label", "env"],
+    )
+    assert "No such option" not in result.output
+    assert result.exit_code == 2
+    assert "not found" in result.output.lower()
