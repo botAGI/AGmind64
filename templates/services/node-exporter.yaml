@@ -6,8 +6,14 @@ tier: ops
 purpose: Host metrics (CPU/disk/memory/network)
 profiles:
 - observability
+# Read the host textfile dir where scripts/ops/amdgpu_textfile.sh writes amdgpu.prom
+# (AMD Strix Halo gfx1151 has no working upstream Prometheus exporter — see that script).
+# Without this flag + mount the GPU metrics are generated on the host but never scraped.
+command:
+- --collector.textfile.directory=/var/lib/node_exporter/textfile
 volumes:
 - /:/host:ro,rslave
+- /var/lib/node_exporter/textfile:/var/lib/node_exporter/textfile:ro
 resources:
   cpus: 0.5
   mem_limit: 256m

@@ -317,8 +317,10 @@ _WRITE_PATH_KEYWORDS = (".path", ".directory", "storage.path", "ruler", ".dir")
 # Flag substrings that indicate a *read* config source (not a write destination).
 # Flags containing these patterns are excluded from write-path detection even if
 # they also match a _WRITE_PATH_KEYWORDS keyword (e.g. traefik
-# --providers.file.directory is a config reader, not a data writer).
-_WRITE_PATH_EXCLUDES = ("providers.", "config.file", "config-file")
+# --providers.file.directory is a config reader, not a data writer;
+# node-exporter --collector.textfile.directory only *reads* peer-written .prom files,
+# so its :ro mount is correct — not an EROFS write target).
+_WRITE_PATH_EXCLUDES = ("providers.", "config.file", "config-file", "textfile.directory")
 
 
 def _parse_container_path(volume_spec: str) -> str | None:

@@ -53,7 +53,8 @@ def test_resolve_plain_literal() -> None:
 def test_flags_changeme_default_when_generator_missing() -> None:
     descriptors = {
         "dify-api": _svc(
-            "dify-api", {"PLUGIN_DAEMON_KEY": "${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}"}
+            "dify-api",
+            {"PLUGIN_DAEMON_KEY": "${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}"},
         )
     }
     errors = find_weak_secret_envs(descriptors, {})  # generator absent → default leaks
@@ -63,7 +64,8 @@ def test_flags_changeme_default_when_generator_missing() -> None:
 def test_ok_when_generated_value_present() -> None:
     descriptors = {
         "dify-api": _svc(
-            "dify-api", {"PLUGIN_DAEMON_KEY": "${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}"}
+            "dify-api",
+            {"PLUGIN_DAEMON_KEY": "${DIFY_PLUGIN_DAEMON_KEY:-changeme-plugin-daemon-key}"},
         )
     }
     env = {"DIFY_PLUGIN_DAEMON_KEY": "x" * 32}
@@ -83,7 +85,9 @@ def test_ignores_non_secret_keys() -> None:
 def test_url_with_strong_embedded_password_is_ok() -> None:
     # CELERY_BROKER_URL embeds the generated redis password — not weak.
     descriptors = {
-        "worker": _svc("worker", {"CELERY_BROKER_URL": "redis://:${REDIS_PASSWORD:?x}@redis:6379/1"})
+        "worker": _svc(
+            "worker", {"CELERY_BROKER_URL": "redis://:${REDIS_PASSWORD:?x}@redis:6379/1"}
+        )
     }
     assert find_weak_secret_envs(descriptors, {"REDIS_PASSWORD": "z" * 32}) == []
 
