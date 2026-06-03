@@ -1,0 +1,165 @@
+"""Data-tier backup enumeration.
+
+`agmind backup` historically saved only config (compose/.env/descriptors). The *data* —
+postgres/mysql contents and the /var/lib/agmind/* volume dirs — was excluded, so a restore
+could not bring back a stack's state. This module enumerates, per deployed service:
+
+- **DB dumps** for postgres/mysql — logical, transaction-consistent dumps via ``docker exec``
+  (preferred over a raw tar of a running DB's data dir, which is crash-consistent at best).
+  Postgres uses in-container local-socket trust (no password in argv — validated in research);
+  mysql passes the root password via ``MYSQL_PWD`` env to ``docker exec``, never as a ``-p`` arg.
+- **Volume dirs** for every other service with a writable ``/var/lib/agmind/<svc>`` bind — tarred
+  by the caller (the existing sudo-tar path in agmind.ops.backup; host binds mean no
+  ``docker run alpine`` is needed).
+
+Enumeration is descriptor-driven and scoped to the deployed service closure.
+"""
+
+from __future__ import annotations
+
+import gzip
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from agmind.schemas import ServiceDescriptor
+
+_DATA_PREFIX = "/var/lib/agmind/"
+
+_Run = Callable[..., "subprocess.CompletedProcess[bytes]"]
+
+# Services whose data is captured as a logical DB dump rather than a volume tar.
+_DB_ENGINES = {"postgres": "postgres", "mysql": "mysql"}
+
+
+@dataclass(frozen=True)
+class DataVolumeSource:
+    """A writable host data dir to tar into the backup."""
+
+    label: str
+    host_path: Path
+
+
+@dataclass(frozen=True)
+class DbDumpSource:
+    """A logical DB dump captured via ``docker exec`` and stored as an archive member."""
+
+    label: str
+    container: str
+    engine: str  # "postgres" | "mysql"
+    user: str
+    database: str
+    password: str = ""
+
+    def dump_command(self) -> list[str]:
+        """Return the ``docker exec`` argv whose stdout is the dump (caller gzips + stores)."""
+        if self.engine == "postgres":
+            # in-container unix-socket connections use trust auth → no password in argv
+            return ["docker", "exec", self.container, "pg_dump", "-U", self.user, self.database]
+        if self.engine == "mysql":
+            cmd = ["docker", "exec"]
+            if self.password:
+                cmd += ["-e", f"MYSQL_PWD={self.password}"]  # via env, never -p<pw> in argv
+            cmd += [
+                self.container,
+                "mysqldump",
+                "--single-transaction",
+                "--quick",
+                "-u",
+                self.user,
+                self.database,
+            ]
+            return cmd
+        raise ValueError(f"unknown db engine: {self.engine!r}")
+
+
+def _host_data_path(volume_spec: str) -> Path | None:
+    """Return the host path of a writable ``/var/lib/agmind/*`` bind, else None."""
+    parts = volume_spec.split(":")
+    if len(parts) < 2:
+        return None
+    host = parts[0]
+    mode = parts[2] if len(parts) > 2 else ""
+    if "ro" in mode.split(","):
+        return None
+    if not host.startswith(_DATA_PREFIX):
+        return None
+    return Path(host)
+
+
+def data_sources(
+    services: Sequence[str],
+    descriptors: Mapping[str, ServiceDescriptor],
+    env: Mapping[str, str],
+) -> list[DataVolumeSource | DbDumpSource]:
+    """Enumerate data-tier backup sources for the deployed service closure."""
+    out: list[DataVolumeSource | DbDumpSource] = []
+    for name in services:
+        descriptor = descriptors.get(name)
+        if descriptor is None:
+            continue
+        engine = _DB_ENGINES.get(name)
+        if engine == "postgres":
+            user = descriptor.env.get("POSTGRES_USER", "postgres")
+            out.append(
+                DbDumpSource(
+                    label=f"dbdump/{name}",
+                    container=f"agmind-{name}",
+                    engine="postgres",
+                    user=user,
+                    database=descriptor.env.get("POSTGRES_DB", user),
+                    password=env.get("POSTGRES_PASSWORD", ""),
+                )
+            )
+            continue
+        if engine == "mysql":
+            out.append(
+                DbDumpSource(
+                    label=f"dbdump/{name}",
+                    container=f"agmind-{name}",
+                    engine="mysql",
+                    user="root",
+                    database=descriptor.env.get("MYSQL_DATABASE", ""),
+                    password=env.get("MYSQL_ROOT_PASSWORD", ""),
+                )
+            )
+            continue
+        for volume in descriptor.volumes:
+            host_path = _host_data_path(volume)
+            if host_path is not None:
+                out.append(DataVolumeSource(label=f"volume/{name}", host_path=host_path))
+                break
+    return out
+
+
+def dump_to_gzip(source: DbDumpSource, *, run: _Run = subprocess.run) -> bytes:
+    """Run the DB dump command and return its gzipped stdout. Raises OSError on failure."""
+    proc = run(source.dump_command(), capture_output=True, check=False)
+    if proc.returncode != 0:
+        err = (proc.stderr or b"").decode("utf-8", "replace")[:200]
+        raise OSError(f"{source.label} dump failed (rc={proc.returncode}): {err}")
+    return gzip.compress(proc.stdout)
+
+
+def restore_db_command(source: DbDumpSource) -> list[str]:
+    """Return the ``docker exec -i`` argv that loads a (gunzipped) dump on stdin into the DB."""
+    if source.engine == "postgres":
+        return [
+            "docker",
+            "exec",
+            "-i",
+            source.container,
+            "psql",
+            "-U",
+            source.user,
+            "-d",
+            source.database,
+        ]
+    if source.engine == "mysql":
+        cmd = ["docker", "exec", "-i"]
+        if source.password:
+            cmd += ["-e", f"MYSQL_PWD={source.password}"]
+        cmd += [source.container, "mysql", source.database]
+        return cmd
+    raise ValueError(f"unknown db engine: {source.engine!r}")

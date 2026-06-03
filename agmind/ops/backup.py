@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import io
 import json
 import os
@@ -26,11 +28,18 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from agmind.core.logging import logger
+from agmind.ops.backup_data import (
+    DataVolumeSource,
+    DbDumpSource,
+    dump_to_gzip,
+    restore_db_command,
+)
 
 log = logger(__name__)
 
@@ -226,8 +235,16 @@ def create_backup(
     output_path: Path,
     sources: list[BackupSource] | None = None,
     sudo_password: str | None = None,
+    *,
+    data_sources: list[DataVolumeSource | DbDumpSource] | None = None,
+    data_run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
 ) -> BackupResult:
-    """Create tar.gz backup at output_path. Returns BackupResult."""
+    """Create tar.gz backup at output_path. Returns BackupResult.
+
+    ``data_sources`` (from ``agmind.ops.backup_data.data_sources``) add a *data tier*: DB logical
+    dumps (stored gzipped as ``<label>.sql.gz`` members) and ``/var/lib/agmind/*`` volume dirs.
+    Each is recorded in metadata ``data`` with its kind (+ sha256 for dumps) for verify/restore.
+    """
     if sources is None:
         sources = default_sources()
 
@@ -271,11 +288,48 @@ def create_backup(
                     _raise_unsupported_backup_member(str(src.path))
                 included.append(src.label)
 
+            data_members: list[dict[str, str]] = []
+            for ds in data_sources or []:
+                arcname = _safe_member_name(ds.label)
+                if isinstance(ds, DbDumpSource):
+                    payload = dump_to_gzip(ds, run=data_run or subprocess.run)
+                    arcname = f"{arcname}.sql.gz"
+                    _add_bytes_member(tar, arcname, payload, mode=0o600)
+                    data_members.append(
+                        {
+                            "label": ds.label,
+                            "arcname": arcname,
+                            "kind": "dbdump",
+                            "engine": ds.engine,
+                            "container": ds.container,
+                            "user": ds.user,
+                            "database": ds.database,
+                            "sha256": hashlib.sha256(payload).hexdigest(),
+                        }
+                    )
+                else:  # DataVolumeSource — tar the host data dir
+                    if ds.host_path.is_symlink() or not ds.host_path.is_dir():
+                        _raise_unsupported_backup_member(str(ds.host_path))
+                    if sudo_password is not None:
+                        _add_sudo_directory(tar, ds.host_path, arcname, sudo_password)
+                    else:
+                        _add_local_directory(tar, ds.host_path, arcname)
+                    data_members.append(
+                        {
+                            "label": ds.label,
+                            "arcname": arcname,
+                            "kind": "volume",
+                            "host_path": str(ds.host_path),
+                        }
+                    )
+                included.append(ds.label)
+
             metadata = {
                 "format_version": BACKUP_FORMAT_VERSION,
                 "created_at": datetime.now(UTC).isoformat(),
                 "included": included,
                 "missing": missing,
+                "data": data_members,
                 "sources": [
                     {"label": s.label, "path": str(s.path), "optional": s.optional} for s in sources
                 ],
@@ -339,6 +393,9 @@ def restore_backup(
     destinations: dict[str, Path] | None = None,
     sources: list[BackupSource] | None = None,
     sudo_password: str | None = None,
+    *,
+    db_passwords: dict[str, str] | None = None,
+    data_run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
 ) -> RestoreResult:
     """Extract backup into filesystem.
 
@@ -365,9 +422,18 @@ def restore_backup(
     included_labels = metadata.get("included", [])
     if not isinstance(included_labels, list):
         included_labels = []
+    raw_data_members = metadata.get("data", [])
+    data_members = (
+        [m for m in raw_data_members if isinstance(m, dict)]
+        if isinstance(raw_data_members, list)
+        else []
+    )
+    data_labels = {str(m.get("label")) for m in data_members}
 
     with tarfile.open(backup_path, "r:gz") as tar:
         for label in included_labels:
+            if str(label) in data_labels:
+                continue  # data members are restored by kind below, not as config files
             arcname = _safe_member_name(str(label))
             try:
                 member = tar.getmember(arcname)
@@ -396,6 +462,37 @@ def restore_backup(
                     sudo_password=sudo_password,
                 )
             extracted.append(str(label))
+
+        for member_meta in data_members:
+            kind = member_meta.get("kind")
+            arcname = str(member_meta.get("arcname", ""))
+            dlabel = str(member_meta.get("label", arcname))
+            try:
+                member = tar.getmember(arcname)
+            except KeyError:
+                log.warning("backup: data member %s missing in archive", dlabel)
+                continue
+            if kind == "volume":
+                target = destinations.get(dlabel) or Path(str(member_meta.get("host_path", "")))
+                _extract_dir(tar, member, Path(target), sudo_password=sudo_password)
+                extracted.append(dlabel)
+            elif kind == "dbdump":
+                payload = tar.extractfile(member)
+                if payload is None:
+                    log.warning("cannot read dbdump member %s", dlabel)
+                    continue
+                sql = gzip.decompress(payload.read())
+                src = DbDumpSource(
+                    label=dlabel,
+                    container=str(member_meta.get("container", "")),
+                    engine=str(member_meta.get("engine", "")),
+                    user=str(member_meta.get("user", "")),
+                    database=str(member_meta.get("database", "")),
+                    password=(db_passwords or {}).get(dlabel, ""),
+                )
+                runner = data_run or subprocess.run
+                runner(restore_db_command(src), input=sql, check=False)
+                extracted.append(dlabel)
 
     return RestoreResult(extracted=tuple(extracted), metadata=metadata)
 

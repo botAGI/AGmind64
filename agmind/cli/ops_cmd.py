@@ -94,15 +94,30 @@ def cmd_shell(
 def cmd_backup(
     output: Path,
     ask_sudo_password: bool = False,
+    *,
+    include_data: bool = False,
+    install_dir: Path = BACKUP_INSTALL_DIR,
 ) -> int:
     output = Path(output)
     if output.exists():
         print(f"agmind backup: refusing to overwrite existing {output}", file=sys.stderr)
         return 2
+    data_sources = None
+    if include_data:
+        from agmind.core.env import parse_env_file
+        from agmind.ops.backup_data import data_sources as enumerate_data_sources
+        from agmind.services.renderer import load_descriptors
+
+        descriptors = load_descriptors()
+        services = _running_compose_services(install_dir)
+        env_path = install_dir / ".env"
+        env = parse_env_file(env_path) if env_path.exists() else {}
+        data_sources = enumerate_data_sources(services, descriptors, env)
     try:
         result: BackupResult = create_backup(
             output_path=output,
             sudo_password=_prompt_sudo_password(ask_sudo_password),
+            data_sources=data_sources,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         print(f"agmind backup: {exc}", file=sys.stderr)
@@ -283,9 +298,18 @@ def register(app: typer.Typer) -> None:
             "--ask-sudo-password",
             help="Prompt for sudo password for root-owned install/snapshot paths",
         ),
+        include_data: bool = typer.Option(
+            False,
+            "--include-data",
+            help="Also back up the DATA tier: postgres/mysql logical dumps + "
+            "/var/lib/agmind/* volume dirs of the running services (needs --ask-sudo-password "
+            "for root-owned data dirs).",
+        ),
     ) -> None:
         """Create tar.gz backup of compose / .env / state / snapshots (Phase L.E)."""
-        raise typer.Exit(code=cmd_backup(output, ask_sudo_password=ask_sudo_password))
+        raise typer.Exit(
+            code=cmd_backup(output, ask_sudo_password=ask_sudo_password, include_data=include_data)
+        )
 
     @app.command()
     def restore(

@@ -856,6 +856,7 @@ def test_backup_cli_prompts_and_passes_sudo_password(
     def fake_create_backup(
         output_path: Path,
         sudo_password: str | None = None,
+        data_sources: object = None,
     ) -> BackupResult:
         calls["output_path"] = output_path
         calls["sudo_password"] = sudo_password
@@ -884,6 +885,7 @@ def test_backup_cli_reports_sudo_failure_without_traceback(
     def fake_create_backup(
         output_path: Path,
         sudo_password: str | None = None,
+        data_sources: object = None,
     ) -> None:
         raise OSError("sudo command failed (cat): sudo denied")
 
@@ -907,6 +909,7 @@ def test_backup_cli_reports_invalid_source_without_traceback(
     def fake_create_backup(
         output_path: Path,
         sudo_password: str | None = None,
+        data_sources: object = None,
     ) -> None:
         raise ValueError("unsupported backup source member: /opt/AGmind/.env")
 
