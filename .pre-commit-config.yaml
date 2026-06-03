@@ -60,6 +60,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(templates/services/|scripts/checks/healthcheck_tool_check\.py$)
+      - id: agmind-landmines-check
+        name: AGmind rendered-output landmines (Правила)
+        entry: .venv/bin/python scripts/checks/landmines_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/services/|agmind/services/renderer\.py|scripts/checks/landmines_check\.py$)
       - id: agmind-governance-check
         name: AGmind aggregate governance check
         entry: .venv/bin/python scripts/checks/governance_check.py
