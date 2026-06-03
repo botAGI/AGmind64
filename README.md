@@ -320,6 +320,8 @@ docs/                  Operations notes, benchmarks, codebase map, ADRs
 - [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) - benchmark methodology and results.
 - [`docs/CLUSTER.md`](docs/CLUSTER.md) - cluster and inventory notes.
 - [`docs/CODEBASE.md`](docs/CODEBASE.md) - codebase responsibility map.
+- [`docs/operations/incident-response.md`](docs/operations/incident-response.md) -
+  incident triage and recovery runbook.
 - [`infra/proxmox/vm-compose/README.md`](infra/proxmox/vm-compose/README.md) -
   Proxmox VM provisioning target.
 - [`docs/adr/`](docs/adr/) - architecture decision records.
