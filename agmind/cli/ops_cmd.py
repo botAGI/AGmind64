@@ -10,6 +10,7 @@ import getpass
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -259,6 +260,117 @@ def cmd_restore(
     return 0
 
 
+def _force_recreate(install_dir: Path, services: list[str], run: object | None = None) -> int:
+    runner = run or subprocess.run
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(install_dir / "docker-compose.yml"),
+        "up",
+        "-d",
+        "--force-recreate",
+        *services,
+    ]
+    result = runner(  # type: ignore[operator]
+        cmd, cwd=str(install_dir), capture_output=True, text=True, check=False
+    )
+    return int(result.returncode)
+
+
+def cmd_rotate_secrets(
+    install_dir: Path = BACKUP_INSTALL_DIR,
+    *,
+    include: list[str] | None = None,
+    force_destructive: bool = False,
+    dry_run: bool = False,
+    yes: bool = False,
+    recreate: bool = True,
+    timestamp: str | None = None,
+    compose_run: object | None = None,
+) -> int:
+    from agmind.core.env import parse_env_file
+    from agmind.core.secrets import write_private_text
+    from agmind.ops.rotate import (
+        apply_rotation,
+        holders_for,
+        plan_rotation,
+        rewrite_env_text,
+        secret_consumers,
+    )
+
+    env_path = install_dir / ".env"
+    if not env_path.is_file():
+        print(f"agmind rotate-secrets: no .env found at {env_path}", file=sys.stderr)
+        return 2
+
+    text = env_path.read_text(encoding="utf-8")
+    env = parse_env_file(env_path)
+    plan = plan_rotation(env, include=include or [], force_destructive=force_destructive)
+
+    print("rotate-secrets plan:")
+    print(f"  rotate ({len(plan.rotate)}): {', '.join(plan.rotate) or '<none>'}")
+    if plan.skipped_init:
+        print(f"  skipped INIT-ONLY (need --include): {', '.join(plan.skipped_init)}")
+    if plan.refused_encrypt:
+        print(
+            f"  refused ENCRYPT-AT-REST (need --force-destructive): {', '.join(plan.refused_encrypt)}"
+        )
+    for warning in plan.warnings:
+        print(f"  ! {warning}")
+
+    if dry_run:
+        print("no changes made (dry-run).")
+        return 0
+    if not plan.rotate:
+        print("nothing to rotate.")
+        return 0
+
+    if not yes:
+        try:
+            answer = input("Proceed rotation? [y/N]: ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("aborted.")
+            return 1
+
+    ts = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = env_path.with_name(f".env.pre-rotation.{ts}")
+    write_private_text(backup_path, text)
+
+    new_env = apply_rotation(env, plan)
+    rewritten = rewrite_env_text(text, {key: new_env[key] for key in plan.rotate})
+    write_private_text(env_path, rewritten)
+    print(f"✓ rotated {len(plan.rotate)} secret(s); old .env backed up at {backup_path}")
+
+    if not recreate:
+        print(
+            "skipped recreate (--no-recreate). Run "
+            "`docker compose up -d --force-recreate <holders>` (NOT restart — that keeps the old env)."
+        )
+        return 0
+
+    from agmind.services.renderer import load_descriptors
+
+    holders = holders_for(plan.rotate, secret_consumers(load_descriptors()))
+    running = set(_running_compose_services(install_dir))
+    to_recreate = [h for h in holders if h in running]
+    if not to_recreate:
+        print("no running holders to recreate.")
+        return 0
+    rc = _force_recreate(install_dir, to_recreate, run=compose_run)
+    if rc != 0:
+        print(
+            f"WARNING: force-recreate rc={rc}; recreate manually: "
+            f"docker compose up -d --force-recreate {' '.join(to_recreate)}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"✓ force-recreated {len(to_recreate)} holder(s): {', '.join(to_recreate)}")
+    return 0
+
+
 def cmd_root_owned_backup_smoke(
     root: Path,
     output: Path,
@@ -409,6 +521,37 @@ def register(app: typer.Typer) -> None:
     )
     ops_app.add_typer(ops_smoke_app)
     app.add_typer(ops_app)
+
+    @ops_app.command("rotate-secrets")
+    def ops_rotate_secrets(
+        install_dir: Path = typer.Option(
+            BACKUP_INSTALL_DIR, "--install-dir", help="Deployment dir holding .env."
+        ),
+        include: list[str] | None = typer.Option(
+            None, "--include", help="Also rotate these INIT-ONLY keys (then run the in-DB reset)."
+        ),
+        force_destructive: bool = typer.Option(
+            False,
+            "--force-destructive",
+            help="Rotate ENCRYPT-AT-REST keys (DESTROYS existing data).",
+        ),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; change nothing."),
+        yes: bool = typer.Option(False, "-y", "--yes", help="Skip interactive confirmation."),
+        no_recreate: bool = typer.Option(
+            False, "--no-recreate", help="Rewrite .env but do not force-recreate holders."
+        ),
+    ) -> None:
+        """Rotate runtime secrets in .env, then force-recreate their holders (4-bucket safety)."""
+        raise typer.Exit(
+            code=cmd_rotate_secrets(
+                install_dir,
+                include=include or [],
+                force_destructive=force_destructive,
+                dry_run=dry_run,
+                yes=yes,
+                recreate=not no_recreate,
+            )
+        )
 
     @ops_smoke_app.command("backup-root-owned")
     def ops_smoke_backup_root_owned(

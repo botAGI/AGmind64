@@ -29,7 +29,7 @@ import yaml
 from agmind.config.env import write_env
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
-from agmind.core.secrets import generate_hex_secret, generate_secret, write_private_text
+from agmind.core.secrets import write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import (
     DEFAULT_REPO_ROOT,
@@ -40,22 +40,12 @@ from agmind.install.orchestrator import (
     ProgressEvent,
     ProgressKind,
 )
+from agmind.install.secret_keys import AUTHELIA_SECRET_KEYS as _AUTHELIA_SECRET_KEYS
+from agmind.install.secret_keys import RUNTIME_SECRET_KEYS as _RUNTIME_SECRET_KEYS
+from agmind.install.secret_keys import generate_for as _generate_runtime_secret
 
 # ---------- helpers ----------
 
-
-_RUNTIME_SECRET_KEYS = (
-    "POSTGRES_PASSWORD",
-    "GRAFANA_PASSWORD",
-    "MYSQL_ROOT_PASSWORD",
-    "MINIO_ROOT_PASSWORD",
-    "REDIS_PASSWORD",
-    "N8N_ENCRYPTION_KEY",
-    "HOMARR_SECRET_ENCRYPTION_KEY",
-    # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
-    "DIFY_PLUGIN_DAEMON_KEY",
-    "DIFY_PLUGIN_INNER_API_KEY",
-)
 
 _ALERTMANAGER_TELEGRAM_KEYS = (
     "AGMIND_ALERT_TELEGRAM_CHAT_ID",
@@ -77,14 +67,6 @@ _ALERTMANAGER_MULTICHANNEL_KEYS = (
 )
 
 _CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4"
-
-# Authelia required secrets (read by the container as AUTHELIA_* env). 64-char so
-# Authelia's length warnings are satisfied; the redis session password reuses REDIS_PASSWORD.
-_AUTHELIA_SECRET_KEYS = (
-    "AUTHELIA_SESSION_SECRET",
-    "AUTHELIA_STORAGE_ENCRYPTION_KEY",
-    "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
-)
 
 _RUNTIME_TARGET_GUARD_SCRIPT = r"""
 set -eu
@@ -675,16 +657,11 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
         "MINIO_ROOT_USER": existing_env.get("MINIO_ROOT_USER") or "agmind",
         "N8N_TIMEZONE": existing_env.get("N8N_TIMEZONE") or "UTC",
     }
-    for key in _RUNTIME_SECRET_KEYS:
-        values[key] = existing_env.get(key) or generate_secret(32)
-    for key in _AUTHELIA_SECRET_KEYS:
-        values[key] = existing_env.get(key) or generate_secret(64)
-    # homarr's SECRET_ENCRYPTION_KEY must be EXACTLY 64 hex chars; the base64
-    # token_urlsafe output of generate_secret (43 chars, non-hex) makes homarr abort
-    # at boot ("SECRET_ENCRYPTION_KEY has to be 64 characters ... hex format").
-    values["HOMARR_SECRET_ENCRYPTION_KEY"] = existing_env.get(
-        "HOMARR_SECRET_ENCRYPTION_KEY"
-    ) or generate_hex_secret(32)
+    # Per-key generators live in agmind.install.secret_keys (single source of
+    # truth shared with `agmind ops rotate-secrets`): 32-byte token, Authelia
+    # 64-char, homarr 64-hex (the base64 default aborts homarr at boot).
+    for key in (*_RUNTIME_SECRET_KEYS, *_AUTHELIA_SECRET_KEYS):
+        values[key] = existing_env.get(key) or _generate_runtime_secret(key)
     for key in (*_ALERTMANAGER_TELEGRAM_KEYS, *_ALERTMANAGER_MULTICHANNEL_KEYS):
         values[key] = existing_env.get(key, "")
     return values
