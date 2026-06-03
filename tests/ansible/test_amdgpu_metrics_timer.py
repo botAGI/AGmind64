@@ -61,6 +61,6 @@ def test_role_tasks_parse_and_enable_timer_via_systemd() -> None:
         if isinstance(t, dict)
         and any(k in t for k in ("ansible.builtin.systemd", "ansible.builtin.systemd_service"))
     ]
-    assert any(
-        "amdgpu-metrics.timer" in str(t) for t in systemd_tasks
-    ), "no systemd task enabling amdgpu-metrics.timer"
+    assert any("amdgpu-metrics.timer" in str(t) for t in systemd_tasks), (
+        "no systemd task enabling amdgpu-metrics.timer"
+    )
