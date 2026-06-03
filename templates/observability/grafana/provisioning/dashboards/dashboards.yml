@@ -1,6 +1,9 @@
 # Grafana dashboards provisioning (Phase H'.D, ADR-0007).
-# Указывает где Grafana ищет JSON dashboards. Сами JSON файлы — в Phase H'.D
-# fork art-vish/llamacpp-llm-observer + кастомные для gfx1151.
+# JSON dashboards live in the json/ subdir NEXT TO this file. The install materialize step
+# (_stage_directory_contents) copies the whole provisioning/ tree into the RO mount
+# (GF_PATHS_PROVISIONING=/etc/grafana/provisioning), so the provider path must point INSIDE
+# that mount — NOT /var/lib/grafana/dashboards (a separate writable mount nothing populates,
+# which is why dashboards were empty).
 
 apiVersion: 1
 
@@ -13,5 +16,5 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:
-      path: /var/lib/grafana/dashboards
-      foldersFromFilesStructure: true
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

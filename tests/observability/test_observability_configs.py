@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -199,7 +200,41 @@ def test_grafana_dashboard_provider_configured() -> None:
     cfg = yaml.safe_load(
         (OBS_DIR / "grafana/provisioning/dashboards/dashboards.yml").read_text(encoding="utf-8")
     )
-    assert cfg["providers"][0]["folder"] == "AGmind"
+    provider = cfg["providers"][0]
+    assert provider["folder"] == "AGmind"
+    # Provider path must live INSIDE the RO provisioning mount that the install materializes,
+    # not /var/lib/grafana/dashboards (a separate writable mount nothing populated → empty).
+    assert provider["options"]["path"] == "/etc/grafana/provisioning/dashboards/json"
+
+
+_DASHBOARD_DIR = OBS_DIR / "grafana/provisioning/dashboards/json"
+
+
+def test_dashboards_shipped_and_parse() -> None:
+    files = sorted(_DASHBOARD_DIR.glob("*.json"))
+    assert files, "no dashboard JSON shipped under provisioning/dashboards/json"
+    for f in files:
+        data = json.loads(f.read_text(encoding="utf-8"))  # raises on invalid JSON
+        assert data.get("uid"), f"{f.name} missing uid"
+        assert data.get("panels"), f"{f.name} has no panels"
+
+
+def test_dashboards_reference_our_metrics_not_parent_stack() -> None:
+    for f in _DASHBOARD_DIR.glob("*.json"):
+        text = f.read_text(encoding="utf-8")
+        # upstream-stack metric leftovers must not survive the re-point
+        assert "agmind_gpu_" not in text, f"{f.name}: upstream GPU metric agmind_gpu_*"
+        assert "vllm:" not in text, f"{f.name}: upstream inference metric vllm:*"
+        assert '"uid": "${DS' not in text, f"{f.name}: unresolved datasource template var"
+        assert '"uid": "Loki"' not in text, f"{f.name}: parent Loki uid (ours is lowercase 'loki')"
+
+
+def test_gpu_and_inference_dashboards_use_our_metric_names() -> None:
+    gpu = (_DASHBOARD_DIR / "gpu.json").read_text(encoding="utf-8")
+    assert "amdgpu_gpu_busy_percent" in gpu and "amdgpu_temp_edge_celsius" in gpu
+    inference = (_DASHBOARD_DIR / "inference.json").read_text(encoding="utf-8")
+    assert "llamacpp:tokens_predicted_total" in inference
+    assert "llamacpp:kv_cache_usage_ratio" in inference
 
 
 # ---- gfx1151 textfile collector script ----
