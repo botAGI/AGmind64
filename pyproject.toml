@@ -120,6 +120,7 @@ packages = [
   "agmind.observability",
   "agmind.ops",
   "agmind.schemas",
+  "agmind.security",
   "agmind.services",
   # Data trees bundled *inside* the wheel so an installed `agmind` can run
   # `agmind install` (templates/ + ansible/) and maintenance commands

@@ -60,6 +60,7 @@ def _make_app() -> typer.Typer:
         models_cmd,
         ops_cmd,
         render_cmd,
+        security_cmd,
         service_cmd,
         targets_cmd,
         tools_cmd,
@@ -73,6 +74,7 @@ def _make_app() -> typer.Typer:
     verify_cmd.register(app)
     install_cmd.register(app)
     service_cmd.register(app)
+    security_cmd.register(app)
     tools_cmd.register(app)
     troubleshoot_cmd.register(app)
     ci_cmd.register(app)
