@@ -284,3 +284,33 @@ def test_cmd_backup_include_data_enumerates_and_passes_data_sources(
     assert rc == 0
     labels = [s.label for s in captured["data_sources"]]  # type: ignore[union-attr]
     assert "volume/qdrant" in labels  # real qdrant descriptor → /var/lib/agmind/qdrant volume
+
+
+# ---- backup verify (integrity) ----
+
+
+def test_verify_backup_ok_then_detects_corruption(tmp_path: Path) -> None:
+    import subprocess
+
+    from agmind.ops.backup import create_backup, verify_backup
+
+    db = DbDumpSource("dbdump/postgres", "agmind-postgres", "postgres", "dify", "dify")
+
+    def fake_dump(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"-- dump\nINSERT 1;\n", stderr=b"")
+
+    out = tmp_path / "b.tar.gz"
+    create_backup(out, sources=[], data_sources=[db], data_run=fake_dump)
+    assert verify_backup(out) == []  # intact archive verifies clean
+
+    blob = bytearray(out.read_bytes())
+    blob[len(blob) // 2] ^= 0xFF  # flip a byte → corruption
+    out.write_bytes(bytes(blob))
+    assert verify_backup(out)  # corruption detected (sha256 mismatch or archive error)
+
+
+def test_verify_backup_missing_file() -> None:
+    from agmind.ops.backup import verify_backup
+
+    issues = verify_backup(Path("/nonexistent/backup.tar.gz"))
+    assert issues

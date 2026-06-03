@@ -25,6 +25,7 @@ from agmind.ops.backup import (
     default_sources,
     read_metadata,
     restore_backup,
+    verify_backup,
 )
 from agmind.ops.exec import logs as do_logs
 from agmind.ops.exec import shell as do_shell
@@ -129,6 +130,17 @@ def cmd_backup(
     )
     if result.sources_missing:
         print(f"  missing  ({len(result.sources_missing)}): {', '.join(result.sources_missing)}")
+    return 0
+
+
+def cmd_verify_backup(backup_path: Path) -> int:
+    issues = verify_backup(Path(backup_path))
+    if issues:
+        print(f"✗ backup verify FAILED ({len(issues)} issue(s)):", file=sys.stderr)
+        for issue in issues:
+            print(f"  - {issue}", file=sys.stderr)
+        return 1
+    print(f"✓ backup OK: {backup_path}")
     return 0
 
 
@@ -311,6 +323,13 @@ def register(app: typer.Typer) -> None:
             code=cmd_backup(output, ask_sudo_password=ask_sudo_password, include_data=include_data)
         )
 
+    @app.command("backup-verify")
+    def backup_verify(
+        backup_file: Path = typer.Argument(..., help="Path to a .tar.gz backup to verify."),
+    ) -> None:
+        """Verify a backup archive: it opens and every data-member checksum matches (DR pre-check)."""
+        raise typer.Exit(code=cmd_verify_backup(backup_file))
+
     @app.command()
     def restore(
         backup_file: Path = typer.Argument(..., help="Path to .tar.gz backup."),
@@ -373,5 +392,6 @@ __all__ = [
     "cmd_restore",
     "cmd_root_owned_backup_smoke",
     "cmd_shell",
+    "cmd_verify_backup",
     "register",
 ]

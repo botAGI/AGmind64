@@ -388,6 +388,48 @@ def read_metadata(backup_path: Path) -> dict[str, object]:
         raise ValueError(f"invalid backup archive: {backup_path} ({exc})") from exc
 
 
+def verify_backup(backup_path: Path) -> list[str]:
+    """Return integrity issues (empty list = OK).
+
+    Checks: the file exists, the archive opens, metadata is valid, and every data member that
+    recorded a sha256 (DB dumps) still hashes to that value. A corrupt gzip surfaces as a
+    metadata/archive error. Prerequisite for DR — corruption was previously undetected until restore.
+    """
+    backup_path = Path(backup_path)
+    if not backup_path.exists():
+        return [f"backup file not found: {backup_path}"]
+    try:
+        metadata = read_metadata(backup_path)
+    except (ValueError, OSError) as exc:
+        return [f"metadata: {exc}"]
+
+    raw = metadata.get("data", [])
+    data = [m for m in raw if isinstance(m, dict)] if isinstance(raw, list) else []
+    issues: list[str] = []
+    try:
+        with tarfile.open(backup_path, "r:gz") as tar:
+            for member_meta in data:
+                expected = member_meta.get("sha256")
+                if not expected:
+                    continue
+                arcname = str(member_meta.get("arcname", ""))
+                label = member_meta.get("label", arcname)
+                try:
+                    member = tar.getmember(arcname)
+                except KeyError:
+                    issues.append(f"{label}: member {arcname} missing from archive")
+                    continue
+                handle = tar.extractfile(member)
+                if handle is None:
+                    issues.append(f"{label}: member {arcname} unreadable")
+                    continue
+                if hashlib.sha256(handle.read()).hexdigest() != expected:
+                    issues.append(f"{label}: sha256 mismatch (corrupt)")
+    except tarfile.TarError as exc:
+        issues.append(f"archive: {exc}")
+    return issues
+
+
 def restore_backup(
     backup_path: Path,
     destinations: dict[str, Path] | None = None,
