@@ -24,6 +24,7 @@ from agmind.core.env import parse_env_file
 from agmind.deploy.runner import deploy
 from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import DEFAULT_REPO_ROOT, InstallConfig
+from agmind.install.secrets_audit import find_weak_secret_envs
 from agmind.install.steps import EnvWriteStep, _image_digest, _image_tag, _version_key
 from agmind.services.renderer import load_descriptors, render_to_string
 from agmind.services.selection import resolve_service_selection
@@ -477,6 +478,19 @@ def _verify_scenario(
             env_key_count=len(parsed),
             deploy_changes=0,
             message="; ".join(runtime_value_errors),
+            selected_services=selected_names,
+        )
+
+    selected_descriptors = {n: descriptors[n] for n in selected_names if n in descriptors}
+    weak_secret_errors = find_weak_secret_envs(selected_descriptors, parsed)
+    if weak_secret_errors:
+        return InstallVerifyScenarioResult(
+            name=scenario.name,
+            ok=False,
+            services=len(selected_names),
+            env_key_count=len(parsed),
+            deploy_changes=0,
+            message="weak/default secrets: " + "; ".join(weak_secret_errors),
             selected_services=selected_names,
         )
 
