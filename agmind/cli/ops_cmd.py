@@ -371,6 +371,68 @@ def cmd_rotate_secrets(
     return 0
 
 
+def cmd_dr_drill(
+    install_dir: Path = BACKUP_INSTALL_DIR,
+    *,
+    user_dir: Path = DEFAULT_USER_DIR,
+    system_dir: Path = DEFAULT_SYSTEM_DIR,
+    skip_restore: bool = True,
+    as_json: bool = False,
+    ask_sudo_password: bool = False,
+) -> int:
+    import json
+    import tempfile
+
+    from agmind.ops.backup import create_backup, default_sources, restore_backup, verify_backup
+    from agmind.ops.dr_drill import run_drill
+
+    if not (install_dir / "docker-compose.yml").exists() and not (install_dir / ".env").exists():
+        print(f"agmind dr-drill: no deployment found at {install_dir}", file=sys.stderr)
+        return 2
+
+    sudo = _prompt_sudo_password(ask_sudo_password)
+    with tempfile.TemporaryDirectory(prefix="agmind-drdrill-") as tmp:
+        tmpdir = Path(tmp)
+        archive_path = tmpdir / "drill-backup.tar.gz"
+        sandbox = tmpdir / "sandbox"
+        for sub in ("opt", "user", "system"):
+            (sandbox / sub).mkdir(parents=True, exist_ok=True)
+
+        def _backup() -> Path:
+            create_backup(
+                output_path=archive_path,
+                sources=default_sources(install_dir, user_dir, system_dir),
+                sudo_password=sudo,
+            )
+            return archive_path
+
+        def _restore(path: Path) -> list[str]:
+            # Restore into a throwaway sandbox — NEVER the live install.
+            result = restore_backup(
+                backup_path=path,
+                sources=default_sources(sandbox / "opt", sandbox / "user", sandbox / "system"),
+            )
+            return list(result.extracted)
+
+        report = run_drill(
+            backup_fn=_backup,
+            verify_fn=verify_backup,
+            restore_fn=_restore,
+            skip_restore=skip_restore,
+        )
+
+    if as_json:
+        print(json.dumps(report.to_payload(), indent=2, ensure_ascii=False))
+    else:
+        print("DR drill:")
+        for step in report.steps:
+            print(f"  [{'OK ' if step.ok else 'FAIL'}] {step.name:<16} {step.detail}")
+        print(f"  RTO: {report.rto_seconds:.2f}s  ->  {'PASS' if report.ok else 'FAIL'}")
+        if skip_restore:
+            print("  (live restore + health skipped; pass --no-skip-restore on the deploy host)")
+    return 0 if report.ok else 1
+
+
 def cmd_root_owned_backup_smoke(
     root: Path,
     output: Path,
@@ -550,6 +612,37 @@ def register(app: typer.Typer) -> None:
                 dry_run=dry_run,
                 yes=yes,
                 recreate=not no_recreate,
+            )
+        )
+
+    @ops_app.command("dr-drill")
+    def ops_dr_drill(
+        install_dir: Path = typer.Option(
+            BACKUP_INSTALL_DIR, "--install-dir", help="Deployment dir to drill."
+        ),
+        user_dir: Path = typer.Option(DEFAULT_USER_DIR, "--user-dir", help="User state dir."),
+        system_dir: Path = typer.Option(
+            DEFAULT_SYSTEM_DIR, "--system-dir", help="System data dir."
+        ),
+        no_skip_restore: bool = typer.Option(
+            False,
+            "--no-skip-restore",
+            help="Also run the LIVE restore + health check (host-only; mutates the stack).",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output."),
+        ask_sudo_password: bool = typer.Option(
+            False, "--ask-sudo-password", help="Prompt for sudo for root-owned paths."
+        ),
+    ) -> None:
+        """DR drill: backup → integrity → sandbox-restore → measure RTO (live restore gated)."""
+        raise typer.Exit(
+            code=cmd_dr_drill(
+                install_dir,
+                user_dir=user_dir,
+                system_dir=system_dir,
+                skip_restore=not no_skip_restore,
+                as_json=as_json,
+                ask_sudo_password=ask_sudo_password,
             )
         )
 

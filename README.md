@@ -322,6 +322,7 @@ docs/                  Operations notes, benchmarks, codebase map, ADRs
 - [`docs/CODEBASE.md`](docs/CODEBASE.md) - codebase responsibility map.
 - [`docs/operations/incident-response.md`](docs/operations/incident-response.md) -
   incident triage and recovery runbook.
+- [`docs/DR.md`](docs/DR.md) - disaster recovery (RPO/RTO + scenarios + drill).
 - [`infra/proxmox/vm-compose/README.md`](infra/proxmox/vm-compose/README.md) -
   Proxmox VM provisioning target.
 - [`docs/adr/`](docs/adr/) - architecture decision records.
