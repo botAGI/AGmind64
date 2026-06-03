@@ -24,6 +24,8 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
+import yaml
+
 from agmind.config.env import write_env
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
@@ -58,6 +60,20 @@ _RUNTIME_SECRET_KEYS = (
 _ALERTMANAGER_TELEGRAM_KEYS = (
     "AGMIND_ALERT_TELEGRAM_CHAT_ID",
     "AGMIND_ALERT_TELEGRAM_BOT_TOKEN",
+)
+
+# Optional extra alert channels. Operator-set (preserved-if-present, NOT
+# auto-generated secrets) and wired into the staged config as mounted files,
+# mirroring the Telegram *_file pattern. Email is conditional (smarthost has no
+# _file variant and must be non-empty at config-load); webhook + email blocks
+# are injected only when configured, so an unconfigured stack stays Telegram-only.
+_ALERTMANAGER_MULTICHANNEL_KEYS = (
+    "SMTP_SMARTHOST",
+    "SMTP_FROM",
+    "SMTP_TO",
+    "SMTP_AUTH_USERNAME",
+    "SMTP_AUTH_PASSWORD",
+    "ALERT_WEBHOOK_URL",
 )
 
 _CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4"
@@ -210,28 +226,103 @@ def _stage_single_file_config(source: Path, target_dir: Path, target_name: str) 
         raise
 
 
+_WEBHOOK_URL_FILE = "/etc/alertmanager/webhook_url"
+_SMTP_PASSWORD_FILE = "/etc/alertmanager/smtp_password"
+
+
+def build_alertmanager_config(
+    base_text: str,
+    *,
+    webhook_url: str = "",
+    smtp_smarthost: str = "",
+    smtp_from: str = "",
+    smtp_to: str = "",
+    smtp_auth_username: str = "",
+) -> str:
+    """Augment the Telegram-only base config with optional email/webhook channels.
+
+    Webhook and email blocks are appended to EVERY receiver, but only when the
+    channel is configured — so an unconfigured stack renders byte-equivalent to
+    the Telegram-only base and keeps booting. Email is gated on a non-empty
+    smarthost+recipient (Alertmanager requires smarthost at config-load and has
+    no ``*_file`` variant for it); its password is file-backed
+    (``auth_password_file``), never inlined. Webhook uses ``url_file`` so the
+    (often token-bearing) URL never lands inline in a world-readable :ro config.
+    """
+    cfg = yaml.safe_load(base_text) or {}
+    receivers = cfg.get("receivers") or []
+
+    email_block: dict[str, object] | None = None
+    if smtp_smarthost and smtp_to:
+        email_block = {"to": smtp_to}
+        if smtp_from:
+            email_block["from"] = smtp_from
+        email_block["smarthost"] = smtp_smarthost
+        if smtp_auth_username:
+            email_block["auth_username"] = smtp_auth_username
+            email_block["auth_password_file"] = _SMTP_PASSWORD_FILE
+        email_block["require_tls"] = True
+        email_block["send_resolved"] = True
+
+    webhook_block: dict[str, object] | None = None
+    if webhook_url:
+        webhook_block = {"url_file": _WEBHOOK_URL_FILE, "send_resolved": True}
+
+    for receiver in receivers:
+        if email_block is not None:
+            receiver.setdefault("email_configs", []).append(dict(email_block))
+        if webhook_block is not None:
+            receiver.setdefault("webhook_configs", []).append(dict(webhook_block))
+
+    return yaml.safe_dump(cfg, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
 def _stage_alertmanager_config(
     observability_dir: Path,
     target_dir: Path,
     *,
     chat_id: str,
     bot_token: str,
+    webhook_url: str = "",
+    smtp_smarthost: str = "",
+    smtp_from: str = "",
+    smtp_to: str = "",
+    smtp_auth_username: str = "",
+    smtp_auth_password: str = "",
 ) -> None:
-    """Stage alertmanager.yml plus the Telegram chat_id / bot_token as mounted files.
+    """Stage alertmanager.yml plus the per-channel secret files as mounted files.
 
     The config references ``/etc/alertmanager/tg_chat_id`` + ``/etc/alertmanager/
     tg_bot_token`` (chat_id_file/bot_token_file). Both are written here from the runtime
     .env (AGMIND_ALERT_TELEGRAM_CHAT_ID / _BOT_TOKEN); empty values still write empty
     files so the referenced paths exist and alertmanager boots (sending is a no-op until
-    configured). Staged atomically so a partial write never replaces a good config dir.
+    configured). Optional email/webhook channels are injected into the config only when
+    configured, with their secrets written to ``webhook_url`` / ``smtp_password`` mounted
+    files. Staged atomically so a partial write never replaces a good config dir.
     """
+    base_text = (observability_dir / "alertmanager.yml").read_text(encoding="utf-8")
+    rendered = build_alertmanager_config(
+        base_text,
+        webhook_url=webhook_url,
+        smtp_smarthost=smtp_smarthost,
+        smtp_from=smtp_from,
+        smtp_to=smtp_to,
+        smtp_auth_username=smtp_auth_username,
+    )
+
     staged = target_dir.with_name(f".{target_dir.name}.tmp")
     _cleanup_path(staged)
     try:
         staged.mkdir(parents=True, exist_ok=True)
-        _copy_file_atomic(observability_dir / "alertmanager.yml", staged / "alertmanager.yml")
+        (staged / "alertmanager.yml").write_text(rendered, encoding="utf-8")
         (staged / "tg_chat_id").write_text(chat_id, encoding="utf-8")
         (staged / "tg_bot_token").write_text(bot_token, encoding="utf-8")
+        # Only materialize a channel's secret file when that channel is configured,
+        # matching the conditional injection in the rendered config above.
+        if webhook_url:
+            (staged / "webhook_url").write_text(webhook_url, encoding="utf-8")
+        if smtp_auth_password:
+            (staged / "smtp_password").write_text(smtp_auth_password, encoding="utf-8")
         _replace_path_atomic(staged, target_dir)
     except Exception:
         _cleanup_path(staged)
@@ -314,6 +405,12 @@ def _materialize_runtime_files(
             config.config_dir / "alertmanager",
             chat_id=runtime_env.get("AGMIND_ALERT_TELEGRAM_CHAT_ID", ""),
             bot_token=runtime_env.get("AGMIND_ALERT_TELEGRAM_BOT_TOKEN", ""),
+            webhook_url=runtime_env.get("ALERT_WEBHOOK_URL", ""),
+            smtp_smarthost=runtime_env.get("SMTP_SMARTHOST", ""),
+            smtp_from=runtime_env.get("SMTP_FROM", ""),
+            smtp_to=runtime_env.get("SMTP_TO", ""),
+            smtp_auth_username=runtime_env.get("SMTP_AUTH_USERNAME", ""),
+            smtp_auth_password=runtime_env.get("SMTP_AUTH_PASSWORD", ""),
         )
 
     callback(
@@ -588,7 +685,7 @@ def _runtime_env(existing_env: dict[str, str]) -> dict[str, str]:
     values["HOMARR_SECRET_ENCRYPTION_KEY"] = existing_env.get(
         "HOMARR_SECRET_ENCRYPTION_KEY"
     ) or generate_hex_secret(32)
-    for key in _ALERTMANAGER_TELEGRAM_KEYS:
+    for key in (*_ALERTMANAGER_TELEGRAM_KEYS, *_ALERTMANAGER_MULTICHANNEL_KEYS):
         values[key] = existing_env.get(key, "")
     return values
 
@@ -1812,6 +1909,13 @@ class EnvWriteStep(InstallStep):
                 "AGMIND_ALERT_TELEGRAM_BOT_TOKEN",
                 runtime_env["AGMIND_ALERT_TELEGRAM_BOT_TOKEN"],
             ),
+            "# ---- Alerting (optional email + webhook channels; set then re-run install) ----",
+            _env_line("SMTP_SMARTHOST", runtime_env["SMTP_SMARTHOST"]),
+            _env_line("SMTP_FROM", runtime_env["SMTP_FROM"]),
+            _env_line("SMTP_TO", runtime_env["SMTP_TO"]),
+            _env_line("SMTP_AUTH_USERNAME", runtime_env["SMTP_AUTH_USERNAME"]),
+            _env_line("SMTP_AUTH_PASSWORD", runtime_env["SMTP_AUTH_PASSWORD"]),
+            _env_line("ALERT_WEBHOOK_URL", runtime_env["ALERT_WEBHOOK_URL"]),
             "",
             "# ---- Runtime service credentials (Compose requires non-empty values) ----",
             _env_line("POSTGRES_PASSWORD", runtime_env["POSTGRES_PASSWORD"]),

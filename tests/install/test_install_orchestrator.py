@@ -694,23 +694,24 @@ def test_env_write_step_preserves_alertmanager_config_on_write_failure(
     alertmanager_dir.mkdir(parents=True)
     existing_config = alertmanager_dir / "alertmanager.yml"
     existing_config.write_text("old alertmanager config\n", encoding="utf-8")
-    original_copy_file_atomic = steps._copy_file_atomic
+    original_replace = steps._replace_path_atomic
 
-    def flaky_copy_file_atomic(source: Path, target: Path) -> None:
-        if source.name == "alertmanager.yml":
-            target.parent.mkdir(parents=True, exist_ok=True)
-            (target.parent / "BROKEN.yml").write_text("partial\n", encoding="utf-8")
+    # The config is rendered+written into a staged .tmp dir, then atomically
+    # swapped in via _replace_path_atomic. Fail at the swap so the staged dir is
+    # fully populated but never committed — the rollback must clean it up and
+    # leave the existing config untouched.
+    def flaky_replace(staged: Path, target: Path) -> None:
+        if target.name == "alertmanager":
             raise OSError("disk full")
-        original_copy_file_atomic(source, target)
+        original_replace(staged, target)
 
-    monkeypatch.setattr(steps, "_copy_file_atomic", flaky_copy_file_atomic)
+    monkeypatch.setattr(steps, "_replace_path_atomic", flaky_replace)
 
     result = EnvWriteStep().run(lambda _event: None, cfg)
 
     assert not result.success
     assert "cannot write runtime files: disk full" in result.message
     assert existing_config.read_text(encoding="utf-8") == "old alertmanager config\n"
-    assert not (alertmanager_dir / "BROKEN.yml").exists()
     assert not alertmanager_dir.with_name(".alertmanager.tmp").exists()
 
 
