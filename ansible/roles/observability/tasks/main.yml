@@ -38,3 +38,49 @@
     src: alloy-config.alloy.j2
     dest: "{{ agmind_config_dir }}/alloy/config.alloy"
     mode: "0644"
+
+# ---- AMD Strix Halo GPU metrics: host textfile exporter + systemd timer ----
+# node-exporter mounts /var/lib/node_exporter/textfile :ro and reads amdgpu.prom from it
+# (see templates/services/node-exporter.yaml). This block keeps that file fresh on the host:
+# pre-create the dir (before node-exporter's :ro mount), ship the exporter script, and run it
+# on a 15s systemd timer. amdgpu_textfile.sh self-skips non-AMD GPUs, so it is safe to enable.
+- name: Create node-exporter textfile dir (GPU metrics source)
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+
+- name: Ensure host scripts/ops dir exists
+  ansible.builtin.file:
+    path: "{{ agmind_install_dir }}/scripts/ops"
+    state: directory
+    owner: "{{ agmind_user }}"
+    group: "{{ agmind_group }}"
+    mode: "0755"
+
+- name: Ship the AMD GPU textfile exporter to the host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/ops/amdgpu_textfile.sh"
+    dest: "{{ agmind_install_dir }}/scripts/ops/amdgpu_textfile.sh"
+    mode: "0755"
+
+- name: Install amdgpu-metrics systemd service
+  ansible.builtin.template:
+    src: amdgpu-metrics.service.j2
+    dest: /etc/systemd/system/amdgpu-metrics.service
+    mode: "0644"
+
+- name: Install amdgpu-metrics systemd timer
+  ansible.builtin.template:
+    src: amdgpu-metrics.timer.j2
+    dest: /etc/systemd/system/amdgpu-metrics.timer
+    mode: "0644"
+
+- name: Enable & start amdgpu-metrics.timer
+  ansible.builtin.systemd:
+    name: amdgpu-metrics.timer
+    enabled: true
+    state: started
+    daemon_reload: true

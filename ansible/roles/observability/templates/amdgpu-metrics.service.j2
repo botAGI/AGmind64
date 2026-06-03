@@ -1,0 +1,17 @@
+# Managed by AGmind ansible (observability role) — do not edit by hand.
+# AMD Strix Halo (gfx1151) GPU metrics → node-exporter textfile collector.
+[Unit]
+Description=AGmind AMD GPU metrics exporter (node-exporter textfile)
+Documentation=file://{{ agmind_install_dir }}/scripts/ops/amdgpu_textfile.sh
+ConditionPathIsDirectory=/var/lib/node_exporter/textfile
+
+[Service]
+Type=oneshot
+Environment=TEXTFILE_DIR=/var/lib/node_exporter/textfile
+ExecStart={{ agmind_install_dir }}/scripts/ops/amdgpu_textfile.sh
+# Hardening — the exporter only reads /sys and writes the textfile dir.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/node_exporter/textfile

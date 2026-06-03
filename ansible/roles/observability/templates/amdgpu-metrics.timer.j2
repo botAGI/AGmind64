@@ -1,0 +1,12 @@
+# Managed by AGmind ansible (observability role) — do not edit by hand.
+[Unit]
+Description=Run the AGmind AMD GPU metrics exporter every 15s
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Unit=amdgpu-metrics.service
+
+[Install]
+WantedBy=timers.target
