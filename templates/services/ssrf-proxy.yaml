@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: ssrf-proxy
+image: ubuntu/squid:7.2-26.04_edge
+digest: c7d087f3dfc4b625f639195db794a1d987654476ec5c13b15e383c039b1b87b5
+tier: app
+purpose: SSRF forward-proxy (Squid) — the only egress for the caged dify-sandbox; blocks cloud metadata
+profiles:
+- rag
+# Dual-homed: reachable on the internal ssrf-net (where the sandbox is caged) AND
+# the default net (so it can actually reach the internet on the sandbox's behalf).
+networks:
+- ssrf-net
+- default
+# Caps vendored from upstream Dify's official compose so Squid can drop to its
+# low-priv user and run its ICMP pinger. no-new-privileges hardens it further.
+cap_add:
+- CHOWN
+- SETUID
+- SETGID
+- NET_RAW
+security_opt:
+- no-new-privileges:true
+# Single config FILE mounted read-only (Правило #3). Staged by the installer.
+volumes:
+- /etc/agmind/ssrf-proxy/squid.conf:/etc/squid/squid.conf:ro
+resources:
+  cpus: 1.0
+  mem_limit: 256m
+# No healthcheck: the ubuntu/squid image is distroless-style (no usable shell),
+# so dependents must gate on service_started, which the renderer picks when a
+# dependency has no health block.

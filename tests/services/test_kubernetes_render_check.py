@@ -104,14 +104,14 @@ def test_kubernetes_render_check_reports_research_target() -> None:
     assert target.target_id == "k3s"
     assert target.renderer == "agmind render kubernetes"
     assert target.ok is True
-    assert target.object_count == 35
-    assert target.deployment_count == 21
+    assert target.object_count == 36
+    assert target.deployment_count == 22
     assert target.service_count == 13
-    assert target.warning_count == 3
+    assert target.warning_count == 4
     assert target.warning_summary["blocker"] == 0
-    assert target.warning_summary["warning"] == 3
-    assert target.expected_warning_count == 3
-    assert target.expected_warning_summary == {"info": 0, "warning": 3, "blocker": 0}
+    assert target.warning_summary["warning"] == 4
+    assert target.expected_warning_count == 4
+    assert target.expected_warning_summary == {"info": 0, "warning": 4, "blocker": 0}
     assert target.unexpected_warning_count == 0
     assert target.unexpected_warning_summary == {"info": 0, "warning": 0, "blocker": 0}
     assert not any(warning.code == "kubernetes-omitted" for warning in target.warnings)
@@ -256,16 +256,16 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
 
     assert payload["ok"] is True
     assert payload["targets"][0]["target_id"] == "k3s"
-    assert payload["targets"][0]["object_count"] == 35
-    assert payload["targets"][0]["deployment_count"] == 21
+    assert payload["targets"][0]["object_count"] == 36
+    assert payload["targets"][0]["deployment_count"] == 22
     assert payload["targets"][0]["service_count"] == 13
-    assert payload["targets"][0]["warning_count"] == 3
+    assert payload["targets"][0]["warning_count"] == 4
     assert payload["targets"][0]["warning_summary"]["blocker"] == 0
-    assert payload["targets"][0]["warning_summary"]["warning"] == 3
-    assert payload["targets"][0]["expected_warning_count"] == 3
+    assert payload["targets"][0]["warning_summary"]["warning"] == 4
+    assert payload["targets"][0]["expected_warning_count"] == 4
     assert payload["targets"][0]["expected_warning_summary"] == {
         "info": 0,
-        "warning": 3,
+        "warning": 4,
         "blocker": 0,
     }
     assert payload["targets"][0]["unexpected_warning_count"] == 0
@@ -356,9 +356,9 @@ def test_kubernetes_render_check_script_json_runs() -> None:
     assert payload["ok"] is True
     assert payload["targets"][0]["target_id"] == "k3s"
     assert payload["targets"][0]["warning_summary"]["blocker"] == 0
-    assert payload["warning_summary"]["warning"] == 3
+    assert payload["warning_summary"]["warning"] == 4
     assert payload["unexpected_warning_summary"]["warning"] == 0
-    assert payload["targets"][0]["expected_warning_count"] == 3
+    assert payload["targets"][0]["expected_warning_count"] == 4
     assert payload["targets"][0]["unexpected_warning_count"] == 0
     assert any(
         item["code"] == "amd-gpu-device-plugin" and item["severity"] == "warning"

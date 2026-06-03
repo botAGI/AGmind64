@@ -1150,8 +1150,8 @@ def test_kubernetes_dry_run_artifact_records_render_warning_details(tmp_path: Pa
     target_payload = json.loads((tmp_path / "k3s.dry-run.json").read_text(encoding="utf-8"))
     summary_payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
 
-    assert target_payload["warning_summary"]["warning"] == 3
-    assert len(target_payload["warnings"]) == 3
+    assert target_payload["warning_summary"]["warning"] == 4
+    assert len(target_payload["warnings"]) == 4
     assert summary_payload["targets"][0]["warnings"] == target_payload["warnings"]
     assert all(
         set(item) == {"service", "code", "severity", "message", "remediation", "expected"}

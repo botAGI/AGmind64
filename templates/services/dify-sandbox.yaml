@@ -3,9 +3,19 @@ name: dify-sandbox
 image: langgenius/dify-sandbox:0.2.15
 digest: 750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e
 tier: app
-purpose: Dify code execution sandbox
+purpose: Dify code execution sandbox (egress caged through ssrf-proxy)
 profiles:
 - rag
+# Caged on the internal-only ssrf-net (no host/egress route); its ONLY way out is
+# the dual-homed ssrf-proxy, which blocks SSRF to cloud metadata / the LAN.
+networks:
+- ssrf-net
+depends_on:
+- ssrf-proxy
+env:
+  ENABLE_NETWORK: 'true'
+  HTTP_PROXY: http://ssrf-proxy:3128
+  HTTPS_PROXY: http://ssrf-proxy:3128
 resources:
   cpus: 2.0
   mem_limit: 1g

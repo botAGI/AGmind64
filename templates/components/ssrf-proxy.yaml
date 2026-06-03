@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: ssrf-proxy
+kind: app
+core:
+  upstream: ubuntu/squid (Squid caching forward proxy)
+  recommended_version: 7.2-26.04_edge
+  current_pin: 7.2-26.04_edge
+  update_policy: compatible-minor
+  source: registry
+runtime:
+  service_descriptors:
+    - ssrf-proxy
+  compose_profiles:
+    - rag
+  files:
+    - templates/squid/squid.conf
+provides:
+  - ssrf_egress_proxy
+verification:
+  smoke:
+    - agmind render compose --profile rag --domain ci.example.com --output /tmp/agmind-ssrf.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ssrf.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

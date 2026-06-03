@@ -287,6 +287,13 @@
       "title": "Ports",
       "type": "array"
     },
+    "networks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Networks",
+      "type": "array"
+    },
     "volumes": {
       "items": {
         "type": "string"

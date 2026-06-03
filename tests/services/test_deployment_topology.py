@@ -175,7 +175,7 @@ def test_validate_topology_profiles_reports_standard_lanes_clean() -> None:
         item.info_count == 1 for item in legacy_report.profiles if item.profiles == ("core", "rag")
     )
     legacy_text = format_topology_check_report(legacy_report)
-    assert "core,rag: OK (13 services, warnings=0, info=1, expected_info=1)" in legacy_text
+    assert "core,rag: OK (14 services, warnings=0, info=1, expected_info=1)" in legacy_text
     assert "topology OK: 5 profile sets" in legacy_text
 
 

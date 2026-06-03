@@ -261,6 +261,12 @@ class ServiceDescriptor(BaseModel):
     ports: list[str] = Field(default_factory=list)
     """Port mappings, format `[ip:]host:container` (e.g. "127.0.0.1:8080:8080")."""
 
+    networks: list[str] = Field(default_factory=list)
+    """Extra named networks to join (compose `networks:`). Empty (default) = join
+    the shared `default` network only — byte-identical to the legacy single-net
+    output. A non-empty list joins ONLY those networks (e.g. `["ssrf-net"]` to cage
+    a service on an internal-only net with no host route)."""
+
     # ---- Storage ----
     volumes: list[str] = Field(default_factory=list)
     """Volume mounts (e.g. "/var/lib/agmind/qdrant:/qdrant/storage")."""

@@ -93,6 +93,13 @@ DEFAULT_LOGGING = {
 # AGmind shared bridge network — все сервисы видят друг друга и Traefik.
 DEFAULT_NETWORK_NAME = "agmind"
 
+# Attributes for extra (non-default) networks a descriptor may join. `ssrf-net`
+# is `internal: true` so a service caged on it (dify-sandbox) has NO host/egress
+# route except through the dual-homed ssrf-proxy.
+_EXTRA_NETWORK_ATTRS: dict[str, dict[str, Any]] = {
+    "ssrf-net": {"driver": "bridge", "internal": True},
+}
+
 
 def load_descriptors(services_dir: Path = DEFAULT_SERVICES_DIR) -> dict[str, ServiceDescriptor]:
     """Load all `templates/services/*.yaml` → {name: ServiceDescriptor}.
@@ -340,6 +347,10 @@ def descriptor_to_compose_service(
         svc["security_opt"] = list(d.security_opt)
     if d.cap_add:
         svc["cap_add"] = list(d.cap_add)
+    if d.networks:
+        # Non-empty → join ONLY these networks (compose long-form mapping). Empty
+        # stays absent so every other service is byte-identical on `default`.
+        svc["networks"] = {name: None for name in d.networks}
 
     # Logging defaults для предотвращения log bloat
     svc["logging"] = DEFAULT_LOGGING
@@ -492,14 +503,21 @@ def render_compose(
         svc = descriptor_to_compose_service(d, traefik_enabled, selected_by_name)
         services_block_local[d.name] = svc
     services_block = services_block_local
+    networks_block: dict[str, Any] = {
+        "default": {
+            "name": network_name,
+            "driver": "bridge",
+        }
+    }
+    # Add any extra networks referenced by selected services. `internal: true` is
+    # the SSRF cage primitive — no host route, only intra-net + a dual-homed proxy.
+    extra_networks = sorted({n for d in resolved_descriptors for n in d.networks if n != "default"})
+    for net in extra_networks:
+        attrs = _EXTRA_NETWORK_ATTRS.get(net, {"driver": "bridge"})
+        networks_block[net] = {"name": f"{network_name}_{net}", **attrs}
     compose: dict[str, Any] = {
         "services": services_block,
-        "networks": {
-            "default": {
-                "name": network_name,
-                "driver": "bridge",
-            }
-        },
+        "networks": networks_block,
     }
     if COMPOSE_VERSION is not None:
         # Legacy compatibility — современный compose не требует version

@@ -50,3 +50,5 @@ verification:
       code: amd-gpu-device-plugin
     - service: llama-rerank
       code: amd-gpu-device-plugin
+    - service: ssrf-proxy
+      code: docker-security-opt

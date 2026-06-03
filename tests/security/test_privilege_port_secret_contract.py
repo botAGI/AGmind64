@@ -52,6 +52,9 @@ EDGE_PUBLIC_PORTS = {80, 443}
 # Only netdata may add Linux capabilities; no other service has any justification today.
 CAP_ADD_ALLOW: dict[str, set[str]] = {
     "netdata": {"SYS_PTRACE", "SYS_ADMIN"},
+    # Squid SSRF forward-proxy: drops to its low-priv user + runs the ICMP pinger.
+    # Vendored from Dify's upstream ssrf_proxy compose; hardened with no-new-privileges.
+    "ssrf-proxy": {"CHOWN", "SETUID", "SETGID", "NET_RAW"},
 }
 
 # ---- C2: seccomp=unconfined allowlist (enumerated from catalog 2026-05-31) ----

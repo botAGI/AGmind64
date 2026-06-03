@@ -76,7 +76,7 @@ def test_digest_check_passes_on_pinned_catalog() -> None:
     from scripts.checks.digest_check import check_digest_pins
 
     issues, service_count = check_digest_pins()
-    assert service_count == 40, f"expected 40 descriptors, got {service_count}"
+    assert service_count == 41, f"expected 41 descriptors, got {service_count}"
     assert issues == [], (
         f"digest check found {len(issues)} unpinned descriptor(s): {[i['service'] for i in issues]}"
     )

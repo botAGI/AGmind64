@@ -262,6 +262,7 @@ def test_repository_deploy_targets_load() -> None:
         {"service": "llama-embed", "code": "amd-gpu-device-plugin"},
         {"service": "llama-llm", "code": "amd-gpu-device-plugin"},
         {"service": "llama-rerank", "code": "amd-gpu-device-plugin"},
+        {"service": "ssrf-proxy", "code": "docker-security-opt"},
     ]
     assert (
         "scripts/proof/kubernetes_dry_run.py --target k3s --require-cluster --require-amd-gpu "

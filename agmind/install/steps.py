@@ -333,6 +333,25 @@ def _stage_authelia_config(authelia_src: Path, target_dir: Path, *, domain: str)
         raise
 
 
+def _stage_squid_config(squid_src: Path, target_dir: Path) -> None:
+    """Stage squid.conf as the ssrf-proxy's single read-only config file.
+
+    The descriptor mounts ``/etc/agmind/ssrf-proxy/squid.conf`` :ro; a single-file
+    bind mount whose host source is missing makes Docker create a DIRECTORY there
+    (squid then crash-loops), so the file MUST exist before deploy. Staged
+    atomically so a partial write never replaces a good config.
+    """
+    staged = target_dir.with_name(f".{target_dir.name}.tmp")
+    _cleanup_path(staged)
+    try:
+        staged.mkdir(parents=True, exist_ok=True)
+        _copy_file_atomic(squid_src, staged / "squid.conf")
+        _replace_path_atomic(staged, target_dir)
+    except Exception:
+        _cleanup_path(staged)
+        raise
+
+
 def _stage_directory_contents(source: Path, target: Path) -> None:
     staged = target.with_name(f".{target.name}.tmp")
     _cleanup_path(staged)
@@ -393,6 +412,11 @@ def _materialize_runtime_files(
             smtp_to=runtime_env.get("SMTP_TO", ""),
             smtp_auth_username=runtime_env.get("SMTP_AUTH_USERNAME", ""),
             smtp_auth_password=runtime_env.get("SMTP_AUTH_PASSWORD", ""),
+        )
+    if "ssrf-proxy" in selected:
+        _stage_squid_config(
+            templates_dir / "squid" / "squid.conf",
+            config.config_dir / "ssrf-proxy",
         )
 
     callback(
