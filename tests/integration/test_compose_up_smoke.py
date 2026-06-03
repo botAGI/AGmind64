@@ -213,6 +213,8 @@ _INSTALL_SETUP_SERVICES = frozenset(
         "alertmanager",  # needs staged alertmanager.yml
         "authelia",  # needs staged /config/{configuration,users_database}.yml
         "n8n",  # needs bootstrap-chowned uid-1001 data dir
+        "ssrf-proxy",  # needs staged /etc/agmind/ssrf-proxy/squid.conf (single-file :ro mount)
+        "dify-sandbox",  # depends_on ssrf-proxy, which needs config materialization
     }
 )
 
