@@ -32,6 +32,7 @@ def test_expected_files_present() -> None:
         "prometheus.yml",
         "prometheus/rules/llama.yml",
         "prometheus/rules/system.yml",
+        "prometheus/rules/services.yml",
         "alertmanager.yml",
         "alloy/config.alloy",
         "loki/loki.yml",
@@ -117,6 +118,25 @@ def test_system_alerts_present() -> None:
     assert "ContainerRestartLoop" in alerts
     assert "AmdGpuTempHigh" in alerts
     assert "AmdGttUsageHigh" in alerts
+
+
+def test_service_exporter_alerts_present() -> None:
+    """redis + postgres exporter/backend alerts using OUR docker_sd label model."""
+    path = OBS_DIR / "prometheus/rules/services.yml"
+    rules = yaml.safe_load(path.read_text(encoding="utf-8"))
+    alerts = {r["alert"]: r for g in rules["groups"] for r in g["rules"] if "alert" in r}
+    for name in ("RedisExporterDown", "RedisDown", "PostgresExporterDown", "PostgresDown"):
+        assert name in alerts, f"missing {name}"
+        assert alerts[name]["expr"], f"{name} has empty expr"
+        assert alerts[name]["labels"]["severity"] in ("critical", "warning")
+    # backend-down alerts are critical; exporter-unreachable is warning.
+    assert alerts["RedisDown"]["labels"]["severity"] == "critical"
+    assert alerts["PostgresDown"]["labels"]["severity"] == "critical"
+    # Single docker-auto scrape job → key on {service=...}, NEVER {job=...}.
+    text = path.read_text(encoding="utf-8")
+    assert 'service="redis-exporter"' in text
+    assert 'service="postgres-exporter"' in text
+    assert "job=" not in text, "our topology has one docker-auto job; select on {service=...}"
 
 
 def test_amd_gpu_alerts_use_textfile_metrics() -> None:
