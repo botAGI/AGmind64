@@ -273,9 +273,9 @@ python ../../../scripts/ops/proxmox_inventory.py \
 ```bash
 agmind doctor
 agmind status
-agmind endpoints                 # опубликованные сервисы: URL + состояние
-agmind open grafana              # вывести URL сервиса (pipeable по SSH)
-agmind creds show                # логины + пароли (только root, маскировано)
+agmind endpoints                 # published services: URL + state
+agmind open grafana              # print a service URL (SSH-pipeable)
+agmind creds show                # logins + passwords (root-only, masked)
 agmind cluster inspect --timeout 10
 agmind status --tui
 agmind logs llama-llm -f
