@@ -35,6 +35,22 @@ def test_prior_state_corrupt_returns_none_not_raises(tmp_path: Path) -> None:
     assert load_prior_setup_state(bad) is None
 
 
+def test_prior_state_corrupt_warns_but_absent_is_silent(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review MEDIUM install-state-corrupt-orphan-removal: a PRESENT-but-corrupt state must warn
+    (the fallback can --remove-orphans the running stack), while a truly absent file stays
+    silent (a normal fresh install)."""
+    assert load_prior_setup_state(tmp_path / "absent.json") is None
+    assert capsys.readouterr().err == "", "absent state must not warn"
+
+    bad = tmp_path / "setup-state.json"
+    bad.write_text("{broken json", encoding="utf-8")
+    assert load_prior_setup_state(bad) is None
+    err = capsys.readouterr().err
+    assert "unreadable" in err and "remove-orphans" in err
+
+
 def test_prior_state_loads_previously_selected_services(tmp_path: Path) -> None:
     """Re-run must default to the previously-deployed selection so an incremental
     re-run adds/replaces a component instead of dropping the running stack."""

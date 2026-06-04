@@ -211,6 +211,31 @@ def test_component_noop_if_already_at_target(
     assert "already at" in capsys.readouterr().out.lower()
 
 
+def test_load_holds_absent_returns_empty(tmp_repo: Path) -> None:
+    # HOLDS_FILE points at a not-yet-created tmp path → absent → {} (no error).
+    assert upgrade_cmd._load_holds() == {}
+
+
+def test_load_holds_corrupt_aborts(tmp_repo: Path) -> None:
+    """Review MEDIUM upgrade-corrupt-holds-dropped: a corrupt holds file must abort, not be
+    silently treated as empty (which would let upgrade bump every frozen image)."""
+    import typer
+
+    upgrade_cmd.HOLDS_FILE.write_text(
+        "vendor/alpha:\n  reason: 'x'\n  : : :\n broken", encoding="utf-8"
+    )
+    with pytest.raises(typer.Exit):
+        upgrade_cmd._load_holds()
+
+
+def test_load_holds_non_mapping_aborts(tmp_repo: Path) -> None:
+    import typer
+
+    upgrade_cmd.HOLDS_FILE.write_text("- just\n- a\n- list\n", encoding="utf-8")
+    with pytest.raises(typer.Exit):
+        upgrade_cmd._load_holds()
+
+
 def test_component_respects_holds_without_force(
     tmp_repo: Path,
     capsys: pytest.CaptureFixture[str],

@@ -58,14 +58,33 @@ class UpgradePlan:
 
 
 def _load_holds() -> dict[str, dict[str, str]]:
+    # A version hold is a deliberate safety lever (freeze an image). Distinguish ABSENT
+    # (no holds → {}) from present-but-UNPARSEABLE: silently treating a corrupt holds file as
+    # empty let `agmind upgrade` sail past every hold and bump frozen images (review MEDIUM
+    # upgrade-corrupt-holds-dropped). On a parse error or a non-mapping payload, abort loudly.
     if not HOLDS_FILE.exists():
         return {}
-    try:
-        import yaml
+    import yaml
 
-        return yaml.safe_load(HOLDS_FILE.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001
+    try:
+        data = yaml.safe_load(HOLDS_FILE.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        print(
+            f"agmind upgrade: version holds file {HOLDS_FILE} is unparseable ({exc}); "
+            "refusing to proceed — a corrupt hold could silently un-freeze pinned images.",
+            file=sys.stderr,
+        )
+        raise typer.Exit(2) from exc
+    if data is None:
         return {}
+    if not isinstance(data, dict):
+        print(
+            f"agmind upgrade: version holds file {HOLDS_FILE} must be a mapping, got "
+            f"{type(data).__name__}; refusing to proceed.",
+            file=sys.stderr,
+        )
+        raise typer.Exit(2)
+    return data
 
 
 def _find_descriptor_for_service(service_name: str) -> Path | None:

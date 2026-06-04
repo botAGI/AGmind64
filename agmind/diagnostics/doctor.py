@@ -435,7 +435,9 @@ def run_preflight() -> DoctorReport:
             result = check_fn()
         except Exception as exc:  # noqa: BLE001
             result = CheckResult(
-                name=check_fn.__name__.lstrip("_check_"),
+                # removeprefix, NOT lstrip — lstrip strips the CHAR SET {_,c,h,e,k} so
+                # _check_kernel → 'rnel' on a raised check (review LOW doctor-lstrip-check-name).
+                name=check_fn.__name__.removeprefix("_check_"),
                 status="fail",
                 message=f"Check raised: {exc!r}",
             )

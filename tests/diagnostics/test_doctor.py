@@ -13,6 +13,22 @@ from agmind.diagnostics.doctor import CheckResult, DoctorReport, doctor_report, 
 pytestmark = pytest.mark.backend_any
 
 
+def test_raised_check_name_uses_removeprefix_not_lstrip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review LOW doctor-lstrip-check-name: a raised check's name must be the prefix-stripped
+    function name (`kernel`), not lstrip's char-set mangle (`rnel`)."""
+    from agmind.diagnostics import doctor
+
+    def _check_kernel() -> CheckResult:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(doctor, "_CHECKS", (_check_kernel,))
+    report = doctor.run_preflight()
+    assert [c.name for c in report.checks] == ["kernel"]
+    assert report.checks[0].status == "fail"
+
+
 def test_check_result_construction() -> None:
     c = CheckResult(name="x", status="ok", message="all good")
     assert c.name == "x"

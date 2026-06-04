@@ -9,6 +9,7 @@ with a ready-to-print message and exit code; the CLI handler only maps that to
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from agmind.cli.tui.setup_wizard import SetupState, expand_selected_services_for_setup
@@ -87,11 +88,19 @@ def load_prior_setup_state(state_path: Path) -> SetupState | None:
     add/replace a component does not silently drop the running stack via
     ``docker compose up --remove-orphans``. Returns None if absent/unreadable.
     """
+    if not state_path.exists():
+        return None
     try:
-        if not state_path.exists():
-            return None
         return SetupState.from_json(state_path)
-    except Exception:  # noqa: BLE001 — corrupt/old state → caller falls back to defaults
+    except Exception as exc:  # noqa: BLE001 — corrupt/old state → fall back to defaults
+        # A PRESENT-but-corrupt state must not fall back SILENTLY: the whole point of this
+        # pre-selection is to stop a re-deploy from --remove-orphans'ing the running stack, so
+        # warn loudly before that happens (review MEDIUM install-state-corrupt-orphan-removal).
+        print(
+            f"agmind: prior setup state at {state_path} is unreadable ({exc}); proceeding from "
+            "defaults — a re-deploy may --remove-orphans the previously deployed stack.",
+            file=sys.stderr,
+        )
         return None
 
 
