@@ -58,3 +58,49 @@ def test_every_required_descriptor_var_is_generated() -> None:
         f"clean `agmind install`. Add them to agmind/install/steps.py generators or "
         f"give them a :-default: {missing}"
     )
+
+
+def _env_keys_written_by_envwritestep(tmp_path: Path) -> dict[str, str]:
+    """Run the REAL EnvWriteStep and return the KEY=value pairs it writes to .env.
+
+    Validates the LIVE path, not tuple membership — `_runtime_env()` generating a
+    secret does NOT prove `EnvWriteStep.run` emits it (the KOMODO ops-profile gap:
+    generated into the dict, dropped before the hand-maintained `lines` list).
+    """
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["komodo-core", "komodo-mongo", "komodo-periphery", "postgres", "authelia"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "models",
+        config_dir=tmp_path / "etc",
+    )
+    result = EnvWriteStep().run(lambda _event: None, cfg)
+    assert result.success, f"EnvWriteStep failed: {result}"
+    env_text = (cfg.install_dir / ".env").read_text(encoding="utf-8")
+    out: dict[str, str] = {}
+    for raw in env_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        out[key] = value
+    return out
+
+
+def test_envwritestep_actually_writes_every_generated_secret(tmp_path: Path) -> None:
+    """Правило #11, LIVE form: every generated secret in secret_keys.py must land in the
+    .env EnvWriteStep ACTUALLY writes — not merely exist in the tuple. This is the gate
+    that would have caught the KOMODO ops-profile deploy-blocker (generated but never
+    emitted), and is backed by the EnvWriteStep divergence guard."""
+    written = _env_keys_written_by_envwritestep(tmp_path)
+    secret_keys = set(_RUNTIME_SECRET_KEYS) | set(_AUTHELIA_SECRET_KEYS)
+    missing = sorted(key for key in secret_keys if not written.get(key))
+    assert not missing, (
+        "these generated secrets are in secret_keys.py but EnvWriteStep does NOT write "
+        "them to .env -> any service that interpolates them as ${VAR:?} reds at "
+        f"`docker compose config` on a fresh install: {missing}"
+    )

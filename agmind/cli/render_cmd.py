@@ -218,12 +218,16 @@ def _scenario_stack_readme(
         f"- `compose.yaml` — namespaced compose (containers `{project}-*`, network `{project}`,\n"
         f"  data root `{data_root}`, config root `{config_root}`).\n"
         f"- `.env.example` — the `${{VAR}}` values this compose needs.\n\n"
-        f"## IMPORTANT — this is the compose layer only\n"
-        f"`compose.yaml` is NOT self-sufficient on its own. Before `docker compose up` the host\n"
-        f"must be staged: writable bind-mount dirs created with the right uid:gid, secrets\n"
-        f"written to `.env`, and per-service config materialized under `{config_root}`. That\n"
-        f"staging is done by `agmind install` (or its staging step). A raw `docker compose up`\n"
-        f"against this file without staging will crash-loop.\n"
+        f"## IMPORTANT — compose layer only; host-staging is NOT automated for this namespace\n"
+        f"`compose.yaml` is NOT self-sufficient. Before `docker compose up` the host must be\n"
+        f"staged: writable bind dirs created with the right uid:gid under `{data_root}`, secrets\n"
+        f"written to `.env`, and per-service config materialized under `{config_root}`.\n\n"
+        f"`agmind install` stages + deploys ONLY the DEFAULT `agmind` stack (`/var/lib/agmind`,\n"
+        f"`/etc/agmind`) — it **does not stage** this scenario's namespaced roots (`{data_root}` /\n"
+        f"`{config_root}`). So this rendered stack is for inspecting the topology, handing to an\n"
+        f"external orchestrator (e.g. Komodo) that does its own staging, or staging the host by\n"
+        f"hand. A raw `docker compose up` without first staging those namespaced dirs/secrets/\n"
+        f"config WILL crash-loop.\n"
     )
 
 
@@ -302,8 +306,9 @@ def cmd_render_scenario(
     )
     print(f"  compose.yaml + .env.example ({len(env_vars)} vars) + README.md")
     print(
-        "  NOTE: stage host dirs + .env + materialized config via `agmind install` "
-        "before `docker compose up` (compose layer only)."
+        "  NOTE: compose layer only. `agmind install` stages ONLY the default `agmind` stack, "
+        "NOT this scenario's namespaced roots — stage host dirs/.env/config by hand (or via an "
+        "external orchestrator like Komodo) before `docker compose up`. See the rendered README.md."
     )
     return 0
 

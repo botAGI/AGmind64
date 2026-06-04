@@ -69,11 +69,14 @@ def test_core_and_mongo_share_the_database_password_var() -> None:
 
 
 def test_komodo_secrets_are_generated_and_classified() -> None:
+    # Tuple membership = _runtime_env() GENERATES a value. That a value also reaches the
+    # written .env (the gap that broke the ops deploy) is the LIVE check in
+    # tests/services/test_env_completeness.py::test_envwritestep_actually_writes_every_generated_secret.
     for key in (
         "KOMODO_DATABASE_PASSWORD",
         "KOMODO_INIT_ADMIN_PASSWORD",
         "KOMODO_WEBHOOK_SECRET",
         "KOMODO_JWT_SECRET",
     ):
-        assert key in RUNTIME_SECRET_KEYS, f"{key} not wired into EnvWriteStep"
+        assert key in RUNTIME_SECRET_KEYS, f"{key} missing from the secret generator set"
         assert classify(key) in ("rotatable", "init_only"), key

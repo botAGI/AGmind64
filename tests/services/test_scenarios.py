@@ -104,6 +104,8 @@ def test_list_only_lists_and_succeeds(capsys: pytest.CaptureFixture[str]) -> Non
 def test_readme_is_honest_about_staging(tmp_path: Path) -> None:
     out = tmp_path / "inference"
     assert cmd_render_scenario(name="inference", out=out) == 0
-    readme = (out / "README.md").read_text(encoding="utf-8")
-    assert "compose layer only" in readme.lower() or "not self-sufficient" in readme.lower()
-    assert "agmind install" in readme
+    readme = (out / "README.md").read_text(encoding="utf-8").lower()
+    assert "compose layer only" in readme or "not self-sufficient" in readme
+    # Must NOT rubber-stamp a non-working remediation: `agmind install` does NOT stage a
+    # scenario's namespaced roots, and the README must say so plainly (audit 2026-06-04).
+    assert "does not stage" in readme

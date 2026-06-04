@@ -1980,6 +1980,22 @@ class EnvWriteStep(InstallStep):
                 runtime_env["AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET"],
             ),
         ]
+        # Divergence guard (Правило #11): the hand-maintained list above must never
+        # silently drop a generated secret when a new key is added to secret_keys.py.
+        # Append every generated secret not already emitted, so EnvWriteStep and
+        # RUNTIME_SECRET_KEYS cannot diverge — the exact gap that let the KOMODO
+        # ops-profile secrets fall through (compose `${VAR:?}` then reds on a fresh
+        # ops deploy while CI hand-injected the values and stayed green).
+        _emitted = {
+            ln.split("=", 1)[0] for ln in lines if "=" in ln and not ln.lstrip().startswith("#")
+        }
+        _ungrouped = [
+            key for key in (*_RUNTIME_SECRET_KEYS, *_AUTHELIA_SECRET_KEYS) if key not in _emitted
+        ]
+        if _ungrouped:
+            lines.append("")
+            lines.append("# ---- Additional generated secrets (divergence guard) ----")
+            lines.extend(_env_line(key, runtime_env[key]) for key in _ungrouped)
         env_text = "\n".join(lines) + "\n"
         try:
             _write_runtime_payload_local(config, env_text, version_env_text, callback, self.step_id)

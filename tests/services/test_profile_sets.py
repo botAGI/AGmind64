@@ -58,6 +58,31 @@ def test_all_profile_sets_covers_all_12_profiles() -> None:
     )
 
 
+def test_every_profile_is_boot_smoked_or_explicitly_excluded() -> None:
+    """Drift guard: every selectable profile must be EITHER in the docker boot-smoke lane
+    (_SMOKE_PROFILES) OR in an explicit documented exclusion set — so a new profile silently
+    skipping boot validation is visible, not silent (audit 2026-06-04: ops slipped through
+    config-validate-only)."""
+    from tests.integration.test_compose_up_smoke import _SMOKE_PROFILES
+
+    smoked = {p for entry in _SMOKE_PROFILES for p in entry.split(",")}
+    # Profiles intentionally NOT in the docker boot-smoke lane, each with its reason:
+    excluded = {
+        "full",  # superset of all profiles — covered piecewise; too heavy to boot whole
+        "ui",  # openwebui has no standalone boot value without a model backend
+        "proxmox",  # proxmox-exporter needs a real Proxmox VE host to boot meaningfully
+        # komodo needs docker.sock + /proc + /opt/agmind/stacks binds and KOMODO secrets the
+        # smoke harness does not stage; the 3-svc handshake was boot-proven manually 2026-06-04.
+        "ops",
+    }
+    uncovered = all_profile_names() - smoked - excluded
+    assert not uncovered, (
+        f"profiles neither boot-smoked nor explicitly excluded: {sorted(uncovered)}. "
+        "Add to _SMOKE_PROFILES (tests/integration/test_compose_up_smoke.py) or to the "
+        "documented exclusion set in this test with a reason."
+    )
+
+
 def test_all_profile_sets_are_single_profile_isolation_lanes() -> None:
     """Every entry in ALL_PROFILE_SETS is a single-profile isolation lane."""
     multi = [ps for ps in ALL_PROFILE_SETS if len(ps) != 1]
