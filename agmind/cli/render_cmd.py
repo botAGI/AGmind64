@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,9 @@ from agmind.services.renderer import (
     select_services,
     unknown_profiles,
 )
+
+# `${VAR}`, `${VAR:-default}`, `${VAR:?msg}` interpolations in a rendered compose.
+_ENV_VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)(?:[:-][^}]*)?\}")
 
 # Placeholder digest written for backends not supplied via --backend-digests-dir.
 _BACKEND_PLACEHOLDER_DIGEST = "0" * 64
@@ -188,6 +192,114 @@ def cmd_render_compose(
 
     write_text_atomic(output, rendered)
     print(f"✓ wrote {output} ({len(rendered)} bytes)")
+    return 0
+
+
+def _extract_env_vars(compose_text: str) -> list[str]:
+    """Unique, sorted ``${VAR}`` names a rendered compose interpolates."""
+    return sorted(set(_ENV_VAR_RE.findall(compose_text)))
+
+
+def _scenario_stack_readme(
+    name: str, project: str, services: list[str], data_root: str, config_root: str
+) -> str:
+    """Honest README for a rendered scenario stack dir.
+
+    Explicit that this is the COMPOSE layer only — the host dirs, secrets `.env`, and
+    materialized config are staged by ``agmind install`` / the install staging step; a raw
+    ``docker compose up`` here would crash-loop without them.
+    """
+    svc_lines = "\n".join(f"- {s}" for s in services)
+    return (
+        f"# AGmind scenario stack: {name}\n\n"
+        f"Rendered by `agmind render scenario {name}`. Compose project: `{project}`.\n\n"
+        f"## Services ({len(services)})\n{svc_lines}\n\n"
+        f"## Layout\n"
+        f"- `compose.yaml` — namespaced compose (containers `{project}-*`, network `{project}`,\n"
+        f"  data root `{data_root}`, config root `{config_root}`).\n"
+        f"- `.env.example` — the `${{VAR}}` values this compose needs.\n\n"
+        f"## IMPORTANT — this is the compose layer only\n"
+        f"`compose.yaml` is NOT self-sufficient on its own. Before `docker compose up` the host\n"
+        f"must be staged: writable bind-mount dirs created with the right uid:gid, secrets\n"
+        f"written to `.env`, and per-service config materialized under `{config_root}`. That\n"
+        f"staging is done by `agmind install` (or its staging step). A raw `docker compose up`\n"
+        f"against this file without staging will crash-loop.\n"
+    )
+
+
+def cmd_render_scenario(
+    name: str | None,
+    project: str | None = None,
+    out: Path | None = None,
+    domain: str | None = None,
+    traefik: bool = True,
+    list_only: bool = False,
+    services_dir: Path = DEFAULT_SERVICES_DIR,
+) -> int:
+    """Render a named operator scenario into an isolated, namespaced stack dir.
+
+    Returns 0 success, 1 error.
+    """
+    from agmind.components import load_component_contracts
+    from agmind.services.scenarios import get_scenario, list_scenarios, scenario_names
+    from agmind.services.selection import resolve_service_selection
+
+    if list_only or not name:
+        for scenario in list_scenarios():
+            print(f"{scenario.name:18} {scenario.description}")
+        return 0
+
+    scenario = get_scenario(name)
+    if scenario is None:
+        print(
+            f"ERROR: unknown scenario '{name}'. Known: {', '.join(scenario_names())}",
+            file=sys.stderr,
+        )
+        return 1
+
+    project_name = project or f"agmind-{name}"
+    out_dir = out or Path(f"/opt/agmind/stacks/{name}")
+    data_root = f"/var/lib/{project_name}"
+    config_root = f"/etc/{project_name}"
+
+    try:
+        descriptors = load_descriptors(services_dir)
+        contracts = load_component_contracts()
+        expanded = resolve_service_selection(
+            descriptors, services=scenario.services, component_contracts=contracts
+        )
+        expanded_names = sorted(expanded)
+        compose = render_to_string(
+            services=expanded_names,
+            services_dir=services_dir,
+            traefik_enabled=traefik,
+            domain=domain,
+            project_name=project_name,
+            data_root=data_root,
+            config_root=config_root,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(out_dir / "compose.yaml", compose)
+    env_vars = _extract_env_vars(compose)
+    env_example = "".join(f"{var}=\n" for var in env_vars)
+    write_text_atomic(out_dir / ".env.example", env_example)
+    write_text_atomic(
+        out_dir / "README.md",
+        _scenario_stack_readme(name, project_name, expanded_names, data_root, config_root),
+    )
+    print(
+        f"✓ scenario '{name}' → {out_dir}/ "
+        f"({len(expanded_names)} services, project '{project_name}')"
+    )
+    print(f"  compose.yaml + .env.example ({len(env_vars)} vars) + README.md")
+    print(
+        "  NOTE: stage host dirs + .env + materialized config via `agmind install` "
+        "before `docker compose up` (compose layer only)."
+    )
     return 0
 
 
@@ -392,6 +504,44 @@ def register(app: typer.Typer) -> None:
             traefik=not no_traefik,
             diff=diff,
             domain=domain,
+        )
+        raise typer.Exit(code=rc)
+
+    @render_app.command("scenario")
+    def render_scenario(
+        name: str | None = typer.Argument(
+            None, help="Scenario name (omit or use --list to see the catalog)"
+        ),
+        list_scenarios: bool = typer.Option(
+            False, "--list", help="List available scenarios and exit"
+        ),
+        project: str | None = typer.Option(
+            None, "--project", help="Compose project name (default: agmind-<scenario>)"
+        ),
+        output: Path | None = typer.Option(
+            None,
+            "--out",
+            "-o",
+            help="Stack dir (default: /opt/agmind/stacks/<scenario>)",
+        ),
+        no_traefik: bool = typer.Option(
+            False, "--no-traefik", help="Skip Traefik labels generation"
+        ),
+        domain: str | None = typer.Option(
+            None,
+            "--domain",
+            envvar="AGMIND_DOMAIN",
+            help="Override agmind.dev placeholder (e.g. yourdomain.com)",
+        ),
+    ) -> None:
+        """Render a named operator scenario into an isolated, namespaced stack dir."""
+        rc = cmd_render_scenario(
+            name=name,
+            project=project,
+            out=output,
+            domain=domain,
+            traefik=not no_traefik,
+            list_only=list_scenarios,
         )
         raise typer.Exit(code=rc)
 
