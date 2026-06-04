@@ -2128,9 +2128,43 @@ def test_bootstrap_installs_ansible_collections_before_playbook(
     assert result.success is True
     assert calls[0][0][:4] == ["/venv/bin/ansible-galaxy", "collection", "install", "-r"]
     assert calls[0][0][-2:] == ["-p", str(steps.DEFAULT_REPO_ROOT / "ansible" / ".galaxy")]
+    assert "--offline" not in calls[0][0]  # online install: no --offline
     assert calls[1][0][0] == "/venv/bin/ansible-playbook"
     assert calls[0][1]["cwd"] == str(steps.DEFAULT_REPO_ROOT / "ansible")
     assert calls[1][1]["cwd"] == str(steps.DEFAULT_REPO_ROOT / "ansible")
+
+
+def test_bootstrap_galaxy_install_is_offline_under_air_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review HIGH galaxy-collection-no-offline: under AGMIND_OFFLINE the galaxy install must
+    pass --offline so it uses ONLY the pre-staged ansible/.galaxy collections and never hits
+    galaxy.ansible.com (BootstrapStep runs before the offline-aware DeployStep)."""
+    from agmind.install import steps
+    from agmind.install.steps import BootstrapStep
+
+    calls: list[list[str]] = []
+
+    class FakeProc:
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> FakeProc:
+        calls.append(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr(steps.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(steps, "resolve_ansible_command", lambda name: f"/venv/bin/{name}")
+    monkeypatch.setattr(steps, "_offline_install_enabled", lambda: True)
+
+    assert BootstrapStep().run(lambda _e: None, _make_config(tmp_path)).success is True
+    assert "--offline" in calls[0], "air-gap galaxy install must pass --offline"
 
 
 class _FakeStdout:

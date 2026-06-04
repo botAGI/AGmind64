@@ -31,6 +31,29 @@ def _make_blob(path: Path, size_mb: int = 200) -> None:
     path.write_bytes(b"\x00" * (size_mb * 1024 * 1024))
 
 
+def test_offline_missing_model_fast_fails_with_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review MEDIUM model-download-no-offline-fastfail: under AGMIND_OFFLINE a missing model
+    must fast-fail naming the expected path — NOT attempt curl (a long hang + opaque network
+    error in air-gap)."""
+    from agmind.install import steps
+
+    cfg = _cfg(tmp_path)  # empty models_dir → not present anywhere
+    monkeypatch.setattr(steps, "_offline_install_enabled", lambda: True)
+
+    def _no_curl(*_a: object, **_k: object) -> tuple[int, list[str]]:
+        raise AssertionError("offline install must NOT shell out to curl for a missing model")
+
+    monkeypatch.setattr(steps, "_stream_subprocess", _no_curl)
+
+    ok, msg = ModelDownloadStep()._download_one(
+        "llm", "user/repo", "Qwen.gguf", cfg, lambda _e: None
+    )
+    assert ok is False
+    assert "OFFLINE" in msg.upper() and "Qwen.gguf" in msg
+
+
 def test_skip_download_if_model_in_models_dir(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     target = cfg.models_dir / cfg.model_file

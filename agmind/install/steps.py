@@ -1234,16 +1234,25 @@ class BootstrapStep(InstallStep):
         requirements = ansible_dir / "requirements.yml"
         if requirements.exists():
             galaxy_dir = ansible_dir / self.GALAXY_DIR_NAME
+            galaxy_cmd = [
+                resolve_ansible_command("ansible-galaxy"),
+                "collection",
+                "install",
+                "-r",
+                str(requirements),
+                "-p",
+                str(galaxy_dir),
+            ]
+            # requirements.yml pins ranges, so even pre-staged collections trigger a network
+            # version-resolution call to galaxy.ansible.com. BootstrapStep is in default_steps
+            # and runs BEFORE the offline-aware DeployStep, so without --offline an air-gap
+            # install aborts HERE (same orphaned-guard class as the earlier offline-pull bug).
+            # --offline (ansible-core ≥2.16) uses only the collections pre-staged into ansible/
+            # .galaxy — see docs/installation/offline-install.md.
+            if _offline_install_enabled():
+                galaxy_cmd.append("--offline")
             rc, _ = _stream_subprocess(
-                [
-                    resolve_ansible_command("ansible-galaxy"),
-                    "collection",
-                    "install",
-                    "-r",
-                    str(requirements),
-                    "-p",
-                    str(galaxy_dir),
-                ],
+                galaxy_cmd,
                 callback,
                 self.step_id,
                 cwd=ansible_dir,
@@ -1702,6 +1711,16 @@ class ModelDownloadStep(InstallStep):
                 except OSError as exc2:
                     return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
             return True, f"{role}: relocated {size_mb} MiB"
+
+        # Not present anywhere. In air-gap (AGMIND_OFFLINE) the curl download below cannot run —
+        # fast-fail with the exact path the operator must pre-stage, rather than a confusing
+        # curl network error after a long hang (review MEDIUM model-download-no-offline-fastfail).
+        if _offline_install_enabled():
+            return (
+                False,
+                f"{role}: AGMIND_OFFLINE and model not present — pre-stage '{file_name}' at "
+                f"{target} (or {config.models_dir}/); air-gap installs do not download from HF.",
+            )
 
         partial = target.with_name(f".{target.name}.part")
         if target.is_file() and target.stat().st_size < min_size:

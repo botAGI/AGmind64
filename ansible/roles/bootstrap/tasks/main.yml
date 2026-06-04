@@ -50,6 +50,21 @@
         sudo amdgpu-install --usecase=rocm,hiplibsdk --no-dkms
       См. docs/HARDWARE.md § ROCm install.
 
+# On a CLEAN host none of docker/render/video exist yet (docker creates `docker`
+# in its own role AFTER bootstrap; render/video come from the GPU stack). `useradd -G
+# <missing-group>` exits rc=6 and creates NO user, and the old blanket `failed_when: false`
+# swallowed that — so "Create AGmind directories" then aborted with "user agmind does not
+# exist". Pre-create the groups (idempotent; docker's postinst reuses an existing group) so
+# the user task can succeed AND surface a real failure instead of being silently ignored.
+- name: Ensure docker/render/video groups exist (clean host pre-create)
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - docker
+    - render
+    - video
+
 - name: Create agmind user
   ansible.builtin.user:
     name: "{{ agmind_user }}"
@@ -61,7 +76,6 @@
       - render
       - video
     state: present
-  failed_when: false  # render/video group may not exist yet
 
 - name: Add primary host user to render+video groups
   ansible.builtin.user:
