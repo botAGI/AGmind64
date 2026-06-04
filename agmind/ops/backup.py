@@ -576,15 +576,41 @@ def restore_backup(
                 log.warning("backup: data member %s missing in archive", dlabel)
                 continue
             if kind == "volume":
-                target = destinations.get(dlabel) or Path(str(member_meta.get("host_path", "")))
-                _extract_dir(tar, member, Path(target), sudo_password=sudo_password)
+                # SECURITY (audit H#4): resolve the extraction root ONLY from trusted sources —
+                # the operator's `destinations` mapping or `by_label` (current default sources).
+                # NEVER fall back to the archive's self-declared `host_path`, which is
+                # attacker-controllable: a swapped .tar.gz could set host_path=/root/.ssh and
+                # overwrite files anywhere the user can write, outside /var/lib/agmind.
+                target_path = destinations.get(dlabel) or (
+                    by_label[dlabel].path if dlabel in by_label else None
+                )
+                if target_path is None:
+                    log.warning(
+                        "backup: volume %s has no trusted destination (not in --label "
+                        "destinations nor the current sources) — skipping (untrusted archive "
+                        "host_path ignored)",
+                        dlabel,
+                    )
+                    continue
+                _extract_dir(tar, member, Path(target_path), sudo_password=sudo_password)
                 extracted.append(dlabel)
             elif kind == "dbdump":
                 payload = tar.extractfile(member)
                 if payload is None:
                     log.warning("cannot read dbdump member %s", dlabel)
                     continue
-                sql = gzip.decompress(payload.read())
+                raw = payload.read()
+                # Integrity gate (audit L#33): verify the dump against the recorded sha256
+                # (of the gzipped member, same basis as verify_backup) BEFORE piping it into
+                # the live DB — a bit-rotted/truncated dump must not be loaded.
+                expected_sha = str(member_meta.get("sha256", ""))
+                if expected_sha and hashlib.sha256(raw).hexdigest() != expected_sha:
+                    log.error(
+                        "backup: dbdump %s sha256 mismatch (corrupt/truncated) — refusing to load",
+                        dlabel,
+                    )
+                    continue
+                sql = gzip.decompress(raw)
                 src = DbDumpSource(
                     label=dlabel,
                     container=str(member_meta.get("container", "")),
@@ -594,7 +620,10 @@ def restore_backup(
                     password=(db_passwords or {}).get(dlabel, ""),
                 )
                 runner = data_run or subprocess.run
-                runner(restore_db_command(src), input=sql, check=False)
+                result = runner(restore_db_command(src), input=sql, check=False)
+                rc = getattr(result, "returncode", 0)
+                if rc not in (0, None):
+                    log.error("backup: dbdump %s restore command failed (rc=%s)", dlabel, rc)
                 extracted.append(dlabel)
 
     return RestoreResult(extracted=tuple(extracted), metadata=metadata)

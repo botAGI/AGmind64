@@ -202,10 +202,43 @@ def scan_file_perms(paths: Sequence[Path]) -> list[SecurityFinding]:
     return findings
 
 
+# The Authelia documentation EXAMPLE password hash (login admin / password "authelia").
+# Its salt segment is a stable fingerprint regardless of the surrounding params.
+_AUTHELIA_EXAMPLE_HASH_SALT = "BpLnfgDsc2WD8F2q"
+
+
+def scan_authelia_users_db(path: Path) -> list[SecurityFinding]:
+    """Flag the Authelia file backend still carrying the upstream EXAMPLE password hash.
+
+    The weak-default ``.env`` scan cannot catch this because the credential lives in a
+    file (users_database.yml), not an env var (audit M#24).
+    """
+    if not path.is_file():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    if _AUTHELIA_EXAMPLE_HASH_SALT not in text:
+        return []
+    return [
+        SecurityFinding(
+            "authelia-default-password",
+            "high",
+            "authelia",
+            f"{path} still contains the upstream Authelia EXAMPLE password hash — anyone "
+            "can sign in to the SSO as admin/authelia. Reinstall so a strong password is "
+            "generated + hashed, or replace the hash with `authelia crypto hash generate argon2`.",
+            "reinstall (generates a strong admin password) or set a real password hash",
+        )
+    ]
+
+
 def audit_install(
     install_dir: Path,
     *,
     live: bool = False,
+    config_dir: Path | None = None,
 ) -> tuple[list[SecurityFinding], bool]:
     """Audit the deployed artifacts under ``install_dir``.
 
@@ -240,6 +273,8 @@ def audit_install(
         descriptors = {}
     findings += scan_env(env, descriptors)
     findings += scan_file_perms([env_path, install_dir / "version.env"])
+    cfg_dir = config_dir if config_dir is not None else Path("/etc/agmind")
+    findings += scan_authelia_users_db(cfg_dir / "authelia" / "users_database.yml")
 
     if live:
         findings.append(

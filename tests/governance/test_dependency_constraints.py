@@ -45,8 +45,8 @@ def test_constraints_check_script_json_output() -> None:
     assert payload["ok"] is True
     assert payload["plane_count"] == 5
     assert (
-        payload["package_rule_count"] == 45
-    )  # +jsonschema (dev) — tests/services/test_catalog_render.py
+        payload["package_rule_count"] == 46
+    )  # +jsonschema (dev), +argon2-cffi (authelia admin-pw hashing, audit H#1)
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

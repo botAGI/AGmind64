@@ -27,6 +27,11 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     "REDIS_PASSWORD",
     "N8N_ENCRYPTION_KEY",
     "HOMARR_SECRET_ENCRYPTION_KEY",
+    # Authelia first-admin login password — hashed (argon2id) into users_database.yml at
+    # materialize so the SSO never ships the upstream example password. Surfaced plaintext
+    # in credentials.txt for the operator. (The AUTHELIA_* 64-char keys below are different
+    # — those are the session/storage/jwt secrets read as env.)
+    "AUTHELIA_ADMIN_PASSWORD",
     # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
     "DIFY_PLUGIN_DAEMON_KEY",
     "DIFY_PLUGIN_INNER_API_KEY",
@@ -73,6 +78,9 @@ INIT_ONLY = frozenset(
         # seeded into mongo on core's first boot — rotating the env afterwards is a no-op.
         "KOMODO_DATABASE_PASSWORD",
         "KOMODO_INIT_ADMIN_PASSWORD",
+        # Hashed into users_database.yml at materialize; rotating the env alone is a no-op
+        # until a re-materialize/re-install regenerates the hash.
+        "AUTHELIA_ADMIN_PASSWORD",
     }
 )
 ENCRYPT_AT_REST = frozenset(

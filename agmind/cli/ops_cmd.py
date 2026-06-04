@@ -155,6 +155,7 @@ def cmd_restore(
     ask_sudo_password: bool = False,
     dry_run: bool = False,
     labels: list[str] | None = None,
+    skip_verify: bool = False,
 ) -> int:
     backup_path = Path(backup_path)
     if not backup_path.exists():
@@ -215,6 +216,17 @@ def cmd_restore(
             answer = ""
         if answer not in ("y", "yes"):
             print("aborted.")
+            return 1
+
+    # Integrity gate (audit M#17): re-hash the backup's dump members against their recorded
+    # sha256 BEFORE overwriting live data — a bit-rotted/truncated archive must not be loaded.
+    if not skip_verify:
+        issues = verify_backup(backup_path)
+        if issues:
+            print("agmind restore: backup integrity check FAILED:", file=sys.stderr)
+            for issue in issues:
+                print(f"  - {issue}", file=sys.stderr)
+            print("aborting (pass --skip-verify to override).", file=sys.stderr)
             return 1
 
     sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
@@ -559,6 +571,11 @@ def register(app: typer.Typer) -> None:
             "--ask-sudo-password",
             help="Prompt for sudo password for root-owned install/snapshot paths",
         ),
+        skip_verify: bool = typer.Option(
+            False,
+            "--skip-verify",
+            help="Skip the pre-restore sha256 integrity check (NOT recommended).",
+        ),
     ) -> None:
         """Restore deployment from `agmind backup` archive (Phase L.E)."""
         raise typer.Exit(
@@ -568,6 +585,7 @@ def register(app: typer.Typer) -> None:
                 ask_sudo_password=ask_sudo_password,
                 dry_run=dry_run,
                 labels=label,
+                skip_verify=skip_verify,
             )
         )
 

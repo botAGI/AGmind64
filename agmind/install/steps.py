@@ -314,22 +314,51 @@ def _stage_alertmanager_config(
         raise
 
 
-def _stage_authelia_config(authelia_src: Path, target_dir: Path, *, domain: str) -> None:
+def _authelia_argon2_hash(password: str) -> str:
+    """argon2id hash matching Authelia's file-backend default params (m=64MiB,t=3,p=4)."""
+    from argon2 import PasswordHasher, Type
+
+    return PasswordHasher(
+        time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16, type=Type.ID
+    ).hash(password)
+
+
+def _replace_authelia_password_hash(text: str, password: str) -> str:
+    """Replace the admin `password:` hash in users_database.yml with argon2id(password)."""
+    new_hash = _authelia_argon2_hash(password)
+    return re.sub(
+        r"(?m)^(\s*password:\s*)'[^']*'",
+        lambda _m: f"{_m.group(1)}'{new_hash}'",
+        text,
+        count=1,
+    )
+
+
+def _stage_authelia_config(
+    authelia_src: Path, target_dir: Path, *, domain: str, admin_password: str = ""
+) -> None:
     """Stage Authelia's configuration.yml + users_database.yml, substituting the domain.
 
     Both ship with the __AGMIND_DOMAIN__ token (session cookie domain + admin email);
-    replace it with the install domain. Secrets are NOT here — Authelia reads them from
-    the runtime .env as AUTHELIA_* env. Staged atomically so a partial write never
-    replaces a good config dir; the dir is left WRITABLE (Authelia chowns it + writes
-    db.sqlite3/notification.txt at runtime).
+    replace it with the install domain. When ``admin_password`` is supplied, its argon2id
+    hash replaces the shipped upstream EXAMPLE hash in users_database.yml so the SSO never
+    boots with the well-known `authelia` password (audit H#1). Other secrets are NOT here —
+    Authelia reads them from the runtime .env as AUTHELIA_* env. Staged atomically; the dir
+    is left WRITABLE (Authelia chowns it + writes db.sqlite3/notification.txt at runtime).
     """
     staged = target_dir.with_name(f".{target_dir.name}.tmp")
     _cleanup_path(staged)
     try:
         staged.mkdir(parents=True, exist_ok=True)
         for name in ("configuration.yml", "users_database.yml"):
-            text = (authelia_src / name).read_text(encoding="utf-8")
-            (staged / name).write_text(text.replace("__AGMIND_DOMAIN__", domain), encoding="utf-8")
+            text = (
+                (authelia_src / name)
+                .read_text(encoding="utf-8")
+                .replace("__AGMIND_DOMAIN__", domain)
+            )
+            if name == "users_database.yml" and admin_password:
+                text = _replace_authelia_password_hash(text, admin_password)
+            (staged / name).write_text(text, encoding="utf-8")
         _replace_path_atomic(staged, target_dir)
     except Exception:
         _cleanup_path(staged)
@@ -397,10 +426,12 @@ def _materialize_runtime_files(
     if "alloy" in selected:
         _stage_directory_contents(observability_dir / "alloy", config.config_dir / "alloy")
     if "authelia" in selected:
+        authelia_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
         _stage_authelia_config(
             templates_dir / "authelia",
             config.config_dir / "authelia",
             domain=config.domain,
+            admin_password=authelia_env.get("AUTHELIA_ADMIN_PASSWORD", ""),
         )
     if "alertmanager" in selected:
         runtime_env = _parse_existing_runtime_env(config, config.install_dir / ".env")

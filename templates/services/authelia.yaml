@@ -31,6 +31,9 @@ depends_on:
 # behind itself → infinite redirect loop). Health is /api/health on Authelia 4.x.
 access:
   login: admin
+  # Generated at install, argon2id-hashed into users_database.yml (never the upstream
+  # example password); surfaced here for the operator.
+  password_env: AUTHELIA_ADMIN_PASSWORD
 routing:
   host: auth.agmind.dev
   middleware_chain: chain-public

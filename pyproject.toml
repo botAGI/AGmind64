@@ -38,6 +38,9 @@ dependencies = [
   "huggingface_hub>=0.24,<2",
   # M4.U: cluster auto-detect via mDNS (Avahi-compatible). Pure Python.
   "zeroconf>=0.130,<1",
+  # Hash a generated Authelia admin password into users_database.yml at install (argon2id,
+  # Authelia's default) so the SSO never ships the upstream example hash. manylinux wheels.
+  "argon2-cffi>=23.1,<26",
 ]
 
 [project.optional-dependencies]

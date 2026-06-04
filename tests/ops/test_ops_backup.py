@@ -941,6 +941,8 @@ def test_restore_cli_prompts_and_passes_sudo_password(
     monkeypatch.setattr(ops_cmd.getpass, "getpass", lambda _prompt: "pw")
     monkeypatch.setattr(ops_cmd, "read_metadata", lambda _path: {"included": ["env"]})
     monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _install: [])
+    # This test exercises the prompt/sudo flow, not the integrity gate (M#17).
+    monkeypatch.setattr(ops_cmd, "verify_backup", lambda _path: [])
 
     def fake_restore_backup(
         backup_path: Path,
