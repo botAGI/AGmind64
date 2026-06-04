@@ -2167,6 +2167,46 @@ def test_bootstrap_galaxy_install_is_offline_under_air_gap(
     assert "--offline" in calls[0], "air-gap galaxy install must pass --offline"
 
 
+def test_envwrite_fails_fast_when_proxmox_config_absent(tmp_path: Path) -> None:
+    """Review MEDIUM proxmox-pve-config-not-staged: selecting proxmox-exporter without a staged
+    pve.yml must fail fast with guidance, NOT ship a :ro single-file mount that Docker turns
+    into a directory → crash-loop."""
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="",
+        services=["proxmox-exporter"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "models",
+        config_dir=tmp_path / "etc" / "agmind",
+    )
+    cfg.install_dir.mkdir(parents=True)
+    result = EnvWriteStep().run(lambda _e: None, cfg)
+    assert not result.success
+    assert "proxmox" in result.message.lower() and "pve.yml" in result.message
+
+
+def test_envwrite_proceeds_when_proxmox_config_staged(tmp_path: Path) -> None:
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="",
+        services=["proxmox-exporter"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "models",
+        config_dir=tmp_path / "etc" / "agmind",
+    )
+    cfg.install_dir.mkdir(parents=True)
+    pve = cfg.config_dir / "proxmox-exporter" / "pve.yml"
+    pve.parent.mkdir(parents=True)
+    pve.write_text("default:\n  user: u@pve\n", encoding="utf-8")
+    assert EnvWriteStep().run(lambda _e: None, cfg).success
+
+
 class _FakeStdout:
     def __init__(self, lines: list[str]) -> None:
         self._lines = lines

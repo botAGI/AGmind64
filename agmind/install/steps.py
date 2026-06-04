@@ -1943,6 +1943,25 @@ class DeployStep(InstallStep):
         )
 
 
+def _check_proxmox_config_staged(config: InstallConfig) -> str | None:
+    """proxmox-exporter mounts ``/etc/agmind/proxmox-exporter/pve.yml`` :ro (a single FILE).
+    ``agmind install`` never collects PVE credentials, so unless the operator provisioned that
+    file (the ansible ``services`` role writes it from ``agmind_proxmox_exporter_*`` vars) Docker
+    creates a DIRECTORY at the :ro source and the exporter crash-loops. Fail fast with guidance
+    instead of shipping a crash-loop (review MEDIUM proxmox-pve-config-not-staged)."""
+    if "proxmox-exporter" not in config.services:
+        return None
+    pve = config.config_dir / "proxmox-exporter" / "pve.yml"
+    if pve.is_file():
+        return None
+    return (
+        f"proxmox-exporter selected but {pve} is not provisioned. `agmind install` does not "
+        "collect Proxmox API credentials — provision that file first (the ansible `services` "
+        "role writes it from agmind_proxmox_exporter_user / token_name / token_value), or "
+        "deselect the proxmox profile."
+    )
+
+
 # ---------- step list factory ----------
 
 
@@ -1966,6 +1985,14 @@ class EnvWriteStep(InstallStep):
                 step_id=self.step_id,
                 success=False,
                 message=str(exc),
+                elapsed=timedelta(seconds=time.monotonic() - start),
+            )
+        proxmox_error = _check_proxmox_config_staged(config)
+        if proxmox_error is not None:
+            return InstallStepResult(
+                step_id=self.step_id,
+                success=False,
+                message=proxmox_error,
                 elapsed=timedelta(seconds=time.monotonic() - start),
             )
         runtime_env = _runtime_env(_parse_existing_runtime_env(config, env_path))

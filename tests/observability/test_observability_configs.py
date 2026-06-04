@@ -27,6 +27,36 @@ def test_observability_dir_exists() -> None:
     assert OBS_DIR.exists()
 
 
+# ---- Wave 5 correctness fixes (review observability findings) ----
+
+
+def test_netdata_does_not_advertise_a_broken_prometheus_scrape() -> None:
+    """Review MEDIUM netdata-scrape-not-prometheus: netdata's allmetrics defaults to
+    format=shell, so prometheus_scrape would scrape a non-Prometheus body — it is dropped."""
+    netdata = load_descriptors()["netdata"]
+    assert netdata.observability.prometheus_scrape is False
+
+
+def test_alertmanager_has_no_dead_hostdown_inhibit_rule() -> None:
+    """Review LOW alertmanager-inhibit-hostdown-missing: no alert emits HostDown and
+    equal:[instance] can't correlate it — the dead inhibit rule is removed."""
+    text = (OBS_DIR / "alertmanager.yml").read_text(encoding="utf-8")
+    cfg = yaml.safe_load(text)
+    assert not cfg.get("inhibit_rules"), "dead HostDown inhibit rule must be gone"
+    # No active matcher referencing the non-existent HostDown alert (a comment may mention it).
+    assert 'alertname="HostDown"' not in text
+
+
+def test_containers_dashboard_uses_real_restart_metric() -> None:
+    """Review LOW grafana-container-restart-count: cAdvisor exports no container_restart_count;
+    restarts are derived from changes(container_start_time_seconds[...])."""
+    text = (
+        OBS_DIR / "grafana" / "provisioning" / "dashboards" / "json" / "containers.json"
+    ).read_text(encoding="utf-8")
+    assert "container_restart_count" not in text
+    assert "changes(container_start_time_seconds" in text
+
+
 def test_expected_files_present() -> None:
     expected = [
         "prometheus.yml",

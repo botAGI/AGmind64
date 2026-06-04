@@ -31,3 +31,13 @@ def test_node_exporter_mounts_the_textfile_directory() -> None:
     textdir = next(arg[len(_TEXTFILE_FLAG) :] for arg in command if arg.startswith(_TEXTFILE_FLAG))
     # the host dir holding amdgpu.prom must be bind-mounted into the container at that path
     assert any(textdir in volume for volume in node_exporter.volumes), node_exporter.volumes
+
+
+def test_node_exporter_sets_path_rootfs_for_host_filesystem_metrics() -> None:
+    """Review MEDIUM node-exporter-no-rootfs: without --path.rootfs=/host the filesystem
+    collector reports the container overlay as mountpoint='/', so DiskSpaceLow never fires."""
+    node_exporter = load_descriptors(DEFAULT_SERVICES_DIR)["node-exporter"]
+    command = node_exporter.command or []
+    assert "--path.rootfs=/host" in command, command
+    # and the host root must actually be mounted at /host
+    assert any(v.startswith("/:/host") for v in node_exporter.volumes), node_exporter.volumes

@@ -323,7 +323,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "container_restart_count{name=~\".+\"}",
+          "expr": "changes(container_start_time_seconds{name=~\".+\"}[1h])",
           "format": "table",
           "instant": true,
           "legendFormat": "",

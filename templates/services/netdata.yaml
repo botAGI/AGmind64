@@ -36,7 +36,8 @@ routing:
   host: netdata.agmind.dev
   middleware_chain: chain-internal
   healthcheck_path: /api/v1/info
-observability:
-  prometheus_scrape: true
-  metrics_path: /api/v1/allmetrics
-  metrics_port: 19999
+# No prometheus_scrape: netdata's /api/v1/allmetrics defaults to format=shell (not
+# Prometheus), and the renderer copies metrics_path verbatim so a `?format=prometheus`
+# query would be URL-encoded into a 404. Its host/CPU/mem metrics already come from
+# node-exporter + cAdvisor; netdata stays a standalone UI (review MEDIUM
+# netdata-scrape-not-prometheus).

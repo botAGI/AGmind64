@@ -11,6 +11,10 @@ profiles:
 # Without this flag + mount the GPU metrics are generated on the host but never scraped.
 command:
 - --collector.textfile.directory=/var/lib/node_exporter/textfile
+# Without --path.rootfs the filesystem collector reports the CONTAINER's overlay as
+# mountpoint="/" and the real host root as "/host", so DiskSpaceLow (mountpoint="/") never
+# fires and the `/:/host` mount is dead weight (review MEDIUM node-exporter-no-rootfs).
+- --path.rootfs=/host
 volumes:
 - /:/host:ro,rslave
 - /var/lib/node_exporter/textfile:/var/lib/node_exporter/textfile:ro

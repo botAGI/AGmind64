@@ -51,10 +51,7 @@ receivers:
           {{ .Annotations.description }}
           {{ end }}
 
-inhibit_rules:
-  # Если хост умер — не спамим алертами про сервисы на нём
-  - source_matchers:
-      - alertname="HostDown"
-    target_matchers:
-      - alertname=~".*"
-    equal: [instance]
+# No inhibit_rules: the old HostDown rule was dead — no alert rule emits alertname=HostDown,
+# and `equal: [instance]` cannot correlate it with service alerts (instance is the per-service
+# container name, not a host label). Re-add only with a real host-down alert + a shared host
+# label to group on (review LOW alertmanager-inhibit-hostdown-missing).
