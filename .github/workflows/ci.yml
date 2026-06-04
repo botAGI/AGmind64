@@ -38,6 +38,42 @@ jobs:
       - name: Run pre-commit
         run: .venv/bin/pre-commit run --all-files --show-diff-on-failure
 
+  # ---- Public deterministic lane (GitHub-hosted; runs on fork PRs too) ----
+  # The self-hosted jobs are the hardware/integration gates and are fork-guarded (fork code
+  # must never touch the box that holds the secrets + docker group). THIS lane is the
+  # reproducible quality gate that depends on NO self-hosted runner and NO pre-installed
+  # $HOME/.local/bin/uv — uv is installed fresh — and (unlike the guarded lanes) runs on fork
+  # PRs, so external contributions actually get CI. Mirrors the local fresh-venv gate.
+  public-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv (fresh — no dependency on a pre-provisioned runner)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Create venv + install agmind[dev] (declared deps only)
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -c constraints/dev.txt -e ".[dev]"
+      - name: Ruff lint + format check
+        run: |
+          .venv/bin/ruff check .
+          .venv/bin/ruff format --check .
+      - name: Mypy (strict)
+        run: .venv/bin/mypy agmind/
+      - name: Schema + governance gates
+        run: |
+          .venv/bin/python scripts/checks/component_check.py
+          .venv/bin/python scripts/checks/topology_check.py
+          .venv/bin/python scripts/checks/healthcheck_coverage_check.py
+          .venv/bin/python scripts/checks/governance_check.py
+          .venv/bin/python scripts/checks/audit_forbidden.py
+      - name: Unit tests (no integration tier)
+        run: .venv/bin/python -m pytest -q -m "(backend_any or backend_cpu) and not integration"
+      - name: Packaging build (wheel + sdist)
+        run: uv build
+
   # ---- Forbidden-pattern audit ----
   audit:
     runs-on: [self-hosted, linux, x64]
