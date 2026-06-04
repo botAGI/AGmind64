@@ -298,13 +298,16 @@ def _stage_alertmanager_config(
         staged.mkdir(parents=True, exist_ok=True)
         (staged / "alertmanager.yml").write_text(rendered, encoding="utf-8")
         (staged / "tg_chat_id").write_text(chat_id, encoding="utf-8")
-        (staged / "tg_bot_token").write_text(bot_token, encoding="utf-8")
+        # Bearer secrets → 0600 via write_private_text (not plain write_text's umask 0644):
+        # the sudo `cp --no-preserve=ownership` preserves the source mode, so these stay
+        # 0600 at rest instead of relying solely on the /etc/agmind 0750 parent bit.
+        write_private_text(staged / "tg_bot_token", bot_token)
         # Only materialize a channel's secret file when that channel is configured,
         # matching the conditional injection in the rendered config above.
         if webhook_url:
-            (staged / "webhook_url").write_text(webhook_url, encoding="utf-8")
+            write_private_text(staged / "webhook_url", webhook_url)
         if smtp_auth_password:
-            (staged / "smtp_password").write_text(smtp_auth_password, encoding="utf-8")
+            write_private_text(staged / "smtp_password", smtp_auth_password)
         _replace_path_atomic(staged, target_dir)
     except Exception:
         _cleanup_path(staged)

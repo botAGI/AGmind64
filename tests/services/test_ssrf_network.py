@@ -55,6 +55,21 @@ def test_internal_network_declared_with_internal_true() -> None:
     assert nets["ssrf-net"]["name"] == "agmind_ssrf-net"
 
 
+def test_internal_network_survives_project_namespacing() -> None:
+    """Scenario/CI stacks render with a non-default project_name (`agmind render scenario
+    core-rag` → project `agmind-core-rag`, ssrf-proxy + dify-sandbox in the closure). The
+    cage MUST stay `internal: true` on that namespaced path too — otherwise a renderer
+    refactor could silently un-cage scenario stacks while the default-render test stays
+    green (security audit 2026-06-04)."""
+    compose = render_compose(
+        [_desc("caged", networks=["ssrf-net"], profiles=["rag"])], project_name="scn7"
+    )
+    nets = compose["networks"]
+    assert nets["default"]["name"] == "scn7"
+    assert nets["ssrf-net"] == {"name": "scn7_ssrf-net", "driver": "bridge", "internal": True}
+    assert compose["services"]["caged"]["networks"] == {"ssrf-net": None}
+
+
 def test_real_catalog_only_ssrf_services_have_networks() -> None:
     # Every non-ssrf service must remain on the implicit default net (no networks key).
     rendered = render_to_string(profiles=["full"], domain="ci.example.com")

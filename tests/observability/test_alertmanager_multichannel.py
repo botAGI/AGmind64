@@ -125,6 +125,34 @@ def test_stage_writes_webhook_and_smtp_files_when_configured(tmp_path: Path) -> 
     assert rendered["receivers"][0]["email_configs"][0]["to"] == "ops@example"
 
 
+def test_stage_bearer_secret_files_are_0600(tmp_path: Path) -> None:
+    """Telegram bot token, SMTP password, webhook URL are bearer secrets — they must be 0600
+    at rest, not rely solely on the /etc/agmind 0750 parent-dir bit (security audit 2026-06-04;
+    the sudo `cp --no-preserve=ownership` preserves this source mode)."""
+    import stat
+
+    from agmind.install.steps import _stage_alertmanager_config
+
+    obs = tmp_path / "observability"
+    obs.mkdir()
+    (obs / "alertmanager.yml").write_text(_base_text(), encoding="utf-8")
+    target = tmp_path / "etc" / "alertmanager"
+    _stage_alertmanager_config(
+        obs,
+        target,
+        chat_id="123456",
+        bot_token="bot:tok",
+        webhook_url="https://hooks.example/x",
+        smtp_smarthost="smtp.example:587",
+        smtp_to="ops@example",
+        smtp_auth_username="alerts@example",
+        smtp_auth_password="s3cret",
+    )
+    for secret in ("tg_bot_token", "webhook_url", "smtp_password"):
+        mode = stat.S_IMODE((target / secret).stat().st_mode)
+        assert mode == 0o600, f"{secret} mode is {oct(mode)}, expected 0o600 (bearer secret)"
+
+
 def test_stage_omits_channel_files_when_unconfigured(tmp_path: Path) -> None:
     from agmind.install.steps import _stage_alertmanager_config
 
