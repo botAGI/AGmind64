@@ -3,7 +3,7 @@
 
 Runs two passes:
 
-Pass 1 — 13-lane isolation sweep (ALL_PROFILE_SETS, isolation_mode=True):
+Pass 1 — per-profile isolation sweep (ALL_PROFILE_SETS, isolation_mode=True):
     Exercises every single-profile isolation lane.  Dependency/compatibility
     warnings are reclassified as "expected info" for single-profile lanes
     (e.g. "rag" without "core" naturally lacks LLM inference — that gap is
@@ -68,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print("=== Pass 1: isolation sweep (all 11 profiles) ===")
+        print(f"=== Pass 1: isolation sweep (all {len(ALL_PROFILE_SETS)} profiles) ===")
         print(format_topology_check_report(report_isolation))
         print("=== Pass 2: strict multi-profile validation ===")
         print(format_topology_check_report(report_strict))

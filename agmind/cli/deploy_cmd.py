@@ -28,7 +28,7 @@ def _compose_file() -> Path:
     return _install_dir() / "docker-compose.yml"
 
 
-def _run_compose(*args: str, check: bool = True) -> int:
+def _run_compose(*args: str) -> int:
     """Run `docker compose ...` в install dir."""
     install_dir = _install_dir()
     compose = _compose_file()
@@ -49,7 +49,6 @@ def _run_compose(*args: str, check: bool = True) -> int:
     except OSError as exc:
         print(f"ERROR: docker compose failed: {exc}", file=sys.stderr)
         return 1
-    _ = check  # both branches returned the same code; retained for call-site compatibility
     rc = result.returncode
     # A subprocess killed by a signal returns a NEGATIVE code; raising typer.Exit(-9) makes
     # POSIX mask it to 247, corrupting CI retry logic. Normalize signal death to the

@@ -48,7 +48,9 @@ def test_every_test_file_has_a_backend_marker() -> None:
         text = test_file.read_text(encoding="utf-8")
         if not re.search(r"^\s*(async\s+)?def test_", text, re.MULTILINE):
             continue  # no test functions (helpers/fixtures only)
-        if not any(marker in text for marker in _BACKEND_MARKERS):
+        # Match a real `pytest.mark.<backend>` marker, not the bare word appearing in a
+        # docstring/comment (review POLISH marker-coverage-substring-match).
+        if not re.search(rf"pytest\.mark\.(?:{'|'.join(_BACKEND_MARKERS)})", text):
             offenders.append(rel)
 
     assert not offenders, (

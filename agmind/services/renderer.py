@@ -72,7 +72,9 @@ def _resolve_group_add(group_add: list[str]) -> list[str]:
                     f"crash the container. Add a fallback GID or use a numeric GID "
                     f"in the descriptor."
                 )
-    return resolved
+    # Dedup order-preservingly: a name resolving to the same GID as a numeric entry would
+    # otherwise emit a duplicate group_add (review POLISH resolve-group-add-duplicates).
+    return list(dict.fromkeys(resolved))
 
 
 REPO_ROOT = data_root()
@@ -343,8 +345,8 @@ def _first_container_port(d: ServiceDescriptor) -> str | None:
     parts = spec.split(":")
     if not parts:
         return None
-    # Strip an optional /proto suffix (e.g. "8080/tcp") so the result is a bare port for
-    # Traefik loadbalancer.server.port / prometheus targets (audit L#53).
+    # `_PORT_RE` rejects any /proto suffix at descriptor validation, so the split below is a
+    # defensive no-op for catalog-loaded ports; kept for directly-constructed descriptors.
     return parts[-1].split("/", 1)[0]
 
 

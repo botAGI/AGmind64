@@ -16,8 +16,8 @@ from typing import Any
 class DeviceInfo:
     """Метаданные compute-устройства.
 
-    Поля специально keep-minimal — то, что компилируется на любой машине
-    без зависимости от nvidia-smi/rocm-smi. Engine-specific метаданные
+    Поля специально keep-minimal — то, что детектируется на любой машине без
+    зависимости от vendor-specific CLI утилит. Engine-specific метаданные
     (cooperative_matrix, BF16, etc) идут в `capabilities`.
     """
 

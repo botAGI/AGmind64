@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate that every AGmind compose profile renders without error.
 
-Renders all 13 isolation lanes from ``ALL_PROFILE_SETS`` using the Python
+Renders every isolation lane from ``ALL_PROFILE_SETS`` using the Python
 renderer API (not a subprocess) and asserts each one produces a non-empty
 compose service map.  Any render exception or empty selection fails the lane.
 
@@ -140,7 +140,7 @@ def format_report(report: ComposeProfileCheckReport) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point: render all 11 profile lanes, return 0 on success."""
+    """Entry point: render every ALL_PROFILE_SETS isolation lane, return 0 on success."""
     args = list(argv if argv is not None else sys.argv[1:])
     as_json = "--json" in args
 

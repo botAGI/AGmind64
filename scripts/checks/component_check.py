@@ -76,7 +76,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     for service_name, component_ids in duplicate_owners.items():
         errors.append(f"{service_name}: multiple component owners: {', '.join(component_ids)}")
 
-    for profiles in PROFILE_SETS:
+    # Include the ('full',) lane: it co-selects every service, the maximal host-port-collision
+    # surface, so a conflict under any selectable profile combination is caught here — not only
+    # the four representative lanes (review LOW deploy-conflict-only-4-lanes).
+    for profiles in (*PROFILE_SETS, ("full",)):
         missing_profiles = unknown_profiles(descriptors, list(profiles))
         if missing_profiles:
             profile_key = ",".join(profiles)
