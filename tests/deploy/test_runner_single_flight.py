@@ -48,6 +48,15 @@ def test_deploy_apply_refused_while_lock_held(tmp_path: Path) -> None:
     assert "in progress" in result.message.lower()
 
 
+def test_rollback_refused_while_lock_held(tmp_path: Path) -> None:
+    """Review MEDIUM rollback-cli-outside-flock: a manual `agmind rollback` must take the same
+    single-flight lock, so it cannot run `compose up` concurrently with a mid-flight deploy."""
+    with runner._deploy_lock(tmp_path):
+        result = runner.rollback(install_dir=tmp_path)
+    assert result.success is False
+    assert "in progress" in result.message.lower()
+
+
 def test_deploy_dry_run_not_blocked_by_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

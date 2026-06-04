@@ -386,3 +386,31 @@ def test_cmd_rollback_prompts_for_sudo_password_when_requested(
         "install_dir": tmp_path,
         "sudo_password": "pw",
     }
+
+
+# ---- destructive deny-by-default guards (review MEDIUM gc-down-confirm-no-test) ----
+
+
+def test_down_volumes_denied_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`deploy down --volumes` with no --yes and a declined prompt must NOT run the destructive
+    `compose down --volumes`."""
+    ran: list[tuple[str, ...]] = []
+    monkeypatch.setattr(deploy_cmd.typer, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(deploy_cmd, "_run_compose", lambda *args: ran.append(args) or 0)
+    rc = deploy_cmd.cmd_down(volumes=True, yes=False)
+    assert rc == 1
+    assert ran == [], "down --volumes must not run when the volume prompt is declined"
+
+
+def test_gc_destructive_denied_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`deploy gc --aggressive` with no --yes and a declined prompt must NOT call gc_all."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    called: list[bool] = []
+    monkeypatch.setattr(deploy_module, "gc_all", lambda **_k: called.append(True) or [])
+    # Empty stdin → typer.confirm(default=False) declines.
+    result = CliRunner().invoke(_make_app(), ["gc", "--aggressive"], input="\n")
+    assert result.exit_code == 1
+    assert called == [], "destructive gc must not run when the prompt is declined"

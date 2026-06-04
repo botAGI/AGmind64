@@ -349,6 +349,7 @@ def cmd_pull(
     import shutil
     import subprocess
 
+    expected_gib: float | None = None
     if model_id is not None:
         from agmind.install.models import find_by_id
 
@@ -358,6 +359,9 @@ def cmd_pull(
             return 1
         repo = entry.repo
         file = entry.file
+        # Curated entries carry a known size — used as an integrity floor after download.
+        # (A custom --repo/--file has no known size, so it is not floored.)
+        expected_gib = entry.size_gib if entry.size_gib and entry.size_gib > 0 else None
 
     if not repo or not file:
         print("ERROR: provide <model_id> или --repo/--file pair", file=sys.stderr)
@@ -435,6 +439,21 @@ def cmd_pull(
         size_gib = target.stat().st_size / 1024**3
     except OSError as exc:
         print(f"ERROR: failed to inspect downloaded model {target}: {exc}", file=sys.stderr)
+        return 1
+    # Integrity floor (review MEDIUM models-pull-no-size-checksum): curl can exit 0 with a
+    # truncated/HTML body (or the HF owner may swap the GGUF), silently activating a corrupt
+    # model. Reject a curated download that is grossly short of its catalog size (>12% under,
+    # the same floor ModelDownloadStep uses). Custom --repo/--file has no known size → skipped.
+    if expected_gib is not None and size_gib < expected_gib * 0.88:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        print(
+            f"ERROR: downloaded {size_gib:.2f} GiB but {model_id} expects ~{expected_gib:.2f} GiB "
+            f"(< {expected_gib * 0.88:.2f} GiB floor) — likely truncated/HTML; removed {target}",
+            file=sys.stderr,
+        )
         return 1
     print(f"✓ downloaded {size_gib:.2f} GiB → {target}")
     return 0

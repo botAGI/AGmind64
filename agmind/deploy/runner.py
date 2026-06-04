@@ -1093,27 +1093,38 @@ def rollback(
         snapshot_id: ID конкретного snapshot (omit → latest)
         install_dir: где живёт docker-compose.yml
     """
-    snap_mgr = SnapshotManager(sudo_password=sudo_password)
-    if snapshot_id is None:
-        snap = snap_mgr.latest()
-    else:
-        snap = snap_mgr.get(snapshot_id)
+    # Take the single-flight deploy lock: a manual `agmind rollback` (the TUI failure summary
+    # instructs it) must not run `compose up` concurrently with a mid-flight deploy on the same
+    # project — the exact Conflict race the flock prevents (review MEDIUM rollback-cli-outside-flock).
+    # The in-deploy rollback path uses the lock-free _rollback_to_snapshot, so no re-entrancy.
+    with _deploy_lock(install_dir) as acquired:
+        if not acquired:
+            return DeployResult(
+                success=False,
+                message="deploy already in progress — rollback refused (another deploy holds the lock)",
+            )
 
-    if snap is None:
+        snap_mgr = SnapshotManager(sudo_password=sudo_password)
+        if snapshot_id is None:
+            snap = snap_mgr.latest()
+        else:
+            snap = snap_mgr.get(snapshot_id)
+
+        if snap is None:
+            return DeployResult(
+                success=False,
+                message=f"snapshot not found ({snapshot_id or '<latest>'})",
+            )
+
+        log.info("rolling back to snapshot %s", snap.id)
+        success = _rollback_to_snapshot(snap, install_dir, sudo_password=sudo_password)
+
         return DeployResult(
-            success=False,
-            message=f"snapshot not found ({snapshot_id or '<latest>'})",
+            success=success,
+            snapshot=snap,
+            message=f"rolled back to {snap.id}" if success else "rollback failed",
+            rollback_performed=success,
         )
-
-    log.info("rolling back to snapshot %s", snap.id)
-    success = _rollback_to_snapshot(snap, install_dir, sudo_password=sudo_password)
-
-    return DeployResult(
-        success=success,
-        snapshot=snap,
-        message=f"rolled back to {snap.id}" if success else "rollback failed",
-        rollback_performed=success,
-    )
 
 
 def _rollback_to_snapshot(

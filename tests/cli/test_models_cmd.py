@@ -409,6 +409,10 @@ def test_pull_curated_invokes_curl(
     models_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from dataclasses import replace
+
+    from agmind.install import models as install_models
+
     captured: list[list[str]] = []
 
     class FakeProc:
@@ -421,12 +425,45 @@ def test_pull_curated_invokes_curl(
         _write_blob(Path(cmd[target_idx]), size_mb=5)
         return FakeProc()
 
+    # Shrink the curated entry's declared size so the 5 MB fake download clears the integrity
+    # floor — this test verifies the curl URL/invocation, not the size gate.
+    real = install_models.find_by_id("qwen36-a3b-q4km")
+    assert real is not None
+    monkeypatch.setattr(install_models, "find_by_id", lambda _id: replace(real, size_gib=0.001))
     monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/curl")
     monkeypatch.setattr("subprocess.run", fake_run)
     rc = models_cmd.cmd_pull(model_id="qwen36-a3b-q4km", force=True)
     assert rc == 0
     assert captured[0][0] == "curl"
     assert "huggingface.co/0xSero/Qwen3.6-35B-A3B-GGUF-Strix" in " ".join(captured[0])
+
+
+def test_pull_rejects_truncated_curated_download(
+    models_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Review MEDIUM models-pull-no-size-checksum: a curl that exits 0 with a truncated/HTML
+    body must be rejected against the curated size floor, not silently activated."""
+    from agmind.install import models as install_models
+    from agmind.models import safe_model_target
+
+    class FakeProc:
+        returncode = 0
+
+    def fake_run(cmd, **kw):
+        target_idx = cmd.index("-o") + 1
+        _write_blob(Path(cmd[target_idx]), size_mb=5)  # ~5 MB for a multi-GB curated model
+        return FakeProc()
+
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/curl")
+    monkeypatch.setattr("subprocess.run", fake_run)
+    rc = models_cmd.cmd_pull(model_id="qwen36-a3b-q4km", force=True)
+    assert rc == 1
+    assert "floor" in capsys.readouterr().err
+    entry = install_models.find_by_id("qwen36-a3b-q4km")
+    assert entry is not None
+    assert not safe_model_target(models_dir, entry.file).exists()
 
 
 def test_pull_reports_curl_oserror_without_traceback(
