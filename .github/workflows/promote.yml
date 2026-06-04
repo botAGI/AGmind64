@@ -79,6 +79,8 @@ jobs:
           # --- Fail-CLOSED required-set gate (CR-01) ---
           # Every required CI check must be present AND conclusion == "success".
           # skipped/neutral/missing count as NOT green for required checks.
+          # Names must match the Checks-API check_run.name EXACTLY, including the matrix
+          # suffix (e.g. "docker-build (cpu)") — a bare "docker-build" matches nothing.
           required='[
             "pre-commit",
             "audit",
@@ -92,10 +94,17 @@ jobs:
             "kubernetes-render-validate",
             "kubernetes-proof-workflow-validate",
             "governance-validate",
+            "public-checks",
             "test-cpu",
             "docker-build-base",
-            "docker-build",
-            "compose-validate"
+            "docker-build (cpu)",
+            "docker-build (rocm)",
+            "docker-build (vulkan)",
+            "compose-validate",
+            "compose-up-smoke",
+            "healthcheck-tool-validate",
+            "test-strix-halo (rocm)",
+            "test-strix-halo (vulkan)"
           ]'
           missing=$(echo "$runs" | jq -s --argjson req "$required" '
             ($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name])

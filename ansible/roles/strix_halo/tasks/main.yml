@@ -26,11 +26,24 @@
   ansible.builtin.set_fact:
     agmind_ttm_pages_limit: "{{ ((ansible_memtotal_mb * 1024 * 1024 * agmind_strix_halo.ttm_pages_limit_pct) / 4096) | int }}"
 
-- name: Ensure GRUB cmdline contains agmind defaults
-  ansible.builtin.lineinfile:
-    path: /etc/default/grub
-    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
-    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=off ttm.pages_limit={{ agmind_ttm_pages_limit }} ttm.page_pool_size={{ agmind_ttm_pages_limit }} zswap.enabled=0"'
+# Append agmind kernel params via a grub.d drop-in (sourced by grub-mkconfig AFTER
+# /etc/default/grub) instead of REPLACING the whole GRUB_CMDLINE_LINUX_DEFAULT line —
+# overwriting it would silently drop distro/operator args (resume=, console=, LUKS/
+# cryptdevice, secure-boot), risking an unbootable host.
+- name: Ensure /etc/default/grub.d exists
+  ansible.builtin.file:
+    path: /etc/default/grub.d
+    state: directory
+    mode: "0755"
+
+- name: Append agmind GRUB params (non-destructive drop-in)
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/99-agmind.cfg
+    mode: "0644"
+    content: |
+      # Managed by AGmind (strix_halo role). Appends to the existing cmdline; does NOT
+      # replace operator/distro args. ttm.pages_limit = 94% RAM as GTT pool (R10).
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT amd_iommu=off ttm.pages_limit={{ agmind_ttm_pages_limit }} ttm.page_pool_size={{ agmind_ttm_pages_limit }} zswap.enabled=0"
   notify: regenerate grub
 
 - name: Verify Mesa version (R2 — min 25.2.8)

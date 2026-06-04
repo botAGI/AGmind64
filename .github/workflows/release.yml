@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: read
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ github.ref_name }}
@@ -62,6 +63,27 @@ jobs:
             echo "::error::tag v${tag} != agmind.__version__ ${py}" && exit 1
           fi
           echo "version=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Gate release on CI being green for the tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA}"
+          # Refuse to build/publish a release from a commit whose CI is not green — tagging
+          # any (even red) commit must not ship GHCR images + a Release. skipped/neutral are
+          # tolerated (fork-guarded jobs); queued/in_progress/failure/cancelled block.
+          mapfile -t bad < <(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --paginate \
+            --jq '.check_runs[]
+                  | select(.name != "update_release_draft")
+                  | select(.status != "completed"
+                           or (.conclusion as $c | ["success","skipped","neutral"] | index($c) | not))
+                  | .name')
+          if [ "${#bad[@]}" -gt 0 ]; then
+            echo "::error::tagged commit ${sha} has non-green checks; refusing to publish a release:"
+            printf '  - %s\n' "${bad[@]}"
+            exit 1
+          fi
+          echo "tagged commit CI is green ✓"
 
   # ---------------------------------------------------------------------------
   # 1. Build the base image; capture its digest; attest SLSA provenance.

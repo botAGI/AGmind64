@@ -1,6 +1,11 @@
 # Global defaults applied to all hosts.
 # Override per-host через host_vars/<host>.yml.
 
+# The agmind virtualenv created by the agmind_python role at {{ agmind_install_dir }}/venv.
+# The services/proxmox roles reference {{ agmind_venv }}; without this default
+# `ansible-playbook install.yml -t services` aborts with 'agmind_venv' is undefined.
+agmind_venv: "{{ agmind_install_dir }}/venv"
+
 # ---- Platform requirements ----
 # Verified 2026-05-19 (docs/SETUP_ROCM_STRIX_HALO.md):
 # - ROCm 7.1.1 — first official gfx1151 support; recommend ≥7.2.0

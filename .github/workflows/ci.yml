@@ -73,6 +73,24 @@ jobs:
         run: .venv/bin/python -m pytest -q -m "(backend_any or backend_cpu) and not integration"
       - name: Packaging build (wheel + sdist)
         run: uv build
+      - name: Assert wheel bundles templates/ansible/docs (package-data regression guard)
+        run: |
+          set -euo pipefail
+          wheel=$(ls dist/*.whl | head -1)
+          .venv/bin/python - "$wheel" <<'PY'
+          import sys, zipfile
+          names = set(zipfile.ZipFile(sys.argv[1]).namelist())
+          required = [
+              "agmind/templates/services/llama-llm.yaml",
+              "agmind/ansible/install.yml",
+              "agmind/docs/TROUBLESHOOTING.md",
+          ]
+          missing = [p for p in required if p not in names]
+          if missing:
+              print("::error::built wheel is missing package-data:", missing)
+              sys.exit(1)
+          print("wheel bundles templates/ansible/docs OK")
+          PY
 
   # ---- Forbidden-pattern audit ----
   audit:

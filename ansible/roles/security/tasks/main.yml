@@ -35,12 +35,14 @@
     - "{{ agmind_proxy_http_port }}"
     - "{{ agmind_proxy_https_port }}"
 
-- name: UFW allow mDNS multicast
+- name: UFW allow mDNS
   community.general.ufw:
     rule: allow
     port: "5353"
     proto: udp
-    src: 224.0.0.251
+    # NOTE: do NOT set src to the multicast group 224.0.0.251 — an mDNS query's SOURCE is the
+    # peer's unicast LAN address, so a src=multicast rule never matches and discovery silently
+    # falls back to default-deny. Allow 5353/udp inbound (LAN-scoped by the interface).
 
 - name: Enable fail2ban
   ansible.builtin.systemd:
