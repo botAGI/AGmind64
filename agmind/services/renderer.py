@@ -93,6 +93,34 @@ DEFAULT_LOGGING = {
 # AGmind shared bridge network — все сервисы видят друг друга и Traefik.
 DEFAULT_NETWORK_NAME = "agmind"
 
+# Namespacing defaults. With these exact values a render is BYTE-IDENTICAL to the historical
+# single-stack output; pass non-default values (e.g. for a scenario stack or CI smoke) to
+# isolate a second compose project from a live `agmind` stack on the same host.
+DEFAULT_PROJECT_NAME = "agmind"
+DEFAULT_DATA_ROOT = "/var/lib/agmind"
+DEFAULT_CONFIG_ROOT = "/etc/agmind"
+
+
+def _rewrite_volume_host_root(volume: str, data_root: str, config_root: str) -> str:
+    """Rewrite the host side of a bind mount to a namespaced root.
+
+    ``/var/lib/agmind/<svc>:...`` → ``{data_root}/<svc>:...`` and ``/etc/agmind/...`` →
+    ``{config_root}/...``. Named volumes and unrelated host paths (``/var/run/docker.sock``,
+    ``/var/log``, ``/``) are left alone. With the default roots this is the identity, so a
+    default render stays byte-identical.
+    """
+    host, sep, rest = volume.partition(":")
+    if not sep:
+        return volume
+    for default_root, new_root in (
+        (DEFAULT_DATA_ROOT, data_root),
+        (DEFAULT_CONFIG_ROOT, config_root),
+    ):
+        if host == default_root or host.startswith(default_root + "/"):
+            return f"{new_root}{host[len(default_root) :]}{sep}{rest}"
+    return volume
+
+
 # Attributes for extra (non-default) networks a descriptor may join. `ssrf-net`
 # is `internal: true` so a service caged on it (dify-sandbox) has NO host/egress
 # route except through the dual-homed ssrf-proxy.
@@ -302,11 +330,20 @@ def descriptor_to_compose_service(
     d: ServiceDescriptor,
     traefik_enabled: bool = True,
     selected_descriptors: Mapping[str, ServiceDescriptor] | None = None,
+    *,
+    project_name: str = DEFAULT_PROJECT_NAME,
+    data_root: str = DEFAULT_DATA_ROOT,
+    config_root: str = DEFAULT_CONFIG_ROOT,
 ) -> dict[str, Any]:
-    """Build single compose service definition (compose v3.9 format)."""
+    """Build single compose service definition (compose v3.9 format).
+
+    ``project_name``/``data_root``/``config_root`` namespace the container name and bind-mount
+    host roots; their defaults reproduce the historical ``agmind-*`` / ``/var/lib/agmind``
+    output byte-for-byte.
+    """
     svc: dict[str, Any] = {
         "image": d.fq_image(),
-        "container_name": f"agmind-{d.name}",
+        "container_name": f"{project_name}-{d.name}",
         "restart": "unless-stopped",
     }
 
@@ -323,7 +360,7 @@ def descriptor_to_compose_service(
     if d.env:
         svc["environment"] = dict(d.env)
     if d.volumes:
-        svc["volumes"] = list(d.volumes)
+        svc["volumes"] = [_rewrite_volume_host_root(v, data_root, config_root) for v in d.volumes]
 
     if d.health is not None:
         hc: dict[str, Any] = {
@@ -480,15 +517,27 @@ def _check_unresolved_consumes(
 def render_compose(
     descriptors: list[ServiceDescriptor],
     traefik_enabled: bool = True,
-    network_name: str = DEFAULT_NETWORK_NAME,
+    network_name: str | None = None,
+    *,
+    project_name: str = DEFAULT_PROJECT_NAME,
+    data_root: str = DEFAULT_DATA_ROOT,
+    config_root: str = DEFAULT_CONFIG_ROOT,
 ) -> dict[str, Any]:
     """Build full docker-compose.yml structure as Python dict.
 
     Args:
         descriptors: services to include (отсортированы по имени для детерминизма)
         traefik_enabled: добавлять Traefik labels из routing config
-        network_name: имя shared bridge сети
+        network_name: имя shared bridge сети (default: == project_name)
+        project_name: compose project namespace (container names, network, top-level `name`)
+        data_root/config_root: host roots for `/var/lib/agmind` / `/etc/agmind` bind mounts
+
+    With ``project_name``/``data_root``/``config_root`` at their defaults the output is
+    byte-identical to the historical single-stack render. Non-defaults isolate a second
+    compose project (a scenario stack, CI smoke) from a live ``agmind`` stack.
     """
+    if network_name is None:
+        network_name = project_name
     selected_by_name_pre = {d.name: d for d in descriptors}
     # C2: fail-closed on unresolved non-optional consumes (Wave C renderer hardening).
     # Must run BEFORE descriptors_with_capability_env so the check uses the raw descriptor
@@ -500,7 +549,14 @@ def render_compose(
     services_block_local: dict[str, Any] = {}
     selected_by_name = {descriptor.name: descriptor for descriptor in resolved_descriptors}
     for d in sorted(resolved_descriptors, key=lambda x: x.name):
-        svc = descriptor_to_compose_service(d, traefik_enabled, selected_by_name)
+        svc = descriptor_to_compose_service(
+            d,
+            traefik_enabled,
+            selected_by_name,
+            project_name=project_name,
+            data_root=data_root,
+            config_root=config_root,
+        )
         services_block_local[d.name] = svc
     services_block = services_block_local
     networks_block: dict[str, Any] = {
@@ -519,6 +575,11 @@ def render_compose(
         "services": services_block,
         "networks": networks_block,
     }
+    # Emit a top-level `name:` ONLY for a namespaced render — a default project keeps the
+    # historical output (project name comes from the install dir / `-p`), so golden renders
+    # and gates stay byte-identical. A scenario stack gets a self-contained project name.
+    if project_name != DEFAULT_PROJECT_NAME:
+        compose = {"name": project_name, **compose}
     if COMPOSE_VERSION is not None:
         # Legacy compatibility — современный compose не требует version
         compose = {"version": COMPOSE_VERSION, **compose}
@@ -563,6 +624,10 @@ def render_to_string(
     traefik_enabled: bool = True,
     domain: str | None = None,
     services: list[str] | None = None,
+    *,
+    project_name: str = DEFAULT_PROJECT_NAME,
+    data_root: str = DEFAULT_DATA_ROOT,
+    config_root: str = DEFAULT_CONFIG_ROOT,
 ) -> str:
     """End-to-end: load + filter + render + serialize. Возвращает финальный YAML.
 
@@ -572,6 +637,8 @@ def render_to_string(
         services_dir: где искать service descriptors
         traefik_enabled: добавлять Traefik routing labels из routing config
         domain: если задан — заменить `agmind.dev` placeholder на этот домен
+        project_name/data_root/config_root: compose-project namespacing (defaults reproduce
+            the historical single-stack output byte-for-byte)
     """
     descriptors = load_descriptors(services_dir)
     if services is not None:
@@ -592,7 +659,13 @@ def render_to_string(
             for name, deps in sorted(missing_dependencies.items())
         )
         raise ValueError(f"Missing dependencies for selected services: {details}")
-    compose = render_compose(list(selected.values()), traefik_enabled=traefik_enabled)
+    compose = render_compose(
+        list(selected.values()),
+        traefik_enabled=traefik_enabled,
+        project_name=project_name,
+        data_root=data_root,
+        config_root=config_root,
+    )
     if domain:
         safe_domain = validate_domain(domain)
         if safe_domain != "agmind.dev":
