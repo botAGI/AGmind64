@@ -145,7 +145,13 @@ class InstallConfig:
         }
 
     def wipe_secrets(self) -> None:
-        """Best-effort zero-out для cf_token + sudo_password в памяти."""
+        """Drop our references to cf_token + sudo_password (rebind to ""/None).
+
+        Best-effort hygiene, NOT memory zeroization: Python strings are immutable, so the
+        original secret bytes may persist in interpreter / freed-heap memory until garbage
+        collected. This only removes AGmind's live references so the values stop surfacing in
+        later state dumps and tracebacks — it is not a guarantee of erasure.
+        """
         self.cf_api_token = ""
         self.sudo_password = None
 

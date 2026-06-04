@@ -110,8 +110,9 @@ Pros vs alternatives:
 - **vs SUDO_ASKPASS GUI**: не требует X11/Wayland; работает в SSH
 
 После `BootstrapStep` orchestrator вызывает `config.sudo_password = None`
-(zero-out best effort). После всего install — `wipe_secrets()` зануляет
-оба `cf_api_token` и `sudo_password`.
+(drop reference, best-effort). После всего install — `wipe_secrets()` сбрасывает
+ссылки на `cf_api_token` и `sudo_password` (rebind to ""/None — НЕ zeroization
+памяти: Python strings immutable, байты могут жить до GC).
 
 ### Step contract (одинаковый для всех)
 
