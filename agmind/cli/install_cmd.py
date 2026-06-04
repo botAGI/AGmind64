@@ -57,6 +57,43 @@ def _sudo_nopasswd_available() -> bool:
     return completed.returncode == 0
 
 
+def _traefik_in_selection(services: list[str], profiles: list[str]) -> bool:
+    """True when traefik (the TLS edge) is in the effective deploy selection.
+
+    Explicit ``services`` win over ``profiles`` (mirrors ``renderer.select_services``);
+    traefik ships in the ``core``/``full`` profiles. The Cloudflare token and the public
+    domain are required ONLY when this is True — a local / non-traefik install needs neither.
+    """
+    if services:
+        return "traefik" in services
+    from agmind.services.renderer import filter_by_profile, load_descriptors
+
+    return "traefik" in filter_by_profile(load_descriptors(), profiles or [])
+
+
+def _headless_validation_errors(
+    services: list[str], profiles: list[str], domain: str, cf_api_token: str
+) -> tuple[list[str], str]:
+    """Validate a ``--no-tui`` selection. Returns ``(errors, normalized_domain)``.
+
+    Mirrors ``CloudflareTokenStep`` so the CLI gate and the install step agree: the
+    Cloudflare DNS token and the public domain are demanded only when traefik terminates
+    TLS. A non-traefik install with an empty token/domain is valid.
+    """
+    errors: list[str] = []
+    normalized_domain = domain
+    if _traefik_in_selection(services, profiles):
+        try:
+            normalized_domain = validate_domain(domain)
+        except ValueError as exc:
+            errors.append(f"domain invalid: {exc}")
+        if len(cf_api_token) < 20:
+            errors.append("CF API token < 20 chars — provide --cf-token-file with chmod 600")
+    if not services and not profiles:
+        errors.append("Выбери хотя бы один service")
+    return errors, normalized_domain
+
+
 def register(app: typer.Typer) -> None:
     """Attach the ``setup`` and ``install`` commands to ``app``."""
 
@@ -312,17 +349,12 @@ def register(app: typer.Typer) -> None:
         else:
             wizard_state = initial
             if not dry_run:
-                validation_errors: list[str] = []
-                try:
-                    wizard_state.domain = validate_domain(wizard_state.domain)
-                except ValueError as exc:
-                    validation_errors.append(f"domain invalid: {exc}")
-                if len(wizard_state.cf_api_token) < 20:
-                    validation_errors.append(
-                        "CF API token < 20 chars — provide --cf-token-file with chmod 600"
-                    )
-                if not wizard_state.services and not wizard_state.profiles:
-                    validation_errors.append("Выбери хотя бы один service")
+                validation_errors, wizard_state.domain = _headless_validation_errors(
+                    wizard_state.services,
+                    wizard_state.profiles,
+                    wizard_state.domain,
+                    wizard_state.cf_api_token,
+                )
                 if validation_errors:
                     for error in validation_errors:
                         typer.echo(f"ERROR: {error}", err=True)
