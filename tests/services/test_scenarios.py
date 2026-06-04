@@ -69,6 +69,26 @@ def test_core_rag_expands_backend_closure(tmp_path: Path) -> None:
         assert f"agmind-core-rag-{required}" in compose
 
 
+@pytest.mark.skipif(
+    hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() == 0,
+    reason="root bypasses filesystem permissions",
+)
+def test_scenario_write_to_unwritable_dir_is_graceful(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The default out dir (/opt/agmind/stacks/<name>) is root-owned; a non-sudo render must
+    surface a clean ERROR + exit 1, not a raw PermissionError traceback."""
+    parent = tmp_path / "ro"
+    parent.mkdir()
+    parent.chmod(0o500)  # r-x, no write
+    try:
+        rc = cmd_render_scenario(name="inference", out=parent / "stack")
+        assert rc == 1
+        assert "ERROR" in capsys.readouterr().err
+    finally:
+        parent.chmod(0o700)  # restore for tmp cleanup
+
+
 def test_unknown_scenario_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = cmd_render_scenario(name="nope", out=tmp_path / "x")
     assert rc == 1

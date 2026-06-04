@@ -282,15 +282,20 @@ def cmd_render_scenario(
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    write_text_atomic(out_dir / "compose.yaml", compose)
     env_vars = _extract_env_vars(compose)
     env_example = "".join(f"{var}=\n" for var in env_vars)
-    write_text_atomic(out_dir / ".env.example", env_example)
-    write_text_atomic(
-        out_dir / "README.md",
-        _scenario_stack_readme(name, project_name, expanded_names, data_root, config_root),
-    )
+    readme = _scenario_stack_readme(name, project_name, expanded_names, data_root, config_root)
+    # The default out dir (/opt/agmind/stacks/<name>) is root-owned and not pre-created, so a
+    # non-sudo `agmind render scenario` would otherwise raise a raw PermissionError traceback.
+    # Surface it as a clean error like every other failure in this command.
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        write_text_atomic(out_dir / "compose.yaml", compose)
+        write_text_atomic(out_dir / ".env.example", env_example)
+        write_text_atomic(out_dir / "README.md", readme)
+    except OSError as exc:
+        print(f"ERROR: cannot write stack dir {out_dir}: {exc}", file=sys.stderr)
+        return 1
     print(
         f"✓ scenario '{name}' → {out_dir}/ "
         f"({len(expanded_names)} services, project '{project_name}')"
