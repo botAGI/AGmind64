@@ -630,7 +630,10 @@ def _wait_healthy(
             elif health == "starting":
                 unhealthy.append(f"{name} (starting)")
             elif health == "":
-                # Нет healthcheck — считаем healthy если running
+                # No Docker healthcheck → "running" is the only readiness signal we have.
+                # This is sound ONLY because scripts/checks/healthcheck_coverage_check.py (A7)
+                # forces every probe-less service to be a CONSCIOUS, classified exemption — a
+                # stateful/web service can't silently land here without a probe or a reason.
                 if state != "running":
                     unhealthy.append(f"{name} ({state})")
 

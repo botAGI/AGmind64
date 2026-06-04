@@ -201,6 +201,8 @@ jobs:
           "$HOME/.local/bin/uv" pip install --python .venv/bin/python -c constraints/dev.txt -e ".[dev]"
       - name: A6 — healthcheck tools present in image (offline curated maps)
         run: .venv/bin/python scripts/checks/healthcheck_tool_check.py
+      - name: A7 — healthcheck coverage (probe or classified exemption)
+        run: .venv/bin/python scripts/checks/healthcheck_coverage_check.py
 
   # ---- Kubernetes renderer validation (M7.D) ----
   kubernetes-render-validate:
