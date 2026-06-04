@@ -77,12 +77,9 @@ agmind cluster inspect --timeout 10
 - Профиль `full` снова рендерится после cleanup альтернативных edge-proxy, но
   для fresh install безопаснее staged rollout: сначала `core,observability`,
   затем `rag`/другие профили после проверки моделей и секретов.
-- Локальный cluster status видит эту ноду как `beelinknode-GTR-Pro` на
-  `192.168.1.151`; `agmind cluster inspect` теперь показывает и AGmind mDNS
-  peers, и сырые LAN neighbor candidates из локальной neighbor table.
-- Текущие LAN probes не видят AGmind mDNS peers. Среди neighbor candidates есть
-  `192.168.1.58` и `192.168.1.78`; TCP `41423` у них не открыт. Считаем вторую
-  ноду физически видимой в LAN, но пока не рекламирующей AGmind.
+- `agmind cluster inspect` показывает AGmind mDNS peers и сырые LAN neighbor
+  candidates из локальной neighbor table (host-specific статус — в локальных
+  run-notes, не в этом README).
 
 ## Быстрый Старт
 

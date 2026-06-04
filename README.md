@@ -78,12 +78,9 @@ Last local readiness pass: 2026-05-26.
 - The `full` profile renders again after the alternative edge proxy cleanup, but
   fresh installs should still prefer a staged rollout: start with
   `core,observability`, verify models and secrets, then add `rag`/other profiles.
-- Local cluster status sees this node as `beelinknode-GTR-Pro` on
-  `192.168.1.151`; `agmind cluster inspect` now reports both AGmind mDNS peers
-  and raw LAN neighbor candidates from the local neighbor table.
-- Current LAN probes show no AGmind mDNS peers. Neighbor candidates include
-  `192.168.1.58` and `192.168.1.78`; neither has TCP `41423` open. Treat the
-  second node as physically visible on the LAN but not yet advertising AGmind.
+- `agmind cluster inspect` reports AGmind mDNS peers plus raw LAN neighbor
+  candidates from the local neighbor table (host-specific status lives in local
+  run-notes, not this README).
 
 ## Quick Start
 
