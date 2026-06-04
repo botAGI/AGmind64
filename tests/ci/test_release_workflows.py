@@ -21,6 +21,8 @@ documented as a follow-up in the plan SUMMARY.
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,11 @@ pytestmark = pytest.mark.backend_any
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _RELEASE_YML = _REPO_ROOT / ".github" / "workflows" / "release.yml"
 _PROMOTE_YML = _REPO_ROOT / ".github" / "workflows" / "promote.yml"
+_CI_YML = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+# CI jobs that legitimately must NOT be promote/release requirements (documented, with reason).
+# Empty today: every ci.yml job runs on the develop push path and is a required green gate.
+_DOCUMENTED_CI_EXCLUSIONS: frozenset[str] = frozenset()
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -68,6 +75,34 @@ def _all_job_runners(workflow: dict[str, Any]) -> list[str]:
 
 def _workflow_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _derive_ci_check_run_names(ci: dict[str, Any]) -> set[str]:
+    """Derive the set of GitHub check-run names ci.yml produces, expanding single-dimension
+    matrices to the `<job> (<value>)` names GitHub assigns (e.g. `docker-build (cpu)`)."""
+    names: set[str] = set()
+    for job_name, job in (ci.get("jobs") or {}).items():
+        matrix = ((job.get("strategy") or {}).get("matrix")) or {}
+        dims = {k: v for k, v in matrix.items() if isinstance(v, list)}
+        if not dims:
+            names.add(job_name)
+        elif len(dims) == 1:
+            (values,) = dims.values()
+            for value in values:
+                names.add(f"{job_name} ({value})")
+        else:  # pragma: no cover - no multi-dimension matrix exists yet
+            raise AssertionError(
+                f"{job_name}: multi-dimension matrix not handled by the derivation; "
+                "extend _derive_ci_check_run_names to expand the GitHub naming."
+            )
+    return names
+
+
+def _parse_required_array(text: str) -> set[str]:
+    """Extract the JSON `required='[ ... ]'` allow-list embedded in a workflow's gate shell."""
+    match = re.search(r"required='(\[.*?\])'", text, re.DOTALL)
+    assert match, "no `required='[...]'` allow-list found in the workflow gate"
+    return set(json.loads(match.group(1)))
 
 
 # ---------------------------------------------------------------------------
@@ -361,4 +396,50 @@ def test_promote_gate_allowlist_covers_all_required_ci_jobs() -> None:
         f"CR-01: these required CI jobs are not named in promote.yml's gate: {missing}.\n"
         "Add them to the required-check allowlist so the gate rejects a SHA that "
         "ran only a subset of CI."
+    )
+
+
+# ---------------------------------------------------------------------------
+# CR-02: the required allow-list is DERIVED from ci.yml, not a stale hand-list
+# (review MEDIUM required-ci-checks-not-derived)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("workflow", [_PROMOTE_YML, _RELEASE_YML], ids=["promote", "release"])
+def test_gate_required_equals_derived_ci_jobs(workflow: Path) -> None:
+    """The gate's `required` allow-list must EQUAL the set of check-runs ci.yml produces
+    (minus documented exclusions). A hand-maintained subset silently lets a new CI job slip
+    past the promote/release gate.
+
+    Mutation-verify: add a new job to ci.yml (or a matrix value) and this test goes RED until
+    the workflow's `required` array is updated — exactly the drift the old subset test missed.
+    """
+    derived = _derive_ci_check_run_names(_load(_CI_YML))
+    expected = derived - _DOCUMENTED_CI_EXCLUSIONS
+    actual = _parse_required_array(_workflow_text(workflow))
+    assert actual == expected, (
+        f"{workflow.name} `required` allow-list drifted from ci.yml:\n"
+        f"  in ci.yml but NOT required: {sorted(expected - actual)}\n"
+        f"  required but NOT in ci.yml: {sorted(actual - expected)}\n"
+        "Update the workflow's required array (or add a documented entry to "
+        "_DOCUMENTED_CI_EXCLUSIONS with a reason)."
+    )
+
+
+def test_promote_and_release_required_sets_are_identical() -> None:
+    """promote.yml and release.yml must gate on the SAME required set (review wanted them
+    in sync — both protect main/release from an under-tested commit)."""
+    assert _parse_required_array(_workflow_text(_PROMOTE_YML)) == _parse_required_array(
+        _workflow_text(_RELEASE_YML)
+    )
+
+
+def test_promote_has_serializing_concurrency() -> None:
+    """promote.yml must serialize concurrent dispatches (review LOW promote-no-concurrency):
+    two promotes racing the ff-only push could corrupt main."""
+    data = _load(_PROMOTE_YML)
+    concurrency = data.get("concurrency") or {}
+    assert concurrency.get("group"), "promote.yml must define a concurrency group"
+    assert concurrency.get("cancel-in-progress") is False, (
+        "promote must queue, never cancel a promote mid-push (cancel-in-progress: false)"
     )

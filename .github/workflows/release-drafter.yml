@@ -25,6 +25,9 @@ jobs:
     # never blocks the critical CI/test/deploy queue (backlog M6.B.5).
     runs-on: ubuntu-latest
     steps:
-      - uses: release-drafter/release-drafter@v7
+      # SHA-pinned (review LOW ci-actions-mutable-tag-pins): this job runs on
+      # pull_request_target with contents+pull-requests write — a force-moved tag would inject
+      # code into a token-bearing job. Dependabot (github-actions) bumps the pin via the # v7.
+      - uses: release-drafter/release-drafter@693d20e7c1ce1a81d3a41962f85914253b518449 # v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

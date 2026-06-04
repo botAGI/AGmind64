@@ -69,21 +69,50 @@ jobs:
         run: |
           set -euo pipefail
           sha="${GITHUB_SHA}"
-          # Refuse to build/publish a release from a commit whose CI is not green — tagging
-          # any (even red) commit must not ship GHCR images + a Release. skipped/neutral are
-          # tolerated (fork-guarded jobs); queued/in_progress/failure/cancelled block.
-          mapfile -t bad < <(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --paginate \
-            --jq '.check_runs[]
-                  | select(.name != "update_release_draft")
-                  | select(.status != "completed"
-                           or (.conclusion as $c | ["success","skipped","neutral"] | index($c) | not))
-                  | .name')
-          if [ "${#bad[@]}" -gt 0 ]; then
-            echo "::error::tagged commit ${sha} has non-green checks; refusing to publish a release:"
-            printf '  - %s\n' "${bad[@]}"
+          # ALLOW-LIST gate (not deny-list): every required CI check must be PRESENT and
+          # conclusion==success. Tags don't trigger ci.yml, so a tag on a commit with zero
+          # check-runs (old commit / tag-before-CI) would pass a "nothing is red" deny-list
+          # and ship GHCR images + a Release from an untested commit. Must mirror promote.yml.
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --paginate \
+            --jq '.check_runs[] | {name, status, conclusion, id}')
+          [ -n "$runs" ] || { echo "::error::no check-runs for tagged commit ${sha}"; exit 1; }
+          required='[
+            "pre-commit",
+            "audit",
+            "schema-validate",
+            "component-validate",
+            "deploy-target-validate",
+            "tool-candidate-validate",
+            "constraints-validate",
+            "docs-mirror-validate",
+            "topology-validate",
+            "kubernetes-render-validate",
+            "kubernetes-proof-workflow-validate",
+            "governance-validate",
+            "public-checks",
+            "test-cpu",
+            "docker-build-base",
+            "docker-build (cpu)",
+            "docker-build (rocm)",
+            "docker-build (vulkan)",
+            "compose-validate",
+            "compose-up-smoke",
+            "healthcheck-tool-validate",
+            "test-strix-halo (rocm)",
+            "test-strix-halo (vulkan)"
+          ]'
+          # Dedup: keep only the LATEST run per name. GitHub retains stale check-runs after a
+          # re-run, so an old `failure` would otherwise outvote the fresh `success`.
+          latest=$(echo "$runs" | jq -s 'group_by(.name) | map(max_by(.id))')
+          missing=$(echo "$latest" | jq --argjson req "$required" \
+            '($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name]) | length')
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::tagged commit ${sha} — $missing required check(s) absent/not-success:"
+            echo "$latest" | jq --argjson req "$required" \
+              '$req - [.[] | select(.status=="completed" and .conclusion=="success") | .name]'
             exit 1
           fi
-          echo "tagged commit CI is green ✓"
+          echo "tagged commit CI is green ✓ (all required checks present + success)"
 
   # ---------------------------------------------------------------------------
   # 1. Build the base image; capture its digest; attest SLSA provenance.
@@ -170,7 +199,8 @@ jobs:
             ${{ env.IMAGE_NS }}-${{ matrix.backend }}:latest
 
       - name: Generate SPDX SBOM for ${{ matrix.backend }}
-        uses: anchore/sbom-action@v0.22.0
+        # SHA-pinned (review LOW ci-actions-mutable-tag-pins); Dependabot bumps via the # v0.22.0.
+        uses: anchore/sbom-action@62ad5284b8ced813296287a0b63906cb364b73ee # v0.22.0
         with:
           image: ${{ env.IMAGE_NS }}-${{ matrix.backend }}@${{ steps.build.outputs.digest }}
           format: spdx-json
@@ -310,7 +340,8 @@ jobs:
         with:
           path: all
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        # SHA-pinned (review LOW ci-actions-mutable-tag-pins); Dependabot bumps via the # v2.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           generate_release_notes: true

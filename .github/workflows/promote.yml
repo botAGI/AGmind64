@@ -33,6 +33,12 @@ on:
 # Deny everything at workflow level; promote job opts in to exactly what it needs.
 permissions: {}
 
+# Serialize promotions: two concurrent dispatches would race the checkout main →
+# merge --ff-only → push. Never cancel a promote mid-push (queue, don't interrupt).
+concurrency:
+  group: promote-main
+  cancel-in-progress: false
+
 jobs:
   promote:
     name: Promote develop → main
@@ -67,20 +73,26 @@ jobs:
           SHA: ${{ github.event.inputs.sha }}
         run: |
           set -euo pipefail
-          # Fetch all check-runs for this commit.
+          # Fetch all check-runs for this commit (incl. id for latest-run dedup).
           runs=$(gh api \
             "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
             --paginate \
-            --jq '.check_runs[] | {name, status, conclusion}')
+            --jq '.check_runs[] | {name, status, conclusion, id}')
           [ -n "$runs" ] || { echo "::error::no check-runs found for $SHA"; exit 1; }
-          echo "Check-runs for $SHA:"
-          echo "$runs"
+
+          # Dedup: keep only the LATEST run per name. GitHub retains stale check-runs after a
+          # re-run, so a flaky-then-re-run-green job leaves an old `failure` that would otherwise
+          # permanently block promotion. max_by(.id) picks the freshest (id is monotonic).
+          latest=$(echo "$runs" | jq -s 'group_by(.name) | map(max_by(.id))')
+          echo "Latest check-runs for $SHA:"
+          echo "$latest" | jq -c '.[] | {name, conclusion}'
 
           # --- Fail-CLOSED required-set gate (CR-01) ---
-          # Every required CI check must be present AND conclusion == "success".
-          # skipped/neutral/missing count as NOT green for required checks.
-          # Names must match the Checks-API check_run.name EXACTLY, including the matrix
-          # suffix (e.g. "docker-build (cpu)") — a bare "docker-build" matches nothing.
+          # Every required CI check must be present AND conclusion == "success" (on its LATEST
+          # run). skipped/neutral/missing count as NOT green. Names must match the Checks-API
+          # check_run.name EXACTLY, including the matrix suffix (e.g. "docker-build (cpu)").
+          # Evaluated ONLY over the required set — a flaky third-party app check-run (e.g.
+          # update_release_draft, dependency-graph) is NOT required and must never block.
           required='[
             "pre-commit",
             "audit",
@@ -106,27 +118,14 @@ jobs:
             "test-strix-halo (rocm)",
             "test-strix-halo (vulkan)"
           ]'
-          missing=$(echo "$runs" | jq -s --argjson req "$required" '
+          missing=$(echo "$latest" | jq --argjson req "$required" '
             ($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name])
             | length')
           if [ "$missing" -ne 0 ]; then
             echo "::error::$missing required check(s) missing or not conclusion==success for $SHA"
             echo "Required checks that are absent/skipped/non-success:"
-            echo "$runs" | jq -s --argjson req "$required" '
+            echo "$latest" | jq --argjson req "$required" '
               ($req - [.[] | select(.status=="completed" and .conclusion=="success") | .name])'
-            exit 1
-          fi
-
-          # --- Secondary sweep: no run may be in a non-terminal state ---
-          # Blocked: queued, in_progress, failure, cancelled, timed_out, action_required.
-          bad=$(echo "$runs" | jq -s '
-            map(select(
-              .status != "completed"
-              or (.conclusion as $c
-                  | ["success", "skipped", "neutral"] | index($c) | not)
-            )) | length')
-          if [ "$bad" -ne 0 ]; then
-            echo "::error::$bad check-run(s) not in a terminal-green state for $SHA"
             exit 1
           fi
           echo "All required check-runs are conclusion==success for $SHA."
