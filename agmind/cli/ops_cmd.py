@@ -28,6 +28,7 @@ from agmind.ops.backup import (
     restore_backup,
     restore_plan,
     verify_backup,
+    volume_restore_target,
 )
 from agmind.ops.exec import logs as do_logs
 from agmind.ops.exec import shell as do_shell
@@ -116,10 +117,20 @@ def cmd_backup(
         env_path = install_dir / ".env"
         env = parse_env_file(env_path) if env_path.exists() else {}
         data_sources = enumerate_data_sources(services, descriptors, env)
+    sudo_password = _prompt_sudo_password(ask_sudo_password)
+    if include_data and sudo_password is None:
+        # The /var/lib/agmind/* data dirs are typically root-owned; without a sudo password the
+        # local tar path raises PermissionError and aborts the WHOLE backup after the slow config
+        # portion. Warn up-front (world-readable data may still succeed, so don't fail-fast).
+        print(
+            "agmind backup: --include-data has no sudo password; root-owned /var/lib/agmind/* "
+            "data dirs may abort the backup — re-run with --ask-sudo-password if it fails.",
+            file=sys.stderr,
+        )
     try:
         result: BackupResult = create_backup(
             output_path=output,
-            sudo_password=_prompt_sudo_password(ask_sudo_password),
+            sudo_password=sudo_password,
             data_sources=data_sources,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
@@ -233,17 +244,55 @@ def cmd_restore(
     if labels:
         wanted = set(labels)
         sources = [s for s in sources if s.label in wanted]
+
+    # Route every volume/<svc> data member to its trusted system_dir destination. default_sources
+    # carries no volume/* label, so without this restore_backup drops every volume member silently
+    # while printing "✓ restored" (review HIGH restore-volume-data-unreachable). Destinations come
+    # ONLY from the local system_dir + the label suffix — never the archive's host_path (audit H#4).
+    destinations: dict[str, Path] = {}
+    raw_data = metadata.get("data", [])
+    db_passwords: dict[str, str] = {}
+    from agmind.core.env import parse_env_file
+
+    env_path = install_dir / ".env"
+    env = parse_env_file(env_path) if env_path.exists() else {}
+    for member in raw_data if isinstance(raw_data, list) else []:
+        if not isinstance(member, dict):
+            continue
+        dlabel = str(member.get("label", ""))
+        if member.get("kind") == "volume":
+            vol_target = volume_restore_target(dlabel, system_dir)
+            if vol_target is not None:
+                destinations[dlabel] = vol_target
+        elif member.get("kind") == "dbdump":
+            # Wire the live DB password so a mysql restore has MYSQL_PWD (postgres uses
+            # in-container trust). Read from the current .env, not the archive.
+            if member.get("engine") == "mysql":
+                db_passwords[dlabel] = env.get("MYSQL_ROOT_PASSWORD", "")
+            elif member.get("engine") == "postgres":
+                db_passwords[dlabel] = env.get("POSTGRES_PASSWORD", "")
+
     try:
         result = restore_backup(
             backup_path=backup_path,
             sources=sources,
+            destinations=destinations,
             sudo_password=_prompt_sudo_password(ask_sudo_password),
+            db_passwords=db_passwords,
+            labels=labels,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"agmind restore: failed: {exc}", file=sys.stderr)
         return 1
 
+    if result.failed:
+        print(
+            f"✗ {len(result.failed)} member(s) FAILED to restore: {', '.join(result.failed)}",
+            file=sys.stderr,
+        )
     print(f"✓ restored {len(result.extracted)}: {', '.join(result.extracted) or '<none>'}")
+    if result.failed:
+        return 1
 
     # A selective (--label) restore skips the whole-deployment hints below — they
     # only apply to a full restore.

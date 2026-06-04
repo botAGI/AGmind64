@@ -76,6 +76,7 @@ class RestoreResult:
 
     extracted: tuple[str, ...]
     metadata: dict[str, object]
+    failed: tuple[str, ...] = ()  # members that could NOT be restored (DB rc!=0, corrupt, no dest)
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,24 @@ def default_sources(
         BackupSource("schema_state", user_dir / "schema.json"),
         BackupSource("snapshots", system_dir / "snapshots"),
     ]
+
+
+def volume_restore_target(label: str, system_dir: Path = DEFAULT_SYSTEM_DIR) -> Path | None:
+    """Trusted destination for a ``volume/<relpath>`` data member.
+
+    The label suffix is the data dir's path RELATIVE to ``/var/lib/agmind`` (set by
+    ``backup_data.data_sources``); re-root it under the operator's ``system_dir``. This is the
+    ONLY trusted source of the destination — the archive's self-declared ``host_path`` is
+    attacker-controllable (audit H#4) and is never used. Any traversal / absolute / empty
+    suffix returns None so a malicious label can never escape ``system_dir``.
+    """
+    if not label.startswith("volume/"):
+        return None
+    rel = label[len("volume/") :]
+    relpath = PurePosixPath(rel)
+    if not rel or relpath.is_absolute() or ".." in relpath.parts:
+        return None
+    return system_dir / rel
 
 
 def _safe_member_name(label: str) -> str:
@@ -433,6 +452,9 @@ def restore_plan(
             target = str(by_label[label].path) if label in by_label else ""
             if label in data_meta:
                 kind = str(data_meta[label].get("kind", "data"))
+                if kind == "volume" and not target:
+                    vol_target = volume_restore_target(label, system_dir)
+                    target = str(vol_target) if vol_target is not None else ""
                 rows.append(PlanRow(label, "data", target, kind))
                 continue
             arcname = _safe_member_name(label)
@@ -499,6 +521,7 @@ def restore_backup(
     *,
     db_passwords: dict[str, str] | None = None,
     data_run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
+    labels: list[str] | None = None,
 ) -> RestoreResult:
     """Extract backup into filesystem.
 
@@ -507,8 +530,10 @@ def restore_backup(
         destinations: override {label: target_path}. Если label не указан —
             используется path из default_sources/sources.
         sources: для тестов — list of BackupSource (default = default_sources()).
+        labels: when given, restore ONLY these labels — scopes BOTH the config members and
+            the data members (a selective ``--label env`` must not replay DB dumps / volumes).
 
-    Returns RestoreResult с metadata + extracted labels.
+    Returns RestoreResult с metadata + extracted + failed labels.
     """
     backup_path = Path(backup_path)
     if not backup_path.exists():
@@ -519,9 +544,11 @@ def restore_backup(
     by_label = {s.label: s for s in sources}
     if destinations is None:
         destinations = {}
+    wanted = set(labels) if labels else None
 
     metadata = read_metadata(backup_path)
     extracted: list[str] = []
+    failed: list[str] = []
     included_labels = metadata.get("included", [])
     if not isinstance(included_labels, list):
         included_labels = []
@@ -537,6 +564,8 @@ def restore_backup(
         for label in included_labels:
             if str(label) in data_labels:
                 continue  # data members are restored by kind below, not as config files
+            if wanted is not None and str(label) not in wanted:
+                continue
             arcname = _safe_member_name(str(label))
             try:
                 member = tar.getmember(arcname)
@@ -570,10 +599,13 @@ def restore_backup(
             kind = member_meta.get("kind")
             arcname = str(member_meta.get("arcname", ""))
             dlabel = str(member_meta.get("label", arcname))
+            if wanted is not None and dlabel not in wanted:
+                continue  # selective --label scopes the data loop too (review M restore-label)
             try:
                 member = tar.getmember(arcname)
             except KeyError:
                 log.warning("backup: data member %s missing in archive", dlabel)
+                failed.append(dlabel)
                 continue
             if kind == "volume":
                 # SECURITY (audit H#4): resolve the extraction root ONLY from trusted sources —
@@ -585,19 +617,21 @@ def restore_backup(
                     by_label[dlabel].path if dlabel in by_label else None
                 )
                 if target_path is None:
-                    log.warning(
+                    log.error(
                         "backup: volume %s has no trusted destination (not in --label "
-                        "destinations nor the current sources) — skipping (untrusted archive "
+                        "destinations nor the current sources) — NOT restored (untrusted archive "
                         "host_path ignored)",
                         dlabel,
                     )
+                    failed.append(dlabel)
                     continue
                 _extract_dir(tar, member, Path(target_path), sudo_password=sudo_password)
                 extracted.append(dlabel)
             elif kind == "dbdump":
                 payload = tar.extractfile(member)
                 if payload is None:
-                    log.warning("cannot read dbdump member %s", dlabel)
+                    log.error("cannot read dbdump member %s — NOT restored", dlabel)
+                    failed.append(dlabel)
                     continue
                 raw = payload.read()
                 # Integrity gate (audit L#33): verify the dump against the recorded sha256
@@ -609,6 +643,7 @@ def restore_backup(
                         "backup: dbdump %s sha256 mismatch (corrupt/truncated) — refusing to load",
                         dlabel,
                     )
+                    failed.append(dlabel)
                     continue
                 sql = gzip.decompress(raw)
                 src = DbDumpSource(
@@ -624,9 +659,11 @@ def restore_backup(
                 rc = getattr(result, "returncode", 0)
                 if rc not in (0, None):
                     log.error("backup: dbdump %s restore command failed (rc=%s)", dlabel, rc)
-                extracted.append(dlabel)
+                    failed.append(dlabel)
+                else:
+                    extracted.append(dlabel)
 
-    return RestoreResult(extracted=tuple(extracted), metadata=metadata)
+    return RestoreResult(extracted=tuple(extracted), metadata=metadata, failed=tuple(failed))
 
 
 def _extract_file(

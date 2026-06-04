@@ -122,6 +122,110 @@ def test_only_enumerates_deployed_services() -> None:
     assert [s.label for s in sources] == ["volume/qdrant"]
 
 
+def test_multi_bind_service_captures_every_data_dir_with_unique_labels() -> None:
+    """Review MEDIUM backup-data-first-volume-only: a service binding two writable
+    /var/lib/agmind/* dirs must back up BOTH (the old `break` kept only the first), each
+    with a UNIQUE label so arcname/manifest/destination keys never collide."""
+    descriptors = {
+        "milvus": _svc(
+            "milvus",
+            volumes=[
+                "/var/lib/agmind/milvus/etcd:/etcd",
+                "/var/lib/agmind/milvus/minio:/minio",
+            ],
+        ),
+    }
+    sources = data_sources(["milvus"], descriptors, env={})
+    vols = [s for s in sources if isinstance(s, DataVolumeSource)]
+    labels = [v.label for v in vols]
+    assert len(labels) == len(set(labels)) == 2, f"both binds, unique labels: {labels}"
+    assert {v.host_path for v in vols} == {
+        Path("/var/lib/agmind/milvus/etcd"),
+        Path("/var/lib/agmind/milvus/minio"),
+    }
+
+
+def test_identical_data_bind_is_deduped() -> None:
+    """Same host dir bound twice (e.g. :/data and :/data:rw) → one source, no collision."""
+    descriptors = {
+        "redis": _svc("redis", volumes=["/var/lib/agmind/redis:/data", "/var/lib/agmind/redis:/x"]),
+    }
+    vols = [
+        s for s in data_sources(["redis"], descriptors, env={}) if isinstance(s, DataVolumeSource)
+    ]
+    assert len(vols) == 1 and vols[0].label == "volume/redis"
+
+
+def test_volume_restore_target_rejects_traversal() -> None:
+    """The trusted volume destination re-roots the label suffix under system_dir and
+    refuses any escape (audit H#4 — never the archive's self-declared host_path)."""
+    from agmind.ops.backup import volume_restore_target
+
+    sysdir = Path("/var/lib/agmind")
+    assert volume_restore_target("volume/qdrant", sysdir) == sysdir / "qdrant"
+    assert volume_restore_target("volume/milvus/etcd", sysdir) == sysdir / "milvus" / "etcd"
+    assert volume_restore_target("volume/../../root/.ssh", sysdir) is None
+    assert volume_restore_target("volume//etc/shadow", sysdir) is None
+    assert volume_restore_target("env", sysdir) is None
+
+
+def test_restore_backup_surfaces_dbdump_failure(tmp_path: Path) -> None:
+    """Review HIGH restore-dbdump-failure-reported-success: a non-zero DB restore must land
+    in RestoreResult.failed, NOT extracted (the operator must not believe the load succeeded)."""
+    import subprocess
+
+    from agmind.ops.backup import create_backup, restore_backup
+
+    db = DbDumpSource("dbdump/postgres", "agmind-postgres", "postgres", "dify", "dify")
+
+    def ok_dump(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"-- dump\n", stderr=b"")
+
+    out = tmp_path / "b.tar.gz"
+    create_backup(out, sources=[], data_sources=[db], data_run=ok_dump)
+
+    def failing_restore(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(cmd, 1)  # psql/mysql returned non-zero
+
+    res = restore_backup(out, sources=[], data_run=failing_restore)
+    assert "dbdump/postgres" in res.failed
+    assert "dbdump/postgres" not in res.extracted
+
+
+def test_restore_backup_labels_scope_data_members(tmp_path: Path) -> None:
+    """Review MEDIUM restore-label-no-data-scope: --label must scope the DATA loop too —
+    `restore --label env` on an --include-data archive must NOT replay the DB dump."""
+    import subprocess
+
+    from agmind.ops.backup import BackupSource, create_backup, restore_backup
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("X=1\n", encoding="utf-8")
+    db = DbDumpSource("dbdump/postgres", "agmind-postgres", "postgres", "dify", "dify")
+
+    def ok(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"-- dump\n", stderr=b"")
+
+    out = tmp_path / "b.tar.gz"
+    create_backup(out, sources=[BackupSource("env", env_file)], data_sources=[db], data_run=ok)
+
+    called: list[list[str]] = []
+
+    def restore_run(cmd: list[str], **kw: object) -> subprocess.CompletedProcess[bytes]:
+        called.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    res = restore_backup(
+        out,
+        destinations={"env": tmp_path / "out.env"},
+        sources=[BackupSource("env", tmp_path / "out.env")],
+        data_run=restore_run,
+        labels=["env"],
+    )
+    assert "dbdump/postgres" not in res.extracted and "dbdump/postgres" not in res.failed
+    assert called == [], "the DB restore command must not run for a non-selected label"
+
+
 # ---- dump_to_gzip ----
 
 
@@ -284,6 +388,82 @@ def test_cmd_backup_include_data_enumerates_and_passes_data_sources(
     assert rc == 0
     labels = [s.label for s in captured["data_sources"]]  # type: ignore[union-attr]
     assert "volume/qdrant" in labels  # real qdrant descriptor → /var/lib/agmind/qdrant volume
+
+
+def test_cmd_backup_include_data_without_sudo_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review LOW backup-include-data-no-sudo: warn (not fail) before the slow archive when
+    --include-data has no sudo password — root-owned data dirs may abort the whole backup."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import BackupResult
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: [])
+    monkeypatch.setattr(
+        ops_cmd,
+        "create_backup",
+        lambda **kw: BackupResult(kw["output_path"], 1, (), ()),
+    )
+    rc = ops_cmd.cmd_backup(
+        tmp_path / "b.tar.gz", include_data=True, ask_sudo_password=False, install_dir=install
+    )
+    assert rc == 0  # WARN, not fail-fast (world-readable data may still work)
+    assert "sudo" in capsys.readouterr().err.lower()
+
+
+def test_cmd_restore_routes_volume_member_to_system_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review HIGH restore-volume-data-unreachable: cmd_restore must route volume members to
+    the trusted system_dir destination (by_label has no volume/* entry → they were silently
+    dropped while printing '✓ restored')."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import create_backup
+
+    voldir = tmp_path / "src-qdrant"
+    voldir.mkdir()
+    (voldir / "seg.dat").write_text("vec", encoding="utf-8")
+
+    out = tmp_path / "b.tar.gz"
+    create_backup(out, sources=[], data_sources=[DataVolumeSource("volume/qdrant", voldir)])
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    system = tmp_path / "system"
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: [])
+
+    rc = ops_cmd.cmd_restore(out, yes=True, install_dir=install, system_dir=system)
+    assert rc == 0
+    assert (system / "qdrant" / "seg.dat").read_text(encoding="utf-8") == "vec"
+
+
+def test_cmd_restore_returns_nonzero_when_member_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """cmd_restore must exit non-zero (not print '✓') when restore_backup reports failures."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import RestoreResult
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    out = tmp_path / "b.tar.gz"
+    from agmind.ops.backup import BackupSource, create_backup
+
+    create_backup(out, sources=[BackupSource("compose", install / "docker-compose.yml")])
+
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: [])
+    monkeypatch.setattr(ops_cmd, "verify_backup", lambda _p: [])
+    monkeypatch.setattr(
+        ops_cmd,
+        "restore_backup",
+        lambda **kw: RestoreResult(extracted=(), metadata={}, failed=("dbdump/postgres",)),
+    )
+    rc = ops_cmd.cmd_restore(out, yes=True, install_dir=install, system_dir=tmp_path / "sys")
+    assert rc == 1
+    assert "fail" in capsys.readouterr().err.lower()
 
 
 # ---- backup verify (integrity) ----

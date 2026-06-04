@@ -948,6 +948,7 @@ def test_restore_cli_prompts_and_passes_sudo_password(
         backup_path: Path,
         sources: list[BackupSource],
         sudo_password: str | None = None,
+        **kwargs: object,
     ) -> RestoreResult:
         calls["backup_path"] = backup_path
         calls["source_labels"] = tuple(source.label for source in sources)

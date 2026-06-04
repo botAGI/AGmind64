@@ -125,11 +125,19 @@ def data_sources(
                 )
             )
             continue
+        # Capture EVERY writable data bind, not just the first (a service may bind several,
+        # e.g. milvus → etcd + minio). Label by the host path RELATIVE to /var/lib/agmind so
+        # each distinct dir gets a unique, collision-free arcname/manifest/destination key, and
+        # the restore destination is derivable from the label alone (audit H#4 — never trust the
+        # archive's self-declared host_path). Identical binds (e.g. :/data and :/data:rw) dedupe.
+        seen: set[Path] = set()
         for volume in descriptor.volumes:
             host_path = _host_data_path(volume)
-            if host_path is not None:
-                out.append(DataVolumeSource(label=f"volume/{name}", host_path=host_path))
-                break
+            if host_path is None or host_path in seen:
+                continue
+            seen.add(host_path)
+            rel = host_path.relative_to(_DATA_PREFIX).as_posix()
+            out.append(DataVolumeSource(label=f"volume/{rel}", host_path=host_path))
     return out
 
 
