@@ -597,14 +597,22 @@ def _wait_healthy(
     timeout: int,
     sudo_password: str | None = None,
     cancel_event: threading.Event | None = None,
+    expected_services: list[str] | None = None,
 ) -> tuple[bool, list[str]]:
     """Wait until все сервисы помечены healthy (или running без healthcheck).
 
     Returns (success, unhealthy_names). If `cancel_event` fires, returns early
     (success=False) instead of blocking the worker for the full timeout.
+
+    ``expected_services`` is the set of services that ``compose up`` was asked to start.
+    Any expected service that produced NO container — an empty/partial ``ps`` right after
+    ``up``, a service that exited and was reaped, or one that never created a container —
+    counts as unhealthy. Without this an empty ``ps`` would return (True, []) and a stack
+    that never came up would be reported "all healthy" (rollback skipped). See audit H#3.
     """
     deadline = time.monotonic() + timeout
     last_unhealthy: list[str] = []
+    expected = set(expected_services or [])
 
     while time.monotonic() < deadline:
         if cancel_event is not None and cancel_event.is_set():
@@ -620,8 +628,10 @@ def _wait_healthy(
             continue
 
         unhealthy: list[str] = []
+        seen: set[str] = set()
         for container in _compose_ps_containers(stdout):
             name = str(container.get("Service") or container.get("Name") or "")
+            seen.add(name)
             health = str(container.get("Health") or "")
             state = str(container.get("State") or "")
             # healthy / starting / unhealthy / "" (no healthcheck declared)
@@ -636,6 +646,11 @@ def _wait_healthy(
                 # stateful/web service can't silently land here without a probe or a reason.
                 if state != "running":
                     unhealthy.append(f"{name} ({state})")
+
+        # An expected service with no container at all is NOT ready — this is what stops an
+        # empty/partial `ps` from being mistaken for "all healthy".
+        for missing in sorted(expected - seen):
+            unhealthy.append(f"{missing} (no container)")
 
         if not unhealthy:
             return True, []
@@ -1035,17 +1050,13 @@ def _deploy_impl(
     # 6. Wait for healthy
     _emit("wait_healthy", f"waiting for healthy state (timeout={healthcheck_timeout}s)")
     log.info("waiting for healthy state (timeout=%ds)...", healthcheck_timeout)
-    if sudo_password is None:
-        healthy, unhealthy = _wait_healthy(
-            install_dir, healthcheck_timeout, cancel_event=cancel_event
-        )
-    else:
-        healthy, unhealthy = _wait_healthy(
-            install_dir,
-            healthcheck_timeout,
-            sudo_password=sudo_password,
-            cancel_event=cancel_event,
-        )
+    healthy, unhealthy = _wait_healthy(
+        install_dir,
+        healthcheck_timeout,
+        sudo_password=sudo_password,
+        cancel_event=cancel_event,
+        expected_services=service_names,
+    )
 
     if not healthy:
         log.error("healthcheck timeout — unhealthy: %s", unhealthy)
@@ -1155,13 +1166,18 @@ def _rollback_to_snapshot(
         if compose_text is None:
             compose_text = _read_text_maybe_sudo(compose_file, sudo_password=sudo_password)
         service_names = _compose_service_names(compose_text)
-        rc, _, stderr = _run_compose_maybe_sudo(
-            ["up", "-d", "--remove-orphans", *service_names],
+        # Stream with NO 60s short-timeout: a full-stack rollback `up` routinely exceeds it,
+        # which used to report rollback FAILURE when it had actually half-succeeded (H#8).
+        # --pull from resolve_pull_policy(): offline → never (no network pull during an
+        # air-gap rollback), online → missing (recover an image pruned since the snapshot) (H#9).
+        rc, tail = _stream_compose(
+            ["up", "-d", "--remove-orphans", "--pull", resolve_pull_policy(), *service_names],
             cwd=install_dir,
             sudo_password=sudo_password,
+            on_line=lambda line: log.info("rollback up: %s", line),
         )
         if rc != 0:
-            log.error("rollback compose up failed: %s", stderr)
+            log.error("rollback compose up failed: %s", tail)
             return False
         log.info("rollback complete to snapshot %s", snapshot.id)
         return True

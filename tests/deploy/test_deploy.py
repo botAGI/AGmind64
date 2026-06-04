@@ -941,6 +941,7 @@ def test_deploy_apply_writes_compose_via_sudo_helper(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args, **_kwargs: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_stream_compose", lambda *_args, **_kwargs: (0, ""))
 
     def fake_write_text_maybe_sudo(
@@ -1023,6 +1024,7 @@ def test_deploy_snapshot_uses_sudo_readable_env_copy(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args, **_kwargs: (0, ""))
     monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_stream_compose", lambda *_args, **_kwargs: (0, ""))
 
     def fake_read_text_maybe_sudo(path: Path, sudo_password: str | None = None) -> str:
@@ -1260,6 +1262,7 @@ def test_rollback_writes_compose_and_env_via_sudo_helper(
 
     monkeypatch.setattr(runner, "_write_text_maybe_sudo", fake_write_text_maybe_sudo)
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     assert runner._rollback_to_snapshot(snap, install_dir, sudo_password="pw")
 
@@ -1297,6 +1300,7 @@ def test_rollback_removes_stale_version_env_when_snapshot_has_none(
     version_env.write_text("AGMIND_VERSION=newer\n", encoding="utf-8")
 
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     assert runner._rollback_to_snapshot(snap, install_dir)
     assert not version_env.exists()
@@ -1326,21 +1330,24 @@ def test_rollback_uses_snapshot_compose_after_sudo_write(
         # Simulate sudo write into a root-owned file that the current user
         # still cannot read directly.
 
-    def fake_run_compose_maybe_sudo(
+    def fake_stream_compose(
         args: list[str],
         cwd: Path,
-        sudo_password: str | None,
-    ) -> tuple[int, str, str]:
+        sudo_password: str | None = None,
+        on_line: object = None,
+        cancel_event: object = None,
+    ) -> tuple[int, str]:
         compose_calls.append(args)
         assert cwd == install_dir
         assert sudo_password == "pw"
-        return 0, "", ""
+        return 0, ""
 
     monkeypatch.setattr(runner, "_write_text_maybe_sudo", fake_write_text_maybe_sudo)
-    monkeypatch.setattr(runner, "_run_compose_maybe_sudo", fake_run_compose_maybe_sudo)
+    monkeypatch.setattr(runner, "_stream_compose", fake_stream_compose)
 
     assert runner._rollback_to_snapshot(snap, install_dir, sudo_password="pw")
-    assert compose_calls == [["up", "-d", "--remove-orphans", "llama-llm"]]
+    # Rollback up is now streamed (no 60s cap) with an explicit --pull policy (offline-safe).
+    assert compose_calls == [["up", "-d", "--remove-orphans", "--pull", "missing", "llama-llm"]]
 
 
 def test_rollback_restores_descriptors_via_sudo_helper(
@@ -1378,6 +1385,7 @@ def test_rollback_restores_descriptors_via_sudo_helper(
     monkeypatch.setattr(shutil, "rmtree", fake_rmtree)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
     monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
 
     assert runner._rollback_to_snapshot(snap, install_dir, sudo_password="pw")
 
@@ -1843,3 +1851,50 @@ def test_wait_healthy_returns_early_on_cancel(monkeypatch: pytest.MonkeyPatch) -
 
     assert elapsed < 5.0, f"_wait_healthy ignored cancel (took {elapsed:.1f}s)"
     assert healthy is False
+
+
+def test_wait_healthy_flags_expected_service_with_no_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An expected service that produced NO container must not pass as healthy (audit H#3)."""
+    monkeypatch.setattr(
+        runner,
+        "_run_compose_maybe_sudo",
+        lambda *_a, **_k: (0, '[{"Service": "a", "Health": "healthy", "State": "running"}]', ""),
+    )
+    monkeypatch.setattr(runner, "_interruptible_sleep", lambda *_a, **_k: True)  # bail fast
+    healthy, unhealthy = runner._wait_healthy(Path("/x"), timeout=5, expected_services=["a", "b"])
+    assert healthy is False
+    assert any(u.startswith("b") for u in unhealthy)
+
+
+def test_wait_healthy_empty_ps_is_not_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 0-container `ps` while a service is expected must be unhealthy, never (True, [])."""
+    monkeypatch.setattr(runner, "_run_compose_maybe_sudo", lambda *_a, **_k: (0, "[]", ""))
+    monkeypatch.setattr(runner, "_interruptible_sleep", lambda *_a, **_k: True)
+    healthy, unhealthy = runner._wait_healthy(
+        Path("/x"), timeout=5, expected_services=["llama-llm"]
+    )
+    assert healthy is False
+    assert unhealthy
+
+
+def test_rollback_up_uses_pull_never_when_offline(
+    tmp_path: Path, snapshot_mgr: SnapshotManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Air-gap rollback must NOT network-pull: resolve_pull_policy() → never (audit H#9)."""
+    monkeypatch.setenv("AGMIND_OFFLINE", "1")
+    snap = snapshot_mgr.save(
+        compose_text="services:\n  llama-llm:\n    image: llama:1\n", profile="core"
+    )
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_stream(args, cwd, sudo_password=None, on_line=None, cancel_event=None):  # noqa: ANN001
+        calls.append(args)
+        return 0, ""
+
+    monkeypatch.setattr(runner, "_stream_compose", fake_stream)
+    assert runner._rollback_to_snapshot(snap, install_dir)
+    assert calls == [["up", "-d", "--remove-orphans", "--pull", "never", "llama-llm"]]
