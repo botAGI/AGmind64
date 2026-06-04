@@ -239,6 +239,7 @@ def audit_install(
     *,
     live: bool = False,
     config_dir: Path | None = None,
+    data_dir: Path | None = None,
 ) -> tuple[list[SecurityFinding], bool]:
     """Audit the deployed artifacts under ``install_dir``.
 
@@ -246,6 +247,7 @@ def audit_install(
     ``docker-compose.yml`` is present (the CLI maps that to exit 2).
     """
     install_dir = Path(install_dir)
+    data_root = Path(data_dir) if data_dir is not None else Path("/var/lib/agmind")
     compose_path = install_dir / "docker-compose.yml"
     env_path = install_dir / ".env"
     if not compose_path.is_file():
@@ -272,19 +274,30 @@ def audit_install(
     except Exception:  # noqa: BLE001 - descriptor load is best-effort for the env scan
         descriptors = {}
     findings += scan_env(env, descriptors)
-    findings += scan_file_perms([env_path, install_dir / "version.env"])
     cfg_dir = config_dir if config_dir is not None else Path("/etc/agmind")
+    # Perms-scan EVERY 0600 secret artifact, not just .env — the scan's point is to catch
+    # operator drift (a later chmod, a loosened restore). credentials.txt, the Cloudflare DNS
+    # token, and the Alertmanager notifier secrets are all 0600 at write time (review MEDIUM
+    # security-scan-omits-secret-files). version.env is intentionally world-readable (non-secret)
+    # so it is NOT in this list; users_database.yml is 0644 by design (Authelia reads it) and is
+    # checked for the default password by scan_authelia_users_db instead.
+    findings += scan_file_perms(
+        [
+            env_path,
+            install_dir / "credentials.txt",
+            data_root / "secrets" / "cf_dns_api_token",
+            cfg_dir / "alertmanager" / "tg_bot_token",
+            cfg_dir / "alertmanager" / "webhook_url",
+            cfg_dir / "alertmanager" / "smtp_password",
+        ]
+    )
     findings += scan_authelia_users_db(cfg_dir / "authelia" / "users_database.yml")
 
     if live:
-        findings.append(
-            SecurityFinding(
-                "live-scan",
-                "info",
-                "docker",
-                "live container inspection (--live) requires a running daemon; "
-                "implement docker inspect of agmind-* containers when on the deploy host",
-                "",
-            )
+        # Honest signal instead of a fake "live verified" info-finding: live container
+        # inspection is not implemented (review LOW security-live-stub). The CLI fail-fasts
+        # before calling, so this only guards a direct library caller.
+        raise NotImplementedError(
+            "live container inspection is not yet implemented; call audit_install without live=True"
         )
     return (findings, True)

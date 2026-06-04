@@ -32,7 +32,9 @@ def register(app: typer.Typer) -> None:
             "high", "--block", help="Exit non-zero at this severity or above."
         ),
         live: bool = typer.Option(
-            False, "--live", help="Also inspect running containers (needs a Docker daemon)."
+            False,
+            "--live",
+            help="NOT YET IMPLEMENTED — live container inspection is planned; --live exits 2.",
         ),
     ) -> None:
         """Scan the deployed compose/.env/secret-file perms for posture issues.
@@ -55,7 +57,18 @@ def register(app: typer.Typer) -> None:
             )
             raise typer.Exit(code=2)
 
-        findings, installed = audit_install(install_dir, live=live)
+        if live:
+            # Fail fast instead of appending a fake "live verified" finding — live container
+            # inspection (no-new-privileges/CapDrop/ReadonlyRootfs/Privileged) is not yet
+            # implemented (review LOW security-live-stub).
+            print(
+                "agmind security audit: --live (running-container inspection) is not yet "
+                "implemented; run without --live for the artifact/perms scan.",
+                file=sys.stderr,
+            )
+            raise typer.Exit(code=2)
+
+        findings, installed = audit_install(install_dir)
         if not installed:
             print(
                 f"agmind security audit: no deployment found at {install_dir} "

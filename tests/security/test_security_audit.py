@@ -195,6 +195,40 @@ def test_security_audit_cli_json_and_exit(tmp_path: Path) -> None:
     assert any(f["check"] == "exposed-port" for f in payload["findings"])
 
 
+def test_audit_flags_loosely_permed_credentials_file(tmp_path: Path) -> None:
+    """Review MEDIUM security-scan-omits-secret-files: a world-readable credentials.txt /
+    cf_dns_api_token must be flagged, not just .env — the scan catches operator perms drift."""
+    d = _install(tmp_path, "services:\n  db:\n    ports:\n      - 127.0.0.1:5432:5432\n")
+    creds = d / "credentials.txt"
+    creds.write_text("admin: hunter2\n", encoding="utf-8")
+    os.chmod(creds, 0o644)  # drifted from 0600
+    data_dir = tmp_path / "data"
+    token = data_dir / "secrets" / "cf_dns_api_token"
+    token.parent.mkdir(parents=True)
+    token.write_text("cf-token\n", encoding="utf-8")
+    os.chmod(token, 0o644)
+
+    findings, _ = audit_install(d, data_dir=data_dir)
+    flagged = {str(f.target) for f in findings if f.check == "file-perms"}
+    assert str(creds) in flagged, flagged
+    assert str(token) in flagged, flagged
+
+
+def test_audit_cli_live_fails_fast(tmp_path: Path) -> None:
+    """Review LOW security-live-stub: --live is not implemented — it must exit 2, not append
+    a fake 'live verified' finding."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    d = _install(tmp_path, "services:\n  db:\n    ports:\n      - 127.0.0.1:5432:5432\n")
+    result = CliRunner().invoke(
+        _make_app(), ["security", "audit", "--install-dir", str(d), "--live"]
+    )
+    assert result.exit_code == 2
+    assert "not yet implemented" in result.output.lower()
+
+
 def test_security_audit_cli_not_installed_exits_2(tmp_path: Path) -> None:
     from typer.testing import CliRunner
 
