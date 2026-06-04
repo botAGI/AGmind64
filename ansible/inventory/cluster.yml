@@ -3,9 +3,15 @@
 # Usage:
 #   ansible-playbook -i inventory/cluster.yml install.yml
 #
-# Topology: 1 master + N workers. Master runs full stack (Dify, Qdrant,
-# llama-llm, monitoring). Workers run only llama-llm (additional GPU
-# capacity, sharded inference).
+# Topology: 1 master + N workers. Master runs the full stack (Dify, Qdrant,
+# llama-llm, monitoring); workers run llama-llm for extra GPU capacity.
+#
+# ⚠️ EXPERIMENTAL — multi-node INFERENCE ROUTING is not yet wired end-to-end:
+# the master does not currently forward /completion to workers (no routing gateway),
+# and workers publish llama-server on 127.0.0.1, so they are not reachable cross-host
+# yet. This inventory provisions the nodes (bootstrap/docker/agmind) and renders the
+# peer config; actual sharded inference is a future milestone. The single-node default
+# (inventory/hosts.yml) is the supported path.
 #
 # Network requirements:
 #   - LAN connectivity между all nodes
@@ -24,6 +30,15 @@ all:
     agmind_mdns_enabled: true
 
   children:
+    # Parent group = master ∪ workers. install.yml's foundational plays (preflight,
+    # bootstrap, strix_halo, docker, agmind_python, security) target `hosts: agmind_nodes`;
+    # without this group `ansible-playbook -i cluster.yml install.yml` matched ZERO hosts and
+    # silently bootstrapped nothing on any node (audit arch-cluster HIGH).
+    agmind_nodes:
+      children:
+        agmind_master:
+        agmind_workers:
+
     agmind_master:
       hosts:
         agmind-master:

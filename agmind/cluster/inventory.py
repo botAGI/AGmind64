@@ -49,6 +49,14 @@ def generate_inventory_yaml(
         "    agmind_mdns_enabled: true",
         "",
         "  children:",
+        # Parent group = master ∪ workers so install.yml's `hosts: agmind_nodes` plays
+        # actually match every node (audit arch-cluster HIGH — without it the multi-node
+        # install bootstrapped nothing).
+        "    agmind_nodes:",
+        "      children:",
+        "        agmind_master:",
+        "        agmind_workers:",
+        "",
         "    agmind_master:",
         "      hosts:",
         f"        {master_hostname}:",
@@ -73,7 +81,10 @@ def generate_inventory_yaml(
             lines.append("          agmind_profiles:")
             lines.append("            - core")
             lines.append("          agmind_cluster_role: worker")
-            lines.append(f'          agmind_worker_endpoint: "http://{slug}.local:8080"')
+            # Endpoint from the discovered IP, NOT "{slug}.local" — an FQDN hostname collapses
+            # its dots to hyphens in the slug, yielding an unresolvable "<x>-<y>.local" (audit
+            # arch-cluster L). The IP is already known and is always reachable.
+            lines.append(f'          agmind_worker_endpoint: "http://{address}:8080"')
     return "\n".join(lines) + "\n"
 
 

@@ -94,6 +94,17 @@
   roles:
     - role: services
 
+# Only when worker nodes exist: render /etc/agmind/cluster.yaml (peer endpoints) and open
+# the inter-node firewall. Runs AFTER services so the master endpoint exists. Without this
+# the cluster role was never invoked, so cluster.yaml was never written (audit arch-cluster).
+- name: AGmind cluster wiring — peer config + inter-node firewall (multi-node only)
+  hosts: agmind_master
+  become: true
+  tags: [cluster]
+  roles:
+    - role: cluster
+      when: "groups.get('agmind_workers', []) | length > 0"
+
 - name: AGmind monitoring — Prometheus + Grafana + Loki + Alloy
   hosts: agmind_master
   become: true

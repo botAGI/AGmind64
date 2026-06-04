@@ -35,8 +35,15 @@ def test_inventory_yaml_includes_each_peer() -> None:
     assert workers["beelink-alpha"]["ansible_host"] == "192.168.1.20"
     assert workers["beelink-alpha"]["agmind_role"] == "worker"
     assert workers["beelink-alpha"]["agmind_profiles"] == ["core"]
-    # Endpoint URL uses *.local pattern (mDNS)
-    assert ".local:8080" in workers["beelink-alpha"]["agmind_worker_endpoint"]
+    # Endpoint URL uses the discovered IP (resolvable), not a slug-derived *.local that an
+    # FQDN hostname would break (audit arch-cluster L).
+    assert workers["beelink-alpha"]["agmind_worker_endpoint"] == "http://192.168.1.20:8080"
+    # The agmind_nodes parent group (= master ∪ workers) must exist so install.yml's
+    # node-level plays actually match every host (audit arch-cluster HIGH).
+    assert set(parsed["all"]["children"]["agmind_nodes"]["children"]) == {
+        "agmind_master",
+        "agmind_workers",
+    }
 
 
 def test_inventory_master_profiles_customizable() -> None:
