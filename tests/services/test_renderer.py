@@ -382,10 +382,14 @@ def test_render_compose_keeps_started_condition_for_dependencies_without_healthc
     descriptors = load_descriptors()
     # C2: dify-api consumes vector_db — include qdrant as provider so the
     # fail-closed consumes check does not raise (test focus is depends_on semantics).
+    # dify-api depends_on postgres+redis — include them too so render_compose's complete-
+    # selection guard (no dangling depends_on) is satisfied; they don't affect the assertion.
     selected = [
         descriptors["dify-web"],
         descriptors["dify-api"],
         descriptors["qdrant"],  # provides vector_db for dify-api
+        descriptors["postgres"],
+        descriptors["redis"],
     ]
 
     compose = render_compose(selected, traefik_enabled=False)
@@ -423,6 +427,40 @@ def test_render_compose_waits_for_mysql_before_ragflow() -> None:
         "local",
     ]
     assert compose["services"]["ragflow"]["depends_on"]["minio"]["condition"] == ("service_healthy")
+
+
+def test_render_compose_rejects_traversal_project_name() -> None:
+    """Review MEDIUM render-project-unvalidated-traversal: a path-like project namespace must
+    be rejected before it reaches data_root=/var/lib/<project> or the compose identifiers."""
+    import pytest
+
+    descriptors = load_descriptors()
+    core = list(filter_by_profile(descriptors, ["core"]).values())
+    for bad in ("../../tmp/evil", "a/b", "Evil", "has space"):
+        with pytest.raises(ValueError, match="project name"):
+            render_compose(core, project_name=bad)
+    # defaults + real scenario namespaces still render
+    render_compose(core, project_name="agmind")
+    render_compose(core, project_name="agmind-prod-min")
+
+
+def test_render_compose_rejects_traversal_in_data_root() -> None:
+    import pytest
+
+    descriptors = load_descriptors()
+    core = list(filter_by_profile(descriptors, ["core"]).values())
+    with pytest.raises(ValueError, match="traversal"):
+        render_compose(core, data_root="/var/lib/../../etc")
+
+
+def test_render_compose_raises_on_dangling_depends_on() -> None:
+    """Review LOW render-compose-no-depends-guard: a direct partial render must not emit a
+    dangling depends_on that Compose hard-errors on — render_compose fails closed."""
+    import pytest
+
+    descriptors = load_descriptors()
+    with pytest.raises(ValueError, match="Missing dependencies in render selection"):
+        render_compose([descriptors["dify-web"]], traefik_enabled=False)
 
 
 def test_render_compose_services_sorted_deterministic() -> None:

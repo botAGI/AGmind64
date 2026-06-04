@@ -51,7 +51,8 @@ class ServiceProfile(str, Enum):
 
 
 _IMAGE_LATEST_RE = re.compile(r":latest(?:$|@)")
-_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}\Z")
+# Lowercase hex only — Docker rejects an uppercase digest (mirror of schemas/service.py).
+_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}\Z")
 
 
 def _image_has_tag(image: str) -> bool:
@@ -76,7 +77,12 @@ def _validate_image_reference(image: str) -> None:
             raise ValueError(f"image '{image}' contains whitespace — pin to exact image reference")
         if image_name.endswith(":"):
             raise ValueError(f"image '{image}' has no tag — pin to semver")
-        if not image_name or not _SHA256_DIGEST_RE.match(digest):
+        # Inline digest MUST carry the `sha256:` prefix (bare hex → "invalid reference format").
+        if (
+            not image_name
+            or not digest.startswith("sha256:")
+            or not _SHA256_DIGEST_RE.match(digest)
+        ):
             raise ValueError(f"image '{image}' has invalid sha256 digest")
         return
     if any(char.isspace() for char in image):

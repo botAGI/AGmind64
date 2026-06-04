@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 
 from agmind.components import ComponentContract
 from agmind.schemas import ServiceDescriptor
+from agmind.services.compatibility import OPTIONAL_MISSING_CAPABILITIES
 
 _PREFERRED_CAPABILITY_PROVIDERS = (
     "llama-llm",
@@ -66,6 +67,25 @@ def resolve_service_selection(
             for dependency in descriptor.depends_on:
                 if dependency in descriptors and dependency not in selected:
                     selected.add(dependency)
+                    changed = True
+
+        # Resolve each selected service's CONSUMES too — not just `_stack`/`requires`. Without
+        # this, `resolve_service_selection(['openwebui'])` returns only {openwebui} while render
+        # wires OPENAI_API_BASE_URL at an absent llama-llm host (review MEDIUM
+        # selection-consumes-not-resolved). OPTIONAL_MISSING_CAPABILITIES are skipped so a dify/
+        # ragflow closure does not over-pull its optional reranker / external-KB providers.
+        for service in sorted(tuple(selected)):
+            descriptor = descriptors[service]
+            for capability in descriptor.consumes:
+                if capability in OPTIONAL_MISSING_CAPABILITIES:
+                    continue
+                provider = _choose_capability_provider(
+                    descriptors,
+                    selected=selected,
+                    capability=capability,
+                )
+                if provider is not None and provider not in selected:
+                    selected.add(provider)
                     changed = True
 
         for component_id in sorted(active_stack_components):

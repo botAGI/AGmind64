@@ -121,8 +121,16 @@ def compose_env_quote(value: str) -> str:
       (unquoted), byte-identical to the legacy output — this preserves
       idempotency for ``token_urlsafe`` secrets, image tags, and digests.
     - Otherwise the value is wrapped in DOUBLE quotes with ``\\`` and ``"``
-      backslash-escaped, matching compose's double-quoted form (which supports
-      ``\\\\``/``\\"`` escapes and does NOT interpolate ``$``).
+      backslash-escaped, matching compose's double-quoted form.
+
+    NOTE on ``$``: docker-compose ``--env-file`` interpolates ``$VAR``/``${VAR}``
+    in BOTH bare and double-quoted values — quoting does NOT disable it; the escape
+    is ``$$``. This writer does not yet escape ``$`` because no value we emit to
+    ``.env`` contains one (the only ``$``-bearing secret, the Authelia argon2 hash,
+    is staged into ``users_database.yml``, not ``.env``). If a ``$``-bearing value is
+    ever written here, add a ``$`` → ``$$`` escape AND update the reader
+    :func:`_unescape_double_quoted` in lockstep (it currently collapses only
+    ``\\\\``/``\\"``), or the writer↔reader round-trip breaks.
 
     This intentionally differs from :func:`shell_quote` (POSIX single-quote
     escaping for a shell), whose contract is unrelated to compose env-files.

@@ -35,12 +35,16 @@ ServiceTier = Literal["edge", "inference", "app", "storage", "ops"]
 """
 
 
-_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
-_NETWORK_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
-_MEM_LIMIT_RE = re.compile(r"^\d+(k|m|g)$")
-_PORT_RE = re.compile(r"^(\d{1,3}(\.\d{1,3}){3}:)?\d{1,5}:\d{1,5}$")
+# All field anchors use \Z (end-of-string), NOT $ (which matches before a trailing \n) —
+# else `name='foo\n'` becomes a compose service key with an embedded newline (review LOW
+# schema-name-network-trailing-newline). Digest is lowercase-hex only: Docker rejects an
+# uppercase digest with "invalid reference format" (review LOW schema-digest-uppercase-hex).
+_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}\Z")
+_NETWORK_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}\Z")
+_MEM_LIMIT_RE = re.compile(r"^\d+(k|m|g)\Z")
+_PORT_RE = re.compile(r"^(\d{1,3}(\.\d{1,3}){3}:)?\d{1,5}:\d{1,5}\Z")
 _LATEST_RE = re.compile(r":latest(?:$|@)")
-_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}\Z")
+_SHA256_DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}\Z")
 
 
 def _is_sha256_digest(value: str) -> bool:
@@ -405,9 +409,12 @@ class ServiceDescriptor(BaseModel):
                 raise ValueError(f"image '{v}' contains whitespace — pin to exact image reference")
             if image_name.endswith(":"):
                 raise ValueError(f"image '{v}' has no tag — pin to semver")
-            if not image_name or not _is_sha256_digest(digest):
+            # Inline digest in the image ref MUST carry the `sha256:` prefix — a bare 64-hex
+            # `@<hex>` passes _is_sha256_digest (prefix optional) but `docker compose up` rejects
+            # it as "invalid reference format" (review MEDIUM schema-inline-digest-no-prefix).
+            if not image_name or not digest.startswith("sha256:") or not _is_sha256_digest(digest):
                 raise ValueError(
-                    f"image '{v}' has invalid sha256 digest — expected sha256:<64 hex chars>"
+                    f"image '{v}' has invalid sha256 digest — expected sha256:<64 lowercase hex>"
                 )
             return v
         if any(char.isspace() for char in v):
@@ -483,7 +490,14 @@ class ServiceDescriptor(BaseModel):
         # `docker compose up`). Lenient on the mode token to avoid churn, strict on shape.
         for spec in v:
             parts = spec.split(":")
-            if len(parts) not in (2, 3) or not parts[0] or not parts[1]:
+            # Reject an empty mode token too ('/a:/b:' → ['/a','/b','']) — docker rejects it,
+            # but the old check only validated src/dst (review LOW schema-volume-empty-mode).
+            if (
+                len(parts) not in (2, 3)
+                or not parts[0]
+                or not parts[1]
+                or (len(parts) == 3 and not parts[2])
+            ):
                 raise ValueError(
                     f"volume '{spec}' invalid: expected 'src:dst[:mode]' with non-empty src and dst"
                 )

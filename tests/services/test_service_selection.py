@@ -14,6 +14,32 @@ def test_service_selection_rejects_unknown_service_names() -> None:
         resolve_service_selection(descriptors, services=["traefik", "missing-service"])
 
 
+def test_selection_resolves_consumed_capability_provider() -> None:
+    """Review MEDIUM selection-consumes-not-resolved: selecting openwebui (consumes
+    llm_inference, pulled by no _stack) must carry its provider llama-llm — else render wires
+    OPENAI_API_BASE_URL at an absent host."""
+    from agmind.services.renderer import load_descriptors
+    from agmind.services.selection import resolve_service_selection
+
+    descriptors = load_descriptors()
+    closure = resolve_service_selection(descriptors, services=["openwebui"])
+    assert "llama-llm" in closure, "consumed llm_inference provider must be in the closure"
+
+
+def test_selection_does_not_overpull_optional_capabilities() -> None:
+    """The consumes walk must SKIP OPTIONAL_MISSING_CAPABILITIES (reranker / dify_external_kb)
+    so a dify/ragflow closure does not silently drag in its optional providers."""
+    from agmind.services.compatibility import OPTIONAL_MISSING_CAPABILITIES
+    from agmind.services.renderer import load_descriptors
+    from agmind.services.selection import resolve_service_selection
+
+    descriptors = load_descriptors()
+    closure = resolve_service_selection(descriptors, services=["ragflow"])
+    # ragflow consumes the optional `reranker` capability — llama-rerank must NOT be force-pulled.
+    assert "reranker" in OPTIONAL_MISSING_CAPABILITIES
+    assert "llama-rerank" not in closure
+
+
 def test_service_selection_expands_dify_stack_and_mandatory_runtime_dependencies() -> None:
     from agmind.components import load_component_contracts
     from agmind.services.compatibility import check_service_compatibility

@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import grp
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,23 @@ DEFAULT_NETWORK_NAME = "agmind"
 DEFAULT_PROJECT_NAME = "agmind"
 DEFAULT_DATA_ROOT = "/var/lib/agmind"
 DEFAULT_CONFIG_ROOT = "/etc/agmind"
+
+# A compose project namespace, NOT a path: lowercase alnum + - / _. Blocks the traversal a
+# free-text `agmind render scenario --project '../../tmp/evil'` would otherwise inject into
+# data_root=/var/lib/<project> and the compose identifiers (review MEDIUM
+# render-project-unvalidated-traversal). Accepts `agmind` + every `agmind-<scenario>` name.
+_PROJECT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}\Z")
+
+
+def _validate_render_namespace(project_name: str, data_root: str, config_root: str) -> None:
+    if not _PROJECT_NAME_RE.match(project_name):
+        raise ValueError(
+            f"invalid compose project name {project_name!r}: must match "
+            f"{_PROJECT_NAME_RE.pattern} (a namespace, not a path — no '/', '..', or spaces)"
+        )
+    for label, root in (("data_root", data_root), ("config_root", config_root)):
+        if ".." in Path(root).parts:
+            raise ValueError(f"{label} {root!r} must not contain '..' (path traversal)")
 
 
 def _rewrite_volume_host_root(volume: str, data_root: str, config_root: str) -> str:
@@ -540,6 +558,7 @@ def render_compose(
     byte-identical to the historical single-stack render. Non-defaults isolate a second
     compose project (a scenario stack, CI smoke) from a live ``agmind`` stack.
     """
+    _validate_render_namespace(project_name, data_root, config_root)
     if network_name is None:
         network_name = project_name
     selected_by_name_pre = {d.name: d for d in descriptors}
@@ -547,6 +566,16 @@ def render_compose(
     # Must run BEFORE descriptors_with_capability_env so the check uses the raw descriptor
     # set (not the env-merged copy) — the provider resolution logic is the same either way.
     _check_unresolved_consumes(selected_by_name_pre)
+    # Fail-closed on a depends_on target that is not in THIS selection — render_compose is
+    # public, and a direct render_compose([partial]) call would otherwise emit a dangling
+    # `depends_on` that Compose hard-errors at up (review LOW render-compose-no-depends-guard).
+    # No-op on the render_to_string path (its complete-selection check short-circuits first).
+    missing_deps = check_missing_dependencies(selected_by_name_pre, selected_by_name_pre)
+    if missing_deps:
+        details = "; ".join(
+            f"{name} requires {', '.join(deps)}" for name, deps in sorted(missing_deps.items())
+        )
+        raise ValueError(f"Missing dependencies in render selection: {details}")
 
     resolved_descriptors = descriptors_with_capability_env(descriptors)
 

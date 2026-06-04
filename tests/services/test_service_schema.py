@@ -57,6 +57,50 @@ def test_minimal_descriptor_parses() -> None:
     assert d.routing is None
 
 
+# ---- Wave 4 validator tightenings (review schema-* findings) ----
+
+
+@pytest.mark.parametrize("bad_name", ["foo\n", "qdrant\n", "foo\nbar"])
+def test_name_rejects_embedded_or_trailing_newline(bad_name: str) -> None:
+    """$ matched before a trailing \\n → a newline in a compose service key."""
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(name=bad_name)
+
+
+def test_network_rejects_trailing_newline() -> None:
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(networks=["ssrf-net\n"])
+
+
+def test_depends_on_rejects_trailing_newline() -> None:
+    # depends_on reuses _NAME_RE — \Z fix covers it too.
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(depends_on=["postgres\n"])
+
+
+def test_inline_digest_requires_sha256_prefix() -> None:
+    """A bare 64-hex `@<hex>` (no sha256:) → docker 'invalid reference format'."""
+    bare = "a" * 64
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(image=f"qdrant/qdrant:v1.18.0@{bare}")
+    # The prefixed form is accepted.
+    ok = _minimal_descriptor(image=f"qdrant/qdrant:v1.18.0@sha256:{bare}")
+    assert ok.image.endswith(f"sha256:{bare}")
+
+
+def test_digest_field_rejects_uppercase_hex() -> None:
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(digest="sha256:" + "A" * 64)
+
+
+def test_volume_rejects_empty_mode_token() -> None:
+    with pytest.raises(ValidationError):
+        _minimal_descriptor(volumes=["/var/lib/agmind/qdrant:/data:"])
+    # A real mode token is still accepted.
+    ok = _minimal_descriptor(volumes=["/var/lib/agmind/qdrant:/data:ro"])
+    assert ok.volumes == ["/var/lib/agmind/qdrant:/data:ro"]
+
+
 def test_descriptor_is_frozen() -> None:
     d = _minimal_descriptor()
     with pytest.raises(ValidationError):
