@@ -1383,13 +1383,16 @@ class ComposeConfigStep(InstallStep):
 def _offline_install_enabled() -> bool:
     """True when ``AGMIND_OFFLINE`` requests an air-gap install (no network pulls).
 
-    docker save/load strips an image's RepoDigest, so a digest-pinned
-    ``compose pull --policy missing`` re-pulls from the network and fails in an
-    air-gap. When offline we switch the pull to ``--policy never`` (a no-op skip;
-    DeployStep already runs ``up --pull never``), so preloaded images are used
-    and missing ones surface at deploy time rather than hanging on the network.
+    Delegates to :func:`agmind.deploy.runner._offline_pull_enabled` — the single source
+    of truth lives in the deploy layer (the REAL pull path) so the flag can't be honored
+    in one place and ignored in another. docker save/load strips an image's RepoDigest, so
+    a digest-pinned ``pull --policy missing`` re-pulls from the network and fails in an
+    air-gap; offline switches the pull to ``--policy never`` (DeployStep then runs
+    ``up --pull never``), using preloaded images.
     """
-    return os.environ.get("AGMIND_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+    from agmind.deploy.runner import _offline_pull_enabled
+
+    return _offline_pull_enabled()
 
 
 class ImagePullStep(InstallStep):
@@ -1443,6 +1446,8 @@ class ImagePullStep(InstallStep):
             # non-ANSI lines that RichLog can render; --policy missing keeps it idempotent.
             # AGMIND_OFFLINE → --policy never so an air-gap install never hits the network
             # (images are preloaded via `docker load`; see docs/installation/offline-install.md).
+            from agmind.deploy.runner import resolve_pull_policy
+
             offline = _offline_install_enabled()
             if offline:
                 callback(
@@ -1455,7 +1460,7 @@ class ImagePullStep(InstallStep):
                 )
             cmd = _docker_compose_cmd(
                 config,
-                ["pull", "--policy", "never" if offline else "missing"],
+                ["pull", "--policy", resolve_pull_policy(offline)],
                 env_file=compose_env_file,
                 progress="plain",
             )

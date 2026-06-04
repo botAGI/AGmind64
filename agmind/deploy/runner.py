@@ -108,6 +108,30 @@ def _deploy_lock(install_dir: Path) -> Iterator[bool]:
             os.close(fd)
 
 
+def _offline_pull_enabled() -> bool:
+    """``AGMIND_OFFLINE`` requests an air-gap deploy (no network image pulls).
+
+    Single source of truth for the offline flag, in the *deploy* layer so the real
+    deploy path (this module) honors it. ``agmind.install.steps._offline_install_enabled``
+    delegates here so there is exactly one reader (install may import deploy, not vice
+    versa).
+    """
+    return os.environ.get("AGMIND_OFFLINE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def resolve_pull_policy(offline: bool | None = None) -> str:
+    """`docker compose pull --policy` value — the one place that decides it.
+
+    Air-gap (``AGMIND_OFFLINE``) → ``never``: use images preloaded via ``docker load`` and
+    never hit the network (a digest-pinned ``--policy missing`` would re-pull because
+    docker save/load strips the RepoDigest). Otherwise ``missing`` — idempotent, pulls only
+    what is absent. Pass ``offline`` explicitly to override the env.
+    """
+    if offline is None:
+        offline = _offline_pull_enabled()
+    return "never" if offline else "missing"
+
+
 def _run_compose(
     args: list[str],
     cwd: Path,
@@ -956,7 +980,7 @@ def _deploy_impl(
     _emit("pull", f"pulling images for {len(service_names)} services")
     log.info("pulling images for %d services", len(service_names))
     pull_rc, pull_tail = _stream_compose(
-        ["--progress", "plain", "pull", "--policy", "missing", *service_names],
+        ["--progress", "plain", "pull", "--policy", resolve_pull_policy(), *service_names],
         cwd=install_dir,
         sudo_password=sudo_password,
         on_line=lambda line: _emit("pull", line),

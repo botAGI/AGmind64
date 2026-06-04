@@ -1169,6 +1169,68 @@ def test_deploy_apply_starts_rendered_services_by_name(
     ]
 
 
+def test_deploy_apply_offline_uses_policy_never(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AGMIND_OFFLINE must reach the REAL deploy path (runner), not just the orphaned
+    ImagePullStep. Air-gap: `pull --policy never` so a digest-pinned compose never re-pulls
+    from the network (docker save/load strips RepoDigest). Regression: the policy was
+    hardcoded `missing` here, so the P1.7 offline guard was bypassed by the live install."""
+    rendered = (
+        "services:\n"
+        "  llama-llm:\n"
+        "    image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049\n"
+        "    profiles:\n"
+        "      - core\n"
+        "  qdrant:\n"
+        "    image: qdrant/qdrant:v1.18.0\n"
+        "    profiles:\n"
+        "      - core\n"
+    )
+    calls: list[list[str]] = []
+
+    monkeypatch.setenv("AGMIND_OFFLINE", "1")
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_args: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_args, **_kwargs: (True, []))
+
+    def fake_stream_compose(args: list[str], **_kwargs: object) -> tuple[int, str]:
+        calls.append(args)
+        return 0, ""
+
+    monkeypatch.setattr(runner, "_stream_compose", fake_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=tmp_path,
+        domain="ci.example.com",
+        apply=True,
+    )
+
+    assert result.success
+    # Air-gap: NO network pull. `--policy never` skips, `up --pull never` uses local images.
+    assert calls == [
+        ["--progress", "plain", "pull", "--policy", "never", "llama-llm", "qdrant"],
+        ["up", "-d", "--remove-orphans", "--pull", "never", "llama-llm", "qdrant"],
+    ]
+
+
+def test_resolve_pull_policy_honors_offline_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single source of truth for the compose pull policy (deploy layer)."""
+    monkeypatch.delenv("AGMIND_OFFLINE", raising=False)
+    assert runner.resolve_pull_policy() == "missing"
+    for val in ("1", "true", "YES", "on"):
+        monkeypatch.setenv("AGMIND_OFFLINE", val)
+        assert runner.resolve_pull_policy() == "never"
+    monkeypatch.setenv("AGMIND_OFFLINE", "0")
+    assert runner.resolve_pull_policy() == "missing"
+    # Explicit override wins over the env.
+    monkeypatch.setenv("AGMIND_OFFLINE", "1")
+    assert runner.resolve_pull_policy(offline=False) == "missing"
+
+
 def test_rollback_writes_compose_and_env_via_sudo_helper(
     tmp_path: Path, snapshot_mgr: SnapshotManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
