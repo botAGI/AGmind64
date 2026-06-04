@@ -2,8 +2,9 @@
 
 The services role renders two secret-dense templates:
 
-* ``env.j2`` → ``.env`` — materializes POSTGRES_PASSWORD / REDIS_PASSWORD /
-  GRAFANA_PASSWORD / MINIO_ROOT_PASSWORD / MYSQL_ROOT_PASSWORD / N8N_ENCRYPTION_KEY.
+* ``env.j2`` → ``.env`` — materializes every catalog-required ``${VAR:?}`` secret
+  (DB/cache/object-store passwords, Authelia 64-char secrets, the homarr 64-hex key,
+  Komodo ops secrets); see ``tests/ansible/test_env_j2_completeness.py``.
 * ``proxmox-pve.yml.j2`` → ``pve.yml`` — the Proxmox exporter API token.
 
 Without ``no_log: true`` the full rendered template content (plaintext secrets) is
