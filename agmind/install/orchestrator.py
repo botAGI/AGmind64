@@ -97,6 +97,9 @@ class InstallConfig:
     # LLM model (legacy field names preserved для backward compat).
     model_repo: str | None = None  # HF repo id, e.g. "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"
     model_file: str | None = None  # e.g. "Qwen3.6-35B-A3B-Q4_K_M.gguf"
+    # Optional HF revision (commit SHA / tag) to PIN the download (audit H#11). None falls
+    # back to the mutable `main` ref — a repo owner could swap the GGUF under a fresh install.
+    model_revision: str | None = None
     install_dir: Path = DEFAULT_INSTALL_DIR
     models_dir: Path = DEFAULT_MODELS_DIR
     config_dir: Path = DEFAULT_CONFIG_DIR
@@ -110,11 +113,13 @@ class InstallConfig:
     # Phase M5.1: separate embed/rerank model + per-service settings.
     embed_repo: str | None = None
     embed_file: str | None = None
+    embed_revision: str | None = None
     embed_ctx_size: int = 8192
     embed_kv_cache: str = "f16"
     embed_parallel: int = 4
     rerank_repo: str | None = None
     rerank_file: str | None = None
+    rerank_revision: str | None = None
     rerank_ctx_size: int = 2048
 
     def redact(self) -> dict[str, object]:

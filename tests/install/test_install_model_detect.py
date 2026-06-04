@@ -458,9 +458,10 @@ def test_model_download_run_prepares_models_dir_before_downloading(
     monkeypatch.setattr(
         ModelDownloadStep,
         "_download_one",
-        lambda self, role, repo, fn, config, cb: (order.append(f"dl:{role}"), (True, f"{role} ok"))[
-            1
-        ],
+        lambda self, role, repo, fn, config, cb, revision=None: (
+            order.append(f"dl:{role}"),
+            (True, f"{role} ok"),
+        )[1],
     )
 
     result = ModelDownloadStep().run(lambda _e: None, cfg)

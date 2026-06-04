@@ -1651,6 +1651,7 @@ class ModelDownloadStep(InstallStep):
         file_name: str | None,
         config: InstallConfig,
         callback: ProgressCallback,
+        revision: str | None = None,
     ) -> tuple[bool, str]:
         """Download single (repo, file). Returns (success, message)."""
         if not repo or not file_name:
@@ -1661,7 +1662,8 @@ class ModelDownloadStep(InstallStep):
         min_size = self.MIN_VALID_SIZE if role == "llm" else self.MIN_VALID_SIZE_SMALL
         try:
             target = safe_model_target(config.models_dir, file_name)
-            url = hf_resolve_url(repo, file_name)
+            # revision pins /resolve/<rev>/ (immutable); None → mutable main (back-compat).
+            url = hf_resolve_url(repo, file_name, revision=revision)
         except ValueError as exc:
             return False, f"{role}: {exc}"
         config.models_dir.mkdir(parents=True, exist_ok=True)
@@ -1790,6 +1792,17 @@ class ModelDownloadStep(InstallStep):
                 f"{role}: downloaded file too small ({size_mb} MiB < {min_mb} MiB); "
                 "cleared partial for retry"
             )
+        # Integrity (audit H#10): a curl rc=0 can still yield a truncated/error body that
+        # clears the absolute min_size floor yet is far below the real model size. When the
+        # curated catalog knows the expected size, reject anything grossly short of it.
+        expected = self._expected_download_size_bytes(repo, file_name, min_size)
+        if expected > min_size and partial_size < int(expected * 0.88):
+            with contextlib.suppress(OSError):
+                partial.unlink()
+            return False, (
+                f"{role}: downloaded {partial_size // (1024 * 1024)} MiB but expected "
+                f"~{expected // (1024 * 1024)} MiB (>12% short — likely truncated); cleared partial"
+            )
         partial.replace(target)
         size_mb = target.stat().st_size // (1024 * 1024)
         return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
@@ -1810,14 +1823,14 @@ class ModelDownloadStep(InstallStep):
             )
 
         roles = (
-            ("llm", config.model_repo, config.model_file),
-            ("embed", config.embed_repo, config.embed_file),
-            ("rerank", config.rerank_repo, config.rerank_file),
+            ("llm", config.model_repo, config.model_file, config.model_revision),
+            ("embed", config.embed_repo, config.embed_file, config.embed_revision),
+            ("rerank", config.rerank_repo, config.rerank_file, config.rerank_revision),
         )
 
         messages: list[str] = []
-        for role, repo, file_name in roles:
-            ok, msg = self._download_one(role, repo, file_name, config, callback)
+        for role, repo, file_name, revision in roles:
+            ok, msg = self._download_one(role, repo, file_name, config, callback, revision=revision)
             messages.append(msg)
             if not ok:
                 return InstallStepResult(
