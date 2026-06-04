@@ -147,8 +147,10 @@ Comparison row vs baselines:
 | DGX Spark (habr) | vLLM cu130 FP8 native   | n/a   | 51-52.5 | **+41 %**     |
 | DGX Spark (DFlash fork) | vLLM-fork FP8 + DFlash | n/a   | 69.7 avg | **+5.5 %**    |
 
-**Phase H DoD: passed.** Migration с GB10/Spark на Strix Halo/Vulkan
-сохраняет (и превышает) baseline performance на той же модели.
+**Phase H DoD: met** — local inference throughput on this hardware lands within the
+community baseline range for the same model. NOTE: the cross-engine rows (FP8 vLLM vs
+Q4_K_M llama.cpp) differ in precision AND runtime, so their `Δ vs us` is **not
+apples-to-apples** — directional context only, not a "faster by N%" verdict.
 
 Reproduce — standalone (no agmind deploy required):
 
@@ -175,16 +177,20 @@ deploy через AGmind compose template продолжает использо�
 
 ### Architecture-comparison takeaways
 
-- DGX Spark (FP8 native vLLM) vs Strix Halo (Q4_K_M llama.cpp Vulkan):
-  не apples-to-apples из-за разного engine + quantization, но end-user
-  tps сопоставимы.
-- Strix Halo Q4_K_M tg128 ≈ 70 t/s **обходит** DGX Spark FP8 (51–52 t/s)
-  на ~35%, и **обгоняет** даже AEON-7 DFlash (69.7 avg) на бумаге.
-- Quality difference Q4_K_M vs FP8 на 35B MoE — ~2–3% MMLU per community
-  evals; для interactive chat workload разница неощутима.
-- Phase H DoD: numerical proof что переезд с GB10 на Strix Halo не теряет
-  performance для main inference workload (chat / MoE). При confirmed tg ≥
-  community baseline ±5% — migration validated.
+These rows mix engines (FP8 vLLM vs Q4_K_M llama.cpp) and quantizations — they are **not
+apples-to-apples**. Read them as directional context, not a ranking, and grouped by source:
+
+- **Locally measured (this host):** Strix Halo Q4_K_M tg128 ≈ 70–73 t/s — reproduce with the
+  `llama-bench` command above before citing.
+- **Community baseline:** 0xSero community Q4_K_M reports ~70 t/s on the same model class;
+  the local numbers sit within ±5% of it.
+- **Anecdotal cross-arch (different engine + precision):** the prior accelerator's FP8 vLLM
+  reference figures fall in a comparable end-user tps range. The differing precision and
+  runtime make any "faster/slower by N%" claim unsupported.
+- **Quality:** Q4_K_M vs FP8 on a 35B MoE is ~2–3% MMLU per community evals — negligible for
+  an interactive chat workload.
+- **Phase H DoD framing:** the bar was "local chat/MoE throughput stays within the community
+  baseline range on this hardware" — a sanity check, not a competitive win.
 
 ## Local run results (legacy section, Llama-2-7B baseline)
 
