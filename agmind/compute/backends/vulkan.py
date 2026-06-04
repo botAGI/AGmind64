@@ -187,12 +187,29 @@ def _apply_radv_env() -> None:
 
 
 def _llama_cpp_installed_with_vulkan() -> bool:
-    """Check llama_cpp + Vulkan backend.
+    """Best-effort check that llama-cpp-python is present AND built with a GPU backend.
 
-    llama-cpp-python не expose'ит backend information из Python; делаем
-    best-effort: check naличия llama_cpp + assume пользователь собрал с
-    GGML_VULKAN=ON. Verify через смок-тест на реальной модели.
+    We verify the BUILD, not just the import: ``llama_supports_gpu_offload()`` returns True
+    only when llama.cpp was compiled with a GPU backend (here ``GGML_VULKAN=ON``). On AMD
+    Strix Halo gfx1151 the only GPU backend is Vulkan/RADV, so GPU-offload capability is the
+    Vulkan build. A CPU-only wheel therefore returns False — the previous check returned True
+    on mere import, so the "not installed with Vulkan support" error could fire falsely or be
+    suppressed. If the symbol is absent (older wheel) we fall back to import presence and let
+    the caller's smoke test on a real model be the final arbiter.
     """
     import importlib.util
 
-    return importlib.util.find_spec("llama_cpp") is not None
+    if importlib.util.find_spec("llama_cpp") is None:
+        return False
+    try:
+        import llama_cpp
+    except Exception:  # noqa: BLE001 — a broken/partial install is "not usable"
+        return False
+    supports_gpu = getattr(llama_cpp, "llama_supports_gpu_offload", None)
+    if callable(supports_gpu):
+        try:
+            return bool(supports_gpu())
+        except Exception:  # noqa: BLE001 — treat a probe error as "not usable"
+            return False
+    # Symbol unavailable on this wheel — fall back to import presence; smoke test decides.
+    return True
