@@ -397,6 +397,7 @@ def _stage_directory_contents(source: Path, target: Path) -> None:
 
 def _materialize_runtime_files(
     config: InstallConfig,
+    runtime_env: dict[str, str],
     callback: ProgressCallback,
     step_id: str,
 ) -> None:
@@ -426,15 +427,17 @@ def _materialize_runtime_files(
     if "alloy" in selected:
         _stage_directory_contents(observability_dir / "alloy", config.config_dir / "alloy")
     if "authelia" in selected:
-        authelia_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
+        # Use the in-memory generated env (NOT a re-read of .env): on a fresh install AND
+        # on the sudo path the .env does not exist yet when this runs, so a file re-read
+        # would yield admin_password='' → the upstream EXAMPLE hash survives (review HIGH
+        # authelia-default-password-ordering / alertmanager-sudo-empty-values).
         _stage_authelia_config(
             templates_dir / "authelia",
             config.config_dir / "authelia",
             domain=config.domain,
-            admin_password=authelia_env.get("AUTHELIA_ADMIN_PASSWORD", ""),
+            admin_password=runtime_env.get("AUTHELIA_ADMIN_PASSWORD", ""),
         )
     if "alertmanager" in selected:
-        runtime_env = _parse_existing_runtime_env(config, config.install_dir / ".env")
         _stage_alertmanager_config(
             observability_dir,
             config.config_dir / "alertmanager",
@@ -470,7 +473,10 @@ def _stage_runtime_payload(
     step_id: str,
 ) -> None:
     config.install_dir.mkdir(parents=True, exist_ok=True)
-    _materialize_runtime_files(config, callback, step_id)
+    # env_text is the authoritative, already-preserved+generated runtime env (built by
+    # EnvWriteStep from _runtime_env(existing)). Parse it in-memory and feed the
+    # config-materialization so it never depends on a .env that is not on disk yet.
+    _materialize_runtime_files(config, parse_env_text(env_text), callback, step_id)
     write_env(config.install_dir / ".env", env_text, mode=0o600)
     write_env(config.install_dir / "version.env", version_env_text, mode=0o644)
 

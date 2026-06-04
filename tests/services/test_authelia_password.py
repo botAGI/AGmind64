@@ -70,3 +70,66 @@ def test_scan_flags_unreplaced_default(tmp_path: Path) -> None:
     assert len(findings) == 1
     assert findings[0].severity == "high"
     assert findings[0].check == "authelia-default-password"
+
+
+def test_env_write_first_run_replaces_default_password(tmp_path: Path) -> None:
+    """The real first-run ordering bug (review HIGH authelia-default-password-ordering):
+    a full EnvWriteStep on a FRESH install_dir must stage the argon2 hash from the
+    in-memory generated password — NOT re-read a .env that does not exist yet
+    (materialize used to run before write_env → admin_password='' → upstream hash survived
+    → anyone signs in as admin/authelia). Exercises the real path, not a hand-fed password.
+    """
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import EnvWriteStep
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="",
+        services=["authelia", "redis"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "models",
+        config_dir=tmp_path / "etc" / "agmind",
+    )
+    cfg.install_dir.mkdir(parents=True)
+
+    assert EnvWriteStep().run(lambda _e: None, cfg).success
+
+    staged_db = cfg.config_dir / "authelia" / "users_database.yml"
+    assert staged_db.exists(), "authelia config not materialized"
+    body = staged_db.read_text(encoding="utf-8")
+    assert _UPSTREAM_SALT not in body, "fresh install still ships the upstream Authelia password"
+    assert scan_authelia_users_db(staged_db) == []
+
+
+def test_materialize_uses_in_memory_env_not_disk(tmp_path: Path) -> None:
+    """Both the local first-run AND the sudo path stage into a dir with no .env yet, so
+    _materialize_runtime_files must read the in-memory env_text, not the on-disk .env
+    (review HIGH alertmanager-sudo-empty-values, same root cause). Drive
+    _stage_runtime_payload directly on a fresh dir with an authoritative env_text and
+    assert BOTH authelia (password) AND alertmanager (chat_id) come from memory."""
+    from agmind.install.orchestrator import InstallConfig
+    from agmind.install.steps import _stage_runtime_payload
+
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="",
+        services=["authelia", "alertmanager"],
+        install_dir=tmp_path / "opt",
+        models_dir=tmp_path / "var" / "models",
+        config_dir=tmp_path / "etc" / "agmind",
+    )
+    env_text = (
+        "AUTHELIA_ADMIN_PASSWORD=supersecret-from-memory\n"
+        "AGMIND_ALERT_TELEGRAM_CHAT_ID=-100999\n"
+        "AGMIND_ALERT_TELEGRAM_BOT_TOKEN=token:ok\n"
+    )
+    # No .env exists on disk — only the in-memory text is authoritative.
+    _stage_runtime_payload(cfg, env_text, "AGMIND_VERSION=test\n", lambda _e: None, "x")
+
+    staged_db = cfg.config_dir / "authelia" / "users_database.yml"
+    assert _UPSTREAM_SALT not in staged_db.read_text(encoding="utf-8")
+    assert scan_authelia_users_db(staged_db) == []
+    assert (cfg.config_dir / "alertmanager" / "tg_chat_id").read_text(encoding="utf-8") == "-100999"
+    assert (cfg.config_dir / "alertmanager" / "tg_bot_token").read_text(
+        encoding="utf-8"
+    ) == "token:ok"
