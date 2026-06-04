@@ -52,7 +52,8 @@ agmind cluster inspect --timeout 10
   metrics.
 - Проверки version governance проходят для constraints, components, deploy
   targets и tool candidates.
-- `scripts/checks/version_check.py` пишет 32 записи компонентов. Сейчас ручного
+- `scripts/checks/version_check.py` пишет по записи pinned-image на каждый компонент каталога
+  (захардкоженные «32» — устаревший снимок до Komodo). Сейчас ручного
   просмотра требуют major-кандидаты RagFlow и MySQL, ожидаемые holds для
   выбранных pinned-сервисов и несколько registry probes без remote version.
 - Deploy-facing mutable image tags и unbounded Ansible package upgrade state

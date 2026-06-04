@@ -297,8 +297,8 @@ runtime-сервисов и digest записываются в `/opt/agmind/vers
 
 ### `ragflow` profile
 
-RAGFlow на CPU 10-50× медленнее CUDA. Use для cyrillic-heavy scans если
-docling недостаточен.
+RAGFlow на CPU в 10-50× медленнее, чем на дискретном GPU-ускорителе. Use для
+cyrillic-heavy scans если docling недостаточен.
 
 ### `observability` profile
 

@@ -49,7 +49,10 @@ sudo cp *.gguf /var/lib/agmind/models/
 
 ```bash
 export AGMIND_OFFLINE=1
-agmind install --no-tui --domain <domain> --profile core,rag,observability,ui
+# `agmind install` has no --profile; non-interactive service selection comes from a state
+# file produced by a prior wizard run (agmind install writes setup-state.json). Pre-stage it.
+agmind install --no-tui --domain <domain> \
+  --from-state ~/.local/share/agmind/setup-state.json
 ```
 
 With `AGMIND_OFFLINE=1` the image-pull step is a `--policy never` no-op and the

@@ -62,10 +62,9 @@ python -m agmind doctor
 # 5. Bootstrap (apt + Docker + Strix Halo tuning + agmind venv)
 ansible-playbook ansible/install.yml -t bootstrap
 
-# 6. Download models (auto-tier по RAM)
-agmind models download           # primary LLM
-agmind models download --embed   # bge-m3
-agmind models download --rerank  # bge-reranker-v2-m3
+# 6. Download models (auto-tier по RAM — pulls the LLM + bge-m3 embed + bge-reranker)
+ansible-playbook ansible/install.yml -t models
+# Or pull a curated model by hand: `agmind models list` then `agmind models pull <id>`.
 
 # 7. Bring up stack
 ansible-playbook ansible/install.yml -t services
@@ -84,26 +83,29 @@ agmind deploy status
 
 ## Interactive chat
 
+Chat goes through the OpenAI-compatible LLM endpoint (or the Open WebUI frontend if the
+`ui` profile is deployed) — there is no `agmind chat` CLI:
+
 ```bash
-agmind chat
-# либо:
-agmind chat --server http://agmind-llm.local
+curl http://localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local","messages":[{"role":"user","content":"hello world"}]}'
 ```
 
-Streaming output, history persistence в-памяти. `/clear` — reset, `exit` — quit.
+## Embed / rerank
 
-## Embed / rerank one-liners
+These are OpenAI-compatible HTTP endpoints (no `agmind embed`/`agmind rerank` CLI):
 
 ```bash
-# Embed text(s) — JSON output
-echo "hello world" | agmind embed
-agmind embed "first text" "second text"
+# Embed text(s)
+curl http://localhost:8081/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","input":["hello world","second text"]}'
 
 # Rerank documents by query (sorted desc by relevance)
-agmind rerank "Strix Halo benchmarks" \
-  "doc-1 content..." \
-  "doc-2 content..." \
-  "doc-3 content..."
+curl http://localhost:8082/v1/rerank \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-reranker","query":"Strix Halo benchmarks","documents":["doc-1...","doc-2..."]}'
 ```
 
 ## Profiles (компоненты стека)
@@ -123,7 +125,8 @@ Default: `core` + `rag`.
 
 ## Tier auto-detection
 
-`agmind models download` использует `agmind.models.detect_tier()`:
+The `models` play (`ansible-playbook ansible/install.yml -t models`, and the `agmind install`
+wizard) uses `agmind.models.detect_tier()`:
 
 | RAM | Tier | LLM (primary) | Disk |
 |-----|------|---------------|------|
@@ -133,9 +136,9 @@ Default: `core` + `rag`.
 | 128 GB | XL | gpt-oss-120b MXFP4_MOE | 62.8 GB |
 | 128+ GB | XXL | MiniMax M2.5 Q3_K_M | 101.8 GB |
 
-Override через `--tier` или `AGMIND_MODELS_TIER=L`:
+Override the auto-detected tier with `AGMIND_MODELS_TIER` (or `-e agmind_models_tier=M`):
 ```bash
-agmind models download --tier M
+AGMIND_MODELS_TIER=M ansible-playbook ansible/install.yml -t models
 ```
 
 ## Multi-node cluster

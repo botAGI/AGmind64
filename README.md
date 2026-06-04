@@ -53,7 +53,8 @@ Last local readiness pass: 2026-05-26.
   `/var/lib/agmind/n8n`, disabled diagnostics, and Prometheus metrics enabled.
 - Version governance checks pass for constraints, components, deploy targets,
   and tool candidates.
-- `scripts/checks/version_check.py` writes 32 component entries. Current manual-review
+- `scripts/checks/version_check.py` writes a pinned-image entry per catalog component (the
+  hardcoded "32" was a stale pre-Komodo snapshot). Current manual-review
   items are major candidates for RagFlow and MySQL, expected holds for selected
   pinned services, and several registry probes that returned no remote version.
 - Deploy-facing mutable image tags and unbounded Ansible package upgrade state
