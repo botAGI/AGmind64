@@ -245,8 +245,8 @@ def cmd_render_scenario(
     from agmind.services.selection import resolve_service_selection
 
     if list_only or not name:
-        for scenario in list_scenarios():
-            print(f"{scenario.name:18} {scenario.description}")
+        for entry in list_scenarios():
+            print(f"{entry.name:18} {entry.description}")
         return 0
 
     scenario = get_scenario(name)
