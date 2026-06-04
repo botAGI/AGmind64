@@ -49,9 +49,12 @@ def _run_compose(*args: str, check: bool = True) -> int:
     except OSError as exc:
         print(f"ERROR: docker compose failed: {exc}", file=sys.stderr)
         return 1
-    if check and result.returncode != 0:
-        return result.returncode
-    return result.returncode
+    _ = check  # both branches returned the same code; retained for call-site compatibility
+    rc = result.returncode
+    # A subprocess killed by a signal returns a NEGATIVE code; raising typer.Exit(-9) makes
+    # POSIX mask it to 247, corrupting CI retry logic. Normalize signal death to the
+    # conventional 128+signal so the exit code stays meaningful and in 0-255.
+    return rc if rc >= 0 else 128 + (-rc)
 
 
 def cmd_up(*, profile: str | None = None, detach: bool = True) -> int:
@@ -64,10 +67,20 @@ def cmd_up(*, profile: str | None = None, detach: bool = True) -> int:
     return _run_compose(*args)
 
 
-def cmd_down(*, volumes: bool = False) -> int:
+def cmd_down(*, volumes: bool = False, yes: bool = False) -> int:
     """Stop stack. --volumes also removes named volumes (destructive)."""
     args = ["down"]
     if volumes:
+        if not yes and not typer.confirm(
+            "⚠️  --volumes will PERMANENTLY DELETE every named volume "
+            "(postgres/qdrant/milvus/redis/minio data). Continue?",
+            default=False,
+        ):
+            print(
+                "aborted: volume deletion not confirmed (pass --yes to skip this prompt)",
+                file=sys.stderr,
+            )
+            return 1
         args.append("--volumes")
     return _run_compose(*args)
 
@@ -286,10 +299,15 @@ def register(app: typer.Typer) -> None:
 
     @deploy_app.command("down")
     def deploy_down(
-        volumes: bool = typer.Option(False, "--volumes", help="Also remove named volumes."),
+        volumes: bool = typer.Option(
+            False, "--volumes", help="Also remove named volumes (DESTRUCTIVE)."
+        ),
+        yes: bool = typer.Option(
+            False, "--yes", "-y", help="Skip the destructive-volume confirmation prompt."
+        ),
     ) -> None:
         """Backward-compatible docker compose down wrapper."""
-        raise typer.Exit(code=cmd_down(volumes=volumes))
+        raise typer.Exit(code=cmd_down(volumes=volumes, yes=yes))
 
     @deploy_app.command("status")
     def deploy_status() -> None:
@@ -386,9 +404,29 @@ def register(app: typer.Typer) -> None:
             "--include-models",
             help="Также удалить GGUF/safetensors не упомянутые в descriptors",
         ),
+        yes: bool = typer.Option(
+            False,
+            "--yes",
+            "-y",
+            help="Skip confirmation for destructive --aggressive/--include-models.",
+        ),
     ) -> None:
         """Garbage collection: containers + images + volumes + networks (+ models opt-in)."""
         from agmind.deploy import format_gc_report, gc_all
+
+        # --aggressive (all unused volumes) and --include-models (GGUF/safetensors deletion)
+        # are irreversible; require an explicit confirmation unless --dry-run or --yes.
+        if (aggressive or include_models) and not dry_run and not yes:
+            if not typer.confirm(
+                "⚠️  Destructive GC: --aggressive removes ALL unused volumes and/or "
+                "--include-models deletes unreferenced model weights. Continue?",
+                default=False,
+            ):
+                print(
+                    "aborted: destructive GC not confirmed (use --dry-run to preview or --yes)",
+                    file=sys.stderr,
+                )
+                raise typer.Exit(code=1)
 
         reports = gc_all(
             aggressive=aggressive,

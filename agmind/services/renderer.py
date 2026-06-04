@@ -569,7 +569,17 @@ def render_compose(
     # the SSRF cage primitive — no host route, only intra-net + a dual-homed proxy.
     extra_networks = sorted({n for d in resolved_descriptors for n in d.networks if n != "default"})
     for net in extra_networks:
-        attrs = _EXTRA_NETWORK_ATTRS.get(net, {"driver": "bridge"})
+        # Fail closed: an unregistered extra network must NOT silently default to a plain
+        # egress bridge — a service intending an internal-only SSRF cage would then get a full
+        # host/egress route with no warning. Every non-default network must declare its driver +
+        # internal flag explicitly in _EXTRA_NETWORK_ATTRS.
+        if net not in _EXTRA_NETWORK_ATTRS:
+            raise ValueError(
+                f"network '{net}' is not registered in renderer._EXTRA_NETWORK_ATTRS — refusing "
+                f"to render it (it would become an egress-capable bridge). Add it with an explicit "
+                f"{{'driver': ..., 'internal': ...}} so the isolation intent is deliberate."
+            )
+        attrs = _EXTRA_NETWORK_ATTRS[net]
         networks_block[net] = {"name": f"{network_name}_{net}", **attrs}
     compose: dict[str, Any] = {
         "services": services_block,

@@ -22,9 +22,10 @@ http:
         average: 100
         period: 1s
         burst: 200
-        sourceCriterion:
-          ipStrategy:
-            depth: 1
+        # Key on the real TCP peer IP (Traefik's default sourceCriterion when unset), NOT an
+        # X-Forwarded-For depth: traefik binds :80/:443 at the direct edge with no trusted
+        # upstream, so an attacker rotating a spoofed XFF per request would bypass a depth-keyed
+        # limit entirely. RemoteAddr at the direct edge IS the real client and is unspoofable.
 
     # LLM endpoints (compute-heavier) — a bit tighter sustained rate, but burst still must
     # cover a UI page-load (openwebui/dify-web stream via SSE but the asset fan-out bursts).
@@ -33,9 +34,7 @@ http:
         average: 60
         period: 1s
         burst: 120
-        sourceCriterion:
-          ipStrategy:
-            depth: 1
+        # Key on the real TCP peer IP (default sourceCriterion), NOT a spoofable XFF depth.
 
     default-security-headers:
       headers:
@@ -69,9 +68,12 @@ http:
           - authelia
 
     # Internal services (Grafana, Prometheus UI, Portainer) — нужен auth.
+    # default-ratelimit FIRST: an unauthenticated attacker would otherwise flood these routes
+    # straight onto the Authelia forwardAuth endpoint with zero throttle (auth-amplification DoS).
     chain-internal:
       chain:
         middlewares:
+          - default-ratelimit
           - default-security-headers
           - authelia
 

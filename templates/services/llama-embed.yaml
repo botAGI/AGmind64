@@ -23,6 +23,8 @@ command:
 - 0.0.0.0
 - --port
 - '8080'
+# Enable the Prometheus /metrics endpoint (404 without it) so prometheus_scrape works.
+- --metrics
 - --model
 - /models/${AGMIND_EMBED_FILE:-bge-m3-Q8_0.gguf}
 - --embeddings

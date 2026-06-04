@@ -34,6 +34,9 @@ command:
 - 0.0.0.0
 - --port
 - '8080'
+# Enable the Prometheus /metrics endpoint (404 without it) so the prometheus_scrape
+# label below actually yields llamacpp:* series — the inference dashboards/rules/alerts.
+- --metrics
 - --model
 - /models/${AGMIND_MODEL_FILE:-Qwen3.6-35B-A3B-Q4_K_M.gguf}
 - -ngl

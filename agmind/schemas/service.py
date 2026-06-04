@@ -36,6 +36,7 @@ ServiceTier = Literal["edge", "inference", "app", "storage", "ops"]
 
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+_NETWORK_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
 _MEM_LIMIT_RE = re.compile(r"^\d+(k|m|g)$")
 _PORT_RE = re.compile(r"^(\d{1,3}(\.\d{1,3}){3}:)?\d{1,5}:\d{1,5}$")
 _LATEST_RE = re.compile(r":latest(?:$|@)")
@@ -462,6 +463,30 @@ class ServiceDescriptor(BaseModel):
         for dep in v:
             if not _NAME_RE.match(dep):
                 raise ValueError(f"depends_on '{dep}' invalid: must match service name pattern")
+        return v
+
+    @field_validator("networks")
+    @classmethod
+    def _check_networks(cls, v: list[str]) -> list[str]:
+        for net in v:
+            if not _NETWORK_RE.match(net):
+                raise ValueError(
+                    f"network '{net}' invalid: must match ^[a-z][a-z0-9_-]{{0,62}}$ "
+                    "(docker network name; e.g. 'ssrf-net', 'default')"
+                )
+        return v
+
+    @field_validator("volumes")
+    @classmethod
+    def _check_volumes(cls, v: list[str]) -> list[str]:
+        # Catch malformed mounts at schema time (they'd otherwise only fail at
+        # `docker compose up`). Lenient on the mode token to avoid churn, strict on shape.
+        for spec in v:
+            parts = spec.split(":")
+            if len(parts) not in (2, 3) or not parts[0] or not parts[1]:
+                raise ValueError(
+                    f"volume '{spec}' invalid: expected 'src:dst[:mode]' with non-empty src and dst"
+                )
         return v
 
     def fq_image(self) -> str:
