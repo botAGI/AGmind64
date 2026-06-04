@@ -20,6 +20,15 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _clear_detect_host_cache() -> None:
+    """detect_host is @lru_cache(maxsize=1) (process-wide); clear it before each test so one
+    test's hardware mock can't leak into the next via the cache."""
+    from agmind.compute.detect import detect_host
+
+    detect_host.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _restore_root_logging() -> Iterator[None]:
     """Restore root logging handlers after each test.
 

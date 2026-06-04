@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field, fields, is_dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Final
 
@@ -101,7 +102,7 @@ def _read_text(path: str) -> str:
         return ""
 
 
-def _run(cmd: list[str], timeout: float = 5.0) -> str:
+def _run(cmd: list[str], timeout: float = 5.0, env: dict[str, str] | None = None) -> str:
     if not cmd or not shutil.which(cmd[0]):
         return ""
     try:
@@ -110,6 +111,7 @@ def _run(cmd: list[str], timeout: float = 5.0) -> str:
             text=True,
             stderr=subprocess.STDOUT,
             timeout=timeout,
+            env=env,
         )
     except (subprocess.SubprocessError, OSError) as exc:
         log.debug("%s failed: %s", cmd, exc)
@@ -274,10 +276,12 @@ def detect_vulkan() -> VulkanInfo:
             amdvlk_files_present=amdvlk_leaked,
         )
 
+    # Pin RADV for BOTH probe calls so a leaked AMDVLK ICD can't make vulkaninfo report the
+    # wrong driver — the env dict was built but never passed before (review LOW detect-vulkan-env-dead).
     env = os.environ.copy()
     env.setdefault("AMD_VULKAN_ICD", "RADV")
 
-    summary = _run(["vulkaninfo", "--summary"], timeout=10.0)
+    summary = _run(["vulkaninfo", "--summary"], timeout=10.0, env=env)
     if not summary:
         return VulkanInfo(
             available=True,
@@ -308,7 +312,7 @@ def detect_vulkan() -> VulkanInfo:
     if am:
         api_ver = (int(am[1]), int(am[2]), int(am[3]))
 
-    full = _run(["vulkaninfo"], timeout=15.0)
+    full = _run(["vulkaninfo"], timeout=15.0, env=env)
     has_coop = "VK_KHR_cooperative_matrix" in full
     has_extmem = "VK_EXT_external_memory_host" in full
 
@@ -346,8 +350,15 @@ def detect_rocm() -> ROCmInfo:
     )
 
 
+@lru_cache(maxsize=1)
 def detect_host() -> HostInfo:
-    """Полный snapshot текущей машины. Тяжёлые subprocess'ы — с timeouts."""
+    """Полный snapshot текущей машины. Тяжёлые subprocess'ы — с timeouts.
+
+    Memoized (review MEDIUM backend-available-reprobes-hardware): backend resolution calls this
+    several times via every Backend.available() + device_info(), each spawning vulkaninfo (10-15s)
+    + rocminfo/rocm-smi — ~30-45s of redundant probes. Hardware does not change within a process;
+    a long-lived TUI that needs a re-probe (e.g. after a driver change) calls detect_host.cache_clear().
+    """
     cpu_model, cpu_cores = _detect_cpu()
     sys_ram = _detect_system_ram()
     kernel = _detect_kernel()

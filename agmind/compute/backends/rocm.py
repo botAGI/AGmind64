@@ -78,6 +78,11 @@ class ROCmBackend(Backend):
         if not os.access("/dev/kfd", os.R_OK | os.W_OK):
             log.debug("ROCm: /dev/kfd not accessible (render/video group? device present?)")
             return False
+        # renderD128 is the first render node — correct for the single-iGPU Strix Halo target.
+        # A host with a SECOND render node (renderD129, e.g. a discrete GPU alongside the iGPU)
+        # whose iGPU is not 128 would be falsely rejected here; out of scope for this single-APU
+        # platform — derive the node from host.gpu.card_path if multi-render-node support lands
+        # (review LOW rocm-renderd128-hardcoded).
         if not os.access("/dev/dri/renderD128", os.R_OK | os.W_OK):
             log.debug("ROCm: /dev/dri/renderD128 not accessible")
             return False

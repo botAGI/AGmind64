@@ -101,34 +101,13 @@ class LlamaCppCPUEngine:
         documents: Sequence[str],
         **kwargs: Any,
     ) -> list[float]:
-        # Для reranking llama.cpp используется в pooling=rank mode. Это
-        # требует reranker GGUF модели — caller должен передать model
-        # path через kwargs.
-        from llama_cpp import Llama  # noqa: PLC0415
-
-        model_path = kwargs.pop("model", None)
-        if model_path is None:
-            raise ValueError("rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'")
-
-        defaults: dict[str, Any] = {
-            "model_path": model_path,
-            "embedding": True,  # rerank piggybacks on embedding API
-            "verbose": False,
-        }
-        defaults.update(kwargs)
-        llama = Llama(**defaults)
-        try:
-            # Для rerank-задачи правильнее использовать BgeReranker / custom
-            # pooling=rank. Здесь fallback: вычисляем cosine sim между
-            # query и каждым doc через mean-pooling embeddings.
-            q_emb = _safe_embed(llama, query)
-            scores: list[float] = []
-            for doc in documents:
-                d_emb = _safe_embed(llama, doc)
-                scores.append(_cosine(q_emb, d_emb))
-            return scores
-        finally:
-            del llama
+        # In-process rerank via cosine-of-embeddings is NOT a real cross-encoder rerank — it
+        # ignores the rank head and silently returned wrong scores. The correct path is the
+        # deployed llama-server /v1/rerank endpoint (review LOW inprocess-rerank-cosine).
+        raise NotImplementedError(
+            "in-process rerank is not implemented; use the deployed reranker via "
+            "AGMIND_LLAMA_SERVER_URL (HTTP /v1/rerank)"
+        )
 
 
 def _safe_embed(llama: Any, text: str) -> list[float]:
@@ -139,14 +118,3 @@ def _safe_embed(llama: Any, text: str) -> list[float]:
     if not data or not isinstance(data[0], dict):
         return []
     return list(data[0].get("embedding") or [])
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    na = sum(x * x for x in a) ** 0.5
-    nb = sum(x * x for x in b) ** 0.5
-    if na == 0 or nb == 0:
-        return 0.0
-    return float(dot / (na * nb))

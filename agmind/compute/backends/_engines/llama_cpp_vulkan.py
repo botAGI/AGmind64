@@ -12,7 +12,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from agmind.compute.backends._engines.llama_cpp_cpu import (
-    _cosine,
     _LlamaCppHandle,
     _safe_embed,
 )
@@ -83,32 +82,10 @@ class LlamaCppVulkanEngine:
         documents: Sequence[str],
         **kwargs: Any,
     ) -> list[float]:
-        from llama_cpp import Llama  # noqa: PLC0415
-
-        model_path = kwargs.pop("model", None)
-        if model_path is None:
-            raise ValueError("rerank requires model='<path-to-bge-reranker-v2-m3.gguf>'")
-        # Для true reranker используем pooling=rank (LLAMA_POOLING_RANK = 4)
-        defaults: dict[str, Any] = {
-            "model_path": model_path,
-            "embedding": True,
-            "pooling_type": kwargs.pop("pooling_type", 4),  # RANK
-            "n_gpu_layers": kwargs.pop("n_gpu_layers", -1),
-            "use_mmap": False,
-            "n_ctx": kwargs.pop("n_ctx", 8192),
-            "verbose": False,
-        }
-        defaults.update(kwargs)
-        llama = Llama(**defaults)
-        try:
-            scores: list[float] = []
-            # Подход: query + doc как concatenated input через embed().
-            # Это approximation — реальный rerank вызывает llama_decode с
-            # rank head. Полный путь требует llama-server API.
-            q_emb = _safe_embed(llama, query)
-            for doc in documents:
-                d_emb = _safe_embed(llama, doc)
-                scores.append(_cosine(q_emb, d_emb))
-            return scores
-        finally:
-            del llama
+        # In-process rerank via cosine-of-embeddings is NOT a real cross-encoder rerank — it
+        # ignores the rank head and silently returned wrong scores. The correct path is the
+        # deployed llama-server /v1/rerank endpoint (review LOW inprocess-rerank-cosine).
+        raise NotImplementedError(
+            "in-process rerank is not implemented; use the deployed reranker via "
+            "AGMIND_LLAMA_SERVER_URL (HTTP /v1/rerank)"
+        )
