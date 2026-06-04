@@ -1,5 +1,12 @@
 # AGmind Cluster Guide
 
+> ⚠️ **EXPERIMENTAL (M1).** Multi-node **inference routing is not wired end-to-end**: the
+> master does not yet forward `/completion` to workers (no routing gateway), and workers
+> publish llama-server on `127.0.0.1` (not reachable cross-host). This guide provisions the
+> nodes (bootstrap/docker/agmind) and renders peer config, but the worker-routing and
+> `probe_all`/weighted-routing snippets below describe the *future* design, not live behavior.
+> The supported path today is the single-node default (`inventory/hosts.yml`).
+
 Multi-node AGmind deployment: 1 master + N workers. Master координирует
 RAG (Dify, Qdrant, etc), workers добавляют inference capacity.
 

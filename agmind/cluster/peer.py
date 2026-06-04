@@ -30,7 +30,8 @@ class Peer:
     """Optional friendly name (from inventory)."""
 
     weight: int = 1
-    """Relative weight для weighted round-robin."""
+    """Relative weight — RESERVED for future weighted routing; no router consumes it yet
+    (the multi-node inference router is not wired — see docs/CLUSTER.md)."""
 
     tags: tuple[str, ...] = ()
     """Optional capability tags ("gpu", "high-mem", "vision")."""

@@ -28,11 +28,9 @@
     group: "{{ agmind_group }}"
     mode: "0644"
 
-- name: Allow inbound 8080-8082 from worker IPs
-  community.general.ufw:
-    rule: allow
-    proto: tcp
-    port: "{{ item.1 }}"
-    src: "{{ item.0 }}"
-  loop: "{{ groups['agmind_workers'] | map('extract', hostvars, 'ansible_host') | list | product(['8080', '8081', '8082']) | list }}"
-  when: groups['agmind_workers'] | default([]) | length > 0
+# No firewall rule here: in the coordinator topology the MASTER is the CLIENT that reaches
+# OUT to the workers' 8080-8082 (outgoing is already allowed), so opening the master's INBOUND
+# to those ports from worker IPs was wrong-direction and a no-op (review MEDIUM
+# cluster-firewall-wrong-direction). The inbound allow belongs on the WORKERS. Re-add it as a
+# worker-side rule together with the other two coupled changes (LAN-reachable worker llama bind
+# + running the `services` role on workers) when the routing layer is actually wired.

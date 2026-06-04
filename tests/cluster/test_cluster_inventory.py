@@ -26,6 +26,17 @@ def test_inventory_yaml_parses_with_no_peers() -> None:
     assert workers["hosts"] in ({}, None)
 
 
+def test_inventory_defines_vars_required_by_the_roles() -> None:
+    """Review MEDIUM cluster-wizard-inventory-missing-vars: the bootstrap + cluster roles
+    reference agmind_config_dir/user/group with no defaults, so a wizard inventory missing them
+    fails undefined-variable on the first templating task. They must be in all.vars."""
+    parsed = yaml.safe_load(generate_inventory_yaml(peers=[]))
+    allvars = parsed["all"]["vars"]
+    assert allvars["agmind_config_dir"] == "/etc/agmind"
+    assert allvars["agmind_user"] == "agmind"
+    assert allvars["agmind_group"] == "agmind"
+
+
 def test_inventory_yaml_includes_each_peer() -> None:
     peers = [("beelink-alpha", "192.168.1.20"), ("beelink-beta", "192.168.1.21")]
     text = generate_inventory_yaml(peers=peers)

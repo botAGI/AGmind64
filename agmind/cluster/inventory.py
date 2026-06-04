@@ -45,6 +45,13 @@ def generate_inventory_yaml(
         "  vars:",
         "    agmind_install_dir: /opt/agmind",
         "    agmind_data_dir: /var/lib/agmind",
+        # agmind_config_dir/user/group are referenced by the bootstrap + cluster roles with NO
+        # defaults; omitting them makes `ansible-playbook -i <wizard-inventory> install.yml` fail
+        # undefined-variable on the first templating task (review MEDIUM
+        # cluster-wizard-inventory-missing-vars).
+        "    agmind_config_dir: /etc/agmind",
+        "    agmind_user: agmind",
+        "    agmind_group: agmind",
         "    agmind_lan_only: true",
         "    agmind_mdns_enabled: true",
         "",

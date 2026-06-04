@@ -68,9 +68,10 @@
   tags: [bootstrap, strix-halo]
   roles:
     - role: strix_halo
+      # `ansible_facts.lspci` is never gathered by setup, so the old OR-branch was always
+      # false and only the processor string ever matched (review LOW ansible-strix-lspci-dead).
+      # Dropped the dead term; gate purely on the Strix Halo APU processor string.
       when: ansible_facts.processor | join(' ') is search('Ryzen AI Max', ignorecase=true)
-            or (ansible_facts.devices is defined
-                and ansible_facts.lspci | default('') is search('1002:1586'))
 
 - name: AGmind compute layer — Docker + agmind python package
   hosts: agmind_nodes

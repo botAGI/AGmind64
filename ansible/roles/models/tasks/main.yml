@@ -44,7 +44,12 @@
     group: "{{ agmind_group }}"
     mode: "0644"
     timeout: 600
+  # `retries` is ignored by Ansible without `until:` on a registered task — a transient HF
+  # failure used to abort the whole role on the first try (review LOW ansible-models-no-checksum-retry).
+  register: agmind_embed_download
   retries: 3
+  delay: 10
+  until: agmind_embed_download is succeeded
 
 # Rerank: BGE-Reranker-v2-m3 Q8_0 (всегда, ~636 MB)
 - name: Download BGE-Reranker-v2-m3 Q8_0 GGUF
@@ -55,7 +60,10 @@
     group: "{{ agmind_group }}"
     mode: "0644"
     timeout: 600
+  register: agmind_rerank_download
   retries: 3
+  delay: 10
+  until: agmind_rerank_download is succeeded
 
 # LLM tier-based download (per templates/models.yaml resolved by agmind.models)
 - name: Load models.yaml inventory
@@ -83,7 +91,10 @@
     group: "{{ agmind_group }}"
     mode: "0644"
     timeout: 7200
+  register: agmind_llm_download
   retries: 3
+  delay: 15
+  until: agmind_llm_download is succeeded
   when: agmind_download_llm | default(false) | bool
 
 - name: Note about manual LLM download

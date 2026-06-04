@@ -28,12 +28,14 @@
 - name: UFW allow HTTP/HTTPS (LAN only)
   community.general.ufw:
     rule: allow
-    port: "{{ item }}"
+    port: "{{ item.0 }}"
     proto: tcp
-    src: 192.168.0.0/16
-  loop:
-    - "{{ agmind_proxy_http_port }}"
-    - "{{ agmind_proxy_https_port }}"
+    src: "{{ item.1 }}"
+  # Per-port × per-CIDR so all RFC1918 LANs are allowed, not just 192.168.0.0/16
+  # (review POLISH ansible-ufw-cidr-narrow).
+  loop: >-
+    {{ [agmind_proxy_http_port, agmind_proxy_https_port]
+       | product(agmind_lan_cidrs) | list }}
 
 - name: UFW allow mDNS
   community.general.ufw:

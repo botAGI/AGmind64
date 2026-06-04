@@ -36,6 +36,24 @@
     state: directory
     mode: "0755"
 
+# Hosts provisioned by the OLD lineinfile still carry the four agmind tokens INLINE in
+# /etc/default/grub; the additive drop-in below would then list them twice. Surgically strip
+# ONLY those four tokens (with their leading whitespace) from the main file — preserving
+# quiet/splash/resume/console/LUKS — so the drop-in is the single source (review LOW
+# ansible-grub-dropin-duplicate-params). A whole-line rewrite would re-introduce the
+# drop-operator-args/unbootable regression the drop-in fixed.
+- name: Strip legacy inline agmind GRUB params (pre-drop-in hosts)
+  ansible.builtin.replace:
+    path: /etc/default/grub
+    regexp: '\s+{{ item }}'
+    replace: ''
+  loop:
+    - 'amd_iommu=off'
+    - 'ttm\.pages_limit=\S+'
+    - 'ttm\.page_pool_size=\S+'
+    - 'zswap\.enabled=0'
+  notify: regenerate grub
+
 - name: Append agmind GRUB params (non-destructive drop-in)
   ansible.builtin.copy:
     dest: /etc/default/grub.d/99-agmind.cfg

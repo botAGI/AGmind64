@@ -7,8 +7,8 @@ agmind_profiles:
 # Worker не нуждается в Dify/Postgres/Qdrant (живут на master).
 # Override services через group_vars если нужно.
 
-# Worker может использовать дугой LLM tier (e.g. распределённая sharded).
-# Default — наследует с master но можно override.
+# Worker может использовать другой LLM tier. Default — наследует с master, можно override.
+# (Multi-node inference routing is experimental and not wired — see docs/CLUSTER.md.)
 agmind_models_tier: auto
 
 # Worker не запускает monitoring backend (только exporters).

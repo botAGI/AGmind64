@@ -70,6 +70,12 @@ agmind_proxmox_exporter_verify_ssl: true
 agmind_lan_only: true
 agmind_mdns_enabled: true
 agmind_mdns_domain: agmind.local
+# Private LAN ranges the UFW HTTP/HTTPS allow rule trusts. Defaults to all of RFC1918 — the
+# old rule only allowed 192.168.0.0/16, locking out 10.x / 172.16-31.x home/office LANs.
+agmind_lan_cidrs:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
 
 # ---- Secrets policy ----
 agmind_secrets_dir: /var/lib/agmind/secrets
