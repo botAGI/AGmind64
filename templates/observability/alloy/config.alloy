@@ -4,6 +4,11 @@
 // фильтрует по label `loki.scrape=true` (автоматически выставлено renderer'ом
 // из ServiceDescriptor.observability.loki_scrape — default true).
 //
+// PER-NODE: discovery.docker tails the LOCAL docker.sock, so this Alloy sees only this
+// node's containers. On a cluster every node running workloads needs its own Alloy
+// (all pushing to the single Loki on the master) — a master-only Alloy misses worker
+// container logs. See docs/CLUSTER.md "Log collection is per-node".
+//
 // Propagated labels: service / tier / owner / container — для filtering в Loki.
 
 logging {

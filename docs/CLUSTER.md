@@ -52,6 +52,15 @@ RAG (Dify, Qdrant, etc), workers добавляют inference capacity.
 └───────────────────────────────────────┘
 ```
 
+### Log collection is per-node
+
+Grafana Alloy collects container logs by tailing the **local** Docker socket
+(`/var/run/docker.sock`) via `discovery.docker`, so it sees only the containers on the node
+it runs on. A master-only Alloy collects master logs only — **worker container logs are
+invisible**. Each node running workloads must therefore run its own Alloy instance, all
+pushing to the single Loki on the master (`loki.write` → `http://<master>:3100`). This
+mirrors `node-exporter`: per-node by design (one per host; one Prometheus scrapes them all).
+
 ## Prerequisites
 
 1. **LAN connectivity** между master + workers (Gigabit+ recommended;
