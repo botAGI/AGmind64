@@ -87,7 +87,9 @@ repos:
     hooks:
       - id: mypy
         name: mypy --strict (agmind/)
-        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && .venv/bin/mypy agmind/ --no-error-summary 2>&1 | head -20'
+        # No `| head`: piping without `pipefail` returns head's exit (0), masking mypy
+        # failures (Phase 09-03). Run mypy directly so the hook actually gates on its exit.
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && .venv/bin/mypy agmind/ --no-error-summary'
         language: system
         pass_filenames: false
         files: ^agmind/.*\.py$
