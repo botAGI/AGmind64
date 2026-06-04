@@ -72,6 +72,15 @@ class ROCmBackend(Backend):
         if "gfx1151" not in host.rocm.gfx_targets and "gfx11-generic" not in host.rocm.gfx_targets:
             log.debug("ROCm available but gfx1151 not in targets: %s", host.rocm.gfx_targets)
             return False
+        # The docstring promised it: the GPU device nodes must be present + accessible, or HIP
+        # fails deep at model load (a host missing render/video group membership or with an
+        # unreadable /dev/kfd would otherwise pass this gate) (audit M#19).
+        if not os.access("/dev/kfd", os.R_OK | os.W_OK):
+            log.debug("ROCm: /dev/kfd not accessible (render/video group? device present?)")
+            return False
+        if not os.access("/dev/dri/renderD128", os.R_OK | os.W_OK):
+            log.debug("ROCm: /dev/dri/renderD128 not accessible")
+            return False
         return True
 
     @classmethod

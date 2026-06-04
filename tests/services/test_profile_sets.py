@@ -58,6 +58,20 @@ def test_all_profile_sets_covers_all_12_profiles() -> None:
     )
 
 
+def test_service_profile_enum_matches_catalog_profiles() -> None:
+    """The ServiceProfile enum is a THIRD profile source (besides the descriptors and
+    ALL_PROFILE_SETS); cross-check it so a profile added to the catalog without the enum
+    can't make services_for_profile raise while the renderer accepts it (audit L#43)."""
+    from agmind.services.registry import ServiceProfile
+
+    enum_values = {p.value for p in ServiceProfile}
+    assert enum_values == all_profile_names(), (
+        "ServiceProfile enum diverges from ALL_PROFILE_SETS/catalog: "
+        f"enum-only={enum_values - all_profile_names()}, "
+        f"catalog-only={all_profile_names() - enum_values}"
+    )
+
+
 def test_every_profile_is_boot_smoked_or_explicitly_excluded() -> None:
     """Drift guard: every selectable profile must be EITHER in the docker boot-smoke lane
     (_SMOKE_PROFILES) OR in an explicit documented exclusion set — so a new profile silently

@@ -323,7 +323,11 @@ def _first_container_port(d: ServiceDescriptor) -> str | None:
         return None
     spec = d.ports[0]
     parts = spec.split(":")
-    return parts[-1] if parts else None
+    if not parts:
+        return None
+    # Strip an optional /proto suffix (e.g. "8080/tcp") so the result is a bare port for
+    # Traefik loadbalancer.server.port / prometheus targets (audit L#53).
+    return parts[-1].split("/", 1)[0]
 
 
 def descriptor_to_compose_service(

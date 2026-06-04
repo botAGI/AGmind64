@@ -17,10 +17,12 @@
     virtualenv: "{{ agmind_install_dir }}/venv"
   become_user: "{{ agmind_user }}"
 
-- name: Install agmind package (dev extras)
+- name: Install agmind package (runtime only — no dev toolchain on deployed nodes)
   ansible.builtin.pip:
     name:
-      - "agmind[dev] @ file://{{ playbook_dir }}/.."
+      # Bare `agmind` (runtime deps): a deployed node runs the CLI/ansible, not the test
+      # suite — `[dev]` would drag pytest/ruff/mypy + their tree onto every node (audit M#27).
+      - "agmind @ file://{{ playbook_dir }}/.."
     virtualenv: "{{ agmind_install_dir }}/venv"
     state: present
 
