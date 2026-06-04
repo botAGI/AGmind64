@@ -50,3 +50,42 @@ def test_lock_records_regeneration_command() -> None:
     """The header must record how to regenerate it, so the lock can't become a mystery file."""
     head = _LOCK.read_text(encoding="utf-8")[:400]
     assert "uv pip compile" in head and "--generate-hashes" in head
+
+
+# ---------------------------------------------------------------------------
+# Staleness / conflict guard (review MEDIUM dev-lock-unused-and-stale)
+# ---------------------------------------------------------------------------
+
+_CORE = Path(__file__).resolve().parents[2] / "constraints" / "core.txt"
+
+
+def _lock_pins() -> dict[str, str]:
+    """Map normalized package name → pinned version from the lock."""
+    text = _LOCK.read_text(encoding="utf-8")
+    pins: dict[str, str] = {}
+    for match in re.finditer(r"^(?P<name>[A-Za-z0-9._-]+)==(?P<ver>[^\s;\\]+)", text, re.MULTILINE):
+        pins[match.group("name").lower().replace("_", "-")] = match.group("ver")
+    return pins
+
+
+def test_lock_satisfies_declared_core_envelope() -> None:
+    """Every runtime constraint in core.txt must be SATISFIED by the lock's pin — so the lock
+    can never silently drift OUTSIDE the project's declared envelope (the class of drift that
+    let argon2-cffi sit at a version the envelope would later forbid). Network-free: compares
+    the committed lock against the committed constraints, no resolution."""
+    from packaging.requirements import Requirement
+
+    pins = _lock_pins()
+    violations: list[str] = []
+    for raw in _CORE.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        req = Requirement(line)
+        pinned = pins.get(req.name.lower().replace("_", "-"))
+        assert pinned, f"core.txt requires {req.name} but the lock has no pin for it"
+        if not req.specifier.contains(pinned, prereleases=True):
+            violations.append(f"{req.name}: lock=={pinned} violates core.txt '{req.specifier}'")
+    assert not violations, "constraints/dev.lock drifted outside core.txt envelope:\n" + "\n".join(
+        violations
+    )

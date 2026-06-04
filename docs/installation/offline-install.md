@@ -17,10 +17,13 @@ Generate the exact pinned image list from the descriptor catalog — never paste
 hardcoded list, it rots when a digest changes:
 
 ```bash
-# All images, or scope to the profiles you will deploy:
-python -m scripts.bundle_manifest --profile core,rag,observability > images.txt
+# All images, or scope to the profiles you will deploy. The module path differs by
+# install mode: a pip/wheel install exposes it as `agmind.scripts.bundle_manifest`;
+# a source checkout (`pip install -e .`) exposes it as `scripts.bundle_manifest`.
+python -m agmind.scripts.bundle_manifest --profile core,rag,observability > images.txt \
+  || python -m scripts.bundle_manifest --profile core,rag,observability > images.txt
 
-# Save them to a single tar (helper wraps this):
+# Save them to a single tar (the helper probes the right module path for you):
 scripts/bundle-images.sh --profile core,rag,observability -o agmind-images.tar
 ```
 

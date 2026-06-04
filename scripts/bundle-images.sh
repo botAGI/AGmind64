@@ -36,7 +36,16 @@ if [ -n "$profile" ]; then
   manifest_args+=(--profile "$profile")
 fi
 
-mapfile -t images < <(python -m scripts.bundle_manifest "${manifest_args[@]}")
+# The module path differs by install mode: a wheel/pip install exposes it as
+# `agmind.scripts.bundle_manifest`, a source checkout as `scripts.bundle_manifest`. Probe
+# importability (no side effects) and run the one that resolves, so a REAL runtime error in
+# the manifest still surfaces instead of being masked by a blind `||` fallback.
+if python -c 'import agmind.scripts.bundle_manifest' 2>/dev/null; then
+  bundle_mod="agmind.scripts.bundle_manifest"
+else
+  bundle_mod="scripts.bundle_manifest"
+fi
+mapfile -t images < <(python -m "$bundle_mod" "${manifest_args[@]}")
 if [ "${#images[@]}" -eq 0 ]; then
   echo "no images resolved from the catalog" >&2
   exit 1

@@ -6,8 +6,10 @@ when a digest changes (a hardcoded list in the doc would). Feed it to
 ``docker save`` on an internet-connected host, transfer the tar, then
 ``docker load`` on the air-gap host. See docs/installation/offline-install.md.
 
-Usage:
-    python -m scripts.bundle_manifest                 # all images, one per line
+Usage (module path differs by install mode — a pip/wheel install exposes this under the
+``agmind`` namespace via package-dir, a source checkout under the top-level ``scripts``):
+    python -m agmind.scripts.bundle_manifest            # wheel / pip install
+    python -m scripts.bundle_manifest                   # source checkout (pip install -e .)
     python -m scripts.bundle_manifest --profile core,rag
     python -m scripts.bundle_manifest --json
 """
