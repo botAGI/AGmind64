@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: komodo-mongo
+image: mongo:8.0
+digest: 9e53b28fb3904fa3c68e561902b64ac996a5c71fc56dda279f4964b7f937a749
+tier: storage
+purpose: MongoDB backing store for the Komodo operator console (2026-06-04)
+owner: agmind-core
+profiles:
+- ops
+# Upstream komodo mongo.compose.yaml: --quiet keeps logs sane, the small WiredTiger
+# cache fits a single-purpose metadata store on a shared host.
+command:
+- --quiet
+- --wiredTigerCacheSizeGB
+- "0.25"
+# Bind data (Правило #5 — no anonymous volume the gc would reap). mongo runs its
+# entrypoint as root and self-chowns /data to uid 999 before dropping (same as
+# postgres), so no run_as_uid/bootstrap entry is needed.
+volumes:
+- /var/lib/agmind/komodo-mongo/data:/data/db
+- /var/lib/agmind/komodo-mongo/config:/data/configdb
+env:
+  # Username is a shared non-secret with a stable default; password is a generated
+  # secret shared with komodo-core (both interpolate the SAME vars → they match).
+  MONGO_INITDB_ROOT_USERNAME: ${KOMODO_DATABASE_USERNAME:-komodo}
+  MONGO_INITDB_ROOT_PASSWORD: ${KOMODO_DATABASE_PASSWORD:?KOMODO_DATABASE_PASSWORD is required}
+resources:
+  cpus: 1.0
+  mem_limit: 1g
+health:
+  test:
+  - CMD
+  - mongosh
+  - --quiet
+  - --eval
+  - db.adminCommand('ping')
+  interval: 10s
+  timeout: 5s
+  retries: 15
+  start_period: 10s
+# Logs are fine; metrics aren't exposed by this single-purpose store.
+provides:
+- komodo_mongo

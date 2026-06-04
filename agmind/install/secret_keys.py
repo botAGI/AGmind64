@@ -30,6 +30,11 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
     "DIFY_PLUGIN_DAEMON_KEY",
     "DIFY_PLUGIN_INNER_API_KEY",
+    # Komodo operator console (ops profile). DATABASE_PASSWORD is shared mongo↔core.
+    "KOMODO_DATABASE_PASSWORD",
+    "KOMODO_INIT_ADMIN_PASSWORD",
+    "KOMODO_WEBHOOK_SECRET",
+    "KOMODO_JWT_SECRET",
 )
 
 # Authelia required secrets (read by the container as AUTHELIA_* env). 64-char so
@@ -53,10 +58,22 @@ ROTATABLE = frozenset(
         "DIFY_PLUGIN_INNER_API_KEY",
         "AUTHELIA_SESSION_SECRET",
         "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
+        # JWT/webhook signing: rotating only invalidates live sessions / unsent webhooks.
+        "KOMODO_JWT_SECRET",
+        "KOMODO_WEBHOOK_SECRET",
     }
 )
 INIT_ONLY = frozenset(
-    {"POSTGRES_PASSWORD", "MYSQL_ROOT_PASSWORD", "MINIO_ROOT_PASSWORD", "GRAFANA_PASSWORD"}
+    {
+        "POSTGRES_PASSWORD",
+        "MYSQL_ROOT_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "GRAFANA_PASSWORD",
+        # mongo sets the root pw on first init of an empty data dir; the admin user is
+        # seeded into mongo on core's first boot — rotating the env afterwards is a no-op.
+        "KOMODO_DATABASE_PASSWORD",
+        "KOMODO_INIT_ADMIN_PASSWORD",
+    }
 )
 ENCRYPT_AT_REST = frozenset(
     {"N8N_ENCRYPTION_KEY", "HOMARR_SECRET_ENCRYPTION_KEY", "AUTHELIA_STORAGE_ENCRYPTION_KEY"}

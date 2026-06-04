@@ -220,8 +220,8 @@ def test_component_check_script_json_output() -> None:
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
-    assert payload["contract_count"] == 11
-    assert payload["service_count"] == 41
+    assert payload["contract_count"] == 12
+    assert payload["service_count"] == 44
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

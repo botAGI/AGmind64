@@ -23,6 +23,7 @@ ALL_PROFILE_SETS: tuple[tuple[str, ...], ...] = (
     ("security",),
     ("automation",),
     ("proxmox",),
+    ("ops",),
     ("full",),
 )
 """One single-profile isolation lane per known AGmind compose profile.

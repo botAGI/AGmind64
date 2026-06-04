@@ -45,6 +45,9 @@ SOCK_ALLOW = {
     "netdata",
     "cadvisor",
     "alloy",
+    # Komodo periphery agent: manages docker on the node for the ops console (opt-in
+    # ops profile). Mounts the socket :ro per contract; same risk class as portainer.
+    "komodo-periphery",
 }
 
 

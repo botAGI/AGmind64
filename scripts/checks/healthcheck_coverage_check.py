@@ -44,6 +44,7 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "watchtower": "sidecar: periodic image updater, no long-lived readiness state",
     # no-probe: no shell / no HTTP readiness surface to exec a probe against
     "ssrf-proxy": "no-probe: ubuntu/squid rock runs under pebble with no usable shell",
+    "komodo-periphery": "no-probe: outbound agent (dials core over ws, listens 8120 self-signed TLS), no unauth liveness endpoint (ops profile, opt-in)",
     "dify-sandbox": "no-probe: internal code sandbox (ssrf-caged), no readiness endpoint",
     "dify-worker": "no-probe: celery worker, no HTTP readiness endpoint",
     # tech-debt: SHOULD ship a Docker health probe — tracked so it is not silently passing

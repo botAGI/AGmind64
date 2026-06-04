@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: komodo
+kind: app
+core:
+  upstream: moghtech/komodo (operator console core + periphery agent, MongoDB-backed)
+  recommended_version: 2.1.0
+  current_pin: 2.1.0
+  update_policy: compatible-minor
+  source: registry
+runtime:
+  service_descriptors:
+    - komodo-core
+    - komodo-mongo
+    - komodo-periphery
+  compose_profiles:
+    - ops
+provides:
+  - ops_console
+verification:
+  smoke:
+    - agmind render compose --profile ops --domain ci.example.com --output /tmp/agmind-komodo.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-komodo.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

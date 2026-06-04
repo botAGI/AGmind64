@@ -39,6 +39,7 @@ def test_service_profile_values_stable() -> None:
         "ui",
         "automation",
         "observability",
+        "ops",
         "proxmox",
         "security",
         "full",

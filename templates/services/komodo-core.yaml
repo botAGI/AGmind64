@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: komodo-core
+image: ghcr.io/moghtech/komodo-core:2.1.0
+digest: 5c294b803e89f371ef5c12c16880f0379c5d6bbdadb5151d485eb6ca67c6c71f
+tier: ops
+purpose: Komodo operator console — web UI + API over AGmind-provisioned stacks (2026-06-04)
+owner: agmind-core
+profiles:
+- ops
+ports:
+- 127.0.0.1:9120:9120
+depends_on:
+- komodo-mongo
+env:
+  KOMODO_DATABASE_ADDRESS: komodo-mongo:27017
+  KOMODO_DATABASE_USERNAME: ${KOMODO_DATABASE_USERNAME:-komodo}
+  KOMODO_DATABASE_PASSWORD: ${KOMODO_DATABASE_PASSWORD:?KOMODO_DATABASE_PASSWORD is required}
+  # Core MUST be told periphery's public key or the agent never registers — verified
+  # live: without it periphery loops "Core failed to validate Periphery public key".
+  # Shared keys dir means periphery writes periphery.pub here for core to read.
+  KOMODO_PERIPHERY_PUBLIC_KEY: file:/config/keys/periphery.pub
+  # Public URL for webhooks/redirects. Operator overrides for a routed deploy; the
+  # default keeps compose-validate happy and the console reachable on localhost.
+  KOMODO_HOST: ${KOMODO_HOST:-http://localhost:9120}
+  KOMODO_TITLE: AGmind Komodo
+  KOMODO_LOCAL_AUTH: "true"
+  KOMODO_INIT_ADMIN_USERNAME: ${KOMODO_INIT_ADMIN_USERNAME:-admin}
+  KOMODO_INIT_ADMIN_PASSWORD: ${KOMODO_INIT_ADMIN_PASSWORD:?KOMODO_INIT_ADMIN_PASSWORD is required}
+  KOMODO_FIRST_SERVER_NAME: Local
+  # Hardening: only the seeded admin; no open registration on a privileged console.
+  KOMODO_DISABLE_USER_REGISTRATION: "true"
+  KOMODO_WEBHOOK_SECRET: ${KOMODO_WEBHOOK_SECRET:?KOMODO_WEBHOOK_SECRET is required}
+  KOMODO_JWT_SECRET: ${KOMODO_JWT_SECRET:?KOMODO_JWT_SECRET is required}
+  TZ: Etc/UTC
+volumes:
+# Core↔periphery handshake keys (shared host dir with komodo-periphery). Both run as
+# root so a root-owned dir is fine.
+- /var/lib/agmind/komodo/keys:/config/keys
+- /var/lib/agmind/komodo/backups:/backups
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:9120/
+  interval: 15s
+  timeout: 5s
+  retries: 10
+  start_period: 20s
+access:
+  login: admin
+  # The seeded first-admin password (init_only — only applied on the empty-DB first boot).
+  password_env: KOMODO_INIT_ADMIN_PASSWORD
+routing:
+  host: komodo.agmind.dev
+  healthcheck_path: /
+provides:
+- ops_console

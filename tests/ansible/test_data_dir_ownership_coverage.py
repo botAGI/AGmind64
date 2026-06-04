@@ -277,6 +277,11 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         "traefik",
         "milvus",
         "n8n",
+        # Komodo (ops profile): mongo self-chowns /data like postgres; core+periphery
+        # run as root and write keys/backups as root. Verified live (2026-06-04 boot).
+        "komodo-mongo",
+        "komodo-core",
+        "komodo-periphery",
     }
 )
 

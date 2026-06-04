@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: komodo-periphery
+image: ghcr.io/moghtech/komodo-periphery:2.1.0
+digest: c4c8395cd0beed03e81088f9c416e04ca6147760b6aaca37a4a042bd4b5dde76
+tier: ops
+purpose: Komodo periphery agent — manages docker on the local node for the console (2026-06-04)
+owner: agmind-core
+profiles:
+- ops
+depends_on:
+- komodo-core
+env:
+  PERIPHERY_CORE_ADDRESS: ws://komodo-core:9120
+  # Must match komodo-core's KOMODO_FIRST_SERVER_NAME so core accepts the registration.
+  PERIPHERY_CONNECT_AS: Local
+  PERIPHERY_CORE_PUBLIC_KEYS: file:/config/keys/core.pub
+  # Lifecycle A: periphery's root dir IS the AGmind scenario stacks dir, so Komodo only
+  # ever sees/manages AGmind-provisioned stacks. Must be the same path inside and out.
+  PERIPHERY_ROOT_DIRECTORY: /opt/agmind/stacks
+  # Hardening: this agent already holds the docker socket as root; deny remote shells.
+  PERIPHERY_DISABLE_TERMINALS: "true"
+  PERIPHERY_DISABLE_CONTAINER_TERMINALS: "true"
+  PERIPHERY_INCLUDE_DISK_MOUNTS: /etc/hostname
+  TZ: Etc/UTC
+volumes:
+# Shared handshake keys (same host dir as komodo-core).
+- /var/lib/agmind/komodo/keys:/config/keys
+# The docker socket — periphery's whole job is to manage containers (start/stop/
+# redeploy). Mounted :ro to match the catalog contract (portainer does the same);
+# NOTE :ro on a unix socket does NOT make the Docker API read-only — this is
+# container-escape-equivalent (root socket), same risk class as the portainer agent
+# Komodo replaces. The ops profile is opt-in for exactly this reason.
+- /var/run/docker.sock:/var/run/docker.sock:ro
+- /proc:/proc:ro
+# Same path inside and out so docker compose path translation matches (upstream #180).
+- /opt/agmind/stacks:/opt/agmind/stacks
+resources:
+  cpus: 1.0
+  mem_limit: 512m
+# No healthcheck: periphery is an outbound agent (dials core over ws, listens on 8120
+# behind self-signed TLS) with no unauthenticated liveness endpoint — classified
+# safe-to-count-running in the healthcheck-coverage gate, like other agents.
+provides:
+- komodo_periphery
