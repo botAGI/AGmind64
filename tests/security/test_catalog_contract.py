@@ -45,6 +45,10 @@ SOCK_ALLOW = {
     "netdata",
     "cadvisor",
     "alloy",
+    # Read-only Docker-API gateway: mounts the socket :ro and re-exposes ONLY the GET endpoints
+    # prometheus docker_sd needs (CONTAINERS/NETWORKS/INFO=1, all write/exec/create=0). Its whole
+    # purpose is to keep the raw root socket OFF prometheus (live-audit 2026-06-05).
+    "docker-socket-proxy",
     # Komodo periphery agent: manages docker on the node for the ops console (opt-in
     # ops profile). Mounts the socket :ro per contract; same risk class as portainer.
     "komodo-periphery",

@@ -12,6 +12,7 @@ runtime:
   excluded_services:
     - alloy
     - cadvisor
+    - docker-socket-proxy
     - dozzle
     - homarr
     - netdata

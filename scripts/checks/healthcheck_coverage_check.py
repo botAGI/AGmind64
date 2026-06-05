@@ -47,6 +47,7 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "komodo-periphery": "no-probe: outbound agent (dials core over ws, listens 8120 self-signed TLS), no unauth liveness endpoint (ops profile, opt-in)",
     "dify-sandbox": "no-probe: internal code sandbox (ssrf-caged), no readiness endpoint",
     "dify-worker": "no-probe: celery worker, no HTTP readiness endpoint",
+    "docker-socket-proxy": "no-probe: stateless haproxy Docker-API gateway, running == ready",
     # tech-debt: SHOULD ship a Docker health probe — tracked so it is not silently passing
     "alertmanager": "tech-debt: add /-/healthy probe",
     "authelia": "tech-debt: add /api/health probe",

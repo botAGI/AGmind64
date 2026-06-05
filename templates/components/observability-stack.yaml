@@ -12,6 +12,7 @@ runtime:
     - alertmanager
     - alloy
     - cadvisor
+    - docker-socket-proxy
     - dozzle
     - grafana
     - homarr

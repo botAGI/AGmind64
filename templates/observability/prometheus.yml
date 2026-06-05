@@ -29,10 +29,14 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Docker service discovery — auto-discover из labels
+  # Docker service discovery — auto-discover из labels.
+  # Via the read-only docker-socket-proxy (NOT the raw socket): prometheus runs as nobody and
+  # must not hold root-equivalent Docker control. live-audit 2026-06-05: the raw unix socket was
+  # never mounted into this container → 0 targets → empty Grafana. The proxy exposes only the GET
+  # endpoints docker_sd needs over TCP on the shared agmind network.
   - job_name: docker-auto
     docker_sd_configs:
-      - host: unix:///var/run/docker.sock
+      - host: tcp://docker-socket-proxy:2375
         refresh_interval: 15s
     relabel_configs:
       # Whitelist: только containers с prometheus.scrape=true

@@ -15,6 +15,9 @@ run_as_uid: 65534
 # run_as_gid defaults to run_as_uid (65534)
 writable_mounts:
 - /var/lib/agmind/prometheus
+# NB: no hard depends_on the docker-socket-proxy — docker_sd reconnects every 15s once the
+# proxy (same observability profile) is up, and a hard depends_on would break isolated
+# prometheus renders. They are co-selected via the observability profile.
 resources:
   cpus: 2.0
   mem_limit: 2g

@@ -250,6 +250,7 @@ def test_repository_deploy_targets_load() -> None:
     assert targets["k3s"].runtime.excluded_services == (
         "alloy",
         "cadvisor",
+        "docker-socket-proxy",
         "dozzle",
         "homarr",
         "netdata",

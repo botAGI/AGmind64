@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: docker-socket-proxy
+# Verified live 2026-06-05: amd64/linux. Read-only Docker-API gateway (haproxy) so
+# prometheus docker_sd can discover scrape targets WITHOUT mounting the raw root socket
+# (live-audit HIGH: prometheus had no docker.sock → 0 targets → empty Grafana; and the raw
+# socket is root-equivalent host control). Only the GET endpoints docker_sd needs are allowed.
+image: tecnativa/docker-socket-proxy:0.3.0
+digest: 9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+tier: ops
+purpose: Read-only Docker API gateway for prometheus service discovery
+profiles:
+- observability
+volumes:
+- /var/run/docker.sock:/var/run/docker.sock:ro
+env:
+  # Allow ONLY the read endpoints prometheus docker_sd_configs calls.
+  CONTAINERS: '1'
+  NETWORKS: '1'
+  INFO: '1'
+  # Everything dangerous stays denied (defaults are 0; declared for intent + regression guard).
+  POST: '0'
+  EXEC: '0'
+  CONTAINERS_CREATE: '0'
+  IMAGES: '0'
+  VOLUMES: '0'
+  SECRETS: '0'
+  SERVICES: '0'
+no_new_privileges: true
+resources:
+  cpus: 0.25
+  mem_limit: 128m

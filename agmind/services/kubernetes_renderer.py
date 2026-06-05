@@ -42,6 +42,9 @@ _SECRET_TOKEN_MARKERS = (
 COMPOSE_ONLY_DOCKER_SOCKET_SERVICES = frozenset(
     {
         "cadvisor",  # Docker-native metrics; Kubernetes uses metrics-server/node-exporter
+        # Read-only Docker-API proxy for prometheus docker_sd; Kubernetes uses native
+        # endpoints/pod discovery, so there is no docker socket to proxy.
+        "docker-socket-proxy",
         "dozzle",
         "homarr",
         "netdata",
