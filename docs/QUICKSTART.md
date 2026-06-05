@@ -16,22 +16,23 @@
 
 ## TL;DR — single-node install
 
-Recommended TUI path for a clean manual install:
+Clean machine, one command. `make setup` creates the local `.venv`, installs the agmind CLI
+into it, and launches the TUI install wizard — there is no global `agmind` until the install
+writes one (the templates/ansible the installer needs live in this checkout, so the repo IS the
+bootstrap entry point):
 
 ```bash
-# 1. Clone repo
 git clone https://github.com/botAGI/AGmind64 && cd AGmind64
+make setup
+```
 
-# 2. Install local CLI deps
-uv venv
-uv pip install -e ".[dev]"
+Optional non-destructive proof first (if Docker Compose 2.24+ is already installed), and the
+non-interactive form:
 
-# 3. Optional non-destructive proof if Docker Compose 2.24+ is already installed
-agmind verify install --domain lab.example.com
-
-# 4. Interactive one-command install in TUI
-# Bootstrap installs/repairs official Docker Engine + docker-compose-plugin.
-agmind setup
+```bash
+make bootstrap                                  # just create .venv (no run)
+.venv/bin/agmind verify install --domain lab.example.com
+make install ARGS="--no-tui --domain lab.example.com --model-id qwen36-a3b-q4km"
 ```
 
 The TUI path runs the wizard, privileged bootstrap, runtime `.env` write,

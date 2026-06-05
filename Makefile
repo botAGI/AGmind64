@@ -1,6 +1,6 @@
-.PHONY: help audit smoke lint format test test-fast schema-export schema-validate \
-        pre-commit-install pre-commit-run docker-base docker-cpu docker-vulkan docker-rocm \
-        clean
+.PHONY: help bootstrap setup install audit smoke lint format test test-fast schema-export \
+        schema-validate pre-commit-install pre-commit-run docker-base docker-cpu docker-vulkan \
+        docker-rocm clean
 
 # Auto-detect venv: prefer .venv/bin/* если установлены, fallback на system PATH.
 # Это даёт make targets работать как в dev (.venv) так и в CI (system pip install).
@@ -9,8 +9,14 @@ PYTEST := $(shell test -x .venv/bin/pytest && echo .venv/bin/pytest || echo pyte
 RUFF   := $(shell test -x .venv/bin/ruff && echo .venv/bin/ruff || echo ruff)
 MYPY   := $(shell test -x .venv/bin/mypy && echo .venv/bin/mypy || echo mypy)
 
+VENV        := .venv
+VENV_AGMIND := $(VENV)/bin/agmind
+
 help:
-	@echo "AGmind dev targets:"
+	@echo "AGmind targets:"
+	@echo "  setup [ARGS=…]       — clean-machine entry: bootstrap venv, then \`agmind setup\`"
+	@echo "  install [ARGS=…]     — bootstrap venv, then \`agmind install\` (non-interactive)"
+	@echo "  bootstrap            — just create .venv + install agmind (no run)"
 	@echo "  audit                — run audit_forbidden.py (fail on findings)"
 	@echo "  lint                 — ruff check + mypy strict"
 	@echo "  format               — ruff format + auto-fix"
@@ -23,6 +29,33 @@ help:
 	@echo "  smoke                — load default backend and print device info"
 	@echo "  docker-base          — build base x86-64 image"
 	@echo "  docker-{cpu,vulkan,rocm}  — build backend images"
+
+# --- Bootstrap / install (clean-machine entry point) ---
+# On a fresh host the whole flow is: `git clone … && cd AGmindx86 && make setup`.
+# `make` creates the venv + installs the agmind CLI into it (the templates/ansible the
+# installer needs live in this checkout, which is why the entry point is the repo, not a
+# global binary — the install itself then writes /usr/local/bin/agmind for later use).
+
+# Real file target: only (re)builds when .venv/bin/agmind is missing → idempotent.
+$(VENV_AGMIND):
+	@echo "Bootstrapping $(VENV) (one-time)…"
+	@if command -v uv >/dev/null 2>&1; then \
+		uv venv --python python3 $(VENV) && \
+		uv pip install --python $(VENV)/bin/python -e .; \
+	else \
+		python3 -m venv $(VENV) && \
+		$(VENV)/bin/python -m pip install --upgrade pip setuptools wheel && \
+		$(VENV)/bin/python -m pip install -e .; \
+	fi
+
+bootstrap: $(VENV_AGMIND)
+
+# `make setup` / `make install ARGS="--no-tui --domain …"` — bootstrap then run the CLI.
+setup: $(VENV_AGMIND)
+	$(VENV_AGMIND) setup $(ARGS)
+
+install: $(VENV_AGMIND)
+	$(VENV_AGMIND) install $(ARGS)
 
 # --- Quality gates ---
 

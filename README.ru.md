@@ -87,14 +87,11 @@ agmind cluster inspect --timeout 10
 ```bash
 git clone https://github.com/botAGI/AGmind64 agmind
 cd agmind
-uv venv
-uv pip install -e ".[dev]"
 
-# Опциональная проверка, если Docker Compose 2.24+ уже доступен.
-agmind verify install --domain lab.example.com
-
-# TUI-установка одной командой; bootstrap поставит или починит Docker Engine при необходимости.
-agmind setup
+# Одна команда: `make setup` создаёт локальный .venv, ставит в него agmind CLI и запускает
+# TUI-визард установки (bootstrap поставит/починит Docker Engine при необходимости). Глобального
+# `agmind` нет, пока install его не создаст — точка входа это сам репозиторий-чекаут.
+make setup
 ```
 
 Non-interactive установка Strix Halo:

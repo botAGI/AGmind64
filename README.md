@@ -88,14 +88,11 @@ Last local readiness pass: 2026-05-26.
 ```bash
 git clone https://github.com/botAGI/AGmind64 agmind
 cd agmind
-uv venv
-uv pip install -e ".[dev]"
 
-# Optional proof when Docker Compose 2.24+ is already available.
-agmind verify install --domain lab.example.com
-
-# One-command TUI install; bootstrap installs/repairs Docker Engine if needed.
-agmind setup
+# One command: `make setup` creates the local .venv, installs the agmind CLI into it, and
+# launches the TUI install wizard (bootstrap installs/repairs Docker Engine if needed). There is
+# no global `agmind` until the install writes one — this checkout is the bootstrap entry point.
+make setup
 ```
 
 Non-interactive Strix Halo install:
