@@ -26,6 +26,28 @@ def test_selection_resolves_consumed_capability_provider() -> None:
     assert "llama-llm" in closure, "consumed llm_inference provider must be in the closure"
 
 
+def test_selecting_prometheus_pulls_docker_socket_proxy() -> None:
+    """live-audit 2026-06-05 (grafana-empty): prometheus docker_sd discovers targets over
+    tcp://docker-socket-proxy:2375; the proxy is otherwise observability-profile-only, so an
+    EXPLICIT-services selection (the operator's setup-state path) deployed prometheus WITHOUT
+    it -> 0 targets -> empty Grafana. Selecting prometheus must now pull the proxy into the
+    closure via the docker_api capability so it always co-deploys."""
+    from agmind.services.renderer import load_descriptors
+    from agmind.services.selection import resolve_service_selection
+
+    descriptors = load_descriptors()
+    closure = resolve_service_selection(descriptors, services=["prometheus"])
+    assert "docker-socket-proxy" in closure, "prometheus must pull its docker-socket-proxy"
+
+
+def test_prometheus_docker_api_consume_is_known_cross_profile() -> None:
+    """A raw per-service render of prometheus (no closure resolution) must NOT fail-closed on
+    the docker_api consume — the proxy is closure-pulled / profile-co-selected, not literal."""
+    from agmind.services.topology_checks import KNOWN_CROSS_PROFILE_CONSUMES
+
+    assert ("prometheus", "docker_api") in KNOWN_CROSS_PROFILE_CONSUMES
+
+
 def test_llm_endpoint_absent_when_llama_llm_not_in_render_set() -> None:
     """live-audit 2026-06-05 (HIGH dangling-llama-llm): openwebui/ragflow must NOT hardcode an
     http://llama-llm endpoint in their static env. When the LLM is skipped (no llama-llm in the

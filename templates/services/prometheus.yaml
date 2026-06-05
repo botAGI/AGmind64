@@ -16,10 +16,18 @@ run_as_uid: 65534
 writable_mounts:
 - /var/lib/agmind/prometheus
 # NB: no hard depends_on the docker-socket-proxy — docker_sd reconnects every 15s once the
-# proxy (same observability profile) is up, and a hard depends_on would break isolated
-# prometheus renders. They are co-selected via the observability profile.
+# proxy is up, and a hard depends_on would break isolated prometheus renders. Instead we co-pull
+# it via the docker_api capability below (resolve_service_selection adds the provider), so an
+# EXPLICIT-services selection deploys the proxy too — not only the observability profile.
 resources:
   cpus: 2.0
   mem_limit: 2g
 observability:
   prometheus_scrape: true
+# docker_sd_configs discovers targets over tcp://docker-socket-proxy:2375; consuming docker_api
+# makes selecting prometheus co-pull docker-socket-proxy into the closure (live-audit 2026-06-05
+# grafana-empty: the proxy was profile-only, so an explicit-services install left it out -> 0
+# targets). (prometheus, docker_api) is whitelisted in KNOWN_CROSS_PROFILE_CONSUMES so a raw
+# per-service render does not fail-closed when the proxy is not literally co-listed.
+consumes:
+- docker_api

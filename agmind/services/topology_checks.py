@@ -315,6 +315,11 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
     ("ragflow", "llm_inference"),
     ("ragflow", "embedding_inference"),
     ("ragflow", "reranker"),
+    # prometheus (observability) discovers targets via docker-socket-proxy (observability) over
+    # tcp://docker-socket-proxy:2375. Same profile but closure-pulled rather than literally
+    # co-listed — whitelist so a raw per-service prometheus render does not fail-closed when the
+    # proxy is absent. live-audit 2026-06-05 grafana-empty.
+    ("prometheus", "docker_api"),
 }
 
 

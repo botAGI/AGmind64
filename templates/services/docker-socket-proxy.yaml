@@ -29,3 +29,9 @@ no_new_privileges: true
 resources:
   cpus: 0.25
   mem_limit: 128m
+
+# Capability: prometheus consumes docker_api so selecting prometheus pulls this proxy into the
+# closure (otherwise it is observability-profile-only and an explicit-services selection deploys
+# prometheus without it -> 0 docker targets -> empty Grafana). live-audit 2026-06-05.
+provides:
+- docker_api

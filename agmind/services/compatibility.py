@@ -127,6 +127,13 @@ def check_service_compatibility(
         )
 
     # ---- 3. Missing capabilities (consumer без provider) ----
+    # Cross-profile / closure-pulled consumes (e.g. prometheus→docker_api co-pulls docker-socket-
+    # proxy; openwebui→llm_inference co-pulls llama-llm) are satisfied at deploy by
+    # resolve_service_selection. This validation runs on the raw `select_services` set, which does
+    # NOT expand that closure, so such consumes are NOT genuinely missing — don't hard-error them
+    # (matches renderer._check_unresolved_consumes). live-audit 2026-06-05.
+    from agmind.services.topology_checks import KNOWN_CROSS_PROFILE_CONSUMES
+
     consumed: dict[str, list[str]] = defaultdict(list)
     for name, d in selected.items():
         for cap in d.consumes:
@@ -134,14 +141,23 @@ def check_service_compatibility(
     for cap, consumers in consumed.items():
         if cap not in providers:
             optional = cap in OPTIONAL_MISSING_CAPABILITIES
+            if optional:
+                flagged = sorted(consumers)  # optional: surface as info for every consumer
+            else:
+                # hard error only for consumers whose consume is NOT a known closure-pulled link
+                flagged = sorted(
+                    c for c in consumers if (c, cap) not in KNOWN_CROSS_PROFILE_CONSUMES
+                )
+            if not flagged:
+                continue
             issues.append(
                 CompatIssue(
                     severity="info" if optional else "error",
                     kind="optional_missing_capability" if optional else "missing_capability",
-                    services=tuple(sorted(consumers)),
+                    services=tuple(flagged),
                     capability=cap,
                     message=(
-                        f"Сервис(ы) {', '.join(sorted(consumers))} requires "
+                        f"Сервис(ы) {', '.join(flagged)} requires "
                         f"'{cap}', но ни один selected сервис не provides его."
                     ),
                 )
