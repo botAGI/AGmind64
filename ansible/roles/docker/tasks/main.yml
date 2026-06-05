@@ -117,6 +117,7 @@
         "default-runtime": "{{ agmind_docker.default_runtime }}",
         "default-shm-size": "{{ agmind_docker.shm_size }}",
         "storage-driver": "overlay2",
+        "live-restore": true,
         "log-driver": "json-file",
         "log-opts": {
           "max-size": "100m",
