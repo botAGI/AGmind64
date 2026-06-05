@@ -181,9 +181,15 @@ def scan_file_perms(paths: Sequence[Path]) -> list[SecurityFinding]:
     """Flag secret files readable by group/other (should be 0600)."""
     findings: list[SecurityFinding] = []
     for path in paths:
-        if not path.exists():
+        try:
+            if not path.exists():
+                continue
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            # Can't inspect (e.g. a secret in a root-owned 0700 dir, not traversable by the
+            # non-root audit user) — skip, don't crash the whole `agmind security audit`. The
+            # file being unreachable to this user is itself a sign the perms are tight.
             continue
-        mode = stat.S_IMODE(path.stat().st_mode)
         if mode & 0o007:
             severity = "high"
         elif mode & 0o070:

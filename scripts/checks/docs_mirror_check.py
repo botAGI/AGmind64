@@ -28,11 +28,19 @@ def _read(path: Path) -> list[str]:
 
 
 def _heading_topology(lines: list[str]) -> list[int]:
-    return [
-        len(line) - len(line.lstrip("#"))
-        for line in lines
-        if line.startswith("#") and line.lstrip("#").startswith(" ")
-    ]
+    # Only REAL markdown headings — a `# comment` inside a ``` code fence (e.g. a bash
+    # comment) is not a heading and must not inflate the topology / EN-RU parity count.
+    topology: list[int] = []
+    in_fence = False
+    for line in lines:
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("#") and line.lstrip("#").startswith(" "):
+            topology.append(len(line) - len(line.lstrip("#")))
+    return topology
 
 
 def _parse_code_blocks(lines: list[str]) -> tuple[list[CodeBlock], list[str]]:

@@ -135,6 +135,24 @@ def test_world_readable_secret_file_flagged(tmp_path: Path) -> None:
     assert findings[0].severity in ("high", "medium")
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses dir-traversal perms")
+def test_scan_file_perms_skips_unreadable_path_without_crashing(tmp_path: Path) -> None:
+    """A secret in a root-owned 0700 dir (e.g. /var/lib/agmind/secrets after a live deploy) is
+    not traversable by the non-root audit user — scan_file_perms must SKIP it, not crash the
+    whole `agmind security audit` with PermissionError (surfaced by a real post-deploy run)."""
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    token = secret_dir / "cf_dns_api_token"
+    token.write_text("token", encoding="utf-8")
+    os.chmod(token, 0o600)
+    os.chmod(secret_dir, 0o000)  # deny traversal → stat(token) raises PermissionError
+    try:
+        result = scan_file_perms([token])  # must not raise
+    finally:
+        os.chmod(secret_dir, 0o700)  # restore so tmp cleanup can remove it
+    assert result == []
+
+
 # ---- gate / exit ----
 
 
@@ -169,14 +187,16 @@ def test_audit_install_not_installed_returns_uninstalled(tmp_path: Path) -> None
 
 def test_audit_install_clean_has_no_blocking_findings(tmp_path: Path) -> None:
     d = _install(tmp_path, "services:\n  db:\n    ports:\n      - 127.0.0.1:5432:5432\n")
-    findings, installed = audit_install(d)
+    # Isolate data_dir into the sandbox so the scan never reaches the real /var/lib/agmind
+    # (a live deploy's root-owned secrets there would otherwise leak into this unit test).
+    findings, installed = audit_install(d, data_dir=tmp_path / "data")
     assert installed is True
     assert gate_exit(findings, block="high") == 0
 
 
 def test_audit_install_exposed_port_blocks(tmp_path: Path) -> None:
     d = _install(tmp_path, "services:\n  api:\n    ports:\n      - 0.0.0.0:9000:9000\n")
-    findings, _ = audit_install(d)
+    findings, _ = audit_install(d, data_dir=tmp_path / "data")
     assert gate_exit(findings, block="high") == 1
 
 

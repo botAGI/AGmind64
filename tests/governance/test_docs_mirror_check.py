@@ -40,7 +40,9 @@ def test_docs_mirror_check_json_output_includes_counts() -> None:
     payload = json.loads(out)
     assert payload["ok"] is True
     assert payload["error_count"] == 0
-    assert payload["heading_count"] == 14
+    # 12 REAL markdown headings (the check now excludes `#` bash comments inside ``` fences,
+    # which previously inflated this count — see docs_mirror_check._heading_topology).
+    assert payload["heading_count"] == 12
     assert payload["code_block_count"] == 15
 
 
