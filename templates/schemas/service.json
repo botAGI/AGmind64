@@ -372,6 +372,36 @@
       "title": "Cap Add",
       "type": "array"
     },
+    "cap_drop": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cap Drop",
+      "type": "array"
+    },
+    "read_only": {
+      "default": false,
+      "title": "Read Only",
+      "type": "boolean"
+    },
+    "pids_limit": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pids Limit"
+    },
+    "no_new_privileges": {
+      "default": false,
+      "title": "No New Privileges",
+      "type": "boolean"
+    },
     "depends_on": {
       "items": {
         "type": "string"

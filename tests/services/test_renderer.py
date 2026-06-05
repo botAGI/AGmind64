@@ -272,6 +272,41 @@ def test_observability_explicit_metrics_port() -> None:
     assert labels["prometheus.port"] == "9090"
 
 
+def test_compose_service_hardening_fields() -> None:
+    """live-audit 2026-06-05 (HIGH schema-cannot-cap-drop-or-readonly-rootfs): the schema and
+    renderer must express the container-hardening primitives cap_drop / read_only / pids_limit /
+    no_new_privileges."""
+    d = _minimal_descriptor(
+        cap_drop=["ALL"],
+        cap_add=["NET_BIND_SERVICE"],
+        read_only=True,
+        pids_limit=256,
+        no_new_privileges=True,
+    )
+    svc = descriptor_to_compose_service(d)
+    assert svc["cap_drop"] == ["ALL"]
+    assert svc["cap_add"] == ["NET_BIND_SERVICE"]
+    assert svc["read_only"] is True
+    assert svc["pids_limit"] == 256
+    assert svc["security_opt"] == ["no-new-privileges:true"]
+
+
+def test_compose_service_no_new_privileges_merges_without_dup() -> None:
+    d = _minimal_descriptor(
+        security_opt=["seccomp=unconfined", "no-new-privileges:true"],
+        no_new_privileges=True,
+    )
+    svc = descriptor_to_compose_service(d)
+    assert svc["security_opt"] == ["seccomp=unconfined", "no-new-privileges:true"]
+
+
+def test_compose_service_hardening_absent_by_default() -> None:
+    """A default descriptor emits NO hardening keys → every existing service byte-identical."""
+    svc = descriptor_to_compose_service(_minimal_descriptor())
+    for key in ("cap_drop", "read_only", "pids_limit"):
+        assert key not in svc
+
+
 # ---------- descriptor_to_compose_service ----------
 
 

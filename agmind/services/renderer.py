@@ -405,10 +405,19 @@ def descriptor_to_compose_service(
         svc["devices"] = list(d.devices)
     if d.group_add:
         svc["group_add"] = _resolve_group_add(list(d.group_add))
-    if d.security_opt:
-        svc["security_opt"] = list(d.security_opt)
+    sec_opts = list(d.security_opt)
+    if d.no_new_privileges and "no-new-privileges:true" not in sec_opts:
+        sec_opts.append("no-new-privileges:true")
+    if sec_opts:
+        svc["security_opt"] = sec_opts
     if d.cap_add:
         svc["cap_add"] = list(d.cap_add)
+    if d.cap_drop:
+        svc["cap_drop"] = list(d.cap_drop)
+    if d.read_only:
+        svc["read_only"] = True
+    if d.pids_limit is not None:
+        svc["pids_limit"] = d.pids_limit
     if d.networks:
         # Non-empty → join ONLY these networks (compose long-form mapping). Empty
         # stays absent so every other service is byte-identical on `default`.

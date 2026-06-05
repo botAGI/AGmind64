@@ -316,6 +316,22 @@ class ServiceDescriptor(BaseModel):
     cap_add: list[str] = Field(default_factory=list)
     """Linux capabilities to add, e.g. ['SYS_PTRACE']. Compose `cap_add:`."""
 
+    cap_drop: list[str] = Field(default_factory=list)
+    """Linux capabilities to DROP, e.g. ['ALL']. Compose `cap_drop:`. Hardening: drop ALL,
+    then cap_add only what's needed (live-audit 2026-06-05 container-hardening)."""
+
+    read_only: bool = False
+    """Read-only root filesystem (compose `read_only: true`). The app must write only to
+    declared volumes/tmpfs. Hardening — esp. for app-as-root containers."""
+
+    pids_limit: int | None = Field(default=None, ge=1)
+    """Max process IDs (compose `pids_limit:`) — fork-bomb / PID-exhaustion guard. None = unset
+    (live-audit 2026-06-05 no-pids-limit — matters most for untrusted code, e.g. dify-sandbox)."""
+
+    no_new_privileges: bool = False
+    """If True the renderer adds ``no-new-privileges:true`` to ``security_opt`` (a process can no
+    longer gain privileges via setuid/setgid). Convenience over hand-writing the opt string."""
+
     depends_on: list[str] = Field(default_factory=list)
     """Имена других сервисов (для `depends_on:` в compose)."""
 
