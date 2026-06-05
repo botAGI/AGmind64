@@ -509,6 +509,46 @@ def _run_sudo_runtime_command(
         raise OSError(f"sudo command failed rc={rc}: {cmd[0]}")
 
 
+def _write_private_text_maybe_sudo(
+    config: InstallConfig,
+    path: Path,
+    content: str,
+    callback: ProgressCallback,
+    step_id: str,
+) -> None:
+    """Write a 0600 file at ``path``; fall back to ``sudo install`` if the dir is not writable.
+
+    The install dir (e.g. ``/opt/agmind``) is created root/agmind-owned via the sudo runtime
+    payload, so a non-root install user cannot even ``mkstemp`` inside it — ``write_private_text``
+    raised PermissionError and ``credentials.txt`` was silently skipped, leaving the operator with
+    no password record (live-audit 2026-06-05 credentials-txt-write-no-sudo-path). Mirror the
+    .env write: stage to a user-writable temp, then place it root:root 0600 via sudo.
+    """
+    try:
+        write_private_text(path, content)
+        return
+    except PermissionError:
+        pass
+    import tempfile
+
+    fd, tmp = tempfile.mkstemp(prefix=".agmind-creds-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(tmp, 0o600)
+        _run_sudo_runtime_command(
+            config,
+            ["install", "-m", "0600", "-o", "root", "-g", "root", tmp, str(path)],
+            callback,
+            step_id,
+        )
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 def _ensure_models_dir(
     config: InstallConfig,
     callback: ProgressCallback,
@@ -2173,7 +2213,7 @@ class CredentialsStep(InstallStep):
                 report, generated_at=generated_at, llama_model=config.model_file
             )
             creds_path = config.install_dir / "credentials.txt"
-            write_private_text(creds_path, text)
+            _write_private_text_maybe_sudo(config, creds_path, text, callback, self.step_id)
         except Exception as exc:  # noqa: BLE001 — never fail install on a convenience artifact
             return InstallStepResult(
                 step_id=self.step_id,

@@ -96,3 +96,47 @@ def test_credentials_step_reads_root_owned_env_via_sudo(
 
 def test_credentials_step_is_final_in_default_pipeline() -> None:
     assert [s.step_id for s in default_steps()][-1] == "credentials"
+
+
+def test_credentials_step_writes_via_sudo_when_dir_not_writable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live-audit 2026-06-05 (credentials-txt-write-no-sudo-path): /opt/agmind is owned by the
+    agmind user but the install ran as a different non-root user, so write_private_text could not
+    mkstemp inside it and credentials.txt was silently skipped. CredentialsStep must stage the
+    file and place it via the sudo helper (mirroring how .env is written)."""
+    from agmind.install import steps
+
+    install_dir = tmp_path / "opt"
+    install_dir.mkdir()
+    (install_dir / ".env").write_text("GRAFANA_PASSWORD=topsecret\n", encoding="utf-8")
+    cfg = InstallConfig(
+        domain="lab.test",
+        cf_api_token="x" * 20,
+        services=["grafana"],
+        install_dir=install_dir,
+        model_file="m.gguf",
+        sudo_password="pw",
+    )
+
+    def deny_direct(_p: Path, _c: str) -> None:
+        raise PermissionError("[Errno 13] Permission denied: /opt/agmind")
+
+    monkeypatch.setattr(steps, "write_private_text", deny_direct)
+
+    placed: dict[str, str] = {}
+
+    def fake_sudo(_config: object, cmd: list[str], _cb: object, _sid: object) -> None:
+        assert cmd[0] == "install"
+        assert cmd[-1] == str(install_dir / "credentials.txt")
+        placed["content"] = Path(cmd[-2]).read_text(encoding="utf-8")
+        Path(cmd[-1]).write_text(placed["content"], encoding="utf-8")
+
+    monkeypatch.setattr(steps, "_run_sudo_runtime_command", fake_sudo)
+
+    res = CredentialsStep().run(lambda _e: None, cfg)
+    assert res.success, res.message
+    creds = install_dir / "credentials.txt"
+    assert creds.exists(), "credentials.txt must be placed via sudo, not silently skipped"
+    assert "topsecret" in creds.read_text(encoding="utf-8")
+    assert "topsecret" in placed["content"]
