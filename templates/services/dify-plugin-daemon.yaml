@@ -6,6 +6,11 @@ tier: app
 purpose: Dify plugin runtime — 2026-04
 profiles:
 - rag
+volumes:
+# Persist installed plugins (PLUGIN_WORKING_PATH=/app/storage/cwd lives here); without this
+# bind they sit on the ephemeral container layer and are LOST on restart/recreate
+# (live-audit 2026-06-05 MED). Daemon runs as root, so Docker auto-creates the host dir.
+- /var/lib/agmind/dify-plugin-daemon:/app/storage
 env:
   DB_HOST: postgres
   DB_PORT: '5432'
