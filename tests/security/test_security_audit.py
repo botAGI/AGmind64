@@ -231,6 +231,9 @@ def test_audit_unreadable_env_degrades_without_false_positives(tmp_path: Path) -
     assert installed is True
     checks = [f.check for f in findings]
     assert "env-unreadable" in checks, checks
+    # surfaced as a WARNING (the secret-value scan was skipped), not a buried info finding
+    unreadable = next(f for f in findings if f.check == "env-unreadable")
+    assert unreadable.severity == "warning", unreadable.severity
     assert "weak-secret" not in checks, f"unreadable .env must not false-flag defaults: {checks}"
 
 

@@ -277,10 +277,13 @@ def audit_install(
             findings.append(
                 SecurityFinding(
                     "env-unreadable",
-                    "info",
+                    # warning (not info): the secret-VALUE scan is SKIPPED entirely as non-root, so
+                    # weak/duplicate secrets would go undetected — surface that the posture scan is
+                    # incomplete rather than burying it (live-audit 2026-06-05 env-scan-noops).
+                    "warning",
                     str(env_path),
-                    f"could not read .env to scan secret values ({exc}); "
-                    "re-run as the install owner or with sudo for the full posture scan",
+                    f"could not read .env to scan secret values ({exc}); the secret-strength scan "
+                    "was SKIPPED — re-run as the install owner or with `sudo` for the full scan",
                     "",
                 )
             )
