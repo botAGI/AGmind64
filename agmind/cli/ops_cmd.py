@@ -40,17 +40,48 @@ def _prompt_sudo_password(ask_sudo_password: bool) -> str | None:
     return getpass.getpass("sudo password: ")
 
 
+def _compose_project_name(install_dir: Path) -> str:
+    """Compose project name WITHOUT reading .env — the rendered compose file's top-level
+    ``name:`` if present, else the install-dir basename (docker compose's default)."""
+    compose_file = install_dir / "docker-compose.yml"
+    try:
+        for line in compose_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("name:"):
+                value = line.split(":", 1)[1].strip().strip("'\"")
+                if value:
+                    return value
+            elif line and not line[0].isspace() and not line.startswith("#"):
+                # left the top-level header region without finding name: → use the default
+                break
+    except OSError:
+        pass
+    return install_dir.name
+
+
 def _running_compose_services(install_dir: Path) -> list[str]:
-    """Return list of running services if compose deployment is up. Empty otherwise."""
+    """Running services of the deployed compose project — WITHOUT reading .env.
+
+    `docker compose ps` loads the project .env (root:root 0600 on a real deploy) and exits
+    non-zero for a non-root operator → this used to return [] → a `--include-data` backup then
+    silently captured ZERO data and reported success (live-audit 2026-06-05 HIGH
+    backup-include-data-empty). Query the daemon by compose-project label instead.
+    """
     if shutil.which("docker") is None:
         return []
     compose_file = install_dir / "docker-compose.yml"
     if not compose_file.exists():
         return []
+    project = _compose_project_name(install_dir)
     try:
         proc = subprocess.run(
-            ["docker", "compose", "ps", "--services", "--filter", "status=running"],
-            cwd=install_dir,
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--format",
+                '{{.Label "com.docker.compose.service"}}',
+            ],
             capture_output=True,
             text=True,
             timeout=5.0,
@@ -60,7 +91,7 @@ def _running_compose_services(install_dir: Path) -> list[str]:
         return []
     if proc.returncode != 0:
         return []
-    return [s for s in proc.stdout.splitlines() if s.strip()]
+    return sorted({s.strip() for s in proc.stdout.splitlines() if s.strip()})
 
 
 def cmd_logs(
@@ -114,6 +145,18 @@ def cmd_backup(
 
         descriptors = load_descriptors()
         services = _running_compose_services(install_dir)
+        if not services:
+            # Fail LOUDLY: a --include-data backup with zero enumerated services would write a
+            # config-only archive that LOOKS complete but contains no DB dumps / volume tars →
+            # silent total data loss on restore (live-audit 2026-06-05 HIGH). Never pretend.
+            print(
+                "agmind backup: --include-data but no running services found for compose "
+                f"project '{_compose_project_name(install_dir)}' — refusing to write a backup "
+                "that captures ZERO data. Start the stack first, or drop --include-data for a "
+                "config-only backup.",
+                file=sys.stderr,
+            )
+            return 1
         env_path = install_dir / ".env"
         # Don't crash the whole backup if .env is root-owned + unreadable without sudo — the
         # config tier still backs up; a DB dump that then lacks its password fails visibly.

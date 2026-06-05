@@ -400,7 +400,10 @@ def test_cmd_backup_include_data_without_sudo_warns(
 
     install = tmp_path / "opt"
     install.mkdir()
-    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: [])
+    # Services present (the sudo-warn is only relevant when there IS data to capture; empty
+    # services now fail loudly via the zero-data guard — see test_cmd_backup_include_data_
+    # fails_loud_when_no_running_services).
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["postgres"])
     monkeypatch.setattr(
         ops_cmd,
         "create_backup",

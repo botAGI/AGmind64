@@ -1142,4 +1142,53 @@ def test_running_compose_services_parses_lines(
         returncode = 0
 
     monkeypatch.setattr("subprocess.run", lambda *a, **kw: FakeProc())
-    assert ops_cmd._running_compose_services(tmp_path) == ["traefik", "llama-llm", "qdrant"]
+    # sorted + deduped (consumers don't depend on order; deterministic is better)
+    assert ops_cmd._running_compose_services(tmp_path) == ["llama-llm", "qdrant", "traefik"]
+
+
+def test_running_compose_services_uses_label_not_env_compose_ps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live-audit 2026-06-05 (HIGH backup-include-data-empty): service enumeration must NOT
+    shell out to `docker compose ps` (which reads the root-owned .env and returns [] for a
+    non-root operator → silent zero-data backup). Query the daemon by compose-project label."""
+    from agmind.cli import ops_cmd
+
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="postgres\nredis\npostgres\n", stderr="")
+
+    monkeypatch.setattr(ops_cmd.shutil, "which", lambda _x: "/usr/bin/docker")
+    monkeypatch.setattr(ops_cmd.subprocess, "run", fake_run)
+
+    services = ops_cmd._running_compose_services(tmp_path)
+    assert services == ["postgres", "redis"]  # sorted + deduped
+    assert len(calls) == 1
+    argv = calls[0]
+    assert argv[:2] == ["docker", "ps"]  # NOT ["docker", "compose", "ps"]
+    assert "compose" not in argv
+    assert f"label=com.docker.compose.project={tmp_path.name}" in argv
+
+
+def test_cmd_backup_include_data_fails_loud_when_no_running_services(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A --include-data backup that would capture ZERO data (no running services enumerated)
+    must FAIL LOUDLY, not write a config-only archive labeled '✓ success'."""
+    from agmind.cli import ops_cmd
+
+    out = tmp_path / "backup.tar.gz"
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: [])
+
+    def must_not_run(**_kw: object) -> object:
+        raise AssertionError("create_backup must not run when the data tier is empty")
+
+    monkeypatch.setattr(ops_cmd, "create_backup", must_not_run)
+    rc = ops_cmd.cmd_backup(out, include_data=True, install_dir=tmp_path)
+    assert rc != 0
+    err = capsys.readouterr().err.lower()
+    assert "no running services" in err
+    assert not out.exists()
