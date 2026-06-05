@@ -306,7 +306,18 @@ def cmd_restore(
     from agmind.core.env import parse_env_file
 
     env_path = install_dir / ".env"
-    env = parse_env_file(env_path) if env_path.exists() else {}
+    try:
+        env = parse_env_file(env_path) if env_path.exists() else {}
+    except PermissionError:
+        # Root-owned .env unreadable as non-root: don't crash with a traceback — restore the
+        # config/volume members and let DB-dump members that need a password surface as failed
+        # (RestoreResult.failed). For a full DB restore, re-run with sudo.
+        print(
+            "agmind restore: .env is root-owned (0600) — DB-credential restores need sudo; "
+            "config/volume members will still restore.",
+            file=sys.stderr,
+        )
+        env = {}
     for member in raw_data if isinstance(raw_data, list) else []:
         if not isinstance(member, dict):
             continue
@@ -416,8 +427,19 @@ def cmd_rotate_secrets(
         print(f"agmind rotate-secrets: no .env found at {env_path}", file=sys.stderr)
         return 2
 
-    text = env_path.read_text(encoding="utf-8")
-    env = parse_env_file(env_path)
+    try:
+        text = env_path.read_text(encoding="utf-8")
+        env = parse_env_file(env_path)
+    except PermissionError as exc:
+        # /opt/agmind/.env is root:root 0600; rotate-secrets must READ and WRITE it, so it
+        # genuinely needs root. Guide the operator instead of dumping a raw traceback
+        # (live-audit 2026-06-05 rotate-secrets-permissionerror-traceback).
+        print(
+            f"agmind rotate-secrets: cannot read {env_path} ({exc}) — the .env is root-owned. "
+            "Re-run with sudo (e.g. `sudo -E agmind ops rotate-secrets ...`).",
+            file=sys.stderr,
+        )
+        return 1
     plan = plan_rotation(env, include=include or [], force_destructive=force_destructive)
 
     print("rotate-secrets plan:")

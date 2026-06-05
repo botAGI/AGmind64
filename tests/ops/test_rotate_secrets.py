@@ -156,3 +156,27 @@ def test_rotate_cli_dry_run_makes_no_changes(tmp_path, monkeypatch) -> None:
         env_path.read_text(encoding="utf-8") == "REDIS_PASSWORD=oldredis\nPOSTGRES_PASSWORD=oldpg\n"
     )
     assert "REDIS_PASSWORD" in result.output
+
+
+@pytest.mark.skipif(__import__("os").geteuid() == 0, reason="root bypasses file read perms")
+def test_cmd_rotate_secrets_graceful_on_unreadable_env(
+    tmp_path: object, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """live-audit 2026-06-05 (rotate-secrets-permissionerror-traceback): a root-owned 0600 .env
+    must yield a friendly 'run with sudo' message + rc=1, not a raw PermissionError traceback."""
+    import os
+    from pathlib import Path
+
+    from agmind.cli.ops_cmd import cmd_rotate_secrets
+
+    install = Path(str(tmp_path))
+    env = install / ".env"
+    env.write_text("GRAFANA_PASSWORD=x\n", encoding="utf-8")
+    os.chmod(env, 0o000)
+    try:
+        rc = cmd_rotate_secrets(install_dir=install)
+    finally:
+        os.chmod(env, 0o600)
+    assert rc == 1
+    err = capsys.readouterr().err.lower()
+    assert "sudo" in err and "root-owned" in err
