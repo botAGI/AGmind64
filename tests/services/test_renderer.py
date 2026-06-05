@@ -165,6 +165,21 @@ def test_traefik_labels_basic_routing() -> None:
     assert labels["traefik.http.services.qdrant.loadbalancer.healthcheck.path"] == "/health"
 
 
+def test_traefik_labels_routing_port_override() -> None:
+    """routing.port decouples the Traefik upstream port from the published host port.
+
+    Live-audit 2026-06-05 (HIGH ragflow-edge-route-wrong-port): RAGFlow publishes only the
+    API port 9380 but its web UI is on container port 80 (nginx). The edge router must target
+    80; without a port override _first_container_port picks 9380 and the UI 404s at the edge.
+    """
+    d = _minimal_descriptor(
+        routing={"host": "rag.agmind.dev", "middleware_chain": "chain-llm", "port": 80},
+    )
+    labels = render_traefik_labels(d)
+    # overrides _first_container_port (which would yield 6333 from the default ports[])
+    assert labels["traefik.http.services.qdrant.loadbalancer.server.port"] == "80"
+
+
 def test_traefik_labels_path_prefixes_and_priority() -> None:
     """Multi-component-on-one-host (Dify): path_prefixes scope the router rule to specific
     paths and priority ranks it above the host-only catch-all sibling."""

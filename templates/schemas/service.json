@@ -208,6 +208,20 @@
           "title": "Healthcheck Path",
           "type": "string"
         },
+        "port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        },
         "path_prefixes": {
           "default": [],
           "items": {

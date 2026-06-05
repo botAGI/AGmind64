@@ -38,6 +38,12 @@ routing:
   host: rag.agmind.dev
   middleware_chain: chain-llm
   sse: true
+  # RAGFlow serves its web UI from nginx on container port 80 and its API (hypercorn) on
+  # 9380. We publish only 9380 (for the Dify ragflow-api plugin), so without this override
+  # the edge router targets 9380 and every browser path 404s ("Not Found: /"). Route the
+  # edge to the nginx UI on 80; nginx proxies /api/v1/system/healthz -> 200 so the active
+  # healthcheck below still works. live-audit 2026-06-05 HIGH ragflow-edge-route-wrong-port.
+  port: 80
   # RAGFlow v0.25.5 serves health at /api/v1/system/healthz (not the /health default);
   # the default probe 404s -> traefik drops the backend from routing (502 at the edge).
   healthcheck_path: /api/v1/system/healthz

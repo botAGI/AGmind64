@@ -129,6 +129,15 @@ class RoutingConfig(BaseModel):
     healthcheck_path: str = "/health"
     """Путь для Traefik active healthchecks (отдельно от Docker healthcheck)."""
 
+    port: int | None = Field(default=None, ge=1, le=65535)
+    """Traefik upstream (loadbalancer.server.port) override — the CONTAINER-side port the
+    edge routes to, decoupled from the published host port in ``ports``.
+
+    Default None → renderer falls back to the first ``ports`` mapping's container port. Set
+    this when the service's edge/UI port differs from what it publishes (RAGFlow publishes the
+    API 9380 but serves its web UI on nginx :80 — the router must target 80). live-audit
+    2026-06-05 HIGH ragflow-edge-route-wrong-port."""
+
     path_prefixes: tuple[str, ...] = ()
     """Если non-empty → router rule = ``Host(`host`) && (PathPrefix(`p0`) || PathPrefix(`p1`) …)``.
     Пустой кортеж = Host-only rule (текущее поведение). tuple (НЕ list) — модель frozen=True.

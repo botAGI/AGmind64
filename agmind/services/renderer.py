@@ -278,8 +278,9 @@ def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
     if routing.priority:
         labels[f"traefik.http.routers.{name}.priority"] = str(routing.priority)
 
-    # Port — берём container-side первого port mapping
-    container_port = _first_container_port(d)
+    # Port — routing.port override (edge/UI port ≠ published port), else container-side of the
+    # first port mapping. live-audit 2026-06-05: RAGFlow must route to nginx :80, not API 9380.
+    container_port = str(routing.port) if routing.port is not None else _first_container_port(d)
     if container_port:
         labels[f"traefik.http.services.{name}.loadbalancer.server.port"] = container_port
 
