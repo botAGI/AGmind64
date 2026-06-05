@@ -72,3 +72,6 @@ consumes:
 - reranker
 - vector_db
 - dify_external_kb
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

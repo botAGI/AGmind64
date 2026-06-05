@@ -32,3 +32,6 @@ routing:
 # Phase O capabilities
 consumes:
 - llm_inference
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

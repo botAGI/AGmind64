@@ -31,3 +31,6 @@ routing:
   # /explore, static) lands here. Without an explicit priority traefik could rank this
   # host-only rule above dify-api and steal the API paths.
   priority: 1
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

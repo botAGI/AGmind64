@@ -32,3 +32,6 @@ routing:
   healthcheck_path: /api/health
 observability:
   prometheus_scrape: true
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

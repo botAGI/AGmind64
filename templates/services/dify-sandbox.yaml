@@ -19,3 +19,8 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 1g
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true
+# pids_limit: fork-bomb / PID-exhaustion guard for the untrusted-code sandbox.
+pids_limit: 512

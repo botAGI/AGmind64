@@ -43,3 +43,6 @@ consumes:
 - llm_inference
 - embedding_inference
 - vector_db
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

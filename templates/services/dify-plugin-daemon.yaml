@@ -34,3 +34,6 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 2g
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true

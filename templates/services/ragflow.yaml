@@ -68,3 +68,6 @@ consumes:
 - embedding_inference
 - reranker
 - search_index
+
+# Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
+no_new_privileges: true
