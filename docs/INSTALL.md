@@ -12,18 +12,15 @@
 потом запускай TUI:
 
 ```bash
-uv venv
-uv pip install -e ".[dev]"
+# Main one-command path — make creates the .venv, installs the CLI into it, runs the wizard:
+make setup
 
-# Optional proof when Docker Compose 2.24+ is already available:
-agmind verify install --domain lab.example.com
+# Optional non-mutating proofs first (after `make bootstrap` creates the .venv):
+.venv/bin/agmind verify install --domain lab.example.com
 
 # Focused descriptor proof for one or more explicit services:
-agmind render compose --service n8n --service dozzle --domain lab.example.com \
+.venv/bin/agmind render compose --service n8n --service dozzle --domain lab.example.com \
   --output /tmp/agmind-focused.yml
-
-# Main one-command TUI path:
-agmind setup
 ```
 
 `agmind setup` ведет оператора через wizard, bootstrap, запись runtime `.env`

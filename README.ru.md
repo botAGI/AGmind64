@@ -94,15 +94,14 @@ cd agmind
 make setup
 ```
 
+> Примеры `agmind …` ниже предполагают, что install уже добавил `agmind` в PATH. **До первой
+> установки** (чистая машина) запускай через `make setup` / `make install`, либо CLI напрямую как
+> `.venv/bin/agmind …` (после `make bootstrap`), либо один раз `source .venv/bin/activate`.
+
 Non-interactive установка Strix Halo:
 
 ```bash
-agmind install --no-tui \
-  --domain lab.example.com \
-  --cf-token-file token.txt \
-  --model-id qwen36-a3b-q4km \
-  --ctx-size 16384 \
-  --kv-cache q8_0
+make install ARGS="--no-tui --domain lab.example.com --cf-token-file token.txt --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0"
 ```
 
 Каталог моделей:
@@ -166,9 +165,8 @@ record.
 
 ```bash
 cd ~/agmind
-uv venv
-uv pip install -e ".[dev]"
-agmind cluster advertise --duration 600
+make bootstrap
+.venv/bin/agmind cluster advertise --duration 600
 ```
 
 На первой ноде:
