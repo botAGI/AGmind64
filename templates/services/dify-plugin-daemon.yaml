@@ -11,6 +11,8 @@ volumes:
 # bind they sit on the ephemeral container layer and are LOST on restart/recreate
 # (live-audit 2026-06-05 MED). Daemon runs as root, so Docker auto-creates the host dir.
 - /var/lib/agmind/dify-plugin-daemon:/app/storage
+writable_mounts:
+- /var/lib/agmind/dify-plugin-daemon
 env:
   DB_HOST: postgres
   DB_PORT: '5432'
