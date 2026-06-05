@@ -65,6 +65,9 @@ _KNOWN_MISSING_TOOLS: dict[str, frozenset[str]] = {
 _KNOWN_PRESENT_TOOLS: dict[str, frozenset[str]] = {
     "ghcr.io/ggml-org/llama.cpp:server-vulkan-b9049": frozenset({"curl"}),
     "mysql:8.0.46-oraclelinux9": frozenset({"curl"}),
+    # curl verified present by live `docker exec ... command -v curl` (2026-06-05).
+    "elasticsearch:8.19.16": frozenset({"curl"}),
+    "ghcr.io/moghtech/komodo-core:2.1.0": frozenset({"curl"}),
 }
 
 _PIPELINE_SEPARATORS: frozenset[str] = frozenset({"&&", "||", ";", "|", "&"})

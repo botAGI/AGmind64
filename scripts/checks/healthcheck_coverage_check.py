@@ -54,7 +54,6 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
     "dify-web": "tech-debt: add web readiness probe",
     "docling": "tech-debt: add /health probe",
-    "elasticsearch": "tech-debt: add cluster-health probe",
     "grafana": "tech-debt: add /api/health probe",
     "homarr": "tech-debt: add web readiness probe (not in default selection)",
     "loki": "tech-debt: add /ready probe",

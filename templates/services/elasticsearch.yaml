@@ -20,6 +20,19 @@ env:
 resources:
   cpus: 4.0
   mem_limit: 8g
+# Without a healthcheck, ragflow's depends_on fell back to service_started and could boot
+# before ES was ready (live-audit 2026-06-05 MED). CMD (exec) form so the `&` in the query
+# string is part of the URL arg, not a shell operator. curl is present in the 8.x image.
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s
+  start_period: 120s
+  interval: 15s
+  timeout: 10s
+  retries: 10
 
 # Phase O capabilities
 provides:
