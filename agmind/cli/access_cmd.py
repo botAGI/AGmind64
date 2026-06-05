@@ -44,6 +44,23 @@ def _deployed_services(install_dir: Path) -> set[str] | None:
         return None
 
 
+def _llm_disabled_consumers(install_dir: Path) -> list[str]:
+    """Deployed services that consume `llm_inference` while NO llama-llm is deployed.
+
+    When the operator installs with model_id=skip there is no llama-llm, so openwebui's chat
+    backend and ragflow's/dify's generation path point at nothing. Surface that instead of
+    leaving it silent (live-audit 2026-06-05 llm-skip-unsurfaced)."""
+    deployed = _deployed_services(install_dir)
+    if deployed is None or "llama-llm" in deployed:
+        return []
+    descriptors = load_descriptors()
+    return sorted(
+        name
+        for name in deployed
+        if (d := descriptors.get(name)) is not None and "llm_inference" in d.consumes
+    )
+
+
 def _load_report(install_dir: Path) -> list[AccessEntry]:
     env_path = install_dir / ".env"
     # `endpoints` shows no secrets — degrade gracefully if .env is root-owned + unreadable
@@ -86,16 +103,23 @@ def register(app: typer.Typer) -> None:
             }
             for e in report
         ]
+        disabled = _llm_disabled_consumers(install_dir)
         if json_out:
             typer.echo(_json.dumps(rows, indent=2, ensure_ascii=False))
-            return
-        if not rows:
+        elif not rows:
             typer.echo("No published services found.")
-            return
-        svc_w = max(len(r["service"]) for r in rows)
-        url_w = max(len(r["url"]) for r in rows)
-        for r in rows:
-            typer.echo(f"{r['service']:<{svc_w}}  {r['url']:<{url_w}}  {r['state']}")
+        else:
+            svc_w = max(len(r["service"]) for r in rows)
+            url_w = max(len(r["url"]) for r in rows)
+            for r in rows:
+                typer.echo(f"{r['service']:<{svc_w}}  {r['url']:<{url_w}}  {r['state']}")
+        if disabled:
+            typer.echo(
+                "\n⚠ no LLM deployed (model skipped at install) — chat/generation is disabled "
+                f"for: {', '.join(disabled)}. Re-run install with a model (not --model-id skip) "
+                "to enable it.",
+                err=True,
+            )
 
     @app.command("open")
     def open_service(

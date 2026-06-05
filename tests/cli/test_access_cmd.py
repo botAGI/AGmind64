@@ -87,3 +87,27 @@ def test_creds_show_reveals_with_flag(tmp_path: Path, monkeypatch: pytest.Monkey
     res = runner.invoke(_app(), ["creds", "show", "--install-dir", str(tmp_path), "--show"])
     assert res.exit_code == 0, res.output
     assert "topsecret" in res.output
+
+
+def test_endpoints_warns_when_llm_skipped(tmp_path: Path) -> None:
+    """live-audit 2026-06-05 (llm-skip-unsurfaced): a deployed llm_inference consumer
+    (openwebui) with NO llama-llm must surface that chat/generation is disabled."""
+    (tmp_path / ".env").write_text("AGMIND_DOMAIN=lab.test\n", encoding="utf-8")
+    (tmp_path / "docker-compose.yml").write_text(
+        "services:\n  openwebui: {}\n  grafana: {}\n", encoding="utf-8"
+    )
+    res = runner.invoke(_app(), ["endpoints", "--install-dir", str(tmp_path)])
+    assert res.exit_code == 0, res.output
+    out = res.output.lower()
+    assert "openwebui" in out
+    assert "disabled" in out and "chat" in out
+
+
+def test_endpoints_no_llm_warning_when_llama_llm_present(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("AGMIND_DOMAIN=lab.test\n", encoding="utf-8")
+    (tmp_path / "docker-compose.yml").write_text(
+        "services:\n  openwebui: {}\n  llama-llm: {}\n", encoding="utf-8"
+    )
+    res = runner.invoke(_app(), ["endpoints", "--install-dir", str(tmp_path)])
+    assert res.exit_code == 0, res.output
+    assert "disabled" not in res.output.lower()
