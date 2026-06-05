@@ -215,6 +215,25 @@ def test_security_audit_cli_json_and_exit(tmp_path: Path) -> None:
     assert any(f["check"] == "exposed-port" for f in payload["findings"])
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file read perms")
+def test_audit_unreadable_env_degrades_without_false_positives(tmp_path: Path) -> None:
+    """Live deploy: /opt/agmind/.env is root:root 0600 — a non-root `agmind security audit`
+    can't read it. It must NOT crash, must record an env-unreadable info finding, and must NOT
+    false-flag descriptor `${GENERATED_VAR:-changeme}` defaults as weak (it can't see that the
+    installer generated the override) — exactly the 4 phantom HIGH findings a live audit hit."""
+    d = _install(tmp_path, "services:\n  dify-api: {}\n  dify-plugin-daemon: {}\n")
+    env = d / ".env"
+    os.chmod(env, 0o000)  # unreadable even to the owner (non-root)
+    try:
+        findings, installed = audit_install(d, data_dir=tmp_path / "data")
+    finally:
+        os.chmod(env, 0o600)  # restore so tmp cleanup works
+    assert installed is True
+    checks = [f.check for f in findings]
+    assert "env-unreadable" in checks, checks
+    assert "weak-secret" not in checks, f"unreadable .env must not false-flag defaults: {checks}"
+
+
 def test_audit_flags_loosely_permed_credentials_file(tmp_path: Path) -> None:
     """Review MEDIUM security-scan-omits-secret-files: a world-readable credentials.txt /
     cf_dns_api_token must be flagged, not just .env — the scan catches operator perms drift."""

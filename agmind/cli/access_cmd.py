@@ -21,7 +21,7 @@ from pathlib import Path
 import typer
 
 from agmind.cli.ops_cmd import _running_compose_services
-from agmind.core.env import parse_env_file
+from agmind.core.env import parse_env_file_or_empty
 from agmind.core.secrets import mask_value
 from agmind.services.access import AccessEntry, build_access_report
 from agmind.services.renderer import load_descriptors
@@ -46,7 +46,9 @@ def _deployed_services(install_dir: Path) -> set[str] | None:
 
 def _load_report(install_dir: Path) -> list[AccessEntry]:
     env_path = install_dir / ".env"
-    env = parse_env_file(env_path) if env_path.exists() else {}
+    # `endpoints` shows no secrets — degrade gracefully if .env is root-owned + unreadable
+    # (running as a non-root user) instead of crashing with a traceback.
+    env = parse_env_file_or_empty(env_path)
     domain = env.get("AGMIND_DOMAIN") or "agmind.dev"
     descriptors = load_descriptors()
     deployed = _deployed_services(install_dir)

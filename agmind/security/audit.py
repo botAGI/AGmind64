@@ -263,10 +263,27 @@ def audit_install(
     findings = scan_compose(compose_text)
 
     env: dict[str, str] = {}
+    env_readable = False
     if env_path.is_file():
         from agmind.core.env import parse_env_file
 
-        env = parse_env_file(env_path)
+        try:
+            env = parse_env_file(env_path)
+            env_readable = True
+        except OSError as exc:
+            # .env is root:root 0600 on a real deploy; a non-root `agmind security audit` can't
+            # read it. Degrade gracefully (skip the env-value scan) with an info finding instead
+            # of crashing the whole audit (surfaced live — same class as scan_file_perms).
+            findings.append(
+                SecurityFinding(
+                    "env-unreadable",
+                    "info",
+                    str(env_path),
+                    f"could not read .env to scan secret values ({exc}); "
+                    "re-run as the install owner or with sudo for the full posture scan",
+                    "",
+                )
+            )
     # Scope the descriptor weak-default check to the DEPLOYED services only — this
     # is an audit of the operator's artifacts, NOT a re-validation of the whole
     # catalog (that is the build-time contract test's job). Checking undeployed
@@ -279,7 +296,13 @@ def audit_install(
         descriptors = {n: d for n, d in load_descriptors().items() if n in deployed}
     except Exception:  # noqa: BLE001 - descriptor load is best-effort for the env scan
         descriptors = {}
-    findings += scan_env(env, descriptors)
+    # Only scan when .env was actually read. With an unreadable .env, the descriptor-default
+    # check resolves `${GENERATED_VAR:-changeme}` to its WEAK default and false-flags it HIGH —
+    # but the installer always generates that VAR, so the default is dead (the build-time
+    # contract test gates descriptor defaults anyway). The env-unreadable info finding above
+    # already records that the value scan was skipped.
+    if env_readable:
+        findings += scan_env(env, descriptors)
     cfg_dir = config_dir if config_dir is not None else Path("/etc/agmind")
     # Perms-scan EVERY 0600 secret artifact, not just .env — the scan's point is to catch
     # operator drift (a later chmod, a loosened restore). credentials.txt, the Cloudflare DNS

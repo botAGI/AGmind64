@@ -108,14 +108,16 @@ def cmd_backup(
         return 2
     data_sources = None
     if include_data:
-        from agmind.core.env import parse_env_file
+        from agmind.core.env import parse_env_file_or_empty
         from agmind.ops.backup_data import data_sources as enumerate_data_sources
         from agmind.services.renderer import load_descriptors
 
         descriptors = load_descriptors()
         services = _running_compose_services(install_dir)
         env_path = install_dir / ".env"
-        env = parse_env_file(env_path) if env_path.exists() else {}
+        # Don't crash the whole backup if .env is root-owned + unreadable without sudo — the
+        # config tier still backs up; a DB dump that then lacks its password fails visibly.
+        env = parse_env_file_or_empty(env_path)
         data_sources = enumerate_data_sources(services, descriptors, env)
     sudo_password = _prompt_sudo_password(ask_sudo_password)
     if include_data and sudo_password is None:
@@ -133,6 +135,12 @@ def cmd_backup(
             sudo_password=sudo_password,
             data_sources=data_sources,
         )
+    except PermissionError as exc:
+        # /opt/agmind/.env and other artifacts are root-owned (0600); backing them up needs
+        # sudo. Guide the operator instead of just echoing the raw errno.
+        hint = "" if ask_sudo_password else " — re-run with --ask-sudo-password"
+        print(f"agmind backup: cannot read a root-owned source ({exc}){hint}", file=sys.stderr)
+        return 1
     except (FileNotFoundError, OSError, ValueError) as exc:
         print(f"agmind backup: {exc}", file=sys.stderr)
         return 1

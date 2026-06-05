@@ -168,14 +168,15 @@ class SummaryScreen(Screen[None]):
     def _endpoint_lines(self) -> list[str]:
         """Real per-service endpoint lines from descriptors + the rendered .env (best-effort)."""
         try:
-            from agmind.core.env import parse_env_file
+            from agmind.core.env import parse_env_file_or_empty
             from agmind.services.access import build_access_report, render_endpoint_lines
             from agmind.services.renderer import load_descriptors
 
             selected = set(self.services)
             descriptors = {n: d for n, d in load_descriptors().items() if n in selected}
             env_path = self.install_dir / ".env"
-            env = parse_env_file(env_path) if env_path.exists() else {}
+            # Degrade gracefully (still render endpoints) if .env is root-owned + unreadable.
+            env = parse_env_file_or_empty(env_path)
             return render_endpoint_lines(build_access_report(descriptors, env, domain=self.domain))
         except Exception:  # noqa: BLE001 — summary must never crash on a presentation helper
             return []

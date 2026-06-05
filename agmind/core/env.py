@@ -80,11 +80,28 @@ def parse_env_text(text: str) -> dict[str, str]:
 
 
 def parse_env_file(path: str | Path) -> dict[str, str]:
-    """Read and parse a .env file. Missing file → empty dict (not raise)."""
+    """Read and parse a .env file. Missing file → empty dict (not raise).
+
+    NOTE: an UNREADABLE file (e.g. /opt/agmind/.env is root:root 0600 and the caller is not
+    root) STILL RAISES PermissionError — secret-critical callers need to detect that. Display
+    commands that should degrade gracefully use :func:`parse_env_file_or_empty` instead.
+    """
     p = Path(path)
     if not p.exists():
         return {}
     return parse_env_text(p.read_text(encoding="utf-8"))
+
+
+def parse_env_file_or_empty(path: str | Path) -> dict[str, str]:
+    """Like :func:`parse_env_file` but returns ``{}`` for an unreadable file too, not just a
+    missing one. For READ-ONLY display commands (``endpoints``, the TUI summary, the data-source
+    enumeration) that must not crash with a traceback when run as a non-root user against a
+    root-owned ``/opt/agmind/.env`` — they fall back to the ``(see VAR in .env)`` hints.
+    """
+    try:
+        return parse_env_file(path)
+    except OSError:
+        return {}
 
 
 def env_get(key: str, env_file: str | Path | None = None, default: str = "") -> str:

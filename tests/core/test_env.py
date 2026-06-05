@@ -2,14 +2,43 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from agmind.core.env import env_get, parse_env_file, parse_env_text, shell_quote
+from agmind.core.env import (
+    env_get,
+    parse_env_file,
+    parse_env_file_or_empty,
+    parse_env_text,
+    shell_quote,
+)
 from agmind.install.steps import _env_line
 
 pytestmark = pytest.mark.backend_any
+
+
+def test_parse_env_file_or_empty_missing_and_present(tmp_path: Path) -> None:
+    assert parse_env_file_or_empty(tmp_path / "absent.env") == {}
+    f = tmp_path / ".env"
+    f.write_text("A=1\nB=two\n", encoding="utf-8")
+    assert parse_env_file_or_empty(f) == {"A": "1", "B": "two"}
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file read perms")
+def test_parse_env_file_or_empty_unreadable_returns_empty_not_raise(tmp_path: Path) -> None:
+    """Review (live deploy): /opt/agmind/.env is root:root 0600 — display commands use this
+    helper so they degrade to {} instead of crashing; bare parse_env_file still raises."""
+    f = tmp_path / ".env"
+    f.write_text("SECRET=x\n", encoding="utf-8")
+    os.chmod(f, 0o000)
+    try:
+        assert parse_env_file_or_empty(f) == {}
+        with pytest.raises(OSError):
+            parse_env_file(f)  # the strict variant still surfaces the permission error
+    finally:
+        os.chmod(f, 0o600)
 
 
 def test_parse_env_text_simple() -> None:
