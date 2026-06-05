@@ -12,7 +12,10 @@ volumes:
 - /var/lib/agmind/models:/models:ro
 env:
   AMD_VULKAN_ICD: RADV
-  VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+  # radeon_icd.json is the RADV manifest the server-vulkan image actually ships; the
+  # radeon_icd.x86_64.json (Debian-multiarch) name is ABSENT here and pinning it disabled
+  # the GPU → CPU fallback (live-audit 2026-06-05 HIGH). Verify on each server-vulkan bump.
+  VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.json
   # Phase M5.1: rerank model + per-service settings (separate from LLM / embed).
   AGMIND_RERANK_FILE: ${AGMIND_RERANK_FILE:-bge-reranker-v2-m3-Q8_0.gguf}
   AGMIND_RERANK_CTX_SIZE: ${AGMIND_RERANK_CTX_SIZE:-2048}

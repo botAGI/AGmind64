@@ -14,7 +14,10 @@ Hard requirements (assert at startup):
 
 Mandatory env (set by Backend.make()):
 - AMD_VULKAN_ICD=RADV
-- VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+- VK_DRIVER_FILES=<first present RADV ICD manifest> — the filename differs by distro
+  (radeon_icd.json in the server-vulkan container, radeon_icd.x86_64.json on Debian
+  multiarch). We pin only a manifest that EXISTS; pinning a missing path overrides the
+  loader's default discovery and silently disables the GPU (live-audit 2026-06-05).
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ _SUPPORTED_ENGINES = ("llama_cpp",)
 
 _RADV_ICD_CANDIDATES = (
     "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json",
+    "/usr/share/vulkan/icd.d/radeon_icd.json",  # plain Mesa name (server-vulkan container)
     "/usr/share/vulkan/icd.d/radeon_icd.aarch64.json",  # audit: allow legacy ISA path constant
 )
 
@@ -177,12 +181,13 @@ class VulkanBackend(Backend):
 def _apply_radv_env() -> None:
     """Idempotent: install RADV env vars at process level."""
     os.environ.setdefault("AMD_VULKAN_ICD", "RADV")
-    radv = next(
-        (p for p in _RADV_ICD_CANDIDATES if Path(p).exists()),
-        _RADV_ICD_CANDIDATES[0],
-    )
-    os.environ.setdefault("VK_DRIVER_FILES", radv)
-    os.environ.setdefault("VK_ICD_FILENAMES", radv)
+    # Pin a manifest ONLY if it exists on disk. Forcing VK_DRIVER_FILES to a missing path
+    # overrides the loader's default ICD discovery → RADV never loads → GPU silently disabled
+    # (live-audit 2026-06-05). If none of the candidates are present, leave discovery alone.
+    radv = next((p for p in _RADV_ICD_CANDIDATES if Path(p).exists()), None)
+    if radv is not None:
+        os.environ.setdefault("VK_DRIVER_FILES", radv)
+        os.environ.setdefault("VK_ICD_FILENAMES", radv)
     os.environ.setdefault("GGML_VK_VISIBLE_DEVICES", "0")
 
 
