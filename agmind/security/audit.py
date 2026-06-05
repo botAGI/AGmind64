@@ -30,7 +30,11 @@ from agmind.install.secrets_audit import (
     find_weak_secret_envs,
 )
 
-SEVERITY_LEVELS: tuple[str, ...] = ("info", "low", "medium", "high", "critical")
+# "warning" ranks between low and medium: above info (it must surface, not be buried — the
+# env-unreadable finding when a non-root operator can't scan secret values) but below the "high"
+# gate threshold so it never fails the gate. Every severity any finding emits MUST be listed here
+# or gate_exit/max_severity raise KeyError (live-deploy regression 2026-06-05).
+SEVERITY_LEVELS: tuple[str, ...] = ("info", "low", "warning", "medium", "high", "critical")
 _RANK = {level: i for i, level in enumerate(SEVERITY_LEVELS)}
 
 _LOOPBACK = {"127.0.0.1", "::1", "localhost"}

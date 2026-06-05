@@ -164,7 +164,20 @@ def test_gate_exit_blocks_at_threshold() -> None:
 
 
 def test_severity_levels_ordered() -> None:
-    assert SEVERITY_LEVELS == ("info", "low", "medium", "high", "critical")
+    assert SEVERITY_LEVELS == ("info", "low", "warning", "medium", "high", "critical")
+
+
+def test_gate_and_max_severity_accept_warning() -> None:
+    """Live-deploy regression (049a899): the env-unreadable finding emits severity='warning'.
+    gate_exit / max_severity must RANK it (not KeyError) and 'warning' must NOT trip the high
+    gate — `agmind security audit` crashed for every non-root operator before this."""
+    from agmind.security.audit import _RANK, max_severity
+
+    warn = SecurityFinding("env-unreadable", "warning", "/opt/agmind/.env", "could not scan", "")
+    assert "warning" in _RANK
+    assert max_severity([warn]) == "warning"
+    assert gate_exit([warn], block="high") == 0  # warning surfaces but must not fail the gate
+    assert gate_exit([warn], block="warning") == 1  # ...and is gateable if explicitly requested
 
 
 # ---- audit_install + CLI ----
