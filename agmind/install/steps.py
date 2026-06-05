@@ -2161,7 +2161,12 @@ class CredentialsStep(InstallStep):
             selected = set(config.services)
             descriptors = {n: d for n, d in load_descriptors().items() if n in selected}
             env_path = config.install_dir / ".env"
-            env = parse_env_file(env_path) if env_path.exists() else {}
+            # Read via the sudo-aware helper, NOT bare parse_env_file: the .env is root:root 0600
+            # (written through the sudo payload path), so a non-root install user hits
+            # PermissionError and credentials.txt is silently skipped — the operator then has no
+            # record of the generated passwords. _parse_existing_runtime_env falls back to
+            # `sudo cat` with the install's sudo password.
+            env = _parse_existing_runtime_env(config, env_path) if env_path.exists() else {}
             report = build_access_report(descriptors, env, domain=config.domain)
             generated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             text = render_credentials_txt(

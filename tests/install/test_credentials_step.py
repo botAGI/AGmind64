@@ -55,5 +55,44 @@ def test_credentials_step_nonfatal_without_env(tmp_path: Path) -> None:
     assert "GRAFANA_PASSWORD" in text  # fallback: point at the env var
 
 
+def test_credentials_step_reads_root_owned_env_via_sudo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Surfaced by a live deploy: /opt/agmind/.env is root:root 0600 (sudo-written), so a
+    non-root install user can't read it directly — CredentialsStep must fall back to `sudo cat`,
+    not silently skip and leave the operator with no password record."""
+    import subprocess as sp
+
+    from agmind.install import steps
+
+    (tmp_path / ".env").write_text(
+        "blocked\n", encoding="utf-8"
+    )  # exists() → True; direct read denied
+    cfg = InstallConfig(
+        domain="lab.test",
+        cf_api_token="x" * 20,
+        services=["grafana"],
+        install_dir=tmp_path,
+        model_file="m.gguf",
+        sudo_password="pw",
+    )
+
+    def deny_direct(_path: Path) -> dict[str, str]:
+        raise PermissionError("Permission denied: .env")
+
+    monkeypatch.setattr(steps, "parse_env_file", deny_direct)
+
+    def fake_sudo(cmd: list[str], **kw: object) -> sp.CompletedProcess:
+        assert cmd[:2] == ["sudo", "-S"] and cmd[-2:] == ["cat", str(tmp_path / ".env")]
+        return sp.CompletedProcess(cmd, 0, stdout="GRAFANA_PASSWORD=sudosecret\n", stderr="")
+
+    monkeypatch.setattr(steps.subprocess, "run", fake_sudo)
+
+    res = CredentialsStep().run(lambda _e: None, cfg)
+    assert res.success
+    creds = (tmp_path / "credentials.txt").read_text(encoding="utf-8")
+    assert "sudosecret" in creds, "credentials.txt must contain the sudo-read password, not skip"
+
+
 def test_credentials_step_is_final_in_default_pipeline() -> None:
     assert [s.step_id for s in default_steps()][-1] == "credentials"
