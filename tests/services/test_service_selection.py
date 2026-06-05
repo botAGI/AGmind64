@@ -26,6 +26,32 @@ def test_selection_resolves_consumed_capability_provider() -> None:
     assert "llama-llm" in closure, "consumed llm_inference provider must be in the closure"
 
 
+def test_llm_endpoint_absent_when_llama_llm_not_in_render_set() -> None:
+    """live-audit 2026-06-05 (HIGH dangling-llama-llm): openwebui/ragflow must NOT hardcode an
+    http://llama-llm endpoint in their static env. When the LLM is skipped (no llama-llm in the
+    rendered set) the capability binding omits the endpoint, so the service carries no dead DNS
+    reference (chat/generation degrade cleanly instead of pointing at an unresolvable host)."""
+    from agmind.services.renderer import descriptors_with_capability_env, load_descriptors
+
+    ds = load_descriptors()
+    subset = [ds[n] for n in ("openwebui", "ragflow") if n in ds]
+    resolved = {d.name: d for d in descriptors_with_capability_env(subset)}
+    assert "OPENAI_API_BASE_URL" not in resolved["openwebui"].env
+    assert "VLM_ENDPOINT" not in resolved["ragflow"].env
+
+
+def test_llm_endpoint_injected_when_llama_llm_present() -> None:
+    """With llama-llm in the rendered set the binding injects the endpoint (with-model case is
+    byte-identical to before — the hardcode used to duplicate exactly this value)."""
+    from agmind.services.renderer import descriptors_with_capability_env, load_descriptors
+
+    ds = load_descriptors()
+    subset = [ds[n] for n in ("openwebui", "ragflow", "llama-llm") if n in ds]
+    resolved = {d.name: d for d in descriptors_with_capability_env(subset)}
+    assert resolved["openwebui"].env.get("OPENAI_API_BASE_URL") == "http://llama-llm:8080/v1"
+    assert resolved["ragflow"].env.get("VLM_ENDPOINT") == "http://llama-llm:8080/v1"
+
+
 def test_selection_does_not_overpull_optional_capabilities() -> None:
     """The consumes walk must SKIP OPTIONAL_MISSING_CAPABILITIES (reranker / dify_external_kb)
     so a dify/ragflow closure does not silently drag in its optional providers."""

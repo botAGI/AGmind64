@@ -671,21 +671,18 @@ def test_no_descriptor_shadows_bindings_injected_key() -> None:
     injected value (value-identical, currently harmless) — forward guard against
     future divergence from a NEW provider entry.
 
-    RESEARCH §C4 confirms two known harmless mirrors:
-      - ragflow.yaml hardcodes VLM_ENDPOINT == BINDINGS[llm_inference][llama-llm][ragflow]
-      - openwebui.yaml hardcodes OPENAI_API_BASE_URL == BINDINGS[llm_inference][llama-llm][openwebui]
+    The two former "harmless mirrors" (ragflow VLM_ENDPOINT, openwebui OPENAI_API_BASE_URL)
+    were REMOVED from the descriptors — live-audit 2026-06-05 (HIGH dangling-llama-llm) proved
+    they are NOT harmless: with model_id=skip there is no llama-llm, the binding correctly omits
+    the endpoint, but the static mirror dangled at a dead DNS name. The allowlist is now empty,
+    so re-adding any such hardcode fails this guard.
     """
     from agmind.services.capability_bindings import BINDINGS
     from agmind.services.renderer import load_descriptors
 
-    # Known-harmless value-identical mirrors (reviewed; value matches injection).
+    # No descriptor may shadow a BINDINGS-injected key (the llm_inference mirrors were removed).
     # Format: {(descriptor_name, env_key): injected_value}
-    SHADOW_ALLOWLIST: dict[tuple[str, str], str] = {
-        # ragflow hardcodes VLM_ENDPOINT to match BINDINGS[llm_inference][llama-llm][ragflow]
-        ("ragflow", "VLM_ENDPOINT"): "http://llama-llm:8080/v1",
-        # openwebui hardcodes OPENAI_API_BASE_URL matching BINDINGS[llm_inference][llama-llm][openwebui]
-        ("openwebui", "OPENAI_API_BASE_URL"): "http://llama-llm:8080/v1",
-    }
+    SHADOW_ALLOWLIST: dict[tuple[str, str], str] = {}
 
     descriptors = load_descriptors()
 

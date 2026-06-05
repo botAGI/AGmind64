@@ -12,7 +12,10 @@ ports:
 volumes:
 - /var/lib/agmind/openwebui:/app/backend/data
 env:
-  OPENAI_API_BASE_URL: http://llama-llm:8080/v1
+  # OPENAI_API_BASE_URL (+ OPENAI_API_KEY) are injected by the llm_inference capability
+  # binding ONLY when llama-llm is in the rendered set. Do NOT hardcode them here — with
+  # model_id=skip there is no llama-llm and a static endpoint dangles at a dead DNS name
+  # (live-audit 2026-06-05 HIGH dangling-llama-llm). See agmind/services/capability_bindings.py.
   ENABLE_OPENAI_API: 'true'
   WEBUI_AUTH: 'true'
   ENABLE_RAG_HYBRID_SEARCH: 'true'
