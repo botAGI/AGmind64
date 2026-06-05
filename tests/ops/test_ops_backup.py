@@ -1192,3 +1192,22 @@ def test_cmd_backup_include_data_fails_loud_when_no_running_services(
     err = capsys.readouterr().err.lower()
     assert "no running services" in err
     assert not out.exists()
+
+
+def test_cmd_backup_warns_config_only_when_no_include_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """live-audit 2026-06-05 (MED default-backup-no-data-tier-silent): a backup WITHOUT
+    --include-data must loudly say it captured NO data, so the operator never mistakes a
+    config-only archive for a recoverable one."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import BackupResult
+
+    out = tmp_path / "b.tar.gz"
+    monkeypatch.setattr(
+        ops_cmd, "create_backup", lambda **kw: BackupResult(out, 100, ("compose", "env"), ())
+    )
+    rc = ops_cmd.cmd_backup(out, install_dir=tmp_path)  # include_data defaults False
+    assert rc == 0
+    err = capsys.readouterr().err.lower()
+    assert "config-only" in err and "no database" in err

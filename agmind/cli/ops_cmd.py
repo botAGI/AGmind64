@@ -194,6 +194,15 @@ def cmd_backup(
     )
     if result.sources_missing:
         print(f"  missing  ({len(result.sources_missing)}): {', '.join(result.sources_missing)}")
+    if not include_data:
+        # Make the config-only scope LOUD: this archive contains NO database dumps / volume
+        # data, so a restore from it cannot recover any stateful store (live-audit 2026-06-05
+        # default-backup-no-data-tier-silent).
+        print(
+            "  NOTE: config-only backup — NO database/volume data was captured. Re-run with "
+            "--include-data (and --ask-sudo-password) to protect the stateful stores.",
+            file=sys.stderr,
+        )
     return 0
 
 
