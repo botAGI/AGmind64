@@ -40,6 +40,9 @@ http:
       headers:
         stsSeconds: 31536000
         stsIncludeSubdomains: true
+        # Opt into the browser HSTS preload list (strongest HSTS — needs seconds>=1y +
+        # includeSubdomains + preload). live-audit 2026-06-05 tls-min-version-12-no-hsts-preload.
+        stsPreload: true
         frameDeny: true
         contentTypeNosniff: true
         browserXssFilter: true
