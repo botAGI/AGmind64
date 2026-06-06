@@ -30,7 +30,9 @@ _DATA_PREFIX = "/var/lib/agmind/"
 _Run = Callable[..., "subprocess.CompletedProcess[bytes]"]
 
 # Services whose data is captured as a logical DB dump rather than a volume tar.
-_DB_ENGINES = {"postgres": "postgres", "mysql": "mysql"}
+# mongo (komodo-mongo): a logical mongodump is consistent; a tar of a live WiredTiger dir is
+# crash-consistent at best (live-audit 2026-06-05 hot-volume-tar-not-quiesced).
+_DB_ENGINES = {"postgres": "postgres", "mysql": "mysql", "komodo-mongo": "mongo"}
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,20 @@ class DbDumpSource:
                 self.database,
             ]
             return cmd
+        if self.engine == "mongo":
+            # password via -e env (never in argv), like mysql; --archive streams to stdout
+            # (the caller gzips). Auth against the admin DB (the root user lives there).
+            return [
+                "docker",
+                "exec",
+                "-e",
+                f"MONGO_PW={self.password}",
+                self.container,
+                "bash",
+                "-c",
+                f'mongodump --username {self.user} --password "$MONGO_PW" '
+                "--authenticationDatabase admin --archive",
+            ]
         raise ValueError(f"unknown db engine: {self.engine!r}")
 
 
@@ -157,6 +173,20 @@ def data_sources(
                 )
             )
             continue
+        if engine == "mongo":
+            # Logical mongodump instead of a crash-consistent volume tar of the live WiredTiger
+            # dir (live-audit 2026-06-05 hot-volume-tar-not-quiesced). Root user lives in admin.
+            out.append(
+                DbDumpSource(
+                    label=f"dbdump/{name}",
+                    container=f"agmind-{name}",
+                    engine="mongo",
+                    user=env.get("KOMODO_DATABASE_USERNAME", "komodo"),
+                    database="",
+                    password=env.get("KOMODO_DATABASE_PASSWORD", ""),
+                )
+            )
+            continue
         # Capture EVERY writable data bind, not just the first (a service may bind several,
         # e.g. milvus → etcd + minio). Label by the host path RELATIVE to /var/lib/agmind so
         # each distinct dir gets a unique, collision-free arcname/manifest/destination key, and
@@ -205,4 +235,18 @@ def restore_db_command(source: DbDumpSource) -> list[str]:
             cmd += ["-e", f"MYSQL_PWD={source.password}"]
         cmd += [source.container, "mysql", source.database]
         return cmd
+    if source.engine == "mongo":
+        # --archive reads the (gunzipped) dump on stdin; --drop replaces existing collections.
+        return [
+            "docker",
+            "exec",
+            "-i",
+            "-e",
+            f"MONGO_PW={source.password}",
+            source.container,
+            "bash",
+            "-c",
+            f'mongorestore --username {source.user} --password "$MONGO_PW" '
+            "--authenticationDatabase admin --archive --drop",
+        ]
     raise ValueError(f"unknown db engine: {source.engine!r}")
