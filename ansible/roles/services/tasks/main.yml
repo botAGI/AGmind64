@@ -180,3 +180,20 @@
     project_src: "{{ agmind_install_dir }}"
     state: present
     pull: missing
+
+# Reboot survivability with ORDERED bring-up: unless-stopped restarts containers but does not
+# order them; this oneshot unit re-runs `compose up -d` (depends_on-ordered) on boot.
+# live-audit 2026-06-05 no-systemd-boot-unit-reboot-ordering.
+- name: Install agmind-stack systemd boot unit
+  ansible.builtin.template:
+    src: agmind-stack.service.j2
+    dest: /etc/systemd/system/agmind-stack.service
+    mode: "0644"
+
+- name: Enable agmind-stack.service for ordered boot bring-up
+  ansible.builtin.systemd:
+    name: agmind-stack.service
+    enabled: true
+    daemon_reload: true
+  # Not started here — the "Bring up services" task above already deployed the stack; the unit
+  # only needs to be enabled so a future host reboot brings it back in dependency order.

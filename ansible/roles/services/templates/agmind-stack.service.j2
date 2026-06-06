@@ -1,0 +1,23 @@
+# Managed by AGmind ansible (services role) — do not edit by hand.
+# Ordered boot bring-up of the AGmind stack. Containers carry restart=unless-stopped, but that
+# does NOT guarantee dependency ORDER after a full host reboot (milvus needs etcd+minio first,
+# dify needs postgres+redis). This oneshot unit re-runs `docker compose up -d`, which respects
+# depends_on ordering, once docker is up. live-audit 2026-06-05 no-systemd-boot-unit-reboot-ordering.
+[Unit]
+Description=AGmind stack (docker compose) — ordered boot bring-up
+Documentation=file://{{ agmind_install_dir }}/docker-compose.yml
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ agmind_install_dir }}
+ExecStart=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml stop
+# compose itself waits on container health; give it room and never kill mid-bring-up.
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
