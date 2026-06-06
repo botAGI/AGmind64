@@ -53,13 +53,10 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "authelia": "tech-debt: add /api/health probe",
     "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
     "dify-web": "tech-debt: add web readiness probe",
-    "docling": "tech-debt: add /health probe",
     "homarr": "tech-debt: add web readiness probe (not in default selection)",
     "loki": "tech-debt: add /ready probe",
-    "openwebui": "tech-debt: add /health probe",
     "portainer": "tech-debt: add web readiness probe (not in default selection)",
     "prometheus": "tech-debt: add /-/healthy probe",
-    "ragflow": "tech-debt: add probe (has Traefik healthcheck_path /api/v1/system/healthz)",
     "weaviate": "tech-debt: add /v1/.well-known/ready probe",
 }
 

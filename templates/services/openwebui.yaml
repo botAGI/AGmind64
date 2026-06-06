@@ -22,6 +22,18 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 2g
+# /health returns 200 (verified live; curl present). live-audit 2026-06-05
+# userfacing-services-no-docker-healthcheck.
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:8080/health
+  start_period: 60s
+  interval: 15s
+  timeout: 5s
+  retries: 10
 access:
   first_login_register: true
 routing:
