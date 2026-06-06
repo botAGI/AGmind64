@@ -60,8 +60,8 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
     descriptors = load_descriptors()
     # need WRITE (pull/recreate/manage) — the read-only proxy can't serve them; or ARE the proxy.
     write_holders = {"portainer", "komodo-periphery", "watchtower", "docker-socket-proxy"}
-    # read-only consumers not yet migrated (tech-debt — none are in the default selection).
-    pending_migration = {"netdata", "homarr", "dozzle"}
+    # read-only consumers not yet migrated. dozzle + homarr are non-default; netdata IS migrated.
+    pending_migration = {"homarr", "dozzle"}
     allowed = write_holders | pending_migration
     for name, d in descriptors.items():
         if any("/var/run/docker.sock" in v for v in d.volumes):
@@ -69,5 +69,12 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
                 f"{name} binds the raw docker socket but is not an allowed holder"
             )
     # the migrated edge/observability consumers must NOT bind it anymore
-    for migrated in ("traefik", "cadvisor", "alloy"):
+    for migrated in ("traefik", "cadvisor", "alloy", "netdata"):
         assert not any("/var/run/docker.sock" in v for v in descriptors[migrated].volumes), migrated
+
+
+def test_netdata_uses_socket_proxy_not_raw_sock() -> None:
+    d = load_descriptors()["netdata"]
+    assert not any("docker.sock" in v for v in d.volumes), "netdata must not bind the raw socket"
+    assert d.env["DOCKER_HOST"] == "tcp://docker-socket-proxy:2375"
+    assert "docker_api" in d.consumes

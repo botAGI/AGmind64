@@ -18,8 +18,12 @@ volumes:
 - /proc:/host/proc:ro
 - /sys:/host/sys:ro
 - /etc/os-release:/host/etc/os-release:ro
-- /var/run/docker.sock:/var/run/docker.sock:ro
+# NO raw /var/run/docker.sock — the go.d docker collector reaches the API via the read-only
+# docker-socket-proxy (DOCKER_HOST). Validated live: netdata boots + 22 collectors run without
+# the socket (cgroup-network container-name resolution is the only degraded bit — one startup log
+# line, non-fatal). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
 env:
+  DOCKER_HOST: tcp://docker-socket-proxy:2375
   DO_NOT_TRACK: '1'
   NETDATA_CLAIM_TOKEN: ''
   NETDATA_CLAIM_URL: ''
@@ -41,3 +45,7 @@ routing:
 # query would be URL-encoded into a 404. Its host/CPU/mem metrics already come from
 # node-exporter + cAdvisor; netdata stays a standalone UI (review MEDIUM
 # netdata-scrape-not-prometheus).
+
+# Phase O capabilities — pulls the docker-socket-proxy into the closure (read-only Docker API).
+consumes:
+- docker_api
