@@ -104,9 +104,9 @@ def test_kubernetes_render_check_reports_research_target() -> None:
     assert target.target_id == "k3s"
     assert target.renderer == "agmind render kubernetes"
     assert target.ok is True
-    assert target.object_count == 36
+    assert target.object_count == 35  # qdrant host ports dropped (data-net cage, K-3a)
     assert target.deployment_count == 22
-    assert target.service_count == 13
+    assert target.service_count == 12  # qdrant Service dropped (data-net cage, K-3a)
     assert target.warning_count == 4
     assert target.warning_summary["blocker"] == 0
     assert target.warning_summary["warning"] == 4
@@ -256,9 +256,9 @@ def test_kubernetes_render_check_json_roundtrip() -> None:
 
     assert payload["ok"] is True
     assert payload["targets"][0]["target_id"] == "k3s"
-    assert payload["targets"][0]["object_count"] == 36
+    assert payload["targets"][0]["object_count"] == 35  # qdrant host ports dropped (K-3a)
     assert payload["targets"][0]["deployment_count"] == 22
-    assert payload["targets"][0]["service_count"] == 13
+    assert payload["targets"][0]["service_count"] == 12  # qdrant Service dropped (K-3a)
     assert payload["targets"][0]["warning_count"] == 4
     assert payload["targets"][0]["warning_summary"]["blocker"] == 0
     assert payload["targets"][0]["warning_summary"]["warning"] == 4

@@ -85,6 +85,7 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
         "elasticsearch",
         "postgres",
         "redis",
+        "qdrant",
         # data-net dual-homed consumers
         "milvus",
         "ragflow",

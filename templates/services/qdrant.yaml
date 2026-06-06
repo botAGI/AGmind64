@@ -7,9 +7,11 @@ purpose: Vector store (primary per R11) — 2026-05-11 release
 profiles:
 - core
 - rag
-ports:
-- 127.0.0.1:6333:6333
-- 127.0.0.1:6334:6334
+# Caged on the internal data-net — consumed by dify-* over the network (qdrant:6333). Host
+# ports dropped: an internal-only net has no host route, and the only consumers reach it by
+# DNS name, not 127.0.0.1. live-audit 2026-06-05 (flat-network). K-3a.
+networks:
+- data-net
 volumes:
 - /var/lib/agmind/qdrant:/qdrant/storage
 env:

@@ -54,6 +54,14 @@ def test_postgres_redis_caged_consumers_dual_homed() -> None:
         assert set(d[consumer].networks) == {"default", "data-net"}, consumer
 
 
+def test_qdrant_caged_and_host_ports_dropped() -> None:
+    """K-3a: qdrant caged on data-net (consumed by dify over the network); its 127.0.0.1 host
+    ports are dropped (an internal net has no host route; consumers use the DNS name)."""
+    d = load_descriptors()
+    assert d["qdrant"].networks == ["data-net"]
+    assert d["qdrant"].ports == []  # no host publish on an internal-only net
+
+
 def test_rag_milvus_renders_internal_data_net() -> None:
     d = load_descriptors()
     sel = [d[n] for n in ("milvus", "etcd", "milvus-minio")]
