@@ -37,6 +37,9 @@ volumes:
 resources:
   cpus: 1.0
   mem_limit: 512m
+# Holds the (root-equivalent) docker socket by design — block in-container privilege
+# escalation as defense-in-depth. live-audit 2026-06-05 (portainer-periphery-root-no-priv-guard).
+no_new_privileges: true
 # No healthcheck: periphery is an outbound agent (dials core over ws, listens on 8120
 # behind self-signed TLS) with no unauthenticated liveness endpoint — classified
 # safe-to-count-running in the healthcheck-coverage gate, like other agents.

@@ -40,6 +40,9 @@ volumes:
 resources:
   cpus: 2.0
   mem_limit: 1g
+# Privileged operator console — block in-container privilege escalation as defense-in-depth.
+# live-audit 2026-06-05 (portainer-periphery-root-no-priv-guard, extended to the console).
+no_new_privileges: true
 health:
   test:
   - CMD

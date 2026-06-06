@@ -15,6 +15,9 @@ ports:
 volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/portainer:/data
+# Holds the (root-equivalent) docker socket by design — block in-container privilege
+# escalation as defense-in-depth. live-audit 2026-06-05 (portainer-periphery-root-no-priv-guard).
+no_new_privileges: true
 resources:
   cpus: 1.0
   mem_limit: 512m
