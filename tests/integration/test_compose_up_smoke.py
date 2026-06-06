@@ -104,6 +104,7 @@ _CI_ENV_CONTENT = textwrap.dedent("""\
     MINIO_ROOT_PASSWORD=ci-minio-password
     REDIS_PASSWORD=ci-redis-password
     ELASTIC_PASSWORD=ci-elastic-password
+    MILVUS_MINIO_ROOT_PASSWORD=ci-milvus-minio-password
     HOMARR_SECRET_ENCRYPTION_KEY=ci-homarr-secret-encryption-key
     N8N_ENCRYPTION_KEY=ci-n8n-encryption-key
     AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000

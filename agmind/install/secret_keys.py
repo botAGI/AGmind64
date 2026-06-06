@@ -28,6 +28,9 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     # Elasticsearch xpack.security bootstrap password (the `elastic` superuser). RAGFlow auths
     # to ES with it (ES_USER defaults to elastic). live-audit 2026-06-05 elasticsearch-xpack-disabled.
     "ELASTIC_PASSWORD",
+    # milvus-minio root password — SEPARATE trust domain from the app minio's MINIO_ROOT_PASSWORD
+    # (live-audit 2026-06-05 shared-minio-root-cred-two-trust-domains).
+    "MILVUS_MINIO_ROOT_PASSWORD",
     "N8N_ENCRYPTION_KEY",
     "HOMARR_SECRET_ENCRYPTION_KEY",
     # Authelia first-admin login password — hashed (argon2id) into users_database.yml at
@@ -80,6 +83,8 @@ INIT_ONLY = frozenset(
         # ES bootstraps the `elastic` password only on first init of an empty data dir;
         # rotating the env afterwards is a no-op (needs elasticsearch-reset-password).
         "ELASTIC_PASSWORD",
+        # MinIO sets the root password on first init of an empty data dir (same as the app minio).
+        "MILVUS_MINIO_ROOT_PASSWORD",
         # mongo sets the root pw on first init of an empty data dir; the admin user is
         # seeded into mongo on core's first boot — rotating the env afterwards is a no-op.
         "KOMODO_DATABASE_PASSWORD",

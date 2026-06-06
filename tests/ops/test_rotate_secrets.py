@@ -34,7 +34,7 @@ pytestmark = pytest.mark.backend_any
 
 def test_all_generated_keys_cover_runtime_and_authelia() -> None:
     assert set(ALL_GENERATED_SECRET_KEYS) == set(RUNTIME_SECRET_KEYS) | set(AUTHELIA_SECRET_KEYS)
-    assert len(ALL_GENERATED_SECRET_KEYS) == 18  # +ELASTIC_PASSWORD (ES xpack.security)
+    assert len(ALL_GENERATED_SECRET_KEYS) == 19  # +ELASTIC_PASSWORD, +MILVUS_MINIO_ROOT_PASSWORD
 
 
 def test_every_generated_key_is_classified() -> None:

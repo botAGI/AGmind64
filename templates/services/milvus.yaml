@@ -20,8 +20,9 @@ command:
 env:
   ETCD_ENDPOINTS: etcd:2379
   MINIO_ADDRESS: milvus-minio:9000
-  MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
-  MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+  # milvus-minio has its OWN root credential (separate trust domain from the app minio).
+  MINIO_ACCESS_KEY_ID: ${MILVUS_MINIO_ROOT_USER:-milvusminio}
+  MINIO_SECRET_ACCESS_KEY: ${MILVUS_MINIO_ROOT_PASSWORD:?MILVUS_MINIO_ROOT_PASSWORD is required}
   MINIO_USE_SSL: 'false'
   MINIO_BUCKET_NAME: milvus
   # Milvus v2.6 storage-V2 arrow-filesystem accepts only [local, remote, opendal];

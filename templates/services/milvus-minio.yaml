@@ -9,7 +9,9 @@ profiles:
 - rag-milvus
 # Internal-only: reached by milvus over the compose network (milvus-minio:9000); no
 # host ports (the ragflow `minio` owns 127.0.0.1:9000/9001). Dedicated data volume so
-# Milvus storage is isolated from RAGFlow's. Reuses the MINIO_ROOT_* secrets.
+# Milvus storage is isolated from RAGFlow's. Its OWN root credential (separate trust domain
+# from the app `minio`) so leaking one MinIO root does not grant the other.
+# live-audit 2026-06-05 shared-minio-root-cred-two-trust-domains.
 volumes:
 - /var/lib/agmind/milvus-minio:/data
 command:
@@ -18,8 +20,8 @@ command:
 - --console-address
 - ":9001"
 env:
-  MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
-  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+  MINIO_ROOT_USER: ${MILVUS_MINIO_ROOT_USER:-milvusminio}
+  MINIO_ROOT_PASSWORD: ${MILVUS_MINIO_ROOT_PASSWORD:?MILVUS_MINIO_ROOT_PASSWORD is required}
 resources:
   cpus: 2.0
   mem_limit: 2g
