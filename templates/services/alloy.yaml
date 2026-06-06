@@ -6,9 +6,11 @@ tier: ops
 purpose: Log shipping (Promtail successor) — 2026-05-05
 profiles:
 - observability
+# NO raw /var/run/docker.sock — alloy's discovery.docker + loki.source.docker reach the Docker
+# API through the read-only docker-socket-proxy (validated live: alloy discovered + tailed
+# container logs over tcp). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
 volumes:
 - /etc/agmind/alloy:/etc/alloy:ro
-- /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/log:/var/log:ro
 - /var/lib/docker/containers:/var/lib/docker/containers:ro
 - /var/lib/agmind/alloy:/var/lib/alloy/data
@@ -19,6 +21,11 @@ command:
 - /etc/alloy/config.alloy
 depends_on:
 - loki
+- docker-socket-proxy
 resources:
   cpus: 1.0
   mem_limit: 512m
+
+# Phase O capabilities — pulls the docker-socket-proxy into the closure (read-only Docker API).
+consumes:
+- docker_api

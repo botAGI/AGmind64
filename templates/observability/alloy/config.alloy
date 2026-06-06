@@ -19,7 +19,7 @@ logging {
 // ---- Docker discovery ----
 
 discovery.docker "containers" {
-  host             = "unix:///var/run/docker.sock"
+  host             = "tcp://docker-socket-proxy:2375"
   refresh_interval = "5s"
 }
 
@@ -58,7 +58,7 @@ discovery.relabel "containers" {
 // ---- Loki source: tail Docker logs ----
 
 loki.source.docker "containers" {
-  host             = "unix:///var/run/docker.sock"
+  host             = "tcp://docker-socket-proxy:2375"
   targets          = discovery.relabel.containers.output
   refresh_interval = "5s"
   forward_to       = [loki.process.parse_json.receiver]

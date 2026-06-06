@@ -320,6 +320,10 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
     # co-listed — whitelist so a raw per-service prometheus render does not fail-closed when the
     # proxy is absent. live-audit 2026-06-05 grafana-empty.
     ("prometheus", "docker_api"),
+    # cadvisor + alloy (observability) reach the Docker API via the same docker-socket-proxy
+    # (closure-pulled). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
+    ("cadvisor", "docker_api"),
+    ("alloy", "docker_api"),
 }
 
 
