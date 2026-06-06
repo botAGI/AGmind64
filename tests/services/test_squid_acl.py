@@ -40,3 +40,9 @@ def test_squid_deny_to_internal_precedes_allow() -> None:
     conf = _conf()
     assert "http_access deny to_internal" in conf and "http_access allow Safe_ports" in conf
     assert conf.index("deny to_internal") < conf.index("allow Safe_ports")
+
+
+def test_squid_pinger_disabled() -> None:
+    """The ICMP pinger lacks CAP_NET_RAW here and logs a scary FATAL on every boot while the
+    proxy keeps serving — disable it (log-noise, live-audit 2026-06-05)."""
+    assert "pinger_enable off" in _conf()

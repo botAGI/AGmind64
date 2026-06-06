@@ -35,6 +35,19 @@ depends_on:
 # Docker's default seccomp profile can restrict (intermittent crashes without it).
 security_opt:
 - seccomp:unconfined
+# Milvus serves /healthz on the internal 9091 metrics port (verified live 200). A real probe
+# lets dependents wait on service_healthy instead of service_started. curl is present in the
+# image. live-audit 2026-06-05 (milvus-no-healthcheck).
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:9091/healthz
+  start_period: 90s
+  interval: 15s
+  timeout: 10s
+  retries: 10
 resources:
   cpus: 8.0
   mem_limit: 16g
