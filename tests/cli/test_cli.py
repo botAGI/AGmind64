@@ -626,7 +626,9 @@ def test_install_dry_run_from_state_preserves_install_dir(tmp_path: object) -> N
     payload = json.loads(result.output.split("\n", 1)[1])
     assert payload["domain"] == "lab.example.com"
     assert payload["install_dir"] == str(install_dir)
-    assert set(payload["services"]) == {"traefik", "llama-llm", "qdrant"}
+    # traefik consumes docker_api → pulls docker-socket-proxy into the closure (docker-sock
+    # migration: traefik reaches the Docker API via the read-only proxy, not the raw socket).
+    assert set(payload["services"]) == {"traefik", "llama-llm", "qdrant", "docker-socket-proxy"}
     assert "super-secret-token" not in result.output
 
 
@@ -840,6 +842,8 @@ def test_install_dry_run_from_legacy_profile_state_expands_services(tmp_path: ob
         "llama-rerank",
         "qdrant",
         "traefik",
+        # traefik pulls the read-only docker-socket-proxy (docker-sock migration).
+        "docker-socket-proxy",
     }
 
 

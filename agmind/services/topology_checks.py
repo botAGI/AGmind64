@@ -324,6 +324,9 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
     # (closure-pulled). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
     ("cadvisor", "docker_api"),
     ("alloy", "docker_api"),
+    # traefik (core/full) docker provider reaches the API via the proxy (observability),
+    # closure-pulled across profiles. live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
+    ("traefik", "docker_api"),
 }
 
 

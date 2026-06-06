@@ -7,16 +7,26 @@ name: docker-socket-proxy
 image: tecnativa/docker-socket-proxy:0.3.0
 digest: 9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
 tier: ops
-purpose: Read-only Docker API gateway for prometheus service discovery
+purpose: Read-only Docker API gateway for prometheus/traefik/cadvisor/alloy
+# Must be present wherever a consumer is: core/full (traefik docker provider) + observability
+# (prometheus docker_sd, cadvisor, alloy). The --no-tui `--profile` render includes profile
+# members only (consume-pull is TUI/explicit-services-path only), so the proxy is profile-listed
+# alongside its consumers rather than relying on closure-pull. live-audit 2026-06-05.
 profiles:
+- core
+- full
 - observability
 volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 env:
-  # Allow ONLY the read endpoints prometheus docker_sd_configs calls.
+  # Read endpoints the consumers need: prometheus docker_sd (CONTAINERS/NETWORKS/INFO),
+  # traefik docker provider (CONTAINERS + EVENTS watch + VERSION), cadvisor + alloy (CONTAINERS).
+  # All GET-only; throwaway-validated 2026-06-05 that cadvisor/traefik/alloy work with this set.
   CONTAINERS: '1'
   NETWORKS: '1'
   INFO: '1'
+  VERSION: '1'
+  EVENTS: '1'
   # Everything dangerous stays denied (defaults are 0; declared for intent + regression guard).
   POST: '0'
   EXEC: '0'

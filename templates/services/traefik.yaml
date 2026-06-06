@@ -12,8 +12,11 @@ ports:
 - 80:80
 - 443:443
 - 127.0.0.1:9100:9100
+# NO raw /var/run/docker.sock — traefik's docker provider reaches the API through the read-only
+# docker-socket-proxy (validated live: traefik discovered + routed a backend over tcp). This is
+# the audit's worst case (internet-facing + root + raw socket); the proxy is POST=0 read-only.
+# live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
 volumes:
-- /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/traefik/dynamic:/etc/traefik/dynamic:ro
 - /var/lib/agmind/traefik/letsencrypt:/letsencrypt
 - /var/lib/agmind/secrets/cf_dns_api_token:/run/secrets/cf_dns_api_token:ro
@@ -22,6 +25,7 @@ env:
 command:
 - --ping=true
 - --providers.docker=true
+- --providers.docker.endpoint=tcp://docker-socket-proxy:2375
 - --providers.docker.exposedbydefault=false
 - --providers.file.directory=/etc/traefik/dynamic
 - --providers.file.watch=true
@@ -63,3 +67,8 @@ observability:
 provides:
 - reverse_proxy
 - tls_termination
+# Pulls the docker-socket-proxy into the closure (read-only Docker API). NO depends_on: a
+# cross-profile (core->observability) depends_on hard-raises the --no-tui render; traefik's
+# docker provider retries the connection until the proxy is up.
+consumes:
+- docker_api

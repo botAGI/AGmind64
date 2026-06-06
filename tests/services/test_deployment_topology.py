@@ -175,7 +175,9 @@ def test_validate_topology_profiles_reports_standard_lanes_clean() -> None:
         item.info_count == 1 for item in legacy_report.profiles if item.profiles == ("core", "rag")
     )
     legacy_text = format_topology_check_report(legacy_report)
-    assert "core,rag: OK (14 services, warnings=0, info=1, expected_info=1)" in legacy_text
+    # 15 (was 14): docker-socket-proxy now co-deploys with traefik (core) for the read-only
+    # Docker API (docker-sock-migration). live-audit 2026-06-05.
+    assert "core,rag: OK (15 services, warnings=0, info=1, expected_info=1)" in legacy_text
     assert "topology OK: 5 profile sets" in legacy_text
 
 
