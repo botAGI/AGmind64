@@ -21,6 +21,22 @@
   when: agmind_cf_api_token is defined and agmind_cf_api_token | length > 0
   no_log: true   # ВАЖНО: токен НЕ должен попасть в Ansible stdout / logs
 
+# db-secrets→FILE: DB SERVERS read *_PASSWORD_FILE instead of carrying the secret in env (out of
+# `docker inspect`). Same generated value as .env (same lookup file) so consumers still match.
+# live-audit 2026-06-05 db-secrets-plaintext-docker-inspect.
+- name: Save DB server passwords to secret files
+  ansible.builtin.copy:
+    content: "{{ lookup('password', agmind_install_dir + '/' + item.src + ' length=32 chars=ascii_letters,digits') }}"
+    dest: "/var/lib/agmind/secrets/{{ item.dest }}"
+    owner: root
+    group: docker
+    mode: "0640"  # readable by docker daemon for the secret mount
+  loop:
+    - { src: ".postgres_password", dest: "postgres_password" }
+    - { src: ".mysql_root_password", dest: "mysql_root_password" }
+    - { src: ".komodo_database_password", dest: "komodo_mongo_password" }
+  no_log: true
+
 - name: Validate Proxmox exporter token settings
   ansible.builtin.assert:
     that:

@@ -14,8 +14,12 @@ networks:
 - data-net
 volumes:
 - /var/lib/agmind/postgres:/var/lib/postgresql/data
+# Password as a 0600 file, NOT env — keeps it out of `docker inspect` / socket-proxy inspect.
+# The installer writes secrets/postgres_password (= the generated POSTGRES_PASSWORD that consumers
+# still use via env). live-audit 2026-06-05 db-secrets-plaintext-docker-inspect.
+- /var/lib/agmind/secrets/postgres_password:/run/secrets/postgres_password:ro
 env:
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
   POSTGRES_DB: dify
   POSTGRES_USER: dify
   PGDATA: /var/lib/postgresql/data/pgdata

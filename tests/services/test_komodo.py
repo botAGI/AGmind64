@@ -62,10 +62,15 @@ def test_periphery_root_dir_is_agmind_stacks() -> None:
 
 def test_core_and_mongo_share_the_database_password_var() -> None:
     komodo = _komodo_descriptors()
-    mongo_pw = komodo["komodo-mongo"].env["MONGO_INITDB_ROOT_PASSWORD"]
-    core_pw = komodo["komodo-core"].env["KOMODO_DATABASE_PASSWORD"]
-    assert "KOMODO_DATABASE_PASSWORD" in mongo_pw
-    assert "KOMODO_DATABASE_PASSWORD" in core_pw
+    # db-secrets→FILE: the mongo SERVER reads its root password from a file (not env); core still
+    # uses the env var. The installer writes secrets/komodo_mongo_password FROM the same generated
+    # KOMODO_DATABASE_PASSWORD, so the two match. live-audit db-secrets-plaintext-docker-inspect.
+    assert "MONGO_INITDB_ROOT_PASSWORD" not in komodo["komodo-mongo"].env  # no plaintext env
+    assert (
+        komodo["komodo-mongo"].env["MONGO_INITDB_ROOT_PASSWORD_FILE"]
+        == "/run/secrets/komodo_mongo_password"
+    )
+    assert "KOMODO_DATABASE_PASSWORD" in komodo["komodo-core"].env["KOMODO_DATABASE_PASSWORD"]
 
 
 def test_komodo_secrets_are_generated_and_classified() -> None:

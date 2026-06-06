@@ -23,11 +23,15 @@ command:
 volumes:
 - /var/lib/agmind/komodo-mongo/data:/data/db
 - /var/lib/agmind/komodo-mongo/config:/data/configdb
+# Root password as a 0600 file, NOT env (keeps it out of docker inspect). Installer writes
+# secrets/komodo_mongo_password (= KOMODO_DATABASE_PASSWORD komodo-core still uses via env).
+# live-audit 2026-06-05 db-secrets-plaintext-docker-inspect.
+- /var/lib/agmind/secrets/komodo_mongo_password:/run/secrets/komodo_mongo_password:ro
 env:
-  # Username is a shared non-secret with a stable default; password is a generated
-  # secret shared with komodo-core (both interpolate the SAME vars → they match).
+  # Username is a shared non-secret with a stable default; password rides a file (the server
+  # init reads *_FILE), shared by value with komodo-core (which still uses the env var).
   MONGO_INITDB_ROOT_USERNAME: ${KOMODO_DATABASE_USERNAME:-komodo}
-  MONGO_INITDB_ROOT_PASSWORD: ${KOMODO_DATABASE_PASSWORD:?KOMODO_DATABASE_PASSWORD is required}
+  MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/komodo_mongo_password
 resources:
   cpus: 1.0
   mem_limit: 1g

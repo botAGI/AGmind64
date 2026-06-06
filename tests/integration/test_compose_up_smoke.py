@@ -112,6 +112,15 @@ _CI_ENV_CONTENT = textwrap.dedent("""\
     AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
 """)
 
+# DB SERVER password files (db-secrets→FILE): the installer writes these so the server reads
+# *_PASSWORD_FILE instead of carrying the secret in env. The smoke has no installer, so it
+# synthesises the files — the VALUE must match the consumer's _CI_ENV password above (else the
+# DB inits with one password and the consumer connects with another → crash-loop).
+_CI_SECRET_FILE_VALUES = {
+    "postgres_password": "ci-postgres-password",
+    "mysql_root_password": "ci-mysql-root-password",
+}
+
 # Non-GPU profile lanes — compose profile strings to smoke.
 # The first three are the original lanes; the next five cover descriptor fixes
 # in Phase 08 (milvus/weaviate/authelia/n8n/ragflow boot-validate) and
@@ -234,6 +243,14 @@ def _rewrite_agmind_bind_mount(spec: str, data_root: Path) -> str:
         return spec
 
     mapped = data_root / rel
+    if rel.parts and rel.parts[0] == "secrets":
+        # Secret FILE mount (e.g. secrets/postgres_password) — the installer would have written
+        # it; synthesise a FILE (not a dir) with the matching _CI_ENV value so the DB server's
+        # *_PASSWORD_FILE reads a real secret and consumers connect with the same value.
+        mapped.parent.mkdir(parents=True, exist_ok=True)
+        mapped.write_text(_CI_SECRET_FILE_VALUES.get(rel.name, "ci-secret"), encoding="utf-8")
+        parts[0] = str(mapped)
+        return ":".join(parts)
     mapped.mkdir(parents=True, exist_ok=True)
     # The smoke does not run the installer bootstrap chown step. World-writable
     # temp dirs keep the runtime smoke focused on image command/config/health

@@ -405,6 +405,18 @@ def _materialize_runtime_files(
     templates_dir = DEFAULT_REPO_ROOT / "templates"
     data_dir = config.models_dir.parent
 
+    # DB SERVER passwords as 0600 files (POSTGRES/MYSQL/MONGO *_PASSWORD_FILE) so the server
+    # container does not carry the secret in its env (`docker inspect` / socket-proxy inspect).
+    # Consumers keep the env var (their images lack _FILE support). live-audit 2026-06-05
+    # db-secrets-plaintext-docker-inspect / secrets-plaintext-env.
+    for svc, fname, env_key in (
+        ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
+        ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
+        ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
+    ):
+        if svc in selected and runtime_env.get(env_key):
+            _write_secret_file(data_dir / "secrets" / fname, runtime_env[env_key])
+
     if "traefik" in selected:
         if config.cf_api_token:
             _write_secret_file(data_dir / "secrets" / "cf_dns_api_token", config.cf_api_token)

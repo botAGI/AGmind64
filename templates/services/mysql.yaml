@@ -12,16 +12,21 @@ networks:
 - data-net
 volumes:
 - /var/lib/agmind/mysql:/var/lib/mysql
+# Root password as a 0600 file, NOT env (keeps it out of docker inspect / socket-proxy inspect).
+# Installer writes secrets/mysql_root_password (= MYSQL_ROOT_PASSWORD that ragflow still uses via
+# env). live-audit 2026-06-05 db-secrets-plaintext-docker-inspect.
+- /var/lib/agmind/secrets/mysql_root_password:/run/secrets/mysql_root_password:ro
 env:
-  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+  MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
   MYSQL_DATABASE: rag_flow
 resources:
   cpus: 4.0
   mem_limit: 4g
 health:
+  # Password now lives in a file (MYSQL_ROOT_PASSWORD_FILE), not env — read it via cat.
   test:
   - CMD-SHELL
-  - mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent && mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" -e "SELECT 1" rag_flow
+  - PW="$$(cat /run/secrets/mysql_root_password)"; mysqladmin ping -h 127.0.0.1 -uroot -p"$$PW" --silent && mysql -h 127.0.0.1 -uroot -p"$$PW" -e "SELECT 1" rag_flow
   interval: 10s
   timeout: 5s
   retries: 10

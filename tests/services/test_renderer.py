@@ -457,8 +457,10 @@ def test_render_compose_waits_for_mysql_before_ragflow() -> None:
 
     assert compose["services"]["mysql"]["healthcheck"]["test"] == [
         "CMD-SHELL",
-        'mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent && '
-        'mysql -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" -e "SELECT 1" rag_flow',
+        # db-secrets→FILE: root password read from the mounted secret file, not env.
+        'PW="$$(cat /run/secrets/mysql_root_password)"; '
+        'mysqladmin ping -h 127.0.0.1 -uroot -p"$$PW" --silent && '
+        'mysql -h 127.0.0.1 -uroot -p"$$PW" -e "SELECT 1" rag_flow',
     ]
     assert compose["services"]["ragflow"]["depends_on"]["mysql"]["condition"] == ("service_healthy")
     assert compose["services"]["minio"]["healthcheck"]["test"] == [
