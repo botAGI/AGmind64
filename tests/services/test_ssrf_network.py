@@ -74,7 +74,16 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
     # Only the ssrf cage (dify-sandbox/ssrf-proxy) and the data-net tier (etcd/milvus-minio
     # caged + milvus dual-homed — live-audit 2026-06-05) declare explicit networks; every other
     # service stays on the implicit default net (no networks key).
-    _TIERED = {"dify-sandbox", "ssrf-proxy", "etcd", "milvus-minio", "milvus"}
+    _TIERED = {
+        "dify-sandbox",
+        "ssrf-proxy",
+        "etcd",
+        "milvus-minio",
+        "milvus",
+        "mysql",
+        "elasticsearch",
+        "ragflow",
+    }
     rendered = render_to_string(profiles=["full"], domain="ci.example.com")
     doc = yaml.safe_load(rendered)
     for name, svc in doc["services"].items():

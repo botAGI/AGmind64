@@ -29,6 +29,15 @@ def test_milvus_dual_homed_default_and_data_net() -> None:
     assert set(d["milvus"].networks) == {"default", "data-net"}
 
 
+def test_mysql_and_elasticsearch_caged_ragflow_dual_homed() -> None:
+    """K-2a: ragflow's backends (mysql + elasticsearch, consumed only by ragflow) are caged on
+    data-net; ragflow is dual-homed so the edge still reaches it."""
+    d = load_descriptors()
+    assert d["mysql"].networks == ["data-net"]
+    assert d["elasticsearch"].networks == ["data-net"]
+    assert set(d["ragflow"].networks) == {"default", "data-net"}
+
+
 def test_rag_milvus_renders_internal_data_net() -> None:
     d = load_descriptors()
     sel = [d[n] for n in ("milvus", "etcd", "milvus-minio")]

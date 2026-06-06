@@ -6,6 +6,11 @@ tier: app
 purpose: RAGFlow deep parsing — coexists с Dify (см. marketplace.dify.ai/plugin/witmeng/ragflow-api)
 profiles:
 - ragflow
+# Dual-homed: default (traefik edge + host-published 9380) AND the internal data-net where its
+# caged backends mysql + elasticsearch live. live-audit 2026-06-05 (flat-network).
+networks:
+- default
+- data-net
 ports:
 - 127.0.0.1:9380:9380
 env:

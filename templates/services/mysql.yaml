@@ -6,6 +6,10 @@ tier: storage
 purpose: RAGFlow metadata (locked to MySQL 8.0.x) — 2026-05-05
 profiles:
 - ragflow
+# Caged on the internal data-net (consumed only by ragflow, dual-homed) — not reachable from a
+# compromised app on the shared net. live-audit 2026-06-05 (flat-network).
+networks:
+- data-net
 volumes:
 - /var/lib/agmind/mysql:/var/lib/mysql
 env:

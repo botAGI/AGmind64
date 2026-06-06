@@ -7,6 +7,10 @@ tier: storage
 purpose: RAGFlow chunk index — 2026-05-12
 profiles:
 - ragflow
+# Caged on the internal data-net (consumed only by ragflow, dual-homed) — defense-in-depth on
+# top of xpack basic-auth. live-audit 2026-06-05 (flat-network).
+networks:
+- data-net
 volumes:
 - /var/lib/agmind/elasticsearch:/usr/share/elasticsearch/data
 run_as_uid: 1000
