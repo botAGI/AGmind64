@@ -13,6 +13,10 @@ profiles:
 # B7: redis-exporter hard-points REDIS_ADDR=redis://redis:6379; add redis to
 # observability profile so the exporter has its backend when deploying observability-alone.
 - observability
+# Caged on the internal data-net — consumers (dify-*, ragflow, authelia, redis-exporter) are
+# dual-homed. live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- data-net
 # B1: activate server-side auth via --requirepass. The official redis:alpine image does
 # NOT read REDIS_PASSWORD env (that is a Bitnami convention) — only this command flag
 # activates authentication. env.REDIS_PASSWORD was removed because it was silently ignored.

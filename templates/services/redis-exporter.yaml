@@ -6,6 +6,11 @@ tier: ops
 purpose: Redis metrics для Prometheus
 profiles:
 - observability
+# Dual-homed: default (scraped by prometheus) + data-net (reaches its caged redis).
+# live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 env:
   REDIS_ADDR: redis://redis:6379
   # B1: redis runs with --requirepass; oliver006/redis_exporter reads REDIS_PASSWORD

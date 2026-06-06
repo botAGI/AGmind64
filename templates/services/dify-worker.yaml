@@ -6,6 +6,11 @@ tier: app
 purpose: Dify celery worker
 profiles:
 - rag
+# Dual-homed: default + data-net (its caged postgres/redis/qdrant/milvus backends).
+# live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 volumes:
 # B6: dify-worker uses the same storage path as dify-api (same image, uid 1001).
 # bootstrap already pre-creates /var/lib/agmind/dify/storage at uid 1001.

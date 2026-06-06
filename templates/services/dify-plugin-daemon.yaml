@@ -6,6 +6,11 @@ tier: app
 purpose: Dify plugin runtime — 2026-04
 profiles:
 - rag
+# Dual-homed: default (dify-api inner-API) + data-net (its caged postgres/redis).
+# live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 volumes:
 # Persist installed plugins (PLUGIN_WORKING_PATH=/app/storage/cwd lives here); without this
 # bind they sit on the ephemeral container layer and are LOST on restart/recreate

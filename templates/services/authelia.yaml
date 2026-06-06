@@ -6,6 +6,11 @@ tier: edge
 purpose: Optional 2FA / SSO
 profiles:
 - security
+# Dual-homed: default (traefik forward-auth + host port) + data-net (its caged redis session
+# store). live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 ports:
 - 127.0.0.1:9091:9091
 # /config is WRITABLE: Authelia chowns it + writes db.sqlite3/notification.txt there.

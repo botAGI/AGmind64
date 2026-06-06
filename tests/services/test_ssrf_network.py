@@ -75,14 +75,25 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
     # caged + milvus dual-homed — live-audit 2026-06-05) declare explicit networks; every other
     # service stays on the implicit default net (no networks key).
     _TIERED = {
+        # ssrf cage
         "dify-sandbox",
         "ssrf-proxy",
+        # data-net caged datastores
         "etcd",
         "milvus-minio",
-        "milvus",
         "mysql",
         "elasticsearch",
+        "postgres",
+        "redis",
+        # data-net dual-homed consumers
+        "milvus",
         "ragflow",
+        "dify-api",
+        "dify-worker",
+        "dify-plugin-daemon",
+        "postgres-exporter",
+        "redis-exporter",
+        "authelia",
     }
     rendered = render_to_string(profiles=["full"], domain="ci.example.com")
     doc = yaml.safe_load(rendered)

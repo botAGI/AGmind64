@@ -38,6 +38,22 @@ def test_mysql_and_elasticsearch_caged_ragflow_dual_homed() -> None:
     assert set(d["ragflow"].networks) == {"default", "data-net"}
 
 
+def test_postgres_redis_caged_consumers_dual_homed() -> None:
+    """K-2b: postgres + redis caged on data-net; every consumer dual-homed [default, data-net]."""
+    d = load_descriptors()
+    assert d["postgres"].networks == ["data-net"]
+    assert d["redis"].networks == ["data-net"]
+    for consumer in (
+        "dify-api",
+        "dify-worker",
+        "dify-plugin-daemon",
+        "postgres-exporter",
+        "redis-exporter",
+        "authelia",
+    ):
+        assert set(d[consumer].networks) == {"default", "data-net"}, consumer
+
+
 def test_rag_milvus_renders_internal_data_net() -> None:
     d = load_descriptors()
     sel = [d[n] for n in ("milvus", "etcd", "milvus-minio")]

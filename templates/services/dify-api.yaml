@@ -6,6 +6,11 @@ tier: app
 purpose: Dify backend API
 profiles:
 - rag
+# Dual-homed: default (traefik edge + host port) AND data-net (its caged postgres/redis/qdrant
+# + milvus backends). live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 ports:
 - 127.0.0.1:5001:5001
 volumes:

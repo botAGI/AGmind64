@@ -7,6 +7,11 @@ purpose: Dify metadata + plugin state — PG 17 LTS (2026-05-16)
 profiles:
 - rag
 - observability
+# Caged on the internal data-net (no host route) — consumers (dify-*, postgres-exporter) are
+# dual-homed; a compromised internet-facing app on the shared net can't reach it.
+# live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- data-net
 volumes:
 - /var/lib/agmind/postgres:/var/lib/postgresql/data
 env:

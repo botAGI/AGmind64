@@ -6,6 +6,11 @@ tier: ops
 purpose: Postgres metrics для Prometheus
 profiles:
 - observability
+# Dual-homed: default (scraped by prometheus) + data-net (reaches its caged postgres).
+# live-audit 2026-06-05 (flat-network). K-2b.
+networks:
+- default
+- data-net
 env:
   DATA_SOURCE_NAME: postgresql://dify:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/dify?sslmode=disable
 resources:
