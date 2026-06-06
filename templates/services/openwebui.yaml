@@ -7,8 +7,10 @@ tier: app
 purpose: Optional chat UI на OpenAI-compat llama-server — 2026-05-10
 profiles:
 - ui
-ports:
-- 127.0.0.1:3001:8080
+# NO host port — access ONLY via traefik (chat.agmind.dev) behind Authelia. A 127.0.0.1 loopback
+# port let any host-local process reach the open first-admin signup before the operator claims it
+# (live-audit 2026-06-05 openwebui-first-admin-loopback). traefik routes over the network; the
+# healthcheck uses the container-internal port — nothing needs the host publish.
 volumes:
 - /var/lib/agmind/openwebui:/app/backend/data
 env:

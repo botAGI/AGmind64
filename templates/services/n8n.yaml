@@ -7,8 +7,10 @@ purpose: Local workflow automation for agent and integration flows — n8n 2.22.
 owner: automation-stack
 profiles:
 - automation
-ports:
-- 127.0.0.1:5678:5678
+# NO host port — access ONLY via traefik (n8n.agmind.dev) behind Authelia. A 127.0.0.1 loopback
+# port let any host-local process reach the unclaimed owner-setup before the operator
+# (live-audit 2026-06-05 n8n-owner-unclaimed-loopback). traefik routes over the network; the
+# healthcheck uses the container-internal port — nothing needs the host publish.
 volumes:
 - /var/lib/agmind/n8n:/home/node/.n8n
 run_as_uid: 1000

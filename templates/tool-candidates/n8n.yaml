@@ -26,8 +26,9 @@ dependencies:
   secrets_profiles:
     - env-files
     - sops-age
-  ports:
-    - "5678"
+  # No host port — n8n is reached only via traefik (n8n.agmind.dev) behind Authelia; the
+  # 127.0.0.1 loopback publish was removed (live-audit n8n-owner-unclaimed-loopback).
+  ports: []
   requires_gpu: false
 risks:
   - Workflow credentials are tied to N8N_ENCRYPTION_KEY; losing the persisted key makes old credentials unrecoverable.

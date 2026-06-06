@@ -145,7 +145,9 @@ def test_n8n_is_accepted_automation_runtime() -> None:
     assert n8n.category == "automation"
     assert n8n.recommended_version == "2.22.3"
     assert n8n.dependencies.profiles == ("automation",)
-    assert n8n.dependencies.ports == ("5678",)
+    # domain-only via traefik+Authelia; the 127.0.0.1 loopback publish was removed
+    # (live-audit n8n-owner-unclaimed-loopback).
+    assert n8n.dependencies.ports == ()
     assert n8n.admission.service_descriptor_required is True
     assert n8n.admission.component_contract_required is True
     assert n8n.admission.image_pin_required is True
