@@ -1,7 +1,10 @@
 # Authelia file authentication backend — bootstrap admin.
 #
-# SECURITY: the password hash below is the Authelia DOCUMENTATION EXAMPLE hash. It lets
-# the stack BOOT; you MUST set a real password before exposing Authelia:
+# The `password:` hash below is the Authelia DOCUMENTATION EXAMPLE — a boot fallback ONLY.
+# `agmind install` REPLACES it at materialize time with the argon2id hash of the generated
+# AUTHELIA_ADMIN_PASSWORD (see steps._replace_authelia_password_hash; the plaintext is recorded
+# in credentials.txt). So a normal install ships a real, unique admin password — no manual step.
+# Only if you deploy this template WITHOUT the installer must you set your own hash:
 #   docker exec -it agmind-authelia \
 #     authelia crypto hash generate argon2 --password '<your-strong-password>'
 # then replace the `password:` hash here and restart authelia.
