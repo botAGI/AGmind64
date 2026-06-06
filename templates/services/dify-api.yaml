@@ -22,6 +22,12 @@ writable_mounts:
 env:
   MODE: api
   LOG_LEVEL: INFO
+  # Cage the HTTP-request node + MCP/tool fetches (user-controlled URLs) through the ssrf-proxy
+  # squid — blocks SSRF to cloud metadata / the LAN. dify reads SSRF_PROXY_* ONLY for these user
+  # fetches, NOT model-provider or DB calls (verified live: api/core/mcp/utils.py).
+  # live-audit 2026-06-05 dify-api-worker-egress-unproxied.
+  SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128
+  SSRF_PROXY_HTTPS_URL: http://ssrf-proxy:3128
   # Run Flask-Migrate `db upgrade` on boot. Without this Dify's schema is never created
   # (relation "dify_setups" does not exist) → every console/API call 500s and the web UI
   # /install page hangs. The api container is the single migration owner (NOT the worker).

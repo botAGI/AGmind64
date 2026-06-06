@@ -22,6 +22,10 @@ writable_mounts:
 env:
   MODE: worker
   LOG_LEVEL: INFO
+  # Cage user-controlled HTTP/MCP fetches through the ssrf-proxy (NOT provider/DB calls — see
+  # dify-api). live-audit 2026-06-05 dify-api-worker-egress-unproxied.
+  SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128
+  SSRF_PROXY_HTTPS_URL: http://ssrf-proxy:3128
   DB_HOST: postgres
   # B6: dify-worker needs full DB creds (mirrors dify-api; same postgres DB).
   DB_PORT: '5432'
