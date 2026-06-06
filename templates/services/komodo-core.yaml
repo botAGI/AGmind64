@@ -7,6 +7,11 @@ purpose: Komodo operator console — web UI + API over AGmind-provisioned stacks
 owner: agmind-core
 profiles:
 - ops
+# Dual-homed: default (traefik edge + host port + periphery ws) + data-net (its caged
+# komodo-mongo). live-audit 2026-06-05 (flat-network). K-3b.
+networks:
+- default
+- data-net
 ports:
 - 127.0.0.1:9120:9120
 depends_on:

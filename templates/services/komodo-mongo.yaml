@@ -7,6 +7,10 @@ purpose: MongoDB backing store for the Komodo operator console (2026-06-04)
 owner: agmind-core
 profiles:
 - ops
+# Caged on the internal data-net (consumed only by komodo-core, dual-homed) — not reachable
+# from the shared net. live-audit 2026-06-05 (flat-network). K-3b.
+networks:
+- data-net
 # Upstream komodo mongo.compose.yaml: --quiet keeps logs sane, the small WiredTiger
 # cache fits a single-purpose metadata store on a shared host.
 command:

@@ -62,6 +62,13 @@ def test_qdrant_caged_and_host_ports_dropped() -> None:
     assert d["qdrant"].ports == []  # no host publish on an internal-only net
 
 
+def test_komodo_mongo_caged_core_dual_homed() -> None:
+    """K-3b: komodo-mongo caged on data-net (consumed only by komodo-core, dual-homed)."""
+    d = load_descriptors()
+    assert d["komodo-mongo"].networks == ["data-net"]
+    assert set(d["komodo-core"].networks) == {"default", "data-net"}
+
+
 def test_rag_milvus_renders_internal_data_net() -> None:
     d = load_descriptors()
     sel = [d[n] for n in ("milvus", "etcd", "milvus-minio")]
