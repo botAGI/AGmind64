@@ -8,15 +8,25 @@ profiles:
 - observability
 ports:
 - 127.0.0.1:8083:8080
+# NO raw /var/run/docker.sock — cadvisor reaches the Docker API through the read-only
+# docker-socket-proxy (validated live: container_* metrics present via tcp). /rootfs,/sys,
+# /var/lib/docker are direct fs reads (cgroup/layer stats), not the socket.
+# live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
 volumes:
 - /:/rootfs:ro
-- /var/run/docker.sock:/var/run/docker.sock:ro
 - /sys:/sys:ro
 - /var/lib/docker/:/var/lib/docker:ro
 command:
 - --docker_only=true
+- --docker=tcp://docker-socket-proxy:2375
+depends_on:
+- docker-socket-proxy
 resources:
   cpus: 1.0
   mem_limit: 512m
 observability:
   prometheus_scrape: true
+
+# Phase O capabilities — pulls the docker-socket-proxy into the closure (read-only Docker API).
+consumes:
+- docker_api
