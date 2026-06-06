@@ -85,10 +85,41 @@ def test_postgres_becomes_a_db_dump_not_a_volume_tar() -> None:
     sources = data_sources(["postgres"], descriptors, env={"POSTGRES_PASSWORD": "pw"})
     dumps = [s for s in sources if isinstance(s, DbDumpSource)]
     vols = [s for s in sources if isinstance(s, DataVolumeSource)]
-    assert len(dumps) == 1 and not vols  # logical dump preferred over raw volume tar
-    d = dumps[0]
+    # logical dumps preferred over raw volume tar: a cluster-globals dump + the per-db dump
+    assert len(dumps) == 2 and not vols
+    g, d = dumps[0], dumps[1]
+    # globals FIRST (roles must restore before the per-db GRANTs reference them)
+    assert g.label == "dbdump/postgres-globals" and g.globals_only is True
+    assert g.dump_command() == [
+        "docker",
+        "exec",
+        "agmind-postgres",
+        "pg_dumpall",
+        "-U",
+        "dify",
+        "--globals-only",
+    ]
+    assert d.label == "dbdump/postgres" and d.globals_only is False
     assert d.engine == "postgres" and d.container == "agmind-postgres"
     assert d.user == "dify" and d.database == "dify"
+
+
+def test_postgres_globals_restore_is_clusterwide_no_db() -> None:
+    """globals restore via psql -U user with NO -d (cluster-level CREATE ROLE / tablespaces)."""
+    from agmind.ops.backup_data import restore_db_command
+
+    g = DbDumpSource(
+        "dbdump/postgres-globals", "agmind-postgres", "postgres", "dify", "", globals_only=True
+    )
+    assert restore_db_command(g) == [
+        "docker",
+        "exec",
+        "-i",
+        "agmind-postgres",
+        "psql",
+        "-U",
+        "dify",
+    ]
 
 
 def test_mysql_db_dump_reads_database_and_root_password() -> None:

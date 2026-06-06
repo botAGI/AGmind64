@@ -51,11 +51,25 @@ class DbDumpSource:
     user: str
     database: str
     password: str = ""
+    globals_only: bool = False
+    """postgres only: dump cluster-wide globals (roles/grants/tablespaces) via pg_dumpall
+    --globals-only instead of a single database. Restored BEFORE the per-db dumps so roles the
+    per-db GRANTs reference exist (live-audit MED postgres-backup-single-db-no-globals)."""
 
     def dump_command(self) -> list[str]:
         """Return the ``docker exec`` argv whose stdout is the dump (caller gzips + stores)."""
         if self.engine == "postgres":
             # in-container unix-socket connections use trust auth → no password in argv
+            if self.globals_only:
+                return [
+                    "docker",
+                    "exec",
+                    self.container,
+                    "pg_dumpall",
+                    "-U",
+                    self.user,
+                    "--globals-only",
+                ]
             return ["docker", "exec", self.container, "pg_dump", "-U", self.user, self.database]
         if self.engine == "mysql":
             cmd = ["docker", "exec"]
@@ -102,6 +116,24 @@ def data_sources(
         engine = _DB_ENGINES.get(name)
         if engine == "postgres":
             user = descriptor.env.get("POSTGRES_USER", "postgres")
+            password = env.get("POSTGRES_PASSWORD", "")
+            # Globals FIRST (roles/grants/tablespaces). Without them a restore into a fresh
+            # cluster cannot recreate the roles that the per-db dump's GRANTs reference, so the
+            # restore is incomplete/fails (live-audit MED postgres-backup-single-db-no-globals).
+            out.append(
+                DbDumpSource(
+                    label=f"dbdump/{name}-globals",
+                    container=f"agmind-{name}",
+                    engine="postgres",
+                    user=user,
+                    database="",
+                    password=password,
+                    globals_only=True,
+                )
+            )
+            # Per-db dump of POSTGRES_DB (the app database). NOTE: a multi-database postgres
+            # instance would need live enumeration of pg_database; the current stack runs a
+            # single app DB so POSTGRES_DB is complete (the "postgres" maintenance DB is empty).
             out.append(
                 DbDumpSource(
                     label=f"dbdump/{name}",
@@ -109,7 +141,7 @@ def data_sources(
                     engine="postgres",
                     user=user,
                     database=descriptor.env.get("POSTGRES_DB", user),
-                    password=env.get("POSTGRES_PASSWORD", ""),
+                    password=password,
                 )
             )
             continue
@@ -153,6 +185,9 @@ def dump_to_gzip(source: DbDumpSource, *, run: _Run = subprocess.run) -> bytes:
 def restore_db_command(source: DbDumpSource) -> list[str]:
     """Return the ``docker exec -i`` argv that loads a (gunzipped) dump on stdin into the DB."""
     if source.engine == "postgres":
+        if source.globals_only:
+            # cluster-level SQL (CREATE ROLE / ALTER ROLE / tablespaces) — no -d database
+            return ["docker", "exec", "-i", source.container, "psql", "-U", source.user]
         return [
             "docker",
             "exec",

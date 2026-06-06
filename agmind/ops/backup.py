@@ -333,6 +333,7 @@ def create_backup(
                             "container": ds.container,
                             "user": ds.user,
                             "database": ds.database,
+                            "globals_only": "1" if ds.globals_only else "",
                             "sha256": hashlib.sha256(payload).hexdigest(),
                         }
                     )
@@ -653,6 +654,7 @@ def restore_backup(
                     user=str(member_meta.get("user", "")),
                     database=str(member_meta.get("database", "")),
                     password=(db_passwords or {}).get(dlabel, ""),
+                    globals_only=bool(member_meta.get("globals_only")),
                 )
                 runner = data_run or subprocess.run
                 result = runner(restore_db_command(src), input=sql, check=False)
