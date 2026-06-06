@@ -60,8 +60,9 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
     descriptors = load_descriptors()
     # need WRITE (pull/recreate/manage) — the read-only proxy can't serve them; or ARE the proxy.
     write_holders = {"portainer", "komodo-periphery", "watchtower", "docker-socket-proxy"}
-    # read-only consumers not yet migrated. dozzle + homarr are non-default; netdata IS migrated.
-    pending_migration = {"homarr", "dozzle"}
+    # read-only consumers not yet migrated. Only dozzle remains (non-default log viewer; its
+    # docker provider needs a tcp endpoint config — separate follow-up).
+    pending_migration = {"dozzle"}
     allowed = write_holders | pending_migration
     for name, d in descriptors.items():
         if any("/var/run/docker.sock" in v for v in d.volumes):
@@ -69,7 +70,7 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
                 f"{name} binds the raw docker socket but is not an allowed holder"
             )
     # the migrated edge/observability consumers must NOT bind it anymore
-    for migrated in ("traefik", "cadvisor", "alloy", "netdata"):
+    for migrated in ("traefik", "cadvisor", "alloy", "netdata", "homarr"):
         assert not any("/var/run/docker.sock" in v for v in descriptors[migrated].volumes), migrated
 
 

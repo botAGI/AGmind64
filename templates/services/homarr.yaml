@@ -9,8 +9,11 @@ profiles:
 - observability
 ports:
 - 127.0.0.1:7575:7575
+# NO raw /var/run/docker.sock — homarr boots fine without it (validated live: clean start, no
+# errors). The optional "docker" dashboard widget is UI-configured; point it at the read-only
+# docker-socket-proxy (docker-socket-proxy:2375, present alongside in the observability profile)
+# instead of the raw root socket if needed. live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
 volumes:
-- /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/homarr/appdata:/appdata
 env:
   SECRET_ENCRYPTION_KEY: ${HOMARR_SECRET_ENCRYPTION_KEY:?HOMARR_SECRET_ENCRYPTION_KEY is required}
