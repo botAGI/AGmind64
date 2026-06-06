@@ -146,6 +146,11 @@ def _rewrite_volume_host_root(volume: str, data_root: str, config_root: str) -> 
 # route except through the dual-homed ssrf-proxy.
 _EXTRA_NETWORK_ATTRS: dict[str, dict[str, Any]] = {
     "ssrf-net": {"driver": "bridge", "internal": True},
+    # data-net: internal (no host route) tier for stateful backends. A datastore on data-net
+    # ONLY is unreachable from the shared net — only its dual-homed consumers reach it, so a
+    # compromised internet-facing app can't pivot to it. live-audit 2026-06-05 (flat-network /
+    # etcd-no-auth exposure). Rolled out incrementally (etcd + milvus-minio first).
+    "data-net": {"driver": "bridge", "internal": True},
 }
 
 

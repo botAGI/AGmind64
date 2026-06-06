@@ -8,6 +8,11 @@ owner: stateful-services
 profiles:
 - rag-milvus
 # Internal-only: reached by milvus over the compose network (etcd:2379); no host ports.
+# Caged on the internal data-net (NOT the shared net) so only milvus (dual-homed) can reach it
+# — a compromised internet-facing app can no longer hit etcd's open client API and read/overwrite
+# Milvus metadata. live-audit 2026-06-05 (etcd-no-auth exposure / flat-network).
+networks:
+- data-net
 volumes:
 - /var/lib/agmind/etcd:/etcd
 command:

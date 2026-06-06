@@ -6,6 +6,11 @@ tier: storage
 purpose: Billion-scale vector store (opt-in profile) — 2026-05-16
 profiles:
 - rag-milvus
+# Dual-homed: default net (reached by dify clients + the host-published 19530) AND the internal
+# data-net (where its caged backends etcd + milvus-minio live). live-audit 2026-06-05.
+networks:
+- default
+- data-net
 ports:
 - 127.0.0.1:19530:19530
 volumes:

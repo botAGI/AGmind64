@@ -12,6 +12,9 @@ profiles:
 # Milvus storage is isolated from RAGFlow's. Its OWN root credential (separate trust domain
 # from the app `minio`) so leaking one MinIO root does not grant the other.
 # live-audit 2026-06-05 shared-minio-root-cred-two-trust-domains.
+networks:
+# Caged on the internal data-net (only milvus, dual-homed, reaches it). live-audit 2026-06-05.
+- data-net
 volumes:
 - /var/lib/agmind/milvus-minio:/data
 command:
