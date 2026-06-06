@@ -25,6 +25,9 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     "MYSQL_ROOT_PASSWORD",
     "MINIO_ROOT_PASSWORD",
     "REDIS_PASSWORD",
+    # Elasticsearch xpack.security bootstrap password (the `elastic` superuser). RAGFlow auths
+    # to ES with it (ES_USER defaults to elastic). live-audit 2026-06-05 elasticsearch-xpack-disabled.
+    "ELASTIC_PASSWORD",
     "N8N_ENCRYPTION_KEY",
     "HOMARR_SECRET_ENCRYPTION_KEY",
     # Authelia first-admin login password — hashed (argon2id) into users_database.yml at
@@ -74,6 +77,9 @@ INIT_ONLY = frozenset(
         "MYSQL_ROOT_PASSWORD",
         "MINIO_ROOT_PASSWORD",
         "GRAFANA_PASSWORD",
+        # ES bootstraps the `elastic` password only on first init of an empty data dir;
+        # rotating the env afterwards is a no-op (needs elasticsearch-reset-password).
+        "ELASTIC_PASSWORD",
         # mongo sets the root pw on first init of an empty data dir; the admin user is
         # seeded into mongo on core's first boot — rotating the env afterwards is a no-op.
         "KOMODO_DATABASE_PASSWORD",

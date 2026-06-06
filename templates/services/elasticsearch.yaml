@@ -15,20 +15,26 @@ writable_mounts:
 - /var/lib/agmind/elasticsearch
 env:
   discovery.type: single-node
-  xpack.security.enabled: 'false'
+  # Enable HTTP basic auth on the RAGFlow chunk index (was fully open — any container on the
+  # docker net could read/delete it). ES bootstraps the `elastic` superuser with ELASTIC_PASSWORD
+  # on first init of an EMPTY data dir; single-node needs no transport TLS and HTTP TLS stays off,
+  # so RAGFlow connects over http:// with basic auth (matches RAGFlow's upstream secured-ES setup).
+  # CAVEAT: enabling this on an EXISTING (previously-open) data dir does NOT retro-set the password
+  # — wipe the (empty) /var/lib/agmind/elasticsearch once so the secured cluster bootstraps.
+  # live-audit 2026-06-05 elasticsearch-xpack-disabled.
+  xpack.security.enabled: 'true'
+  ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required}
   ES_JAVA_OPTS: -Xms4g -Xmx4g
 resources:
   cpus: 4.0
   mem_limit: 8g
 # Without a healthcheck, ragflow's depends_on fell back to service_started and could boot
-# before ES was ready (live-audit 2026-06-05 MED). CMD (exec) form so the `&` in the query
-# string is part of the URL arg, not a shell operator. curl is present in the 8.x image.
+# before ES was ready (live-audit 2026-06-05 MED). With security ON the probe must AUTHENTICATE,
+# so CMD-SHELL (expands $ELASTIC_PASSWORD from the container env). curl is present in the 8.x image.
 health:
   test:
-  - CMD
-  - curl
-  - -fsS
-  - http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s
+  - CMD-SHELL
+  - curl -fsS -u "elastic:$ELASTIC_PASSWORD" "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s"
   start_period: 120s
   interval: 15s
   timeout: 10s

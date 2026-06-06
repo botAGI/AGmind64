@@ -26,6 +26,9 @@ env:
   REDIS_HOST: redis
   REDIS_PORT: '6379'
   REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+  # Elasticsearch now requires basic auth (xpack.security on). RAGFlow's service_conf reads
+  # ES_USER (default 'elastic') + ELASTIC_PASSWORD. live-audit 2026-06-05 elasticsearch-xpack-disabled.
+  ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required}
 depends_on:
 - mysql
 - elasticsearch
