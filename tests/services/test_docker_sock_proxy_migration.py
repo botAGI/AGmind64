@@ -58,19 +58,17 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
     managers/updaters the read-only proxy can't serve, or read-only consumers still pending
     migration (tracked so the set can't silently grow). live-audit docker-sock-blast-radius."""
     descriptors = load_descriptors()
-    # need WRITE (pull/recreate/manage) — the read-only proxy can't serve them; or ARE the proxy.
+    # ONLY services that need WRITE (pull/recreate/manage containers) — the read-only proxy can't
+    # serve them — or the proxy itself may bind the raw socket. EVERY read-only API consumer is
+    # migrated to the proxy. live-audit docker-sock-blast-radius.
     write_holders = {"portainer", "komodo-periphery", "watchtower", "docker-socket-proxy"}
-    # read-only consumers not yet migrated. Only dozzle remains (non-default log viewer; its
-    # docker provider needs a tcp endpoint config — separate follow-up).
-    pending_migration = {"dozzle"}
-    allowed = write_holders | pending_migration
     for name, d in descriptors.items():
         if any("/var/run/docker.sock" in v for v in d.volumes):
-            assert name in allowed, (
-                f"{name} binds the raw docker socket but is not an allowed holder"
+            assert name in write_holders, (
+                f"{name} binds the raw docker socket but is not a WRITE manager / the proxy"
             )
-    # the migrated edge/observability consumers must NOT bind it anymore
-    for migrated in ("traefik", "cadvisor", "alloy", "netdata", "homarr"):
+    # every read-only consumer is off the raw socket (via the proxy)
+    for migrated in ("traefik", "cadvisor", "alloy", "netdata", "homarr", "dozzle"):
         assert not any("/var/run/docker.sock" in v for v in descriptors[migrated].volumes), migrated
 
 
@@ -79,3 +77,11 @@ def test_netdata_uses_socket_proxy_not_raw_sock() -> None:
     assert not any("docker.sock" in v for v in d.volumes), "netdata must not bind the raw socket"
     assert d.env["DOCKER_HOST"] == "tcp://docker-socket-proxy:2375"
     assert "docker_api" in d.consumes
+
+
+def test_dozzle_uses_socket_proxy_not_raw_sock() -> None:
+    d = load_descriptors()["dozzle"]
+    assert not any("docker.sock" in v for v in d.volumes), "dozzle must not bind the raw socket"
+    assert d.env["DOCKER_HOST"] == "tcp://docker-socket-proxy:2375"
+    assert "docker_api" in d.consumes
+    assert d.depends_on == []  # NO depends_on (cross-profile hard-raise); consume pulls the proxy

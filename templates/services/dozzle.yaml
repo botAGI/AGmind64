@@ -9,8 +9,12 @@ profiles:
 - observability
 ports:
 - 127.0.0.1:8084:8080
-volumes:
-- /var/run/docker.sock:/var/run/docker.sock:ro
+# NO raw /var/run/docker.sock — dozzle reads container logs via the read-only docker-socket-proxy
+# (DOCKER_HOST). Validated live: dozzle logged "Connected to Docker" over tcp. No depends_on (a
+# cross-profile depends_on hard-raises the --no-tui render); the consume pulls the proxy + dozzle
+# retries the connection. live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
+env:
+  DOCKER_HOST: tcp://docker-socket-proxy:2375
 resources:
   cpus: 0.5
   mem_limit: 512m
@@ -27,3 +31,7 @@ routing:
   host: dozzle.agmind.dev
   middleware_chain: chain-internal
   healthcheck_path: /
+
+# Phase O capabilities — pulls the docker-socket-proxy into the closure (read-only Docker API).
+consumes:
+- docker_api

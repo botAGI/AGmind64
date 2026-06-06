@@ -577,7 +577,11 @@ def _command_secret_env_names(
 
 
 def _docker_socket_replaced_by_kubernetes_provider(descriptor: ServiceDescriptor) -> bool:
-    return descriptor.name == "traefik" and _has_docker_socket_volume(descriptor)
+    # traefik ALWAYS uses a Docker provider in compose (whether via the raw socket or the
+    # socket-proxy DOCKER_HOST/endpoint), and the k8s render ALWAYS swaps it for the kubernetes
+    # ingress provider — which needs the RBAC + the socket volume dropped. Keyed on the service,
+    # not the raw-socket bind (the docker-sock migration moved traefik onto the proxy).
+    return descriptor.name == "traefik"
 
 
 def _is_kubernetes_omitted_service(descriptor: ServiceDescriptor) -> bool:
@@ -587,9 +591,11 @@ def _is_kubernetes_omitted_service(descriptor: ServiceDescriptor) -> bool:
 
 
 def _is_compose_only_docker_socket_service(descriptor: ServiceDescriptor) -> bool:
-    return descriptor.name in COMPOSE_ONLY_DOCKER_SOCKET_SERVICES and _has_docker_socket_volume(
-        descriptor
-    )
+    # List-authoritative: these are compose-only Docker-management / host-monitoring tools that
+    # have no place in a Kubernetes render. The membership is the rule — NOT a raw-docker.sock
+    # heuristic, since the read-only consumers now reach the Docker API via the socket-proxy
+    # (DOCKER_HOST) rather than binding /var/run/docker.sock (live-audit docker-sock migration).
+    return descriptor.name in COMPOSE_ONLY_DOCKER_SOCKET_SERVICES
 
 
 def _is_unconfigured_rerank_service(descriptor: ServiceDescriptor) -> bool:
