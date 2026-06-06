@@ -24,6 +24,18 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 1g
+# /api/health is unauthenticated + returns 200 (verified live; curl present in the image).
+# live-audit 2026-06-05 userfacing-services-no-docker-healthcheck.
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:3000/api/health
+  start_period: 60s
+  interval: 15s
+  timeout: 5s
+  retries: 10
 access:
   login: admin
   password_env: GRAFANA_PASSWORD

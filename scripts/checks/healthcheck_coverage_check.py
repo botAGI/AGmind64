@@ -51,11 +51,9 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     # tech-debt: SHOULD ship a Docker health probe — tracked so it is not silently passing
     "alertmanager": "tech-debt: add /-/healthy probe",
     "authelia": "tech-debt: add /api/health probe",
-    "dify-api": "tech-debt: add /health probe (or Traefik active healthcheck)",
     "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
     "dify-web": "tech-debt: add web readiness probe",
     "docling": "tech-debt: add /health probe",
-    "grafana": "tech-debt: add /api/health probe",
     "homarr": "tech-debt: add web readiness probe (not in default selection)",
     "loki": "tech-debt: add /ready probe",
     "openwebui": "tech-debt: add /health probe",

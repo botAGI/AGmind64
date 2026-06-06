@@ -429,27 +429,18 @@ def test_render_compose_waits_for_healthy_runtime_dependencies() -> None:
 
 
 def test_render_compose_keeps_started_condition_for_dependencies_without_healthcheck() -> None:
-    descriptors = load_descriptors()
-    # C2: dify-api consumes vector_db — include qdrant as provider so the
-    # fail-closed consumes check does not raise (test focus is depends_on semantics).
-    # dify-api depends_on postgres+redis — include them too so render_compose's complete-
-    # selection guard (no dangling depends_on) is satisfied; they don't affect the assertion.
-    selected = [
-        descriptors["dify-web"],
-        descriptors["dify-api"],
-        descriptors["qdrant"],  # provides vector_db for dify-api
-        descriptors["postgres"],
-        descriptors["redis"],
-    ]
+    # render_depends_on: a dependency WITHOUT a healthcheck → service_started; one WITH a
+    # healthcheck → service_healthy. Synthetic descriptors so the assertion is decoupled from
+    # which catalog services happen to ship a healthcheck (live-audit 2026-06-05 added several).
+    dep_no_hc = _minimal_descriptor(name="dep-no-hc", ports=[])
+    dep_hc = _minimal_descriptor(name="dep-hc", ports=[], health={"test": ["CMD", "true"]})
+    consumer = _minimal_descriptor(name="consumer-x", ports=[], depends_on=["dep-no-hc", "dep-hc"])
 
-    compose = render_compose(selected, traefik_enabled=False)
+    compose = render_compose([consumer, dep_no_hc, dep_hc], traefik_enabled=False)
 
-    assert compose["services"]["dify-web"]["depends_on"] == {
-        "dify-api": {
-            "condition": "service_started",
-            "restart": True,
-        }
-    }
+    deps = compose["services"]["consumer-x"]["depends_on"]
+    assert deps["dep-no-hc"] == {"condition": "service_started", "restart": True}
+    assert deps["dep-hc"]["condition"] == "service_healthy"  # has a healthcheck → wait for healthy
 
 
 def test_render_compose_waits_for_mysql_before_ragflow() -> None:
