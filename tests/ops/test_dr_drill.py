@@ -157,3 +157,57 @@ def test_dr_drill_cli_offline_roundtrip(tmp_path: Path) -> None:
     assert "rto" in result.output.lower()
     # the drill must not have mutated the real install
     assert (install / ".env").read_text(encoding="utf-8") == "AGMIND_DOMAIN=lab.example.com\n"
+
+
+def test_dr_drill_include_data_backs_up_data_but_restore_excludes_dbdump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live-audit MED dr-drill-skips-data-tier: --include-data must back up + integrity-verify the
+    data tier, but the SANDBOX restore must EXCLUDE dbdump/* — a dbdump restore execs into the LIVE
+    db container, not the sandbox, so exec'ing it in a drill would overwrite live data."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import BackupResult, RestoreResult
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (install / ".env").write_text("X=1\n", encoding="utf-8")
+
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: ["postgres", "qdrant"])
+    captured: dict[str, object] = {}
+
+    def fake_create_backup(*, output_path, sources, data_sources=None, sudo_password=None, **kw):  # type: ignore[no-untyped-def]
+        captured["data_sources"] = data_sources
+        Path(output_path).write_bytes(b"archive")
+        return BackupResult(Path(output_path), 7, (), ())
+
+    def fake_read_metadata(_p):  # type: ignore[no-untyped-def]
+        return {
+            "included": ["compose", "env"],
+            "data": [
+                {"label": "dbdump/postgres", "kind": "dbdump"},
+                {"label": "dbdump/postgres-globals", "kind": "dbdump"},
+                {"label": "volume/qdrant", "kind": "dir"},
+            ],
+        }
+
+    def fake_restore_backup(*, backup_path, sources, labels=None, **kw):  # type: ignore[no-untyped-def]
+        captured["restore_labels"] = labels
+        return RestoreResult(extracted=tuple(labels or ()), metadata={}, failed=())
+
+    monkeypatch.setattr("agmind.ops.backup.create_backup", fake_create_backup)
+    monkeypatch.setattr("agmind.ops.backup.verify_backup", lambda _p: [])
+    monkeypatch.setattr("agmind.ops.backup.restore_backup", fake_restore_backup)
+    monkeypatch.setattr(ops_cmd, "read_metadata", fake_read_metadata)
+
+    rc = ops_cmd.cmd_dr_drill(
+        install, user_dir=tmp_path / "u", system_dir=tmp_path / "s", include_data=True
+    )
+    assert rc == 0
+    assert captured["data_sources"] is not None  # data tier was backed up
+    rl = captured["restore_labels"]
+    assert rl is not None
+    assert "volume/qdrant" in rl and "compose" in rl  # config + volume restored into sandbox
+    assert not any(
+        str(label).startswith("dbdump/") for label in rl
+    )  # dbdump excluded (live-exec danger)

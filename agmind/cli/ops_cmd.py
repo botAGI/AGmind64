@@ -522,6 +522,7 @@ def cmd_dr_drill(
     skip_restore: bool = True,
     as_json: bool = False,
     ask_sudo_password: bool = False,
+    include_data: bool = False,
 ) -> int:
     import json
     import tempfile
@@ -534,6 +535,22 @@ def cmd_dr_drill(
         return 2
 
     sudo = _prompt_sudo_password(ask_sudo_password)
+
+    # --include-data exercises the DATA tier (live-audit MED dr-drill-skips-data-tier): the drill
+    # now BACKS UP the db dumps + volume tars and the integrity step verifies each dump's sha256.
+    # The sandbox restore deliberately restores config + VOLUME members only — a dbdump restore
+    # execs `docker exec agmind-<db> psql`, which targets the LIVE container, NOT the sandbox, so
+    # exec'ing it here would overwrite live data. Dump integrity is proven by the integrity step.
+    data_srcs = None
+    if include_data:
+        from agmind.core.env import parse_env_file_or_empty
+        from agmind.ops.backup_data import data_sources as enumerate_data_sources
+        from agmind.services.renderer import load_descriptors
+
+        services = _running_compose_services(install_dir)
+        env = parse_env_file_or_empty(install_dir / ".env")
+        data_srcs = enumerate_data_sources(services, load_descriptors(), env)
+
     with tempfile.TemporaryDirectory(prefix="agmind-drdrill-") as tmp:
         tmpdir = Path(tmp)
         archive_path = tmpdir / "drill-backup.tar.gz"
@@ -545,15 +562,34 @@ def cmd_dr_drill(
             create_backup(
                 output_path=archive_path,
                 sources=default_sources(install_dir, user_dir, system_dir),
+                data_sources=data_srcs,
                 sudo_password=sudo,
             )
             return archive_path
 
         def _restore(path: Path) -> list[str]:
-            # Restore into a throwaway sandbox — NEVER the live install.
+            # Restore into a throwaway sandbox — NEVER the live install. With --include-data,
+            # scope to config + VOLUME members only (exclude dbdump/* — its restore would exec
+            # into the LIVE db container, not the sandbox).
+            restore_labels = None
+            if include_data:
+                meta = read_metadata(path)
+                included_raw = meta.get("included", [])
+                config_labels = (
+                    [str(x) for x in included_raw] if isinstance(included_raw, list) else []
+                )
+                data_raw = meta.get("data", [])
+                data_members = data_raw if isinstance(data_raw, list) else []
+                volume_labels = [
+                    str(m["label"])
+                    for m in data_members
+                    if isinstance(m, dict) and m.get("kind") != "dbdump"
+                ]
+                restore_labels = config_labels + volume_labels
             result = restore_backup(
                 backup_path=path,
                 sources=default_sources(sandbox / "opt", sandbox / "user", sandbox / "system"),
+                labels=restore_labels,
             )
             return list(result.extracted)
 
@@ -782,6 +818,13 @@ def register(app: typer.Typer) -> None:
         ask_sudo_password: bool = typer.Option(
             False, "--ask-sudo-password", help="Prompt for sudo for root-owned paths."
         ),
+        include_data: bool = typer.Option(
+            False,
+            "--include-data",
+            help="Exercise the DATA tier: back up db dumps + volume tars and verify dump "
+            "integrity (sandbox restore stays config+volume only — dbdump restore would hit "
+            "the live db).",
+        ),
     ) -> None:
         """DR drill: backup → integrity → sandbox-restore → measure RTO (live restore gated)."""
         raise typer.Exit(
@@ -792,6 +835,7 @@ def register(app: typer.Typer) -> None:
                 skip_restore=not no_skip_restore,
                 as_json=as_json,
                 ask_sudo_password=ask_sudo_password,
+                include_data=include_data,
             )
         )
 
