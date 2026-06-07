@@ -120,27 +120,34 @@ curl http://localhost:8082/v1/rerank \
 | `ragflow` | RAGFlow + mysql + elasticsearch + minio (M2 fallback, opt-in) |
 | `ui` | Open WebUI (chat frontend) |
 | `observability` | Prometheus + Grafana + Loki + Alloy + cAdvisor + Portainer + exporters |
-| `security` | Authelia (2FA SSO) + UFW + fail2ban (host-level) |
+| `security` | Authelia SSO (one-factor forward-auth) + redis session store. Host-level UFW + fail2ban ship in the Ansible `security` role (applied only on the `ansible-playbook … -t security` / full-playbook path, not the default `make setup` docker deploy — roadmap to wire into the installer). |
 
 Default: `core` + `rag`.
 
-## Tier auto-detection
+## Models the install wizard offers
 
-The `models` play (`ansible-playbook ansible/install.yml -t models`, and the `agmind install`
-wizard) uses `agmind.models.detect_tier()`:
+`agmind install` (and `agmind install --list-models`) draws from a small curated catalog —
+these are the only ids selectable with `--model-id`. Run `agmind models list` /
+`agmind install --list-models` for the live list; as of this build:
 
-| RAM | Tier | LLM (primary) | Disk |
-|-----|------|---------------|------|
-| 16 GB | S | Qwen3.5-9B UD-Q4_K_XL | 6.0 GB |
-| 32 GB | M | gemma-4-26B-A4B-it UD-Q4_K_M | 16.9 GB |
-| 64 GB | L | Qwen3.6-35B-A3B UD-Q4_K_XL | 22.4 GB |
-| 128 GB | XL | gpt-oss-120b MXFP4_MOE | 62.8 GB |
-| 128+ GB | XXL | MiniMax M2.5 Q3_K_M | 101.8 GB |
+| ID | Model | Size | Quant | ★ Strix-verified |
+|----|-------|------|-------|------------------|
+| `qwen36-a3b-q4km` (default) | Qwen3.6-35B-A3B (MoE) | 21.2 GB | Q4_K_M | ★ |
+| `qwen36-a3b-q4_0` | Qwen3.6-35B-A3B (MoE) | 19.7 GB | Q4_0 | ★ |
+| `qwen36-a3b-dyn` | Qwen3.6-35B-A3B (MoE, dynamic mix) | 19.0 GB | DYNAMIC | ★ |
+| `llama2-7b-q4km` | Llama-2-7B (CI/smoke baseline) | 4.1 GB | Q4_K_M | |
+| `llama2-7b-q4_0` | Llama-2-7B (CI/smoke baseline) | 3.8 GB | Q4_0 | |
+| `bge-m3-q8` | BGE-M3 embed (always pulled) | 0.6 GB | Q8_0 | |
+| `bge-reranker-v2-m3-q8` | BGE Reranker v2 M3 (always pulled) | 0.6 GB | Q8_0 | |
 
-Override the auto-detected tier with `AGMIND_MODELS_TIER` (or `-e agmind_models_tier=M`):
-```bash
-AGMIND_MODELS_TIER=M ansible-playbook ansible/install.yml -t models
-```
+Pull one explicitly: `agmind models pull qwen36-a3b-q4km` (or pass `--model-id` to `install`).
+
+> **Roadmap — legacy RAM auto-tier registry (not yet in the install wizard).** A separate
+> `llm_tiers` registry (`templates/models.yaml`) plus `agmind.models.detect_tier()` maps RAM to
+> larger aspirational tiers (S/M/L/XL/XXL up to gpt-oss-120b / MiniMax). It is driven only by the
+> legacy `ansible-playbook ansible/install.yml -t models` play and is **not** offered by
+> `agmind install` — those ids are not selectable with `--model-id` today. Folding it into the
+> wizard catalog is tracked work; until then, use the curated ids above.
 
 ## Multi-node cluster
 

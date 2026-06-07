@@ -226,9 +226,9 @@ agmind deploy logs llama-llm
 
 #### Fix
 
-Model not downloaded:
+Model not downloaded (pull a curated id from `agmind install --list-models`):
 ```bash
-agmind models download
+agmind models pull qwen36-a3b-q4km
 agmind deploy restart llama-llm
 ```
 

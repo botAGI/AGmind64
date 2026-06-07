@@ -40,10 +40,10 @@ def test_docs_mirror_check_json_output_includes_counts() -> None:
     payload = json.loads(out)
     assert payload["ok"] is True
     assert payload["error_count"] == 0
-    # 12 REAL markdown headings (the check now excludes `#` bash comments inside ``` fences,
-    # which previously inflated this count — see docs_mirror_check._heading_topology).
-    assert payload["heading_count"] == 12
-    assert payload["code_block_count"] == 15
+    # README rewritten 2026-06-08 to a concise git-canon page (10 headings, 3 shell code blocks);
+    # the check excludes `#` bash comments inside ``` fences (see docs_mirror_check._heading_topology).
+    assert payload["heading_count"] == 10
+    assert payload["code_block_count"] == 3
 
 
 def test_docs_mirror_check_rejects_shell_command_drift(tmp_path: Path) -> None:

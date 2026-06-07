@@ -1,325 +1,148 @@
 # AGmind
 
+**Собственный приватный AI-стек — LLM, RAG, observability и SSO — на одной машине, одной командой.**
+
 [English](README.md) | Русская версия
 
-[![CI](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml/badge.svg)](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml)
+[![CI](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/botAGI/AGmind64/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](pyproject.toml)
 
-Приватная LLM/RAG-платформа для AMD Strix Halo и обычных x86_64-хостов.
-Основной путь - Docker Compose на Ubuntu; Proxmox VM provisioning и Kubernetes
-оставлены за явными контрактами deploy-target.
+AGmind превращает хост на AMD Ryzen AI Max+ «Strix Halo» (Radeon 8060S / gfx1151) —
+или любую x86_64 Linux-машину — в полностью самостоятельную AI-платформу. Никакого
+облака, никаких API-ключей за пределами вашей сети: локальная LLM с
+OpenAI-совместимым API, embeddings и reranking, RAG-приложение, векторное
+хранилище, edge-авторизация и набор мониторинга — всё связано и развёрнуто одной
+командой `make setup`.
 
-## Что Такое AGmind
+## Что вы получаете
 
-AGmind устанавливает и обслуживает локальный AI-стек: llama.cpp-сервисы для LLM,
-embedding и rerank; RAG/storage-сервисы; опциональную n8n-автоматизацию
-workflow; observability; и проверки deploy-governance. Проект настроен под AMD
-Ryzen AI Max+ "Strix Halo" с Radeon 8060S/gfx1151, но сохраняет CPU fallback
-для обычного x86_64 Linux.
+- **Локальный inference** — llama.cpp отдаёт LLM, embeddings и reranking на
+  Vulkan/ROCm (с CPU-fallback) через OpenAI-совместимые HTTP-эндпоинты.
+- **RAG из коробки** — приложение Dify, векторное хранилище Qdrant, парсинг
+  документов (Docling); опциональная линия RAGFlow.
+- **Observability** — Prometheus, Grafana, Loki, Alloy, cAdvisor и экспортёры на
+  опциональном профиле.
+- **Защищённый edge** — обратный прокси Traefik + Authelia forward-auth SSO;
+  секреты пишутся в `.env` с правами `0600` и никогда не печатаются.
+- **Единый операторский CLI** — `agmind` для установки, day-2-операций,
+  backup/restore, диагностики, со встроенным TUI.
+- **Воспроизводимость** — каждый образ сервиса закреплён по digest; governance-
+  проверки блокируют изменяемые теги, а аудит несоответствия железа запрещает
+  пути NVIDIA/CUDA.
 
-Основные команды идут через CLI `agmind`:
+> **Статус:** pre-1.0. Поддерживаемый путь — одноузловой Docker Compose на Ubuntu;
+> обнаружение многоузлового кластера экспериментально.
 
-```bash
-agmind setup
-agmind verify install --domain lab.example.com
-agmind doctor
-agmind status
-agmind render topology --profile core,rag,observability --json
-agmind cluster inspect --timeout 10
-```
-
-## Текущий Срез Готовности
-
-Последняя локальная проверка готовности: 2026-05-26.
-
-- Deploy target для чистой установки по умолчанию: `ubuntu-compose`.
-- Контракты deploy target: `ubuntu-compose`, `proxmox-vm-compose` и `k3s`
-  зарегистрированы и валидируются.
-- Setup wizard ведет выбор сервисов по операторским отделам: foundation,
-  RAG/agents/automation, data, model runtime, monitoring и security.
-- `agmind setup` - основной one-command TUI flow: config wizard, bootstrap,
-  runtime `.env`, точная валидация Docker Compose config перед реальным pull
-  images, model pulls, Compose deploy, health checks, rollback-aware failure
-  handling и финальная подсказка пути к credentials.
-- `agmind verify install` - non-destructive gate для fresh install: расширяет
-  выбранные в setup сервисы, пишет временные runtime env, гоняет deploy dry-run,
-  валидирует Docker Compose config и image pull dry-run для ключевых стеков,
-  ставит нужные Ansible collections в игнорируемый локальный cache и делает
-  syntax-check bootstrap playbook.
-- Мониторинг из коробки - профиль `observability`: Prometheus, Grafana, Loki,
-  Alloy, Alertmanager и node exporter входят в default service selection.
-- n8n принят как opt-in профиль `automation`: pinned image, persistent
-  `/var/lib/agmind/n8n`, выключенные diagnostics и включенные Prometheus
-  metrics.
-- Проверки version governance проходят для constraints, components, deploy
-  targets и tool candidates.
-- `scripts/checks/version_check.py` пишет по записи pinned-image на каждый компонент каталога
-  (захардкоженные «32» — устаревший снимок до Komodo). Сейчас ручного
-  просмотра требуют major-кандидаты RagFlow и MySQL, ожидаемые holds для
-  выбранных pinned-сервисов и несколько registry probes без remote version.
-- Deploy-facing mutable image tags и unbounded Ansible package upgrade state
-  убраны из текущих deploy/docs поверхностей.
-- Runtime-секреты Compose обязательны уже на `config`; `agmind install` пишет
-  `/opt/agmind/.env` с mode `0600` и сохраняет generated values при повторном
-  запуске. Финальные summary setup/install показывают оператору путь к этому
-  файлу, но не печатают значения credentials.
-- `agmind install` также пишет `/opt/agmind/version.env` с mode `0644`. В нем
-  фиксируются версия AGmind и image tag/digest выбранных runtime-сервисов для
-  drift review, backup и rollback notes.
-- Видимый в репозитории пример лежит в `templates/runtime/version.env.example`
-  и отслеживает pinned descriptors для Uptime Kuma, Homarr, Watchtower, Dozzle
-  и Netdata.
-- Compose- и Kubernetes-render поддерживают повторяемые флаги `--service/-s` для
-  фокусных runtime-проверок, например `agmind render compose --service n8n
-  --service dozzle`. Explicit service render падает рано, если не выбраны hard
-  `depends_on` сервисы.
-- Compose-render теперь использует health-aware dependency gates: сервисы ждут
-  healthy Postgres/Redis/MySQL/MinIO/etc., если у dependency descriptor есть
-  healthcheck. Это снижает startup races на fresh deploy.
-- Профиль `full` снова рендерится после cleanup альтернативных edge-proxy, но
-  для fresh install безопаснее staged rollout: сначала `core,observability`,
-  затем `rag`/другие профили после проверки моделей и секретов.
-- `agmind cluster inspect` показывает AGmind mDNS peers и сырые LAN neighbor
-  candidates из локальной neighbor table (host-specific статус — в локальных
-  run-notes, не в этом README).
-
-## Быстрый Старт
+## Быстрый старт
 
 ```bash
-git clone https://github.com/botAGI/AGmind64 agmind
+git clone https://github.com/botAGI/AGmind64.git agmind
 cd agmind
-
-# Одна команда: `make setup` создаёт локальный .venv, ставит в него agmind CLI и запускает
-# TUI-визард установки (bootstrap поставит/починит Docker Engine при необходимости). Глобального
-# `agmind` нет, пока install его не создаст — точка входа это сам репозиторий-чекаут.
 make setup
 ```
 
-> Примеры `agmind …` ниже предполагают, что install уже добавил `agmind` в PATH. **До первой
-> установки** (чистая машина) запускай через `make setup` / `make install`, либо CLI напрямую как
-> `.venv/bin/agmind …` (после `make bootstrap`), либо один раз `source .venv/bin/activate`.
+`make setup` создаёт локальный `.venv`, устанавливает в него CLI `agmind`, чинит
+или ставит Docker при необходимости, затем запускает TUI-мастер установки. **Этот
+checkout и есть точка входа bootstrap** — глобального бинарника `agmind` нет, пока
+установка его не создаст, поэтому до первой установки всегда идите через
+`make setup` (или `.venv/bin/agmind …`).
 
-Non-interactive установка Strix Halo:
-
-```bash
-make install ARGS="--no-tui --domain lab.example.com --cf-token-file token.txt --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0"
-```
-
-Каталог моделей:
+Неинтерактивная установка (дефолты Strix Halo):
 
 ```bash
-agmind install --list-models
+make install ARGS="--no-tui --domain lab.example.com \
+  --model-id qwen36-a3b-q4km --ctx-size 16384 --kv-cache q8_0"
 ```
 
-## План Проверки Свежего Деплоя
+Каталог моделей, предлагаемых мастером: `agmind install --list-models`.
 
-Перед изменением `/opt/agmind` на чистом хосте запусти:
+## Доступ к стеку
 
-Начинай с `core,observability` или `core,rag,observability`.
+| Что | Где |
+|-----|-----|
+| LLM (OpenAI-совместимый) | `http://<host>:8080/v1` |
+| Embeddings | `http://<host>:8081/v1` |
+| Reranking | `http://<host>:8082/v1` |
+| Dify, Grafana, … | `agmind endpoints` (URL + состояние) |
+| Учётные данные | `sudo agmind creds show` (только root; хранятся в `/opt/agmind/.env`, `0600`, не печатаются) |
+
+CLI `agmind chat` нет — inference только по HTTP; направьте любой
+OpenAI-совместимый клиент на порты выше.
+
+## Профили
+
+Компоненты выбираются при установке (по умолчанию `core,rag`):
+
+| Профиль | Включает |
+|---------|----------|
+| `core` | Traefik, llama LLM/embed/rerank, Qdrant (минимум для inference) |
+| `rag` | + Dify (api/worker/web/plugin-daemon/sandbox), Postgres, Redis, Docling |
+| `ragflow` | RAGFlow + MySQL + Elasticsearch + MinIO (опциональный fallback) |
+| `ui` | Open WebUI — фронтенд чата |
+| `observability` | Prometheus, Grafana, Loki, Alloy, cAdvisor, Portainer, экспортёры |
+| `security` | Authelia SSO (one-factor forward-auth) + хранилище сессий Redis |
+| `automation` | n8n-автоматизация workflow |
+| `tracing` | Arize Phoenix — LLM-трейсинг для Dify |
+
+Свежие установки стоит раскатывать поэтапно: начните с `core,observability`,
+проверьте модели и секреты, затем добавьте `rag` и остальное.
+
+## Шпаргалка day-2
 
 ```bash
-agmind doctor --json
-agmind cluster inspect --timeout 10
-agmind verify install --domain lab.example.com
-agmind setup
+agmind doctor              # preflight + live diagnostics
+agmind status              # backend + device info ( --tui for live dashboard )
+agmind endpoints           # published services: URL + state
+agmind open grafana        # print a service URL (SSH-pipeable)
+agmind creds show          # logins + passwords (root-only)
+agmind config validate     # check the live deployment config
+agmind logs llama-llm -f   # stream service logs
+agmind backup  --output ~/agmind-backup.tar.gz
+agmind restore ~/agmind-backup.tar.gz
+agmind uninstall           # tear the stack down
 ```
 
-Полезные фокусные варианты:
+`agmind backup` архивирует отрендеренный Compose, рантайм `.env`/`version.env`,
+состояние setup и снапшоты — но не файлы моделей и не данные томов; их снапшотьте
+отдельно. См. [`docs/DR.md`](docs/DR.md).
 
-```bash
-agmind verify install --domain lab.example.com --scenario explicit-dify-ragflow-milvus
-agmind verify install --domain lab.example.com --skip-ansible
-agmind verify install --domain lab.example.com --json
-```
+## Архитектура
 
-Проверки репозитория для fresh deploy branch:
-
-```bash
-python scripts/checks/constraints_check.py
-python scripts/checks/component_check.py
-python scripts/checks/deploy_target_check.py
-python scripts/checks/tool_candidate_check.py
-python scripts/checks/version_check.py \
-  --json /tmp/agmind-version-report.json \
-  --output /tmp/agmind-version-report.md
-python scripts/checks/audit_forbidden.py --fail
-python scripts/checks/governance_check.py
-```
-
-Фокусные тестовые модули:
-
-```bash
-pytest -q tests/cluster/test_cluster_detect.py tests/cluster/test_cluster_inspect.py tests/cluster/test_cluster_inventory.py
-pytest -q tests/deploy/test_deploy_targets.py tests/components/test_deploy_conflicts.py tests/services/test_service_selection.py tests/services/test_deployment_topology.py
-```
-
-`agmind doctor` может завершиться с code `1`, если есть warnings. Code `2`
-означает blocking failure.
-
-## Детект Кластера Из Двух Нод
-
-AGmind находит peers через mDNS service `_agmind._tcp.local.`. Устройство в той
-же LAN не появится, пока оно не рекламирует AGmind или совместимый service
-record.
-
-На второй ноде:
-
-```bash
-cd ~/agmind
-make bootstrap
-.venv/bin/agmind cluster advertise --duration 600
-```
-
-На первой ноде:
-
-```bash
-agmind cluster detect --timeout 10
-agmind cluster status --timeout 10
-agmind cluster inspect --timeout 10
-```
-
-Если discovery пустой:
-
-- Проверь, что обе ноды в одном subnet/VLAN.
-- Запусти или установи `avahi-daemon` на Linux-хостах.
-- Разреши UDP 5353/mDNS в firewall.
-- Проверь, что в Python environment установлен `zeroconf`.
-- Проверь `agmind cluster inspect --timeout 10`: `LAN neighbors` означает, что
-  устройство видно на L2/ARP, даже если AGmind mDNS еще не рекламируется.
-- На другой ноде запусти `agmind cluster advertise --duration 600` и убедись,
-  что TCP `41423` доступен с этой ноды.
-- Проверь reachability через `ip neigh show`, `ping <node-ip>` и targeted TCP
-  probes для SSH или ожидаемого service port.
-
-## Включение Proxmox
-
-В AGmind есть два Proxmox-пути: Compose runtime может скрейпить существующий
-Proxmox VE cluster через `proxmox-exporter`, а экспериментальный
-`proxmox-vm-compose` target может provision Ubuntu VM shells до того, как
-Ansible и Compose продолжат установку.
-
-Включение Proxmox exporter для существующего Compose-хоста:
-
-```bash
-sudo install -d -m 0750 /etc/agmind/proxmox-exporter
-sudo cp templates/observability/proxmox-exporter/pve.yml.example \
-  /etc/agmind/proxmox-exporter/pve.yml
-sudoedit /etc/agmind/proxmox-exporter/pve.yml
-python -m agmind.deploy.proxmox_exporter \
-  --config /etc/agmind/proxmox-exporter/pve.yml
-agmind render compose \
-  --profile core,observability,proxmox \
-  --domain lab.example.com \
-  --output /tmp/agmind-proxmox.yml
-docker compose \
-  --env-file /opt/agmind/.env \
-  -f /tmp/agmind-proxmox.yml \
-  config --quiet
-```
-
-Эквивалентные Ansible variables:
-
-```yaml
-agmind_proxmox_exporter_existing_config: false
-agmind_proxmox_exporter_verify_ssl: true
-agmind_proxmox_exporter_user: "prometheus@pve"
-agmind_proxmox_exporter_token_name: "agmind"
-agmind_proxmox_exporter_token_value: "REDACTED"
-```
-
-Provision Proxmox VM shells через OpenTofu:
-
-```bash
-cd infra/proxmox/vm-compose
-cp terraform.tfvars.example terraform.tfvars
-$EDITOR terraform.tfvars
-tofu init
-tofu plan
-tofu apply
-tofu output -json > /tmp/agmind-proxmox-output.json
-python ../../../scripts/ops/proxmox_inventory.py \
-  --input /tmp/agmind-proxmox-output.json \
-  --output ../../../ansible/inventory/proxmox.generated.yml
-```
-
-Держи `terraform.tfvars`, state files и plan files локально; модуль специально
-игнорирует их.
-
-## Политика Версий И Пинов
-
-- Не использовать mutable floating image tags для runtime или deploy examples.
-- Service image pins лежат в `templates/services/*.yaml`.
-- Python dependency planes лежат в `constraints/*.txt`.
-- Намеренные version holds лежат в `templates/version_holds.yaml`.
-- Используй `scripts/checks/version_check.py`, чтобы смотреть patch, minor и major
-  candidates.
-- Major candidates требуют ручного review перед изменением pins.
-
-Текущие manual-review items из локального отчета:
-
-- У RagFlow есть major candidate с `v0.25.5` на `v1.0`.
-- У MySQL есть major candidate с `8.0.46-oraclelinux9` на `9.7.0`.
-- Часть сервисов намеренно held, включая Elasticsearch, llama.cpp, Dify API,
-  Dify plugin daemon, PostgreSQL и Redis.
-
-## Day-2 Операции
-
-```bash
-agmind doctor
-agmind status
-agmind endpoints                 # published services: URL + state
-agmind open grafana              # print a service URL (SSH-pipeable)
-agmind creds show                # logins + passwords (root-only, masked)
-agmind cluster inspect --timeout 10
-agmind status --tui
-agmind logs llama-llm -f
-agmind shell traefik --cmd "/bin/sh"
-agmind backup --ask-sudo-password --output ~/agmind-backup.tar.gz
-agmind restore --ask-sudo-password ~/agmind-backup.tar.gz
-agmind ops smoke backup-root-owned --dry-run
-agmind migrate status
-agmind migrate up
-make audit
-```
-
-`agmind backup` сохраняет rendered Compose, runtime `.env`, runtime
-`version.env`, setup state, snapshot descriptor-ов и deploy snapshots. Он не
-архивирует model files и Docker volume data; для них нужны отдельные storage
-snapshots.
-
-## Карта Архитектуры
-
-```text
-agmind/                Python package and CLI
-agmind/core/           Shared logging, env, and secret helpers
-agmind/compute/        Runtime backend detection and selection
-agmind/cluster/        mDNS discovery, inventory, and target inspection
-agmind/deploy/         Dry-run, apply, rollback, targets, Proxmox helpers
-agmind/install/        Fresh install planning, steps, and verification
-agmind/ops/            Backup, restore, logs, shell, and smoke helpers
-agmind/services/       Service descriptors, topology, Compose/Kubernetes render
-scripts/checks/        CI, pre-commit, and governance checks
-templates/services/    Pinned service descriptors
-templates/deploy-targets/  ubuntu-compose, proxmox-vm-compose, k3s
-constraints/           Python dependency planes
-ansible/               Host bootstrap and service configuration
-infra/proxmox/         OpenTofu Proxmox VM skeleton
-docker/                Backend Dockerfiles
-tests/                 Domain-mirrored test layout
-docs/                  Operations notes, benchmarks, codebase map, ADRs
-```
+Python-пакет `agmind` владеет CLI, определением backend, обнаружением кластера по
+mDNS, планированием install/deploy и рендерингом закреплённых дескрипторов
+сервисов (`templates/services/*.yaml`) в Docker Compose / Kubernetes. Ansible
+выполняет bootstrap хоста; OpenTofu даёт опциональный target Proxmox VM. Полная
+карта ответственности: [`docs/CODEBASE.md`](docs/CODEBASE.md).
 
 ## Документация
 
-- [`docs/HARDWARE.md`](docs/HARDWARE.md) - настройка Strix Halo host.
-- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) - methodology и результаты benchmark.
-- [`docs/CLUSTER.md`](docs/CLUSTER.md) - заметки по cluster и inventory.
-- [`docs/CODEBASE.md`](docs/CODEBASE.md) - карта ответственности codebase.
-- [`docs/operations/incident-response.md`](docs/operations/incident-response.md) -
-  runbook по triage и восстановлению при инцидентах.
-- [`docs/DR.md`](docs/DR.md) - disaster recovery (RPO/RTO + сценарии + drill).
-- [`infra/proxmox/vm-compose/README.md`](infra/proxmox/vm-compose/README.md) -
-  Proxmox VM provisioning target.
-- [`docs/adr/`](docs/adr/) - architecture decision records.
+**Начало работы**
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — самый быстрый путь к рабочему стеку.
+- [`docs/INSTALL.md`](docs/INSTALL.md) — подробный справочник по установке.
+- [`docs/HARDWARE.md`](docs/HARDWARE.md) — настройка хоста Strix Halo.
+- [`docs/SETUP_ROCM_STRIX_HALO.md`](docs/SETUP_ROCM_STRIX_HALO.md) — драйверы ROCm/Vulkan.
+- [`docs/SETUP_CLOUDFLARE_DOMAIN.md`](docs/SETUP_CLOUDFLARE_DOMAIN.md) — публичный домен + TLS.
+- [`docs/installation/offline-install.md`](docs/installation/offline-install.md) — установка в air-gap.
+
+**Операции**
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — решения (также `agmind troubleshoot`).
+- [`docs/DR.md`](docs/DR.md) — disaster recovery (RPO/RTO + учения).
+- [`docs/operations/incident-response.md`](docs/operations/incident-response.md) — runbook инцидентов.
+- [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) — методология и результаты бенчмарков.
+
+**Справочник**
+- [`docs/CODEBASE.md`](docs/CODEBASE.md) — карта ответственности кодовой базы.
+- [`docs/CLUSTER.md`](docs/CLUSTER.md) — многоузловое обнаружение и inventory.
+- [`docs/docling-presets.md`](docs/docling-presets.md) — пресеты парсинга документов.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
+- [`infra/proxmox/vm-compose/README.md`](infra/proxmox/vm-compose/README.md) — target Proxmox VM.
+
+## Вклад и безопасность
+
+Вклады приветствуются — см. [CONTRIBUTING.md](CONTRIBUTING.md): настройка
+окружения, команды test/lint и workflow веток. Об уязвимостях сообщайте через
+[SECURITY.md](SECURITY.md).
 
 ## Лицензия
 

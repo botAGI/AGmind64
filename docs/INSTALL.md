@@ -210,27 +210,32 @@ sudo ansible-playbook ansible/install.yml \
 
 ## Phase 3: Models
 
-### 3.1 Verify tier
+### 3.1 List the curated catalog
 
 ```bash
-agmind models list
-# Должна быть автодетекция:
-#   [·] XL  gpt-oss-120b  62.8 GB
+agmind models list              # local *.gguf files + legacy registry tiers
+agmind install --list-models    # the ids the install wizard actually offers
 ```
 
-### 3.2 Download
+`agmind install --list-models` is the source of truth for what `--model-id` accepts. As of this
+build: `qwen36-a3b-q4km` (default, ★Strix-verified), `qwen36-a3b-q4_0`, `qwen36-a3b-dyn`,
+`llama2-7b-q4km`/`llama2-7b-q4_0` (CI/smoke baselines), `bge-m3-q8`, `bge-reranker-v2-m3-q8`.
+
+### 3.2 Pull
 
 ```bash
-# Primary LLM для auto-detected tier:
-agmind models download
+# Primary LLM (curated id from `agmind install --list-models`):
+agmind models pull qwen36-a3b-q4km
 
 # Embed + rerank (всегда нужны):
-agmind models download --embed
-agmind models download --rerank
+agmind models pull bge-m3-q8
+agmind models pull bge-reranker-v2-m3-q8
 
-# VLM (для Docling picture description):
-agmind models download --vlm
+# Custom model from a Hugging Face repo (outside the curated catalog):
+agmind models pull --repo <hf-org/repo> --file <model.gguf>
 ```
+
+There is no curated VLM id in the install catalog yet; pull one with `--repo/--file` if needed.
 
 ### 3.3 Restart inference services
 
@@ -258,17 +263,25 @@ agmind deploy status
 
 ### 4.3 Inference smoke test
 
+Inference is HTTP-only (OpenAI-compatible); there is no `agmind chat`/`embed`/`rerank` CLI.
+Probe the llama-server ports directly with `curl` (with the LLM skipped at install time, only
+embed/rerank answer):
+
 ```bash
-# Chat
-agmind chat
-# Try: "hello, what's your name?"
+# Chat → llama-llm (:8080)
+curl http://localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"local","messages":[{"role":"user","content":"hello, what is your name?"}]}'
 
-# Embed
-echo "test text" | agmind embed
-# Should return JSON с embedding vector
+# Embed → llama-embed (:8081)
+curl http://localhost:8081/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","input":["test text"]}'
 
-# Rerank
-agmind rerank "пример запроса" "первый документ" "второй документ"
+# Rerank → llama-rerank (:8082)
+curl http://localhost:8082/v1/rerank \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-reranker","query":"пример запроса","documents":["первый документ","второй документ"]}'
 ```
 
 ## Phase 5: Access
@@ -304,8 +317,17 @@ Grafana login: admin / password из `/opt/agmind/.env::GRAFANA_PASSWORD`.
 
 ### `security` profile
 
-Authelia config — отредактировать `/etc/agmind/authelia/configuration.yml`
-после первого старта. Default — disabled (не блокирует доступ).
+Authelia runs as an edge forward-auth portal in front of the infra consoles (portainer /
+grafana / n8n). The default policy is **`one_factor`** (username + password SSO) — the 2FA
+step-up was removed 2026-06-07 because the file-notifier OTC enrollment was too clunky without
+SMTP. To restore 2FA, set `policy: two_factor` in
+`templates/authelia/configuration.yml` (and configure an SMTP notifier) before deploy.
+
+Host-level UFW (LAN-only firewall) + fail2ban (sshd jail) ship in the Ansible `security` role
+and are applied only on the full Ansible path
+(`sudo ansible-playbook ansible/install.yml -t security` with `security` in `agmind_profiles`).
+The default `make setup` docker deploy brings up the Authelia container but does **not** yet run
+the host-firewall role — wiring UFW/fail2ban into the installer is roadmap.
 
 ## Upgrade
 
