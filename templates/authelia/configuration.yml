@@ -36,9 +36,30 @@ session:
   cookies:
     - domain: '__AGMIND_DOMAIN__'
       authelia_url: 'https://auth.__AGMIND_DOMAIN__'
+      # Direct visit to auth.<domain> (no ?rd=) must land somewhere real, not a dead consent
+      # page — send the operator to the homarr portal. live-audit 2026-06-07 portal-no-landing (UI-1).
+      default_redirection_url: 'https://homarr.__AGMIND_DOMAIN__'
+      # Bounded sessions (homelab-friendly): re-auth after 8h, 1h idle; opt-in 1-month remember-me.
+      expiration: '8h'
+      inactivity: '1h'
+      remember_me: '1M'
   redis:
     host: 'redis'
     port: 6379
+
+# Brute-force lockout for the single file-backend admin (online-guess protection). live-audit
+# 2026-06-07 authelia-hardening-beyond-2fa (SEC-6).
+regulation:
+  max_retries: 4
+  find_time: '2m'
+  ban_time: '5m'
+
+# Enforce strong passwords on any portal-driven change (the generated admin password already
+# passes; this guards future changes). live-audit 2026-06-07 authelia-hardening-beyond-2fa.
+password_policy:
+  zxcvbn:
+    enabled: true
+    min_score: 3
 
 storage:
   # /data is a separate persistent mount (NOT the staged /config, which a re-install
