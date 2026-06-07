@@ -253,7 +253,9 @@ def check_missing_dependencies(
     return missing
 
 
-def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
+def render_traefik_labels(
+    d: ServiceDescriptor, *, network_name: str = DEFAULT_NETWORK_NAME
+) -> dict[str, str]:
     """Generate Traefik docker provider labels from ServiceDescriptor.routing.
 
     Если routing=None — пустой dict (internal-only service).
@@ -263,6 +265,7 @@ def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
     - middleware chain (chain-llm | chain-internal | chain-public from file provider)
     - healthcheck integration
     - SSE-safe settings если routing.sse=True (см. deep-dive 01 §1)
+    - traefik.docker.network для multi-homed сервисов (AUTH-1, см. ниже)
     """
     if d.routing is None:
         return {}
@@ -306,6 +309,15 @@ def render_traefik_labels(d: ServiceDescriptor) -> dict[str, str]:
             "1ms"
         )
         labels[f"traefik.http.routers.{name}.tls.options"] = "no-http2@file"
+
+    # Multi-homed routed service: pin the network Traefik dials the backend on. A service joined to
+    # >1 network (e.g. default + data-net) otherwise lets Traefik's docker provider pick an arbitrary
+    # one — if it picks an internal data/mgmt net Traefik can't reach, the loadbalancer has no usable
+    # server and the router returns 503. For Authelia this 503'd the forward-auth endpoint → EVERY
+    # gated app 302'd to a dead portal (AUTH-1, whole-stack outage). Pin the shared edge (default)
+    # network, which Traefik is always on. live-audit 2026-06-08.
+    if d.networks and len(d.networks) > 1:
+        labels["traefik.docker.network"] = network_name
 
     return labels
 
@@ -370,6 +382,7 @@ def descriptor_to_compose_service(
     project_name: str = DEFAULT_PROJECT_NAME,
     data_root: str = DEFAULT_DATA_ROOT,
     config_root: str = DEFAULT_CONFIG_ROOT,
+    network_name: str = DEFAULT_NETWORK_NAME,
 ) -> dict[str, Any]:
     """Build single compose service definition (compose v3.9 format).
 
@@ -440,7 +453,7 @@ def descriptor_to_compose_service(
     # Combined labels: observability + traefik + agmind metadata
     labels = render_observability_labels(d)
     if traefik_enabled:
-        labels.update(render_traefik_labels(d))
+        labels.update(render_traefik_labels(d, network_name=network_name))
     if labels:
         svc["labels"] = labels
 
@@ -617,6 +630,7 @@ def render_compose(
             project_name=project_name,
             data_root=data_root,
             config_root=config_root,
+            network_name=network_name,
         )
         services_block_local[d.name] = svc
     services_block = services_block_local

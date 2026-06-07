@@ -163,6 +163,22 @@ def test_traefik_labels_basic_routing() -> None:
     assert labels["traefik.http.routers.qdrant.middlewares"] == "chain-internal@file"
     assert labels["traefik.http.services.qdrant.loadbalancer.server.port"] == "6333"
     assert labels["traefik.http.services.qdrant.loadbalancer.healthcheck.path"] == "/health"
+    # single-(default-)network routed service: no ambiguity → no traefik.docker.network
+    assert "traefik.docker.network" not in labels
+
+
+def test_traefik_docker_network_pinned_for_multihomed_routed_service() -> None:
+    """AUTH-1: a routed service on >1 network must pin traefik.docker.network to the shared edge, else
+    Traefik's docker provider may dial an internal data/mgmt net it can't reach → the loadbalancer has
+    no usable server → 503. For Authelia that 503'd forward-auth → every gated app 302'd to a dead
+    portal (whole-stack outage). live-audit 2026-06-08."""
+    multi = _minimal_descriptor(
+        routing={"host": "authelia.agmind.dev", "middleware_chain": "chain-internal"},
+        networks=["default", "data-net"],
+    )
+    assert render_traefik_labels(multi)["traefik.docker.network"] == "agmind"  # default edge name
+    # a namespaced render threads its network name through
+    assert render_traefik_labels(multi, network_name="proj")["traefik.docker.network"] == "proj"
 
 
 def test_traefik_labels_routing_port_override() -> None:
