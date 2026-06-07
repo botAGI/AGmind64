@@ -442,6 +442,13 @@ def descriptor_to_compose_service(
         svc["read_only"] = True
     if d.pids_limit is not None:
         svc["pids_limit"] = d.pids_limit
+    if d.cgroupns_mode is not None:
+        # Compose top-level `cgroup:` selects the cgroup NAMESPACE mode ('host'/'private').
+        # 'host' lets a container (cAdvisor) walk every cgroup under cgroup v2 instead of only
+        # its own — without it cAdvisor emits no per-container series (CRITICAL-1).
+        svc["cgroup"] = d.cgroupns_mode
+    if d.privileged:
+        svc["privileged"] = True
     if d.networks:
         # Non-empty → join ONLY these networks (compose long-form mapping). Empty
         # stays absent so every other service is byte-identical on `default`.

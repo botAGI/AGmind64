@@ -336,6 +336,18 @@ class ServiceDescriptor(BaseModel):
     """If True the renderer adds ``no-new-privileges:true`` to ``security_opt`` (a process can no
     longer gain privileges via setuid/setgid). Convenience over hand-writing the opt string."""
 
+    cgroupns_mode: str | None = None
+    """Cgroup namespace mode (compose top-level ``cgroup:``). 'host' shares the host's cgroup
+    namespace so the container can walk EVERY cgroup, not just its own. Required for cAdvisor
+    under cgroup v2 + private cgroupns — otherwise it only sees ``id="/"`` (its own cgroup) and
+    emits no per-container series (grafana-dashboards.md CRITICAL-1). Only 'host'/'private' are
+    valid compose values."""
+
+    privileged: bool = False
+    """Run the container with full privileges (compose ``privileged: true``). Last-resort for
+    tools that need unrestricted host introspection (cAdvisor on some cgroup-v2 hosts). Prefer
+    the narrower cgroupns_mode='host' + devices=['/dev/kmsg'] + /sys/fs/cgroup mount first."""
+
     depends_on: list[str] = Field(default_factory=list)
     """Имена других сервисов (для `depends_on:` в compose)."""
 
@@ -530,6 +542,15 @@ class ServiceDescriptor(BaseModel):
                 raise ValueError(
                     f"volume '{spec}' invalid: expected 'src:dst[:mode]' with non-empty src and dst"
                 )
+        return v
+
+    @field_validator("cgroupns_mode")
+    @classmethod
+    def _check_cgroupns_mode(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("host", "private"):
+            raise ValueError(
+                f"cgroupns_mode '{v}' invalid: only 'host' or 'private' are valid compose values"
+            )
         return v
 
     def fq_image(self) -> str:

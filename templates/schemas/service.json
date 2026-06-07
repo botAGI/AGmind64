@@ -414,6 +414,23 @@
       "title": "No New Privileges",
       "type": "boolean"
     },
+    "cgroupns_mode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cgroupns Mode"
+    },
+    "privileged": {
+      "default": false,
+      "title": "Privileged",
+      "type": "boolean"
+    },
     "depends_on": {
       "items": {
         "type": "string"

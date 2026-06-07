@@ -323,6 +323,30 @@ def test_compose_service_hardening_absent_by_default() -> None:
         assert key not in svc
 
 
+def test_compose_service_cgroupns_and_privileged() -> None:
+    """grafana-dashboards.md CRITICAL-1: cAdvisor needs the host cgroup namespace
+    (compose top-level `cgroup:`) under cgroup v2 to walk every cgroup and emit
+    per-container metrics. privileged is the last-resort escalation."""
+    d = _minimal_descriptor(cgroupns_mode="host", privileged=True)
+    svc = descriptor_to_compose_service(d)
+    assert svc["cgroup"] == "host"
+    assert svc["privileged"] is True
+
+
+def test_compose_service_cgroupns_privileged_absent_by_default() -> None:
+    """Default descriptor emits neither key → every other service byte-identical."""
+    svc = descriptor_to_compose_service(_minimal_descriptor())
+    assert "cgroup" not in svc
+    assert "privileged" not in svc
+
+
+def test_cgroupns_mode_rejects_invalid_value() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="cgroupns_mode"):
+        _minimal_descriptor(cgroupns_mode="bogus")
+
+
 # ---------- descriptor_to_compose_service ----------
 
 

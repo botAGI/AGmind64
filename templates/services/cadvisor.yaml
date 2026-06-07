@@ -13,17 +13,34 @@ networks:
 - mgmt-net
 ports:
 - 127.0.0.1:8083:8080
-# NO raw /var/run/docker.sock — cadvisor reaches the Docker API through the read-only
-# docker-socket-proxy (validated live: container_* metrics present via tcp). /rootfs,/sys,
-# /var/lib/docker are direct fs reads (cgroup/layer stats), not the socket.
-# live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
+# Two cgroup-visibility fixes for cgroup v2 + private cgroupns (grafana-dashboards.md CRITICAL-1):
+#  1. cgroup: host + /sys/fs/cgroup mount + /dev/kmsg — without the host cgroup namespace cadvisor
+#     only sees its OWN cgroup (id="/") and emits ZERO per-container series.
+#  2. the read-only containerd socket — cadvisor v0.55's docker factory ALWAYS opens a containerd
+#     client to map cgroup scope -> container name=/image= (Docker uses a containerd shim). The
+#     docker-socket-proxy proxies only the Docker HTTP API, NOT containerd's gRPC, so without this
+#     mount the factory fails to register and metrics carry no name= label -> the dashboards
+#     (which filter name=~"agmind-.*") stay empty even though the raw container_* series exist.
+# Blast-radius: this re-introduces ONE read-only containerd socket into ONE container. It is
+# strictly narrower than the raw RW /var/run/docker.sock (the audited HIGH-risk Portainer mount)
+# and is the standard, documented cAdvisor-on-modern-Docker requirement. /rootfs,/sys,/var/lib/docker
+# are fs reads (cgroup/layer stats). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius;
+# fixed grafana-dashboards.md / observability-pipeline.md CRITICAL-1, 2026-06-08.
+cgroupns_mode: host
 volumes:
 - /:/rootfs:ro
 - /sys:/sys:ro
+- /sys/fs/cgroup:/sys/fs/cgroup:ro
 - /var/lib/docker/:/var/lib/docker:ro
+- /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+devices:
+- /dev/kmsg
+# --docker_only keeps the root machine series out of the per-container view; --containerd pins the
+# (default) socket path explicitly so the docker factory registers and emits name=/image= labels.
 command:
 - --docker_only=true
 - --docker=tcp://docker-socket-proxy:2375
+- --containerd=/run/containerd/containerd.sock
 depends_on:
 - docker-socket-proxy
 resources:
