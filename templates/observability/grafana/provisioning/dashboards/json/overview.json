@@ -11,6 +11,10 @@
     {
       "title": "Service Status",
       "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 4,
         "w": 24,
@@ -19,6 +23,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "count(container_last_seen{name=~\"agmind-.*\"} > (time() - 60))",
           "legendFormat": "Running",
           "refId": "A"
@@ -49,6 +57,10 @@
     {
       "title": "CPU Usage by Service",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -57,6 +69,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(container_cpu_usage_seconds_total{name=~\"agmind-.*\"}[5m]) * 100",
           "legendFormat": "{{ name }}",
           "refId": "A"
@@ -71,6 +87,10 @@
     {
       "title": "Memory Usage by Service",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -79,6 +99,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "container_memory_usage_bytes{name=~\"agmind-.*\"}",
           "legendFormat": "{{ name }}",
           "refId": "A"
@@ -93,6 +117,10 @@
     {
       "title": "Network I/O",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -101,11 +129,19 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(container_network_receive_bytes_total{name=~\"agmind-.*\"}[5m])",
           "legendFormat": "{{ name }} RX",
           "refId": "A"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "rate(container_network_transmit_bytes_total{name=~\"agmind-.*\"}[5m])",
           "legendFormat": "{{ name }} TX",
           "refId": "B"
@@ -120,6 +156,10 @@
     {
       "title": "Disk Usage",
       "type": "gauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -128,6 +168,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
           "legendFormat": "Used",
           "refId": "A"
@@ -164,6 +208,10 @@
     {
       "title": "Disk Free",
       "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -172,6 +220,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"}",
           "legendFormat": "Available",
           "refId": "A"
@@ -202,6 +254,10 @@
     {
       "title": "Disk Total",
       "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -210,6 +266,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "node_filesystem_size_bytes{mountpoint=\"/\"}",
           "legendFormat": "Total",
           "refId": "A"

@@ -131,6 +131,7 @@
     {
       "type": "timeseries",
       "title": "KV-cache usage",
+      "description": "Only a generative llama.cpp server (AGMIND_MODEL_FILE set) exports kv_cache_usage_ratio. With embed/rerank only, this panel is empty by design.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -144,6 +145,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "noValue": "requires a generative LLM (AGMIND_MODEL_FILE)",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 10

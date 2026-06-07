@@ -33,6 +33,16 @@ discovery.relabel "containers" {
     action        = "keep"
   }
 
+  // Drop CI/test throwaway containers (agmind-ci-* / agmind-test-*). These boot
+  // during compose-up-smoke / integration runs on the same docker.sock; if they
+  // carry loki.scrape=true they spam error-storms (short-lived, log-file churns)
+  // AND leak CI logs into the production Loki. Exclude them at discovery time.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/agmind-(ci|test)-.*"
+    action        = "drop"
+  }
+
   // Container name (без leading slash)
   rule {
     source_labels = ["__meta_docker_container_name"]

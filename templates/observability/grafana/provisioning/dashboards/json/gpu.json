@@ -11,6 +11,10 @@
     {
       "title": "GPU Temperature",
       "type": "gauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -19,6 +23,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_temp_edge_celsius",
           "legendFormat": "{{card}}",
           "refId": "A"
@@ -55,6 +63,10 @@
     {
       "title": "GPU Utilization",
       "type": "gauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -63,6 +75,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_gpu_busy_percent",
           "legendFormat": "{{card}}",
           "refId": "A"
@@ -95,6 +111,10 @@
     {
       "title": "GPU Power Draw",
       "type": "gauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -103,6 +123,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_power_average_watts",
           "legendFormat": "{{card}}",
           "refId": "A"
@@ -139,6 +163,10 @@
     {
       "title": "GPU Clock",
       "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -147,6 +175,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_sclk_hz",
           "legendFormat": "{{card}}",
           "refId": "A"
@@ -181,6 +213,10 @@
     {
       "title": "Temperature History",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -189,6 +225,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_temp_edge_celsius",
           "legendFormat": "GPU Temp",
           "refId": "A"
@@ -231,6 +271,10 @@
     {
       "title": "Power & Utilization History",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -239,11 +283,19 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_power_average_watts",
           "legendFormat": "Power (W)",
           "refId": "A"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_gpu_busy_percent",
           "legendFormat": "Utilization (%)",
           "refId": "B"
@@ -287,6 +339,10 @@
     {
       "title": "Clock Speed History",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -295,6 +351,10 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "amdgpu_sclk_hz",
           "legendFormat": "Clock (MHz)",
           "refId": "A"
@@ -328,6 +388,10 @@
     {
       "title": "System Memory",
       "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -336,16 +400,28 @@
       },
       "targets": [
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
           "legendFormat": "Used",
           "refId": "A"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "node_memory_MemAvailable_bytes",
           "legendFormat": "Available",
           "refId": "B"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
           "legendFormat": "Swap Used",
           "refId": "C"
@@ -357,6 +433,79 @@
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 20,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "GPU Memory (VRAM / GTT)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "amdgpu_vram_used_bytes",
+          "legendFormat": "VRAM used",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "amdgpu_vram_total_bytes",
+          "legendFormat": "VRAM total",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "amdgpu_vis_vram_used_bytes",
+          "legendFormat": "Visible VRAM used",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "amdgpu_gtt_used_bytes",
+          "legendFormat": "GTT used (unified)",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "amdgpu_gtt_total_bytes",
+          "legendFormat": "GTT total",
+          "refId": "E"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
             "stacking": {
               "mode": "none"
             }

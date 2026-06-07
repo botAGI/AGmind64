@@ -34,4 +34,11 @@ datasources:
     access: proxy
     url: http://alertmanager:9093
     jsonData:
+      # `implementation` MUST match the running Alertmanager flavour or Grafana's
+      # built-in alertmanager datasource plugin reports "Plugin unavailable" on
+      # its health probe (observability audit OBS-5). We run vanilla Prometheus
+      # Alertmanager → `prometheus`. `handleGrafanaManagedAlerts: false` keeps
+      # this a read-only view of Prometheus-routed alerts (alerting is via
+      # Alertmanager, not Grafana-managed — mirrors the Prometheus DS manageAlerts).
       implementation: prometheus
+      handleGrafanaManagedAlerts: false
