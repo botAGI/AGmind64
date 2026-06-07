@@ -376,8 +376,11 @@ def test_download_success_rejects_too_small_partial_file(
         staticmethod(lambda _c: []),
     )
 
+    calls = {"n": 0}
+
     def fake_stream(cmd, callback, step_id, **kw):
         del callback, step_id, kw
+        calls["n"] += 1
         output = Path(cmd[cmd.index("-o") + 1])
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"too small")
@@ -388,12 +391,48 @@ def test_download_success_rejects_too_small_partial_file(
     result = ModelDownloadStep().run(lambda _e: None, cfg)
 
     assert not result.success
-    assert "downloaded file too small" in result.message
+    # rc=0 + too-small is the transient HF/Xet "100% then 0 MiB" glitch → retried in-step,
+    # then given up after 3 clean attempts (NOT failing the whole install on the first glitch).
+    assert calls["n"] == 3
+    assert "gave up after 3" in result.message
     assert not target.exists()
-    # curl reported success (rc=0) but produced a too-small file — that is poison for a
-    # later `curl -C -` resume (the real "100% then 0 MiB" failure). It MUST be cleared
-    # so the next retry starts clean instead of resuming from garbage.
+    # each too-small body is poison for a later `curl -C -` resume — it MUST be cleared.
     assert not partial.exists()
+
+
+def test_download_retries_too_small_then_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.model_file
+    monkeypatch.setattr(ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []))
+    # ignore the catalog expected-size floor — exercise the min_size path with a cheap sparse file
+    monkeypatch.setattr(
+        ModelDownloadStep, "_expected_download_size_bytes", staticmethod(lambda *a: 0)
+    )
+
+    calls = {"n": 0}
+
+    def fake_stream(cmd, callback, step_id, **kw):
+        del callback, step_id, kw
+        calls["n"] += 1
+        output = Path(cmd[cmd.index("-o") + 1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if calls["n"] == 1:
+            output.write_bytes(b"too small")  # transient Xet glitch on the first attempt
+        else:
+            with output.open("wb") as fh:  # sparse 200 MiB ≥ any role's min_size
+                fh.truncate(200 * 1024 * 1024)
+        return (0, [])
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+
+    assert result.success, result.message
+    assert calls["n"] == 2  # retried once after the glitch, then succeeded
+    assert target.exists()
 
 
 def test_skip_step_if_no_model_configured(tmp_path: Path) -> None:

@@ -1859,41 +1859,55 @@ class ModelDownloadStep(InstallStep):
             except (ValueError, IndexError):
                 pass
 
-        rc, _ = _stream_subprocess(
-            cmd, callback, self.step_id, extra_emit=parse_curl_pct, cancel_event=self.cancel_event
-        )
-        if rc != 0:
-            # Genuine interrupt/error (incl. cancel): keep the partial so a retry can
-            # `curl -C -` resume it instead of re-downloading from scratch.
-            return False, f"{role}: curl rc={rc} (download failed)"
-        partial_size = partial.stat().st_size if partial.exists() else 0
-        if partial_size < min_size:
-            # curl reported success (rc=0) yet the file is too small — an HF
-            # redirect/resume glitch or an error body, NOT a resumable partial. Leaving
-            # it would poison the next `curl -C -` (the real "100% then 0 MiB" loop), so
-            # clear it; the retry then starts clean and downloads correctly.
-            with contextlib.suppress(OSError):
-                partial.unlink()
-            size_mb = partial_size // (1024 * 1024)
-            min_mb = min_size // (1024 * 1024)
-            return False, (
-                f"{role}: downloaded file too small ({size_mb} MiB < {min_mb} MiB); "
-                "cleared partial for retry"
-            )
-        # Integrity (audit H#10): a curl rc=0 can still yield a truncated/error body that
-        # clears the absolute min_size floor yet is far below the real model size. When the
-        # curated catalog knows the expected size, reject anything grossly short of it.
+        # Integrity floor (audit H#10): when the curated catalog knows the expected size, reject
+        # anything grossly short of it (a curl rc=0 can still yield a truncated/error body).
         expected = self._expected_download_size_bytes(repo, file_name, min_size)
-        if expected > min_size and partial_size < int(expected * 0.88):
-            with contextlib.suppress(OSError):
-                partial.unlink()
-            return False, (
-                f"{role}: downloaded {partial_size // (1024 * 1024)} MiB but expected "
-                f"~{expected // (1024 * 1024)} MiB (>12% short — likely truncated); cleared partial"
+        # The HF Xet backend occasionally answers a fresh request with a redirect/empty body — curl
+        # exits rc=0 yet ~0 MiB lands on disk (the "100% then 0 MiB" glitch the operator hit live).
+        # That is TRANSIENT, so retry IN-STEP (clean partial each time) instead of failing the whole
+        # install; only a non-zero curl rc (genuine error/cancel) is kept for a later -C - resume.
+        # live clean-install 2026-06-07.
+        attempts = 3
+        last_err = ""
+        for attempt in range(1, attempts + 1):
+            rc, _ = _stream_subprocess(
+                cmd,
+                callback,
+                self.step_id,
+                extra_emit=parse_curl_pct,
+                cancel_event=self.cancel_event,
             )
-        partial.replace(target)
-        size_mb = target.stat().st_size // (1024 * 1024)
-        return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                return False, f"{role}: cancelled"
+            if rc != 0:
+                # Genuine interrupt/error: keep the partial so a later run can `curl -C -` resume it.
+                return False, f"{role}: curl rc={rc} (download failed)"
+            partial_size = partial.stat().st_size if partial.exists() else 0
+            too_small = partial_size < min_size
+            truncated = expected > min_size and partial_size < int(expected * 0.88)
+            if too_small or truncated:
+                # Empty/truncated body — NOT a resumable partial (leaving it would poison the next
+                # `curl -C -`). Clear it and retry from scratch.
+                with contextlib.suppress(OSError):
+                    partial.unlink()
+                got_mb = partial_size // (1024 * 1024)
+                want_mb = (expected if expected > min_size else min_size) // (1024 * 1024)
+                last_err = (
+                    f"{role}: downloaded {got_mb} MiB but expected ~{want_mb} MiB (HF/Xet glitch)"
+                )
+                if attempt < attempts:
+                    callback(
+                        _make_event(
+                            self.step_id,
+                            ProgressKind.PROGRESS,
+                            f"{last_err} — retrying clean ({attempt}/{attempts})",
+                        )
+                    )
+                continue
+            partial.replace(target)
+            size_mb = target.stat().st_size // (1024 * 1024)
+            return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
+        return False, f"{last_err}; gave up after {attempts} clean attempts"
 
     def run(self, callback: ProgressCallback, config: InstallConfig) -> InstallStepResult:
         start = time.monotonic()
