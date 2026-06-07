@@ -409,11 +409,9 @@ def _materialize_runtime_files(
     # container does not carry the secret in its env (`docker inspect` / socket-proxy inspect).
     # Consumers keep the env var (their images lack _FILE support). live-audit 2026-06-05
     # db-secrets-plaintext-docker-inspect / secrets-plaintext-env.
-    for svc, fname, env_key in (
-        ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
-        ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
-        ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
-    ):
+    from agmind.install.secret_keys import DB_SECRET_FILES
+
+    for svc, fname, env_key in DB_SECRET_FILES:
         if svc in selected and runtime_env.get(env_key):
             _write_secret_file(data_dir / "secrets" / fname, runtime_env[env_key])
 

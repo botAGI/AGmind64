@@ -32,15 +32,18 @@ def test_db_server_uses_password_file_not_env(svc, plain, file_key, fname) -> No
 
 
 def test_installer_writes_db_secret_files() -> None:
-    """EnvWriteStep materialize writes the per-DB secret files from runtime_env."""
+    """The single-source DB_SECRET_FILES mapping drives both install materialization and
+    rotate-secrets re-materialization (live-audit 2026-06-07 SEC-3)."""
     import inspect
 
     from agmind.install import steps
+    from agmind.install.secret_keys import DB_SECRET_FILES
 
-    src = inspect.getsource(steps._materialize_runtime_files)
-    for fname, env_key in (
-        ("postgres_password", "POSTGRES_PASSWORD"),
-        ("mysql_root_password", "MYSQL_ROOT_PASSWORD"),
-        ("komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
-    ):
-        assert fname in src and env_key in src
+    expected = {
+        ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
+        ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
+        ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
+    }
+    assert set(DB_SECRET_FILES) == expected
+    # _materialize_runtime_files consumes the shared constant (not an inline duplicate)
+    assert "DB_SECRET_FILES" in inspect.getsource(steps._materialize_runtime_files)

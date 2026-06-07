@@ -420,6 +420,7 @@ def cmd_rotate_secrets(
     recreate: bool = True,
     timestamp: str | None = None,
     compose_run: object | None = None,
+    secrets_dir: Path = Path("/var/lib/agmind/secrets"),
 ) -> int:
     from agmind.core.env import parse_env_file
     from agmind.core.secrets import write_private_text
@@ -487,6 +488,23 @@ def cmd_rotate_secrets(
     write_private_text(env_path, rewritten)
     print(f"✓ rotated {len(plan.rotate)} secret(s); old .env backed up at {backup_path}")
 
+    # db-secrets→FILE: a rotated DB-server password also lives in a 0600 secret FILE the server
+    # reads via *_PASSWORD_FILE (invisible to the ${VAR}-scanning secret_consumers). Re-materialize
+    # the FILE and force-recreate the server below, or the server keeps the OLD password while .env
+    # consumers move to the new one → auth skew. live-audit 2026-06-07 (SEC-3).
+    from agmind.install.secret_keys import DB_SECRET_FILES
+
+    rotated_db_servers: list[str] = []
+    for svc, fname, env_key in DB_SECRET_FILES:
+        if env_key in plan.rotate:
+            write_private_text(secrets_dir / fname, new_env[env_key])
+            rotated_db_servers.append(svc)
+    if rotated_db_servers:
+        print(
+            f"✓ re-materialized {len(rotated_db_servers)} DB secret file(s): "
+            f"{', '.join(rotated_db_servers)}"
+        )
+
     if not recreate:
         print(
             "skipped recreate (--no-recreate). Run "
@@ -496,7 +514,13 @@ def cmd_rotate_secrets(
 
     from agmind.services.renderer import load_descriptors
 
-    holders = holders_for(plan.rotate, secret_consumers(load_descriptors()))
+    # Union the consumers (from ${VAR} scan) with the DB SERVERS whose FILE we just rewrote — the
+    # servers reference the secret via *_PASSWORD_FILE so secret_consumers can't see them, but they
+    # MUST be recreated to re-read the file. live-audit 2026-06-07 (SEC-3).
+    holders = sorted(
+        set(holders_for(plan.rotate, secret_consumers(load_descriptors())))
+        | set(rotated_db_servers)
+    )
     running = set(_running_compose_services(install_dir))
     to_recreate = [h for h in holders if h in running]
     if not to_recreate:

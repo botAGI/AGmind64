@@ -98,6 +98,18 @@ ENCRYPT_AT_REST = frozenset(
     {"N8N_ENCRYPTION_KEY", "HOMARR_SECRET_ENCRYPTION_KEY", "AUTHELIA_STORAGE_ENCRYPTION_KEY"}
 )
 
+# DB SERVERS that read their password from a 0600 secret FILE (db-secrets→FILE) rather than env.
+# Single source of truth for: install materialization (_materialize_runtime_files) AND
+# rotate-secrets (which must re-write the FILE + force-recreate the server, not just rewrite .env —
+# the server references the secret via *_PASSWORD_FILE, a literal path, so it is invisible to the
+# ${VAR}-scanning secret_consumers). (service, secret_filename, env_key). live-audit 2026-06-07
+# rotation-desyncs-the-db-secret-FILE (SEC-3).
+DB_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
+    ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
+    ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
+    ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
+)
+
 
 def generate_for(key: str) -> str:
     """Generate a fresh value for ``key`` using the installer's exact format."""

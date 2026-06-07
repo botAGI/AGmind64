@@ -180,3 +180,43 @@ def test_cmd_rotate_secrets_graceful_on_unreadable_env(
     assert rc == 1
     err = capsys.readouterr().err.lower()
     assert "sudo" in err and "root-owned" in err
+
+
+def test_rotate_resyncs_db_secret_file_and_recreates_server(tmp_path, monkeypatch) -> None:
+    """live-audit 2026-06-07 (SEC-3 rotation-desyncs-the-db-secret-FILE): rotating a DB-server
+    password must re-materialize the 0600 secret FILE the server reads (*_PASSWORD_FILE) AND
+    force-recreate the server — not just rewrite .env (which only the consumers read)."""
+    import subprocess
+
+    from agmind.cli import ops_cmd
+    from agmind.core.env import parse_env_file
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / ".env").write_text(
+        "POSTGRES_PASSWORD=oldpg\nREDIS_PASSWORD=oldredis\n", encoding="utf-8"
+    )
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "postgres_password").write_text("oldpg", encoding="utf-8")
+
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["postgres", "dify-api"])
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0)
+
+    rc = ops_cmd.cmd_rotate_secrets(
+        install_dir=install,
+        secrets_dir=secrets,
+        include=["POSTGRES_PASSWORD"],
+        yes=True,
+        compose_run=fake_run,
+    )
+    assert rc == 0
+    new_pg = parse_env_file(install / ".env")["POSTGRES_PASSWORD"]
+    file_val = (secrets / "postgres_password").read_text(encoding="utf-8")
+    assert file_val != "oldpg"  # FILE re-materialized, not left stale
+    assert file_val == new_pg  # FILE matches the rotated .env value (no skew)
+    assert "postgres" in " ".join(seen["cmd"])  # the server is force-recreated to re-read the file
