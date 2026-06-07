@@ -29,6 +29,7 @@ import yaml
 from agmind.config.env import write_env
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
+from agmind.core.proc import sudo_argv, sudo_stdin_bytes, sudo_stdin_text
 from agmind.core.secrets import write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
 from agmind.install.orchestrator import (
@@ -598,7 +599,7 @@ def _run_sudo_runtime_command(
     if config.sudo_password is None:
         raise PermissionError("sudo password not provided for root-owned runtime paths")
     rc, _ = _stream_subprocess(
-        ["sudo", "-S", "-p", "", "--", *cmd],
+        sudo_argv(cmd),
         callback,
         step_id,
         stdin_payload=_sudo_stdin_payload(config),
@@ -927,11 +928,11 @@ def _parse_existing_runtime_env(config: InstallConfig, env_path: Path) -> dict[s
         if config.sudo_password is None:
             raise
         result = subprocess.run(
-            ["sudo", "-S", "-p", "", "--", "cat", str(env_path)],
+            sudo_argv(["cat", str(env_path)]),
             capture_output=True,
             text=True,
             check=False,
-            input=f"{config.sudo_password}\n",
+            input=sudo_stdin_text(config.sudo_password),
         )
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or str(exc)).strip()
@@ -1022,7 +1023,7 @@ def _stream_subprocess(
                 if extra_emit is not None:
                     try:
                         extra_emit(line)
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         pass
         rc = proc.wait()
         return rc, captured
@@ -1063,7 +1064,7 @@ def _docker_compose_cmd(
     docker_config = _user_docker_config_dir()
     if docker_config:
         compose = ["env", f"DOCKER_CONFIG={docker_config}", *compose]
-    return ["sudo", "-S", "-p", "", "--", *compose]
+    return sudo_argv(compose)
 
 
 def _user_docker_config_dir() -> str | None:
@@ -1097,7 +1098,7 @@ def _write_compose_env_file(path: Path, values: dict[str, str]) -> None:
 def _sudo_stdin_payload(config: InstallConfig) -> bytes | None:
     if config.sudo_password is None:
         return None
-    return f"{config.sudo_password}\n".encode()
+    return sudo_stdin_bytes(config.sudo_password)
 
 
 def _cloudflare_zone_candidates(domain: str) -> list[str]:
@@ -1175,7 +1176,7 @@ class DoctorStep(InstallStep):
 
         try:
             report = run_preflight()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=False,
@@ -1528,7 +1529,7 @@ class ComposeConfigStep(InstallStep):
                 domain=config.domain,
                 traefik_enabled=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=False,
@@ -1614,7 +1615,7 @@ class ImagePullStep(InstallStep):
                 domain=config.domain,
                 traefik_enabled=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=False,
@@ -1766,7 +1767,7 @@ class ModelDownloadStep(InstallStep):
         """Best-effort expected download size without network calls."""
         try:
             from agmind.install.models import CURATED_MODELS
-        except Exception:  # noqa: BLE001
+        except Exception:
             return min_size
         for entry in CURATED_MODELS:
             if entry.repo == repo and entry.file == file_name and entry.size_gib > 0:
@@ -2070,7 +2071,7 @@ class DeployStep(InstallStep):
                 # Let Cancel break out of the long healthcheck wait promptly.
                 cancel_event=self.cancel_event,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=False,
@@ -2326,7 +2327,7 @@ class CredentialsStep(InstallStep):
             )
             creds_path = config.install_dir / "credentials.txt"
             _write_private_text_maybe_sudo(config, creds_path, text, callback, self.step_id)
-        except Exception as exc:  # noqa: BLE001 — never fail install on a convenience artifact
+        except Exception as exc:
             return InstallStepResult(
                 step_id=self.step_id,
                 success=True,

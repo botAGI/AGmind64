@@ -216,7 +216,7 @@ class DeployProgressScreen(Screen[DeployResult]):
 
         try:
             self.result = self._deploy(progress_cb)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.result = DeployResult(success=False, message=f"unhandled error: {exc}")
 
         # Finalize UI from worker thread

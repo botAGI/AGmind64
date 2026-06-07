@@ -319,7 +319,7 @@ def load_registry(path: Path | str | None = None) -> dict[str, Service]:
                 errors.append(f"{yaml_path.name}: duplicate service name '{descriptor.name}'")
                 continue
             out[descriptor.name] = descriptor.to_legacy_service()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(f"{yaml_path.name}: {exc}")
     if errors:
         raise ValueError("failed to load service descriptors: " + "; ".join(errors))

@@ -24,7 +24,7 @@ class LlamaCppVulkanEngine:
     """LLM/embed/rerank через llama-cpp-python с GGML_VULKAN."""
 
     def load(self, model_path: str, **kwargs: Any) -> _LlamaCppHandle:
-        from llama_cpp import Llama  # noqa: PLC0415
+        from llama_cpp import Llama
 
         defaults: dict[str, Any] = {
             "n_ctx": kwargs.get("n_ctx", 8192),
@@ -54,7 +54,7 @@ class LlamaCppVulkanEngine:
         model: str,
         **kwargs: Any,
     ) -> list[list[float]]:
-        from llama_cpp import Llama  # noqa: PLC0415
+        from llama_cpp import Llama
 
         defaults: dict[str, Any] = {
             "model_path": model,

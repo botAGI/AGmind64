@@ -182,3 +182,26 @@ def test_access_note_surfaces_in_report_and_credentials() -> None:
     portainer = {e.service: e for e in report}["portainer"]
     assert portainer.note and "docker restart agmind-portainer" in portainer.note
     assert "docker restart agmind-portainer" in render_credentials_txt(report)
+
+
+def test_access_note_domain_placeholder_substituted() -> None:
+    """live-audit 2026-06-08 M5: the `<domain>` placeholder in a note is replaced with the
+    resolved install domain so the rendered hint is copy-paste-ready."""
+    descriptors = load_descriptors(DEFAULT_SERVICES_DIR)
+    report = build_access_report(descriptors, {}, domain="lab.example.com")
+    portainer = {e.service: e for e in report}["portainer"]
+    assert portainer.note is not None
+    assert "<domain>" not in portainer.note
+    assert "portainer.lab.example.com" in portainer.note
+
+
+def test_render_credentials_txt_masks_when_requested() -> None:
+    """`creds show` reuses render_credentials_txt with mask=True — the real secret is hidden."""
+    from agmind.services.access import render_credentials_txt
+
+    descriptors = load_descriptors(DEFAULT_SERVICES_DIR)
+    report = build_access_report(descriptors, {"GRAFANA_PASSWORD": "topsecret-value"})
+    masked = render_credentials_txt(report, mask=True, header=False)
+    assert "topsecret-value" not in masked
+    unmasked = render_credentials_txt(report, header=False)
+    assert "topsecret-value" in unmasked

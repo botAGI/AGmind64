@@ -13,26 +13,50 @@ from agmind.config.validation import ConfigValidationReport, validate_config
 _DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 
 
+# Findings sharing an id + fix_cmd are collapsed into ONE summarized line listing the affected
+# service names, so a real multi-service condition is not a wall of N near-identical rows
+# (live-audit 2026-06-08 UX-4 / M2).
+_COLLAPSIBLE_IDS = frozenset({"drift-not-running", "drift-orphan", "drift-digest-undeterminable"})
+
+
 def _format_report(report: ConfigValidationReport) -> str:
     """Render a human-readable findings table (never echoes a secret value)."""
     lines: list[str] = []
-    counts = (
-        f"{len(report.by_severity('error'))} error(s), "
-        f"{len(report.by_severity('warning'))} warning(s), "
-        f"{len(report.by_severity('info'))} info"
-    )
-    if report.ok and not report.findings:
+    n_err = len(report.by_severity("error"))
+    n_warn = len(report.by_severity("warning"))
+    counts = f"{n_err} error(s), {n_warn} warning(s), {len(report.by_severity('info'))} info"
+    if not report.findings:
         return f"config OK: {counts}"
 
-    header = "config OK" if report.ok else "config validation FAILED"
+    # Don't print an unqualified "OK" header when warnings (or errors) exist — it contradicts
+    # the warning wall below it (live-audit 2026-06-08 UX-4).
+    if n_err:
+        header = "config validation FAILED"
+    elif n_warn:
+        header = "config: warnings present"
+    else:
+        header = "config OK"
     lines.append(f"{header}: {counts}")
     width = max((len(f.severity) for f in report.findings), default=7)
+
+    collapsed: dict[tuple[str, str, str], list[str]] = {}
     for finding in report.findings:
+        if finding.id in _COLLAPSIBLE_IDS:
+            key = (finding.severity, finding.id, finding.fix_cmd)
+            collapsed.setdefault(key, []).append(finding.evidence or "?")
+            continue
         lines.append(f"  [{finding.severity:<{width}}] {finding.id}: {finding.message}")
         if finding.evidence:
             lines.append(f"      evidence: {finding.evidence}")
         if finding.fixable and finding.fix_cmd:
             lines.append(f"      fix: {finding.fix_cmd}")
+
+    for (severity, fid, fix_cmd), names in collapsed.items():
+        plural = "s" if len(names) != 1 else ""
+        lines.append(f"  [{severity:<{width}}] {fid}: {len(names)} service{plural} affected")
+        lines.append(f"      services: {', '.join(sorted(names))}")
+        if fix_cmd:
+            lines.append(f"      fix: {fix_cmd}")
     return "\n".join(lines)
 
 

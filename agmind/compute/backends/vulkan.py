@@ -208,13 +208,13 @@ def _llama_cpp_installed_with_vulkan() -> bool:
         return False
     try:
         import llama_cpp
-    except Exception:  # noqa: BLE001 — a broken/partial install is "not usable"
+    except Exception:
         return False
     supports_gpu = getattr(llama_cpp, "llama_supports_gpu_offload", None)
     if callable(supports_gpu):
         try:
             return bool(supports_gpu())
-        except Exception:  # noqa: BLE001 — treat a probe error as "not usable"
+        except Exception:
             return False
     # Symbol unavailable on this wheel — fall back to import presence; smoke test decides.
     return True

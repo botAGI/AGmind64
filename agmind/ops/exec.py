@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from agmind.core.logging import logger
+from agmind.core.proc import sudo_argv, sudo_stdin_text
 
 log = logger(__name__)
 
@@ -18,13 +19,13 @@ log = logger(__name__)
 def _compose_cmd(cmd: list[str], sudo_password: str | None = None) -> list[str]:
     if sudo_password is None:
         return cmd
-    return ["sudo", "-S", "-p", "", "--", *cmd]
+    return sudo_argv(cmd)
 
 
 def _sudo_stdin(sudo_password: str | None) -> str | None:
     if sudo_password is None:
         return None
-    return f"{sudo_password}\n"
+    return sudo_stdin_text(sudo_password)
 
 
 def _check_prereqs(install_dir: Path) -> str | None:

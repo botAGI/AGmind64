@@ -162,7 +162,8 @@ class SummaryScreen(Screen[None]):
             f"  Runtime env:  {self.install_dir / '.env'} (chmod 600)\n"
             f"  State:        {self.state_path}\n"
             f"  Token:        {self.token_path} (chmod 600)\n"
-            "  Credentials are not printed in summary; read the env file on host."
+            f"  Credentials:  see {self.install_dir / 'credentials.txt'} "
+            "or run 'sudo agmind creds show'."
         )
 
     def _endpoint_lines(self) -> list[str]:
@@ -178,7 +179,7 @@ class SummaryScreen(Screen[None]):
             # Degrade gracefully (still render endpoints) if .env is root-owned + unreadable.
             env = parse_env_file_or_empty(env_path)
             return render_endpoint_lines(build_access_report(descriptors, env, domain=self.domain))
-        except Exception:  # noqa: BLE001 — summary must never crash on a presentation helper
+        except Exception:
             return []
 
     def _next_steps_text(self) -> str:
@@ -225,7 +226,7 @@ class SummaryScreen(Screen[None]):
                 "  • Rollback to previous state:\n"
                 "      agmind rollback\n"
                 "  • Or try smaller profile first:\n"
-                "      agmind setup   # выбери только 'core'"
+                "      agmind setup   # select only 'core'"
             )
         else:
             # next_steps mode
@@ -240,14 +241,14 @@ class SummaryScreen(Screen[None]):
                 f"        --install-dir {self.install_dir} \\\n"
                 "        --no-prompt\n"
                 "\n"
-                "  Option B — full install через AGmind CLI (systemd + secrets):\n"
+                "  Option B — full install via AGmind CLI (systemd + secrets):\n"
                 "\n"
                 "      agmind install --no-tui \\\n"
                 f"        --from-state {self.state_path} \\\n"
                 f"        --domain {self.domain} \\\n"
                 f"        --cf-token-file {self.token_path}\n"
                 "\n"
-                "  Option C — повторить wizard с auto-deploy:\n"
+                "  Option C — re-run the wizard with auto-deploy:\n"
                 "      agmind setup"
             )
 

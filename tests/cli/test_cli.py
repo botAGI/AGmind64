@@ -35,6 +35,35 @@ def test_make_app_builds_typer_instance() -> None:
     assert hasattr(app, "registered_commands") or hasattr(app, "__class__")
 
 
+def test_every_cmd_module_on_disk_is_registered() -> None:
+    """Guard: no orphaned `*_cmd.py` modules (regression for deleted chat/embed_cmd).
+
+    Every `agmind/cli/<group>_cmd.py` that exposes a `register(app)` entry point must be
+    wired into `_make_app` (and vice versa) — an unregistered command module is dead code
+    that silently ships without a CLI surface or tests.
+    """
+    import importlib
+    import inspect
+    from pathlib import Path
+
+    import agmind.cli as cli_pkg
+
+    cli_dir = Path(cli_pkg.__file__).parent
+    on_disk = {
+        path.stem
+        for path in cli_dir.glob("*_cmd.py")
+        if hasattr(importlib.import_module(f"agmind.cli.{path.stem}"), "register")
+    }
+
+    src = inspect.getsource(cli_pkg._make_app)
+    registered = {name for name in on_disk if f"{name}.register(app)" in src}
+
+    assert on_disk == registered, (
+        f"unregistered *_cmd modules: {sorted(on_disk - registered)}; "
+        f"registered-but-missing: {sorted(registered - on_disk)}"
+    )
+
+
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_make_app_has_doctor_command() -> None:
     from typer.testing import CliRunner

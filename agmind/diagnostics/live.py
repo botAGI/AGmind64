@@ -304,7 +304,7 @@ def create_support_bundle(
                     "config_validate.json",
                     json.dumps(report.to_payload(), indent=2, ensure_ascii=False).encode("utf-8"),
                 )
-            except Exception as exc:  # noqa: BLE001 — never let validation abort a bundle
+            except Exception as exc:
                 issues.append(f"validate: {exc.__class__.__name__}")
 
             # --- preflight doctor ---
@@ -315,7 +315,7 @@ def create_support_bundle(
                     "doctor_report.json",
                     json.dumps(preflight.to_dict(), indent=2, ensure_ascii=False).encode("utf-8"),
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 issues.append(f"doctor: {exc.__class__.__name__}")
 
             # --- metadata ---

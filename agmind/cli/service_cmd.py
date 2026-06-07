@@ -157,7 +157,7 @@ def cmd_scaffold(
     services_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(_SCAFFOLD_TEMPLATE.format(name=name, tier=tier), encoding="utf-8")
     print(f"✓ created {path}")
-    print(f"  → review image/ports, затем `agmind service validate {name}`")
+    print(f"  → review image/ports, then run `agmind service validate {name}`")
     return 0
 
 

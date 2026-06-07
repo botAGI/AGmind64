@@ -107,6 +107,12 @@ def build_access_report(
             )
             continue
         password = env.get(access.password_env) if access.password_env else None
+        # Substitute the `<domain>` placeholder in operator notes with the resolved install
+        # domain so the rendered hint is copy-paste-ready (e.g. `portainer.lab.agmind.dev`,
+        # not the literal `portainer.<domain>`). live-audit 2026-06-08 (M5).
+        note = access.note
+        if note is not None:
+            note = note.replace("<domain>", domain or _DOMAIN_PLACEHOLDER)
         entries.append(
             AccessEntry(
                 service=name,
@@ -118,7 +124,7 @@ def build_access_report(
                 lan_only=access.lan_only,
                 api_kind=access.api_kind,
                 model_name=_resolve_model_name(descriptor, env) if access.api_kind else None,
-                note=access.note,
+                note=note,
             )
         )
     return entries
@@ -127,10 +133,16 @@ def build_access_report(
 _REGISTER_HINT = "(create on first login)"
 
 
-def _password_field(entry: AccessEntry) -> str | None:
-    """Return the credentials.txt password line value, or None to omit the line."""
+def _password_field(entry: AccessEntry, *, mask: bool = False) -> str | None:
+    """Return the credentials password line value, or None to omit the line.
+
+    When ``mask`` is True the real secret is masked (``creds show`` default — a shoulder-surf
+    guard); otherwise the real value is shown (``credentials.txt`` IS the secrets file).
+    """
+    from agmind.core.secrets import mask_value
+
     if entry.password:
-        return entry.password  # this IS the secrets file (chmod 600) — show the real value
+        return mask_value(entry.password) if mask else entry.password
     if entry.first_login_register:
         return _REGISTER_HINT
     if entry.password_env:
@@ -146,28 +158,37 @@ def render_credentials_txt(
     generated_at: str | None = None,
     llama_model: str | None = None,
     server_ip: str | None = None,
+    mask: bool = False,
+    header: bool = True,
 ) -> str:
-    """Render the sectioned, human-readable ``credentials.txt`` body (written ``chmod 600``).
+    """Render the sectioned, human-readable credentials body — the SINGLE source of truth for
+    both ``credentials.txt`` (written ``chmod 600``) and ``agmind creds show``.
 
-    Shows real passwords (it is the secrets file). UI logins and OpenAI-compatible model
-    endpoints (copy-paste "Add Model" blocks) get separate sections.
+    Shows real passwords by default (the file is the secrets file); ``mask=True`` masks them for
+    ``creds show``. UI logins, per-service operator notes, and OpenAI-compatible model endpoints
+    (copy-paste "Add Model" blocks) get separate sections. ``header=False`` drops the
+    ``# DO NOT COMMIT`` banner (irrelevant for terminal output).
     """
-    lines = ["# AGmind credentials — DO NOT COMMIT"]
-    if generated_at:
-        lines.append(f"# generated: {generated_at}")
+    lines: list[str] = []
+    if header:
+        lines.append("# AGmind credentials — DO NOT COMMIT")
+        if generated_at:
+            lines.append(f"# generated: {generated_at}")
 
     logins = [e for e in report if not e.is_model_endpoint]
     endpoints = [e for e in report if e.is_model_endpoint]
 
     if logins:
-        lines += ["", "== Logins =="]
+        if lines:
+            lines.append("")
+        lines.append("== Logins ==")
         for e in logins:
             lines.append(f"{e.service}   {e.url}")
             if e.login:
                 lines.append(f"  Login:    {e.login}")
             elif e.first_login_register:
                 lines.append(f"  Login:    {_REGISTER_HINT}")
-            pw = _password_field(e)
+            pw = _password_field(e, mask=mask)
             if pw is not None:
                 lines.append(f"  Password: {pw}")
             if e.lan_only and server_ip:

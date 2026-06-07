@@ -34,6 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from agmind.core.logging import logger
+from agmind.core.proc import sudo_argv, sudo_stdin_bytes, sudo_stdin_text
 from agmind.ops.backup_data import (
     DataVolumeSource,
     DbDumpSource,
@@ -128,21 +129,12 @@ def _safe_member_name(label: str) -> str:
     return label.replace("/", "_").replace("..", "_")
 
 
-def _sudo_bytes(sudo_password: str) -> bytes:
-    return f"{sudo_password}\n".encode()
-
-
-def _sudo_text(sudo_password: str) -> str:
-    return f"{sudo_password}\n"
-
-
 def _run_sudo_capture_bytes(args: list[str], sudo_password: str) -> bytes:
-    cmd = ["sudo", "-S", "-p", "", "--", *args]
     result = subprocess.run(
-        cmd,
+        sudo_argv(args),
         capture_output=True,
         check=False,
-        input=_sudo_bytes(sudo_password),
+        input=sudo_stdin_bytes(sudo_password),
     )
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace").strip()
@@ -151,13 +143,12 @@ def _run_sudo_capture_bytes(args: list[str], sudo_password: str) -> bytes:
 
 
 def _run_sudo_no_output(args: list[str], sudo_password: str) -> None:
-    cmd = ["sudo", "-S", "-p", "", "--", *args]
     result = subprocess.run(
-        cmd,
+        sudo_argv(args),
         capture_output=True,
         text=True,
         check=False,
-        input=_sudo_text(sudo_password),
+        input=sudo_stdin_text(sudo_password),
     )
     if result.returncode != 0:
         stderr = result.stderr.strip()

@@ -54,7 +54,7 @@ class LlamaCppCPUEngine:
     """Factory для CPU LLM/embed/rerank через llama-cpp-python."""
 
     def load(self, model_path: str, **kwargs: Any) -> _LlamaCppHandle:
-        from llama_cpp import Llama  # noqa: PLC0415 — lazy import by design
+        from llama_cpp import Llama
 
         defaults: dict[str, Any] = {
             "n_ctx": 8192,
@@ -71,7 +71,7 @@ class LlamaCppCPUEngine:
         model: str,
         **kwargs: Any,
     ) -> list[list[float]]:
-        from llama_cpp import Llama  # noqa: PLC0415
+        from llama_cpp import Llama
 
         defaults: dict[str, Any] = {
             "model_path": model,

@@ -301,7 +301,7 @@ def audit_install(
         from agmind.services.renderer import load_descriptors
 
         descriptors = {n: d for n, d in load_descriptors().items() if n in deployed}
-    except Exception:  # noqa: BLE001 - descriptor load is best-effort for the env scan
+    except Exception:
         descriptors = {}
     # Only scan when .env was actually read. With an unreadable .env, the descriptor-default
     # check resolves `${GENERATED_VAR:-changeme}` to its WEAK default and false-flags it HIGH —

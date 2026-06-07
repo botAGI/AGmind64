@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agmind.core.files import write_text_atomic
+from agmind.core.proc import CommandResult
 from agmind.deploy.targets import DeploymentTarget, load_deploy_targets
 from agmind.services.kubernetes_checks import (
     _empty_warning_summary,
@@ -27,17 +28,8 @@ from agmind.services.kubernetes_renderer import render_to_string
 from agmind.services.renderer import DEFAULT_SERVICES_DIR
 
 DryRunStatus = Literal["passed", "failed", "skipped"]
-CommandRunner = Callable[[tuple[str, ...], Path], "CommandResult"]
+CommandRunner = Callable[[tuple[str, ...], Path], CommandResult]
 AMD_GPU_RESOURCE_NAME = "amd.com/gpu"
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    """Captured kubectl command result."""
-
-    returncode: int
-    stdout: str
-    stderr: str
 
 
 @dataclass(frozen=True)
@@ -515,7 +507,7 @@ def _run_one_target(
             services_dir=services_dir,
             namespace=namespace,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         report = KubernetesDryRunTargetReport(
             target_id=target.id,
             status="failed",

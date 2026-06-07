@@ -184,7 +184,7 @@ def cmd_download(
         print(f"  [{label}] downloading {spec.hf_url}  ({spec.size_gb} GB) → {local}")
         try:
             urlretrieve(spec.hf_url, str(partial))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"  [{label}] FAILED: {exc}", file=sys.stderr)
             return 1
         try:
@@ -330,7 +330,7 @@ def cmd_info(model_id: str | None = None, file: str | None = None) -> int:
         print(f"  Modified: {_dt.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')}")
         return 0
 
-    print("ERROR: pass either <model_id> или --file <name>", file=sys.stderr)
+    print("ERROR: pass either <model_id> or --file <name>", file=sys.stderr)
     return 2
 
 
@@ -364,7 +364,7 @@ def cmd_pull(
         expected_gib = entry.size_gib if entry.size_gib and entry.size_gib > 0 else None
 
     if not repo or not file:
-        print("ERROR: provide <model_id> или --repo/--file pair", file=sys.stderr)
+        print("ERROR: provide <model_id> or a --repo/--file pair", file=sys.stderr)
         return 2
 
     models_dir = _models_dir()
@@ -484,7 +484,7 @@ def cmd_rm(model_id: str | None = None, file: str | None = None, force: bool = F
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
     else:
-        print("ERROR: pass <model_id> или --file", file=sys.stderr)
+        print("ERROR: pass <model_id> or --file", file=sys.stderr)
         return 2
 
     if not target.exists():
@@ -625,7 +625,7 @@ def register(app: typer.Typer) -> None:
     # ---- models subcommand group (Phase M3.Q) ----
     models_app = typer.Typer(
         name="models",
-        help="Manage GGUF model files в /var/lib/agmind/models/.",
+        help="Manage GGUF model files in /var/lib/agmind/models/.",
         no_args_is_help=True,
     )
     app.add_typer(models_app)
@@ -648,7 +648,7 @@ def register(app: typer.Typer) -> None:
     def models_info(
         model_id: str | None = typer.Argument(
             None,
-            help="Curated model id (см. `agmind install --list-models`)",
+            help="Curated model id (see `agmind install --list-models`)",
         ),
         file: str | None = typer.Option(
             None,
@@ -656,7 +656,7 @@ def register(app: typer.Typer) -> None:
             help="Inspect local file by name (in models dir or absolute path)",
         ),
     ) -> None:
-        """Show details для curated model OR local file."""
+        """Show details for a curated model OR a local file."""
         raise typer.Exit(code=cmd_info(model_id=model_id, file=file))
 
     @models_app.command("pull")
@@ -668,7 +668,7 @@ def register(app: typer.Typer) -> None:
         repo: str | None = typer.Option(
             None,
             "--repo",
-            help="HF repo (для custom — combine with --file)",
+            help="HF repo (for custom — combine with --file)",
         ),
         file: str | None = typer.Option(
             None,
@@ -678,10 +678,10 @@ def register(app: typer.Typer) -> None:
         force: bool = typer.Option(
             False,
             "--force",
-            help="Re-download даже если уже есть",
+            help="Re-download even if already present",
         ),
     ) -> None:
-        """Download GGUF model from curated catalog или custom HF repo."""
+        """Download a GGUF model from the curated catalog or a custom HF repo."""
         raise typer.Exit(
             code=cmd_pull(
                 model_id=model_id,
@@ -705,10 +705,10 @@ def register(app: typer.Typer) -> None:
         force: bool = typer.Option(
             False,
             "--force",
-            help="Remove даже если referenced в /opt/agmind/.env",
+            help="Remove even if referenced in /opt/agmind/.env",
         ),
     ) -> None:
-        """Delete model file. Warns если used by running compose."""
+        """Delete a model file. Warns if it is used by the running compose."""
         raise typer.Exit(code=cmd_rm(model_id=model_id, file=file, force=force))
 
     @models_app.command("path")
@@ -716,7 +716,7 @@ def register(app: typer.Typer) -> None:
         name: str = typer.Argument(..., help="llm | embed | rerank | vlm"),
         tier: str | None = typer.Option(None, "--tier", help="S/M/L/XL/XXL"),
     ) -> None:
-        """Print local path для named model (legacy registry)."""
+        """Print the local path for a named model (legacy registry)."""
         raise typer.Exit(code=cmd_path(name=name, tier=tier))
 
     @models_app.command("verify")

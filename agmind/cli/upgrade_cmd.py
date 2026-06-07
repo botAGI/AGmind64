@@ -400,7 +400,7 @@ def cmd_apply(install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int 
             no_prompt=True,
             healthcheck_timeout=healthcheck_timeout,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"ERROR: deploy crashed: {exc}", file=sys.stderr)
         return 1
 
@@ -479,7 +479,7 @@ def register(app: typer.Typer) -> None:
     # ---- upgrade subcommand group (Phase M3.R) ----
     upgrade_app = typer.Typer(
         name="upgrade",
-        help="Bump pinned image versions + safely redeploy с rollback.",
+        help="Bump pinned image versions + safely redeploy with rollback.",
         no_args_is_help=False,
         invoke_without_command=True,
     )
@@ -492,28 +492,28 @@ def register(app: typer.Typer) -> None:
             None,
             "--component",
             "-c",
-            help="Service name (e.g. ragflow). Bump его image tag.",
+            help="Service name (e.g. ragflow). Bump its image tag.",
         ),
         version: str | None = typer.Option(
             None,
             "--version",
             "-v",
-            help="Target tag (e.g. v0.25.5). Required с --component.",
+            help="Target tag (e.g. v0.25.5). Required with --component.",
         ),
         digest: str | None = typer.Option(
             None,
             "--digest",
-            help="Optional sha256 digest (без `sha256:` prefix).",
+            help="Optional sha256 digest (without the `sha256:` prefix).",
         ),
         check: bool = typer.Option(
             False,
             "--check",
-            help="Run version_check.py scanner и выйти.",
+            help="Run the version_check.py scanner and exit.",
         ),
         apply: bool = typer.Option(
             False,
             "--apply",
-            help="Re-deploy after bump (uses Phase L.B runner).",
+            help="Re-deploy after bump.",
         ),
         plan: bool = typer.Option(
             False,
@@ -528,10 +528,10 @@ def register(app: typer.Typer) -> None:
         force: bool = typer.Option(
             False,
             "--force",
-            help="Bump даже если pin в version_holds.yaml.",
+            help="Bump even if the pin is held in version_holds.yaml.",
         ),
     ) -> None:
-        """Phase M3.R: upgrade lifecycle."""
+        """Upgrade lifecycle: bump a pinned image and safely redeploy with rollback."""
         if ctx.invoked_subcommand is not None:
             return
 

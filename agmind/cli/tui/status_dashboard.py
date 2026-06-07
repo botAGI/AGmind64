@@ -239,7 +239,7 @@ class StatusDashboardApp(App[None]):
         """Try update view, skip silently если widgets not mounted (unit tests)."""
         try:
             self._update_view()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def _update_view(self) -> None:

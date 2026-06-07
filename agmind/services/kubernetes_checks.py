@@ -199,7 +199,7 @@ def _validate_one_target(
             services_dir=services_dir,
         )
         objects = tuple(doc for doc in yaml.safe_load_all(rendered) if doc)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return KubernetesTargetRenderReport(
             target_id=target.id,
             renderer=target.runtime.renderer,

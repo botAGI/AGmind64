@@ -179,7 +179,7 @@ class DoclingClient:
             detail = ""
             try:
                 detail = exc.read().decode("utf-8", errors="replace")[:300]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             raise DoclingError(f"HTTP {exc.code} POST {path}: {detail}") from exc
         except urllib.error.URLError as exc:

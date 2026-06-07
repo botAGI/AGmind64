@@ -190,7 +190,7 @@ class InstallStep(ABC):
                     progress_pct=progress_pct,
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.debug("progress callback raised: %s (ignored)", exc)
 
 
@@ -222,7 +222,7 @@ class InstallOrchestrator:
             self._emit_step_start(step)
             try:
                 result = step.run(self._emit_progress, self.config)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 elapsed = timedelta(seconds=time.monotonic() - start)
                 log.error("step %s crashed: %s", step.step_id, self._redact_text(str(exc)))
                 result = InstallStepResult(
@@ -291,7 +291,7 @@ class InstallOrchestrator:
     def _emit_progress(self, event: ProgressEvent) -> None:
         try:
             self.callback(self._redact_event(event))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.debug("progress callback raised: %s", exc)
 
     def _emit_step_start(self, step: InstallStep) -> None:

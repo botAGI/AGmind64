@@ -328,8 +328,8 @@ def cmd_restore(
     if running:
         print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")
         print(f"  {', '.join(running)}")
-        print("Restore поверх работающего compose может сломать containers.")
-        print("Рекомендуется: `docker compose -f docker-compose.yml down` сначала.")
+        print("Restoring over a running compose can break containers.")
+        print("Recommended: run `docker compose -f docker-compose.yml down` first.")
 
     if not yes:
         try:
@@ -403,7 +403,7 @@ def cmd_restore(
             db_passwords=db_passwords,
             labels=labels,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"agmind restore: failed: {exc}", file=sys.stderr)
         return 1
 
@@ -425,7 +425,8 @@ def cmd_restore(
     token_path = user_dir / "cf_dns_api_token"
     if not token_path.exists():
         print(
-            "\nNOTE: cf_dns_api_token не восстановлен (secret НЕ в backup'е). Восстанови вручную:"
+            "\nNOTE: cf_dns_api_token was NOT restored (the secret is not in the backup). "
+            "Restore it manually:"
         )
         print(f'  echo "$TOKEN" > {token_path} && chmod 600 {token_path}')
 
@@ -436,8 +437,8 @@ def cmd_restore(
     )
     if not has_models:
         print(
-            f"\nWARNING: {models_dir} is empty — models не в backup'е (большие). "
-            f"Run `agmind models pull <name>` чтобы заполнить."
+            f"\nWARNING: {models_dir} is empty — models are not in the backup (too large). "
+            f"Run `agmind models pull <name>` to populate it."
         )
 
     return 0
@@ -717,7 +718,7 @@ def register(app: typer.Typer) -> None:
     # ---- ops subcommands: logs / shell / backup / restore (Phase L.E) ----
     @app.command()
     def logs(
-        service: str | None = typer.Argument(None, help="Service name (omit для всех сервисов)."),
+        service: str | None = typer.Argument(None, help="Service name (omit for all services)."),
         install_dir: Path = typer.Option(
             Path("/opt/agmind"), "--install-dir", help="Deployment dir."
         ),
@@ -748,7 +749,7 @@ def register(app: typer.Typer) -> None:
         ),
         cmd: str = typer.Option("/bin/sh", "--cmd", help="Command to run (default /bin/sh)."),
         workdir: str | None = typer.Option(
-            None, "--workdir", "-w", help="Working dir внутри container."
+            None, "--workdir", "-w", help="Working dir inside the container."
         ),
         ask_sudo_password: bool = typer.Option(
             False,
@@ -791,7 +792,7 @@ def register(app: typer.Typer) -> None:
             "for root-owned data dirs).",
         ),
     ) -> None:
-        """Create tar.gz backup of compose / .env / state / snapshots (Phase L.E)."""
+        """Create tar.gz backup of compose / .env / state / snapshots."""
         raise typer.Exit(
             code=cmd_backup(output, ask_sudo_password=ask_sudo_password, include_data=include_data)
         )
@@ -840,7 +841,7 @@ def register(app: typer.Typer) -> None:
             help="Skip the pre-restore sha256 integrity check (NOT recommended).",
         ),
     ) -> None:
-        """Restore deployment from `agmind backup` archive (Phase L.E)."""
+        """Restore deployment from an `agmind backup` archive."""
         raise typer.Exit(
             code=cmd_restore(
                 backup_file,

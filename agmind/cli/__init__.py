@@ -41,7 +41,10 @@ def _make_app() -> typer.Typer:
     def _global_options(
         verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging"),
     ) -> None:
-        setup_logging("DEBUG" if verbose else "INFO")
+        # Quiet by default: library INFO chatter (e.g. the compute-registry backend line) must
+        # not pollute operator command output — it leaked into `agmind status` (live-audit M1).
+        # `-v` opts back into DEBUG; logs always go to stderr (see core.logging.setup).
+        setup_logging("DEBUG" if verbose else "WARNING")
 
     # Per-group registration. Imported here (not at module top) so that
     # `import agmind.cli` stays cheap and does not require typer. Call order

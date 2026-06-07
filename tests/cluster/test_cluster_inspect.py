@@ -306,12 +306,13 @@ def test_run_command_reports_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     import subprocess
 
     from agmind.cluster import inspect as inspect_mod
+    from agmind.core import proc as proc_mod
 
     def raise_timeout(*args: object, **kwargs: object) -> object:
         raise subprocess.TimeoutExpired(cmd=("docker", "version"), timeout=5)
 
-    monkeypatch.setattr(inspect_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(inspect_mod.subprocess, "run", raise_timeout)
+    monkeypatch.setattr(proc_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(proc_mod.subprocess, "run", raise_timeout)
 
     result = inspect_mod._run_command(("docker", "version"))  # noqa: SLF001
 

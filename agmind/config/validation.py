@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -181,16 +182,29 @@ def _bare_digest(value: str) -> str:
     return text.lower()
 
 
-def _running_image_digests(selected: set[str]) -> dict[str, str] | None:
+def _running_image_digests(
+    selected: set[str], install_dir: Path | None = None
+) -> dict[str, str] | None:
     """Map each selected service → the bare running-image digest.
 
-    For each ``svc`` runs ``docker inspect agmind-<svc>`` and reads
-    ``.RepoDigests[0]``. A service whose container is absent maps to the
-    ``_NOT_RUNNING`` sentinel; a container with empty RepoDigests maps to ``""``.
+    Whether a container is RUNNING is decided FIRST from ``docker ps`` (by compose-project
+    label), NOT from a successful ``docker inspect`` — those are independent facts. Conflating
+    them used to mark EVERY healthy container ``_NOT_RUNNING`` (live-audit 2026-06-08 UX-2):
+    the digest template ``{{index .RepoDigests 0}}`` ERRORS (rc≠0) when a container has no
+    top-level ``RepoDigests`` key, and the old code treated any non-zero rc as "not running".
+
+    A service whose container is NOT running maps to ``_NOT_RUNNING``; a running container
+    whose RepoDigest is empty / undeterminable maps to ``""``; otherwise the bare digest.
     Returns ``None`` when the docker binary is unavailable (→ drift skipped).
     """
+    if shutil.which("docker") is None:
+        return None
+    running = _running_service_names(install_dir)
     digests: dict[str, str] = {}
     for svc in sorted(selected):
+        if svc not in running:
+            digests[svc] = _NOT_RUNNING
+            continue
         try:
             proc = subprocess.run(
                 [
@@ -198,7 +212,10 @@ def _running_image_digests(selected: set[str]) -> dict[str, str] | None:
                     "inspect",
                     f"{_CONTAINER_PREFIX}{svc}",
                     "--format",
-                    "{{index .RepoDigests 0}}",
+                    # Guard the index: a container with NO top-level RepoDigests key makes
+                    # `{{index .RepoDigests 0}}` raise a template error (rc≠0). `{{if}}` yields
+                    # empty instead — a running-but-undeterminable digest, never "not running".
+                    "{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}",
                 ],
                 check=False,
                 capture_output=True,
@@ -208,18 +225,35 @@ def _running_image_digests(selected: set[str]) -> dict[str, str] | None:
         except FileNotFoundError:
             return None
         except (subprocess.SubprocessError, OSError):
-            digests[svc] = _NOT_RUNNING
-            continue
-        if proc.returncode != 0:
-            # No such container (or other inspect failure) → treat as not running.
-            digests[svc] = _NOT_RUNNING
+            digests[svc] = ""  # running (per docker ps) but inspect failed → undeterminable
             continue
         repo_digest = proc.stdout.strip()
-        if not repo_digest or "@" not in repo_digest:
+        if proc.returncode != 0 or not repo_digest or "@" not in repo_digest:
             digests[svc] = ""  # running but RepoDigests empty / undeterminable
             continue
         digests[svc] = _bare_digest(repo_digest)
     return digests
+
+
+def _running_service_names(install_dir: Path | None) -> set[str]:
+    """Running compose-service names from ``docker ps`` by project label (no ``.env`` read).
+
+    Reuses the world-readable label query that already powers backup/restore so a non-root
+    operator gets the truth without reading the root-owned ``.env``. Falls back to scanning the
+    ``agmind-*`` container prefix when the install dir / project name is unknown.
+    """
+    if install_dir is not None:
+        from agmind.cli.ops_cmd import _running_compose_services
+
+        names = set(_running_compose_services(install_dir))
+        if names:
+            return names
+    # Fallback: derive service names from running agmind-* containers directly.
+    return {
+        name[len(_CONTAINER_PREFIX) :]
+        for name in _running_agmind_containers()
+        if name.startswith(_CONTAINER_PREFIX)
+    }
 
 
 def _running_agmind_containers() -> list[str]:
@@ -572,7 +606,7 @@ def validate_config(
     elif compose is None:
         pass  # no selection to diff against
     else:
-        running = _running_image_digests(selected)
+        running = _running_image_digests(selected, install_dir)
         findings.extend(_check_drift(selected, descriptors, running))
 
     findings = _sort_findings(findings)

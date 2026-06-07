@@ -38,7 +38,7 @@ def _load_backends() -> dict[str, type[Backend]]:
     for ep in eps:
         try:
             out[ep.name] = ep.load()
-        except Exception as exc:  # noqa: BLE001 — broad catch для plugin robustness
+        except Exception as exc:
             log.warning("backend %s load failed: %s", ep.name, exc)
 
     # Safety net: если entry_points не дискаверили (e.g. agmind не установлен

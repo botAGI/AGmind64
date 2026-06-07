@@ -5,26 +5,17 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from agmind.core.proc import CommandResult, run_command
+
 RUN_JSON_FIELDS = (
     "databaseId,displayTitle,workflowName,status,conclusion,event,headBranch,createdAt,url"
 )
 DEFAULT_RUN_LIMIT = 10
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    """Small subprocess result used by injectable command probes."""
-
-    returncode: int
-    stdout: str = ""
-    stderr: str = ""
 
 
 @dataclass(frozen=True)
@@ -266,33 +257,7 @@ def _int_value(value: object) -> int:
 
 
 def _run_command(args: tuple[str, ...]) -> CommandResult:
-    if shutil.which(args[0]) is None:
-        return CommandResult(returncode=127, stderr=f"{args[0]} not found")
-    try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=20,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return CommandResult(
-            returncode=124,
-            stdout=_output_text(exc.output),
-            stderr=f"{' '.join(args)} timed out after {exc.timeout} seconds",
-        )
-    except OSError as exc:
-        return CommandResult(returncode=127, stderr=str(exc))
-    return CommandResult(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
-
-
-def _output_text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value
+    return run_command(args, timeout=20)
 
 
 __all__ = [

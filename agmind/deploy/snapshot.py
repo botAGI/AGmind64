@@ -23,6 +23,7 @@ from pathlib import Path
 
 from agmind.core.files import write_text_atomic
 from agmind.core.logging import logger
+from agmind.core.proc import sudo_argv, sudo_stdin_text
 
 log = logger(__name__)
 
@@ -90,11 +91,11 @@ class SnapshotManager:
         if self.sudo_password is None:
             raise PermissionError("sudo password not provided for snapshot store")
         result = subprocess.run(
-            ["sudo", "-S", "-p", "", "--", *cmd],
+            sudo_argv(cmd),
             capture_output=True,
             text=True,
             check=False,
-            input=f"{self.sudo_password}\n",
+            input=sudo_stdin_text(self.sudo_password),
         )
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or f"sudo {cmd[0]} failed").strip()

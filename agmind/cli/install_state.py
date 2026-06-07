@@ -37,7 +37,7 @@ def load_setup_state_from_file(from_state: Path) -> SetupState:
         raise StateResolveError(f"cannot read --from-state {from_state}: {exc}") from exc
     try:
         state = SetupState.from_json(from_state)
-    except Exception as exc:  # noqa: BLE001 — surface any parse error as a clean message
+    except Exception as exc:
         raise StateResolveError(f"cannot load --from-state {from_state}: {exc}") from exc
 
     from agmind.services.renderer import (
@@ -92,7 +92,7 @@ def load_prior_setup_state(state_path: Path) -> SetupState | None:
         return None
     try:
         return SetupState.from_json(state_path)
-    except Exception as exc:  # noqa: BLE001 — corrupt/old state → fall back to defaults
+    except Exception as exc:
         # A PRESENT-but-corrupt state must not fall back SILENTLY: the whole point of this
         # pre-selection is to stop a re-deploy from --remove-orphans'ing the running stack, so
         # warn loudly before that happens (review MEDIUM install-state-corrupt-orphan-removal).

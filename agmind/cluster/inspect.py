@@ -3,24 +3,14 @@
 from __future__ import annotations
 
 import json
-import shutil
 import socket
-import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from agmind.cluster.detect import DEFAULT_DISCOVERY_TIMEOUT, DiscoveredPeer, discover
+from agmind.core.proc import CommandResult, run_command
 from agmind.deploy.targets import DeploymentTarget, load_deploy_targets
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    """Small subprocess result used by injectable probes."""
-
-    returncode: int
-    stdout: str = ""
-    stderr: str = ""
 
 
 @dataclass(frozen=True)
@@ -433,38 +423,7 @@ def _amd_gpu_count(item: dict[str, object]) -> int:
 
 
 def _run_command(args: tuple[str, ...]) -> CommandResult:
-    if shutil.which(args[0]) is None:
-        return CommandResult(returncode=127, stderr=f"{args[0]} not found")
-    try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        )
-    except subprocess.TimeoutExpired as exc:
-        command = " ".join(args)
-        return CommandResult(
-            returncode=124,
-            stdout=_output_text(exc.output),
-            stderr=f"{command} timed out after {exc.timeout} seconds",
-        )
-    except OSError as exc:
-        return CommandResult(returncode=127, stderr=str(exc))
-    return CommandResult(
-        returncode=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
-    )
-
-
-def _output_text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value
+    return run_command(args, timeout=5)
 
 
 def _path_exists(path: str) -> bool:

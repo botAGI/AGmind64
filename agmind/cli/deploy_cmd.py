@@ -209,7 +209,7 @@ def register(app: typer.Typer) -> None:
     # ---- deploy subcommand group (Phase L.B) ----
     deploy_app = typer.Typer(
         name="deploy",
-        help="Idempotent deploy с automatic snapshot + healthcheck + rollback",
+        help="Idempotent deploy with automatic snapshot + healthcheck + rollback",
         no_args_is_help=False,
         invoke_without_command=True,
     )
@@ -391,17 +391,17 @@ def register(app: typer.Typer) -> None:
         aggressive: bool = typer.Option(
             False,
             "--aggressive",
-            help="Remove ALL unused volumes (default: только labeled agmind.gc=auto)",
+            help="Remove ALL unused volumes (default: only labeled agmind.gc=auto)",
         ),
         older_than_hours: int = typer.Option(
             72,
             "--older-than-hours",
-            help="Image age cutoff в часах (default: 72)",
+            help="Image age cutoff in hours (default: 72)",
         ),
         include_models: bool = typer.Option(
             False,
             "--include-models",
-            help="Также удалить GGUF/safetensors не упомянутые в descriptors",
+            help="Also delete GGUF/safetensors not referenced by descriptors",
         ),
         yes: bool = typer.Option(
             False,

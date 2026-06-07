@@ -34,9 +34,7 @@ def cmd_detect(timeout: float = DEFAULT_DISCOVERY_TIMEOUT, as_json: bool = False
 
     if not peers:
         print(f"No agmind peers found (searched for {timeout:.1f}s).")
-        print(
-            "Hint: on other nodes run `agmind cluster advertise` чтобы они появились в discovery."
-        )
+        print("Hint: on other nodes run `agmind cluster advertise` so they appear in discovery.")
         return 0
 
     print(f"Detected {len(peers)} peer(s):")
@@ -113,7 +111,7 @@ def cmd_status(as_json: bool = False, timeout: float = DEFAULT_DISCOVERY_TIMEOUT
     print()
     if not peers:
         print("Cluster: 1 node (this only)")
-        print("Hint: run `agmind cluster advertise` on other nodes для discovery.")
+        print("Hint: run `agmind cluster advertise` on other nodes for discovery.")
         return 0
     print(f"Cluster: {1 + len(peers)} nodes ({len(peers)} peer(s) discovered):")
     for p in peers:
@@ -204,11 +202,11 @@ def register(app: typer.Typer) -> None:
             3.0,
             "--timeout",
             "-t",
-            help="Discovery duration в секундах",
+            help="Discovery duration in seconds",
         ),
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
     ) -> None:
-        """Browse LAN для agmind peers via mDNS (one-shot)."""
+        """Browse the LAN for agmind peers via mDNS (one-shot)."""
         raise typer.Exit(code=cmd_detect(timeout=timeout, as_json=as_json))
 
     @cluster_app.command("advertise")
@@ -217,16 +215,16 @@ def register(app: typer.Typer) -> None:
             41423,
             "--port",
             "-p",
-            help="Port для service advertisement",
+            help="Port for service advertisement",
         ),
         duration: float = typer.Option(
             0.0,
             "--duration",
             "-d",
-            help="Stop после N seconds (0 = forever / Ctrl+C)",
+            help="Stop after N seconds (0 = forever / Ctrl+C)",
         ),
     ) -> None:
-        """Publish this node как `_agmind._tcp.local.` service (daemon mode)."""
+        """Publish this node as an `_agmind._tcp.local.` service (daemon mode)."""
         raise typer.Exit(code=cmd_advertise(port=port, duration=duration))
 
     @cluster_app.command("status")

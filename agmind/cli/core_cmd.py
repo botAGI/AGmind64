@@ -164,7 +164,7 @@ def register(app: typer.Typer) -> None:
         if bundle is not None:
             try:
                 result = live_mod.create_support_bundle(bundle, install_dir=install_dir)
-            except Exception as exc:  # noqa: BLE001 — surface as exit 3, not a traceback
+            except Exception as exc:
                 typer.echo(f"ERROR: bundle creation failed: {exc}", err=True)
                 raise typer.Exit(code=3) from exc
             typer.echo(
@@ -182,9 +182,7 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def status(
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
-        tui: bool = typer.Option(
-            False, "--tui", help="Launch live deployment dashboard (Phase J.2)"
-        ),
+        tui: bool = typer.Option(False, "--tui", help="Launch live deployment dashboard"),
         deploy: bool = typer.Option(
             False,
             "--deploy",
@@ -199,7 +197,7 @@ def register(app: typer.Typer) -> None:
             5.0, "--refresh", help="Refresh interval seconds (only for --tui)"
         ),
     ) -> None:
-        """Show selected backend + device info, или live dashboard с --tui.
+        """Show selected backend + device info, or a live dashboard with --tui.
 
         ``--deploy`` adds a plain-text/--json deployment picture (services up/healthy + problems
         + an LLM-disabled warning) readable over SSH or pipe — the live health was previously

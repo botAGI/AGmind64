@@ -11,6 +11,7 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.ops.backup import BackupSource, create_backup, restore_backup
 
 DEFAULT_ROOT = Path("/tmp/agmind-root-owned-smoke")
@@ -36,11 +37,11 @@ def _validate_tmp_root(path: Path) -> Path:
 
 def _sudo_run(cmd: list[str], sudo_password: str) -> None:
     result = subprocess.run(
-        ["sudo", "-S", "-p", "", "--", *cmd],
+        sudo_argv(cmd),
         capture_output=True,
         text=True,
         check=False,
-        input=f"{sudo_password}\n",
+        input=sudo_stdin_text(sudo_password),
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or str(result.returncode)).strip()
@@ -168,14 +169,14 @@ def _run_smoke(root: Path, output: Path, keep: bool) -> int:
             },
             sudo_password=sudo_password,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"ERROR: root-owned backup smoke failed: {exc}", file=sys.stderr)
         return 1
     finally:
         if not keep:
             try:
                 _sudo_run(["rm", "-rf", "--one-file-system", str(root)], sudo_password)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"WARNING: cleanup failed: {exc}", file=sys.stderr)
 
     print(

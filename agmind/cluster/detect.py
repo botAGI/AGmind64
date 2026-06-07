@@ -130,7 +130,7 @@ def gather_node_info(agmind_version: str = "") -> NodeInfo:
         gpu = detect_gpu()
         gpu_name = gpu.name if gpu else "none"
         is_strix = gpu.is_strix_halo if gpu else False
-    except Exception:  # noqa: BLE001
+    except Exception:
         gpu_name = "unknown"
         is_strix = False
     ram_gb = _read_ram_gb()
@@ -270,7 +270,7 @@ def advertise(
         def __exit__(self, *exc) -> None:  # type: ignore[no-untyped-def]
             try:
                 self.zc.unregister_service(self.service)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             self.zc.close()
 

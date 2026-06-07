@@ -67,7 +67,7 @@ def run_drill(
     try:
         archive = backup_fn()
         steps.append(DrillStepResult("backup", True, f"archive {archive}"))
-    except Exception as exc:  # noqa: BLE001 - report any backup failure as a failed step
+    except Exception as exc:
         steps.append(DrillStepResult("backup", False, str(exc)))
         return _finish()
 
@@ -83,7 +83,7 @@ def run_drill(
     try:
         restored = restore_fn(archive)
         steps.append(DrillStepResult("sandbox-restore", True, f"restored {len(restored)} label(s)"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         steps.append(DrillStepResult("sandbox-restore", False, str(exc)))
         return _finish()
 

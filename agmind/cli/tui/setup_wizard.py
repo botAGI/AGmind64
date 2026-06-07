@@ -712,7 +712,7 @@ class AgmindSetupApp(App[SetupState | None]):
         yield Static(self._detected_text(), id="detected-text")
 
         with VerticalScroll(id="form-container"):
-            yield Label("Domain (Traefik TLS, subdomain рекомендуется)", classes="section")
+            yield Label("Domain (Traefik TLS, subdomain recommended)", classes="section")
             yield Input(
                 placeholder="lab.yourdomain.com",
                 id="domain-input",
@@ -764,7 +764,7 @@ class AgmindSetupApp(App[SetupState | None]):
             )
             # Inputs для custom HF — видны всегда, заполняются если выбран Custom
             yield Static(
-                "Custom HF (fill only если выбран 'Custom HuggingFace'):",
+                "Custom HF (fill only if 'Custom HuggingFace' is selected):",
                 classes="hint",
             )
             yield Input(
@@ -956,16 +956,16 @@ class AgmindSetupApp(App[SetupState | None]):
         except ValueError as exc:
             errors.append(f"domain invalid: {exc}")
         if len(state.cf_api_token) < 20:
-            errors.append("CF API token < 20 chars — неверный")
+            errors.append("CF API token < 20 chars — invalid")
         if self.require_sudo_password and not state.sudo_password:
-            errors.append("sudo password нужен для bootstrap step")
+            errors.append("sudo password is required for the bootstrap step")
         if not state.services and not state.profiles:
-            errors.append("Выбери хотя бы один service")
+            errors.append("Select at least one service")
         try:
             from agmind.services.renderer import load_descriptors
 
             descriptors = load_descriptors()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             errors.append(f"service catalog unavailable: {exc}")
         else:
             if state.services:
@@ -984,8 +984,8 @@ class AgmindSetupApp(App[SetupState | None]):
                     errors.append("unknown selected profiles: " + ", ".join(missing_profiles))
         if not self.detected.docker_present and not self.install_mode:
             errors.append(
-                "Docker не установлен — установи docker-ce + docker-compose-plugin "
-                "или запусти bootstrap step"
+                "Docker is not installed — install docker-ce + docker-compose-plugin "
+                "or run the bootstrap step"
             )
         compatibility = self._check_compatibility(state)
         if compatibility is not None and compatibility.has_errors:
@@ -1086,7 +1086,7 @@ class AgmindSetupApp(App[SetupState | None]):
                 domain=state.domain,
                 traefik_enabled=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.notify(str(exc), title="Render failed", severity="error", timeout=10.0)
             self._set_status(f"❌ render failed: {exc}", kind="error")
             return
@@ -1145,7 +1145,7 @@ class AgmindSetupApp(App[SetupState | None]):
                     severity="information",
                     timeout=8.0,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self.notify(
                     f"Failed to write inventory: {exc}",
                     title="Cluster replicate",

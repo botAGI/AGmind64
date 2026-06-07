@@ -361,7 +361,7 @@ class LlamaServerClient:
             body_text = ""
             try:
                 body_text = exc.read().decode("utf-8", errors="replace")[:500]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             raise LlamaServerError(f"HTTP {exc.code} {method} {path}: {body_text}") from exc
         except urllib.error.URLError as exc:

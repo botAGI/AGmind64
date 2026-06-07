@@ -217,7 +217,7 @@ class InstallProgressScreen(Screen[InstallResult]):
         )
         try:
             self.result = orchestrator.run()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             from agmind.install.orchestrator import InstallResult as _IR
 
             self.result = _IR(

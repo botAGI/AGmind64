@@ -90,7 +90,7 @@ def _headless_validation_errors(
         if len(cf_api_token) < 20:
             errors.append("CF API token < 20 chars — provide --cf-token-file with chmod 600")
     if not services and not profiles:
-        errors.append("Выбери хотя бы один service")
+        errors.append("Select at least one service")
     return errors, normalized_domain
 
 
@@ -204,20 +204,20 @@ def register(app: typer.Typer) -> None:
             None,
             "--domain",
             envvar="AGMIND_DOMAIN",
-            help="Public domain для Traefik TLS (skip prompt if set).",
+            help="Public domain for Traefik TLS (skip prompt if set).",
         ),
         cf_token_file: Path | None = typer.Option(
             None,
             "--cf-token-file",
-            help="File с Cloudflare API token (skip prompt if set, chmod 600).",
+            help="File with a Cloudflare API token (skip prompt if set, chmod 600).",
         ),
         model_id: str = typer.Option(
             "",
             "--model-id",
-            help="Curated model id (см. `agmind install --list-models`) или 'custom'.",
+            help="Curated model id (see `agmind install --list-models`) or 'custom'.",
         ),
-        model_repo: str = typer.Option("", "--model-repo", help="HF repo для custom LLM."),
-        model_file: str = typer.Option("", "--model-file", help="GGUF filename для LLM."),
+        model_repo: str = typer.Option("", "--model-repo", help="HF repo for a custom LLM."),
+        model_file: str = typer.Option("", "--model-file", help="GGUF filename for the LLM."),
         ctx_size: int = typer.Option(0, "--ctx-size", help="Context size override."),
         kv_cache: str = typer.Option("", "--kv-cache", help="KV cache quant override."),
         list_models: bool = typer.Option(False, "--list-models", help="Print model catalog."),
@@ -227,7 +227,7 @@ def register(app: typer.Typer) -> None:
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
-            help="Только wizard/config, без bootstrap/pull/deploy.",
+            help="Wizard/config only, no bootstrap/pull/deploy.",
         ),
     ) -> None:
         """End-to-end setup: wizard → bootstrap → pulls → deploy, all in TUI by default."""
@@ -254,27 +254,27 @@ def register(app: typer.Typer) -> None:
             None,
             "--domain",
             envvar="AGMIND_DOMAIN",
-            help="Public domain для Traefik TLS (skip prompt if set).",
+            help="Public domain for Traefik TLS (skip prompt if set).",
         ),
         cf_token_file: Path | None = typer.Option(
             None,
             "--cf-token-file",
-            help="File с Cloudflare API token (skip prompt if set, chmod 600).",
+            help="File with a Cloudflare API token (skip prompt if set, chmod 600).",
         ),
         model_id: str = typer.Option(
             "",
             "--model-id",
-            help="Curated model id (см. `agmind install --list-models`) или 'custom'.",
+            help="Curated model id (see `agmind install --list-models`) or 'custom'.",
         ),
         model_repo: str = typer.Option(
             "",
             "--model-repo",
-            help="HF repo (для custom). Перекрывает curated.",
+            help="HF repo (for custom). Overrides the curated selection.",
         ),
         model_file: str = typer.Option(
             "",
             "--model-file",
-            help="GGUF filename. Empty + non-custom id → resolved из catalog.",
+            help="GGUF filename. Empty + non-custom id → resolved from the catalog.",
         ),
         ctx_size: int = typer.Option(
             0,
@@ -289,7 +289,7 @@ def register(app: typer.Typer) -> None:
         list_models: bool = typer.Option(
             False,
             "--list-models",
-            help="Print curated model catalog и выйти.",
+            help="Print the curated model catalog and exit.",
         ),
         lang: str = typer.Option(
             "",
@@ -299,17 +299,17 @@ def register(app: typer.Typer) -> None:
         legacy_wizard: bool = typer.Option(
             False,
             "--legacy-wizard",
-            help="Force legacy single-screen wizard (default — multi-step с Phase M4).",
+            help="Force the legacy single-screen wizard (default is multi-step).",
         ),
         no_tui: bool = typer.Option(
             False,
             "--no-tui",
-            help="CLI-only run без Textual UI (для CI / headless).",
+            help="CLI-only run without the Textual UI (for CI / headless).",
         ),
         dry_run: bool = typer.Option(
             False,
             "--dry-run",
-            help="Только preflight + wizard, без bootstrap/pull/deploy.",
+            help="Preflight + wizard only, no bootstrap/pull/deploy.",
         ),
         from_state: Path | None = typer.Option(
             None,
@@ -317,11 +317,11 @@ def register(app: typer.Typer) -> None:
             help="Load saved setup state JSON before opening wizard.",
         ),
     ) -> None:
-        """Phase N: end-to-end install (wizard → bootstrap → pull → deploy).
+        """End-to-end install (wizard → bootstrap → pull → deploy).
 
-        В TUI sudo password собирается скрытым input внутри wizard и нужен
-        только для bootstrap step. В `--no-tui` режиме пароль запрашивается
-        обычным terminal prompt.
+        In the TUI the sudo password is collected via a hidden input inside the wizard and is
+        only needed for the bootstrap step. In `--no-tui` mode it is requested via a normal
+        terminal prompt.
         """
         import getpass
 
@@ -353,7 +353,7 @@ def register(app: typer.Typer) -> None:
                     f"{marker} {m.id:<20} {m.name:<35} {m.size_gib:>6.1f}GB "
                     f"{m.quant:<8} {m.suggested_ctx}"
                 )
-            typer.echo("\n★ = measured on Strix Halo (Phase H verified)")
+            typer.echo("\n★ = measured on Strix Halo")
             raise typer.Exit(code=0)
 
         # 1. Wizard для domain/token/services/sudo (или skip если no_tui).
@@ -458,9 +458,9 @@ def register(app: typer.Typer) -> None:
                     wizard_state.sudo_password = ""
                 else:
                     try:
-                        sudo_pw = getpass.getpass("Sudo password (для apt/usermod/mkdir): ")
+                        sudo_pw = getpass.getpass("Sudo password (for apt/usermod/mkdir): ")
                     except (EOFError, KeyboardInterrupt):
-                        typer.echo("\naborted: sudo password не введён", err=True)
+                        typer.echo("\naborted: no sudo password entered", err=True)
                         raise typer.Exit(code=2)
                     if not sudo_pw:
                         typer.echo("aborted: empty sudo password", err=True)
@@ -521,7 +521,7 @@ def register(app: typer.Typer) -> None:
         )
 
         if dry_run:
-            typer.echo("dry-run: stopping после wizard")
+            typer.echo("dry-run: stopping after wizard")
             typer.echo(json.dumps(config.redact(), indent=2, ensure_ascii=False))
             raise typer.Exit(code=0)
 

@@ -75,7 +75,7 @@ def cmd_list(as_json: bool = False) -> int:
     print(f"{'':<3}{'VERSION':<10} {'NAME':<32} DESCRIPTION")
     print("-" * 80)
     for m in migrations:
-        mark = "x" if runner._state.is_applied(m.version) else " "  # noqa: SLF001
+        mark = "x" if runner._state.is_applied(m.version) else " "
         print(f"[{mark}] v{m.version:03d}      {m.name:<32} {m.description}")
     return 0
 
@@ -91,7 +91,7 @@ def cmd_up(target: int | None = None) -> int:
     print(f"Applying {len(pending)} migration(s)...")
     try:
         applied = runner.up(target=target)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"Migration failed: {exc}", file=sys.stderr)
         return 1
     for m in applied:
@@ -110,7 +110,7 @@ def cmd_down(steps: int = 1, target: int | None = None) -> int:
         return 0
     try:
         rolled = runner.down(steps=steps, target=target)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"Rollback failed: {exc}", file=sys.stderr)
         return 1
     if not rolled:
@@ -128,7 +128,7 @@ def register(app: typer.Typer) -> None:
     # ---- migrate subcommand group (Phase L.D) ----
     migrate_app = typer.Typer(
         name="migrate",
-        help="Manage AGmind state schema migrations (Phase L.D).",
+        help="Manage AGmind state schema migrations.",
         no_args_is_help=True,
     )
     app.add_typer(migrate_app)

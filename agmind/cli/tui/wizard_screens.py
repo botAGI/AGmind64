@@ -9,14 +9,14 @@ Screens (sequential):
     3. ServicesScreen — per-tier checkboxes (reuses Phase J.1.8 layout)
     4. ConfirmScreen — summary + [Back] [Apply]
 
-State shared через `self.app.state` (SetupState dataclass), Next/Back
+State shared через `_wizard_app(self).state` (SetupState dataclass), Next/Back
 buttons вызывают `app.next_step()` / `app.prev_step()`. App tracks
 `current_step_index` для linear navigation.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -36,6 +36,34 @@ from textual.widgets import (
 from agmind.core.domain import validate_domain
 from agmind.i18n import t
 from agmind.services.retrieval_policy import DIFY_VECTOR_PROVIDERS
+
+if TYPE_CHECKING:
+    from agmind.cli.tui.setup_wizard import DetectedHardware, SetupState
+
+
+class WizardApp(Protocol):
+    """Custom attributes the wizard screens read off ``self.app``.
+
+    Textual types ``Screen.app`` as the generic ``App[Any]``, so accessing the wizard
+    app's own attributes (``state``, ``detected``, …) would either be silently untyped
+    (typo-prone) or require a blanket ``attr-defined`` override. This Protocol describes
+    that surface so ``_wizard_app(self)`` gives mypy a precise type and catches typos.
+    """
+
+    state: SetupState
+    detected: DetectedHardware
+    services_by_tier: dict[str, list[tuple[str, str]]]
+
+    @property
+    def cluster_peers(self) -> list[tuple[str, str]]: ...
+
+    def action_submit(self) -> None: ...
+
+
+def _wizard_app(screen: Screen[None]) -> WizardApp:
+    """Typed view of ``screen.app`` as the concrete wizard app (see :class:`WizardApp`)."""
+    return cast("WizardApp", screen.app)
+
 
 # ---- Shared helpers (M5.3) ----
 
@@ -123,9 +151,9 @@ class DomainScreen(Screen[None]):
         yield Header(show_clock=False)
         yield StepHeader(1, 4, t("wizard.section.domain"))
         # M5.3.2: full-width hardware panel наверху wizard
-        yield Static(_format_hardware_panel(self.app.detected), id="hardware-panel")
+        yield Static(_format_hardware_panel(_wizard_app(self).detected), id="hardware-panel")
         # M5.4.1: cluster peers banner (если detected) — auto-discover hint
-        peers = list(self.app.cluster_peers)
+        peers = list(_wizard_app(self).cluster_peers)
         peers_banner = _format_cluster_peers_banner(peers)
         if peers_banner:
             yield Static(peers_banner, classes="peers-banner")
@@ -135,7 +163,7 @@ class DomainScreen(Screen[None]):
             yield Input(
                 placeholder=t("wizard.placeholder.domain"),
                 id="domain-input",
-                value=self.app.state.domain,
+                value=_wizard_app(self).state.domain,
                 validators=[DomainValidator()],
             )
             yield Label(t("wizard.section.cf_token"), classes="section")
@@ -143,7 +171,7 @@ class DomainScreen(Screen[None]):
             yield Input(
                 placeholder=t("wizard.placeholder.cf_token"),
                 id="cf-token-input",
-                value=self.app.state.cf_api_token,
+                value=_wizard_app(self).state.cf_api_token,
                 password=True,
                 validators=[TokenLengthValidator()],
             )
@@ -156,7 +184,7 @@ class DomainScreen(Screen[None]):
                 yield Input(
                     placeholder="sudo password",
                     id="sudo-password-input",
-                    value=getattr(self.app.state, "sudo_password", ""),
+                    value=getattr(_wizard_app(self).state, "sudo_password", ""),
                     password=True,
                 )
             # M5.4.2: cluster replicate checkbox (приходит вместе с peers banner)
@@ -166,7 +194,7 @@ class DomainScreen(Screen[None]):
                 yield AGCheckbox(
                     "Replicate stack to detected peers (mDNS auto-discover)",
                     id="cluster-replicate-checkbox",
-                    value=getattr(self.app.state, "cluster_replicate", False),
+                    value=getattr(_wizard_app(self).state, "cluster_replicate", False),
                 )
         with Horizontal(id="nav-row"):
             yield Button(t("wizard.btn.quit"), id="back-btn", variant="default")
@@ -187,26 +215,33 @@ class DomainScreen(Screen[None]):
 
     def _save_and_advance(self) -> None:
         raw_domain = self.query_one("#domain-input", Input).value.strip()
-        self.app.state.cf_api_token = self.query_one("#cf-token-input", Input).value.strip()
+        _wizard_app(self).state.cf_api_token = self.query_one(
+            "#cf-token-input", Input
+        ).value.strip()
         if getattr(self.app, "require_sudo_password", False):
-            self.app.state.sudo_password = self.query_one("#sudo-password-input", Input).value
+            _wizard_app(self).state.sudo_password = self.query_one(
+                "#sudo-password-input", Input
+            ).value
         # M5.4: persist cluster-replicate checkbox если он есть на экране
         try:
             cb = self.query_one("#cluster-replicate-checkbox", Checkbox)
-            self.app.state.cluster_replicate = bool(cb.value)
+            _wizard_app(self).state.cluster_replicate = bool(cb.value)
         except Exception:
             pass
         # Validate before advancing
         try:
-            self.app.state.domain = validate_domain(raw_domain)
+            _wizard_app(self).state.domain = validate_domain(raw_domain)
         except ValueError as exc:
             self.app.notify(f"Domain invalid: {exc}", severity="error")
             return
-        if self.app.state.cf_api_token and len(self.app.state.cf_api_token) < 20:
+        if _wizard_app(self).state.cf_api_token and len(_wizard_app(self).state.cf_api_token) < 20:
             self.app.notify("CF token < 20 chars", severity="error")
             return
-        if getattr(self.app, "require_sudo_password", False) and not self.app.state.sudo_password:
-            self.app.notify("Sudo password нужен для bootstrap step", severity="error")
+        if (
+            getattr(self.app, "require_sudo_password", False)
+            and not _wizard_app(self).state.sudo_password
+        ):
+            self.app.notify("Sudo password is required for the bootstrap step", severity="error")
             return
         self.app.push_screen(ModelScreen())
 
@@ -243,7 +278,7 @@ class ModelScreen(Screen[None]):
 
         yield Header(show_clock=False)
         yield StepHeader(2, 4, t("wizard.section.model"))
-        state = self.app.state
+        state = _wizard_app(self).state
         ctx_options = [(label, str(n)) for n, label in CTX_SIZE_PRESETS]
         kv_options = [(label, val) for val, label in KV_CACHE_TYPES]
         parallel_options = [(label, str(n)) for n, label in PARALLEL_PRESETS]
@@ -356,7 +391,7 @@ class ModelScreen(Screen[None]):
                 allow_blank=False,
             )
             yield Static(
-                "[dim]Empty filename = skip rerank service (RAG будет без re-ordering)[/dim]",
+                "[dim]Empty filename = skip rerank service (RAG runs without re-ordering)[/dim]",
                 classes="hint",
             )
             yield Input(
@@ -412,7 +447,7 @@ class ModelScreen(Screen[None]):
         from agmind.cli.tui.setup_wizard import MODEL_CUSTOM_ID, MODEL_SKIP_ID
         from agmind.install.models import find_by_id
 
-        state = self.app.state
+        state = _wizard_app(self).state
 
         # ---- LLM ----
         state.model_id = self._read_str("llm-model-select", state.model_id)
@@ -504,7 +539,7 @@ class ServicesScreen(Screen[None]):
             + f" {self.department_index + 1}/{len(departments)}",
         )
         # M5.3.4: empty-state banner shown ONLY когда 0 selected (initial reactive)
-        selected_count = len(self.app.state.services)
+        selected_count = len(_wizard_app(self).state.services)
         yield Static(
             "[ NO SERVICES SELECTED — PRESS SPACE TO CHECK ]"
             if selected_count == 0
@@ -525,7 +560,7 @@ class ServicesScreen(Screen[None]):
                     yield AGCheckbox(
                         name,
                         id=f"svc-{name.replace('-', '_')}",
-                        value=(name in self.app.state.services),
+                        value=(name in _wizard_app(self).state.services),
                     )
         with Horizontal(id="nav-row"):
             yield Button(t("wizard.btn.back"), id="back-btn", variant="default")
@@ -545,7 +580,7 @@ class ServicesScreen(Screen[None]):
         self._update_selection_banner()
 
     def _departments(self) -> list[tuple[str, list[tuple[str, str]]]]:
-        return list(self.app.services_by_tier.items())
+        return list(_wizard_app(self).services_by_tier.items())
 
     def _current_department_services(self) -> list[tuple[str, str]]:
         departments = self._departments()
@@ -572,35 +607,35 @@ class ServicesScreen(Screen[None]):
             banner.set_classes("hint")
 
     def _selected_service_count(self) -> int:
-        return len(set(self.app.state.services))
+        return len(set(_wizard_app(self).state.services))
 
     def _checked_service_names(self) -> list[str]:
         self._sync_state_from_visible_checkboxes()
-        return sorted(set(self.app.state.services))
+        return sorted(set(_wizard_app(self).state.services))
 
     def _sync_state_from_visible_checkboxes(self) -> None:
-        selected = set(self.app.state.services)
+        selected = set(_wizard_app(self).state.services)
         for name in self._visible_service_names():
             checkbox = self.query_one(f"#svc-{name.replace('-', '_')}", Checkbox)
             if checkbox.value:
                 selected.add(name)
             else:
                 selected.discard(name)
-        self.app.state.services = sorted(selected)
+        _wizard_app(self).state.services = sorted(selected)
 
     def _service_name_for_checkbox(self, widget_id: object) -> str | None:
         raw_id = str(widget_id or "")
         if not raw_id.startswith("svc-"):
             return None
         normalized = raw_id.removeprefix("svc-")
-        for tier_services in self.app.services_by_tier.values():
+        for tier_services in _wizard_app(self).services_by_tier.values():
             for name, _ in tier_services:
                 if name.replace("-", "_") == normalized:
                     return str(name)
         return None
 
     def _uncheck_other_vector_providers(self, selected_provider: str) -> None:
-        selected = set(self.app.state.services)
+        selected = set(_wizard_app(self).state.services)
         self._syncing_service_selection = True
         try:
             for provider in DIFY_VECTOR_PROVIDERS:
@@ -614,13 +649,13 @@ class ServicesScreen(Screen[None]):
                 checkbox.value = False
         finally:
             self._syncing_service_selection = False
-        self.app.state.services = sorted(selected)
+        _wizard_app(self).state.services = sorted(selected)
 
     def _sync_expanded_service_selection(self) -> None:
         from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
 
         expanded = set(expand_selected_services_for_setup(self._checked_service_names()))
-        self.app.state.services = sorted(expanded)
+        _wizard_app(self).state.services = sorted(expanded)
         self._syncing_service_selection = True
         try:
             for name in self._visible_service_names():
@@ -648,15 +683,17 @@ class ServicesScreen(Screen[None]):
         from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
 
         services = expand_selected_services_for_setup(self._checked_service_names())
-        self.app.state.services = services
-        self.app.state.normalize_model_fields_and_services()
+        _wizard_app(self).state.services = services
+        _wizard_app(self).state.normalize_model_fields_and_services()
         departments = self._departments()
         if self.department_index < len(departments) - 1:
             self.app.push_screen(ServicesScreen(self.department_index + 1))
             return
-        self.app.state.normalize_model_fields_and_services(drop_unselected_model_files=True)
-        if not self.app.state.services:
-            self.app.notify("Выбери хотя бы один service", severity="error")
+        _wizard_app(self).state.normalize_model_fields_and_services(
+            drop_unselected_model_files=True
+        )
+        if not _wizard_app(self).state.services:
+            self.app.notify("Select at least one service", severity="error")
             return
         self.app.push_screen(ConfirmScreen())
 
@@ -677,7 +714,7 @@ class ConfirmScreen(Screen[None]):
         self.app.push_screen(HelpScreen())
 
     def compose(self) -> ComposeResult:
-        state = self.app.state
+        state = _wizard_app(self).state
         yield Header(show_clock=False)
         yield StepHeader(4, 4, t("wizard.confirm.title", default="Confirm + Apply"))
         with VerticalScroll():
@@ -761,7 +798,7 @@ class ConfirmScreen(Screen[None]):
         # here, so the Ctrl+S priority-binding path (which calls action_submit directly,
         # bypassing this method) also generates it.
         self.app.pop_screen()
-        self.app.action_submit()
+        _wizard_app(self).action_submit()
 
 
 # ---- HelpScreen (F1 overlay) ----

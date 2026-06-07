@@ -27,6 +27,7 @@ import yaml
 from agmind.components.checks import check_deploy_conflicts
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.logging import logger
+from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
 from agmind.services.renderer import (
@@ -149,7 +150,7 @@ def _run_compose(
             # invoking user's auth so pulls are authenticated, not anonymous.
             docker_cfg = _user_docker_config_dir()
             env_prefix = ["env", f"DOCKER_CONFIG={docker_cfg}"] if docker_cfg else []
-            cmd = ["sudo", "-S", "-p", "", "--", *env_prefix, *compose_cmd]
+            cmd = sudo_argv([*env_prefix, *compose_cmd])
             log.debug("running: %s (cwd=%s)", " ".join(cmd), cwd)
             result = subprocess.run(
                 cmd,
@@ -157,7 +158,7 @@ def _run_compose(
                 capture_output=True,
                 text=True,
                 check=False,
-                input=f"{sudo_password}\n",
+                input=sudo_stdin_text(sudo_password),
                 timeout=COMPOSE_SHORT_TIMEOUT,
             )
         else:
@@ -288,7 +289,7 @@ def _stream_compose(
                 if on_line is not None and line:
                     try:
                         on_line(line)
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         log.debug("on_line raised: %s (ignored)", exc)
         rc = proc.wait()
     finally:
@@ -319,11 +320,11 @@ def _read_text_maybe_sudo(
             raise
 
     result = subprocess.run(
-        ["sudo", "-S", "-p", "", "--", "cat", str(path)],
+        sudo_argv(["cat", str(path)]),
         capture_output=True,
         text=True,
         check=False,
-        input=f"{sudo_password}\n",
+        input=sudo_stdin_text(sudo_password),
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "sudo cat failed").strip()
@@ -378,23 +379,11 @@ def _write_text_maybe_sudo(
 
     try:
         result = subprocess.run(
-            [
-                "sudo",
-                "-S",
-                "-p",
-                "",
-                "--",
-                "install",
-                "-D",
-                "-m",
-                mode,
-                str(tmp_path),
-                str(path),
-            ],
+            sudo_argv(["install", "-D", "-m", mode, str(tmp_path), str(path)]),
             capture_output=True,
             text=True,
             check=False,
-            input=f"{sudo_password}\n",
+            input=sudo_stdin_text(sudo_password),
         )
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "sudo install failed").strip()
@@ -408,11 +397,11 @@ def _write_text_maybe_sudo(
 
 def _run_sudo_no_output(args: list[str], sudo_password: str) -> None:
     result = subprocess.run(
-        ["sudo", "-S", "-p", "", "--", *args],
+        sudo_argv(args),
         capture_output=True,
         text=True,
         check=False,
-        input=f"{sudo_password}\n",
+        input=sudo_stdin_text(sudo_password),
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or f"sudo {args[0]} failed").strip()
@@ -699,7 +688,7 @@ def deploy(
             if progress is not None:
                 try:
                     progress("error", "another deploy is already in progress")
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     log.debug("progress callback raised: %s (ignored)", exc)
             return DeployResult(success=False, message="deploy already in progress")
         return _deploy_impl(
@@ -752,7 +741,7 @@ def _deploy_impl(
         if progress is not None:
             try:
                 progress(step, msg)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.debug("progress callback raised: %s (ignored)", exc)
 
     # 1. Validate deploy-level conflicts before rendering/diffing. Compose config
@@ -1192,6 +1181,6 @@ def _rollback_to_snapshot(
             return False
         log.info("rollback complete to snapshot %s", snapshot.id)
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("rollback failed: %s", exc)
         return False

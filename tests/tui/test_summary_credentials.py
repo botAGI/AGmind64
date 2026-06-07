@@ -28,7 +28,9 @@ def test_summary_screen_points_to_runtime_env_without_secret_values(tmp_path: Pa
     summary = screen._config_summary()
 
     assert f"Runtime env:  {tmp_path / 'agmind' / '.env'} (chmod 600)" in summary
-    assert "Credentials are not printed" in summary
+    # summary points to the creds file / `creds show` instead of printing secret values
+    assert "creds show" in summary
+    assert "credentials.txt" in summary
     assert "super-secret" not in summary
 
 

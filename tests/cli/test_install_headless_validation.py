@@ -41,7 +41,7 @@ def test_headless_with_traefik_requires_domain() -> None:
 
 def test_headless_empty_selection_errors() -> None:
     errors, _domain = _headless_validation_errors([], [], "", "")
-    assert any("хотя бы один" in e for e in errors)
+    assert any("at least one service" in e for e in errors)
 
 
 def test_headless_traefik_valid_passes_and_normalizes_domain() -> None:

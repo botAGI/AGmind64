@@ -99,8 +99,8 @@ def _check_kernel() -> CheckResult:
             status="warn",
             message=(
                 f"Kernel {host.kernel_version} below 6.18.4 mainline. "
-                "OK if это Ubuntu HWE 6.17.0-19+; иначе ROCm может видеть "
-                "только ~15.5 GiB VRAM (ROCm/issues/5444)."
+                "OK if this is Ubuntu HWE 6.17.0-19+; otherwise ROCm may see "
+                "only ~15.5 GiB VRAM (ROCm/issues/5444)."
             ),
             fix_hint=("sudo apt install --install-recommends linux-generic-hwe-24.04"),
         )
@@ -109,7 +109,7 @@ def _check_kernel() -> CheckResult:
         status="fail",
         message=(
             f"Kernel {host.kernel_version} too old. "
-            "Strix Halo gfx1151 requires ≥6.17.0 (HWE) или 6.18.4 (mainline)."
+            "Strix Halo gfx1151 requires ≥6.17.0 (HWE) or 6.18.4 (mainline)."
         ),
         fix_hint=("sudo apt install --install-recommends linux-generic-hwe-24.04 && reboot"),
     )
@@ -159,7 +159,7 @@ def _check_gtt_pool() -> CheckResult:
         message=(f"GTT pool only {gib:.1f} GiB on {ram_gib:.0f} GiB RAM — sub-optimal."),
         fix_hint=(
             f"Add to GRUB cmdline: ttm.pages_limit={pages} "
-            "ttm.page_pool_size=" + str(pages) + " — см. docs/HARDWARE.md."
+            "ttm.page_pool_size=" + str(pages) + " — see docs/HARDWARE.md."
         ),
     )
 
@@ -184,7 +184,7 @@ def _check_bios_uma() -> CheckResult:
         status="warn",
         message=(
             f"BIOS UMA frame buffer = {gib:.1f} GiB. "
-            "On Linux set to 512 MB minimum (см. docs/HARDWARE.md)."
+            "On Linux set to 512 MB minimum (see docs/HARDWARE.md)."
         ),
         fix_hint="Reboot to BIOS → AMD CBS → GFX Configuration → UMA Frame Buffer Size = Auto/512 MB",
     )
@@ -231,7 +231,7 @@ def _check_vulkan_tooling() -> CheckResult:
             name="vulkan-tooling",
             status="fail",
             message=f"Active Vulkan driver is {vk.driver_name!r}, expected 'radv'",
-            fix_hint="См. docs/HARDWARE.md § «Vulkan driver»",
+            fix_hint="See docs/HARDWARE.md § 'Vulkan driver'",
         )
     if vk.mesa_version is None or vk.mesa_version < (25, 2, 8):
         ver = ".".join(map(str, vk.mesa_version)) if vk.mesa_version else "unknown"
@@ -254,7 +254,7 @@ def _check_rocm_tooling() -> CheckResult:
             name="rocm-tooling",
             status="warn",
             message="rocminfo not installed — ROCm backend disabled (Vulkan still usable)",
-            fix_hint="См. docs/HARDWARE.md § «ROCm install»",
+            fix_hint="See docs/HARDWARE.md § 'ROCm install'",
         )
     host = detect_host()
     if "gfx1151" not in host.rocm.gfx_targets and "gfx11-generic" not in host.rocm.gfx_targets:
@@ -265,7 +265,7 @@ def _check_rocm_tooling() -> CheckResult:
                 f"rocminfo found but no gfx1151 target: {host.rocm.gfx_targets}. "
                 "Need ROCm ≥ 7.2 with gfx1151 support."
             ),
-            fix_hint="ROCm 7.2.x install — см. docs/HARDWARE.md",
+            fix_hint="ROCm 7.2.x install — see docs/HARDWARE.md",
         )
     return CheckResult(
         name="rocm-tooling",
@@ -433,7 +433,7 @@ def run_preflight() -> DoctorReport:
     for check_fn in _CHECKS:
         try:
             result = check_fn()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             result = CheckResult(
                 # removeprefix, NOT lstrip — lstrip strips the CHAR SET {_,c,h,e,k} so
                 # _check_kernel → 'rnel' on a raised check (review LOW doctor-lstrip-check-name).

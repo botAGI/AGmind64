@@ -414,7 +414,9 @@ def test_drift_skipped_when_docker_absent(
     install = tmp_path / "drift-skip"
     install.mkdir()
     _compose_with_postgres(install, _hermetic_secrets_dir)
-    monkeypatch.setattr(validation, "_running_image_digests", lambda selected: None)
+    monkeypatch.setattr(
+        validation, "_running_image_digests", lambda selected, install_dir=None: None
+    )
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
     assert "drift-skipped" in _ids(report)
@@ -429,7 +431,9 @@ def test_drift_not_running(
     install.mkdir()
     _compose_with_postgres(install, _hermetic_secrets_dir)
     monkeypatch.setattr(
-        validation, "_running_image_digests", lambda selected: {"postgres": validation._NOT_RUNNING}
+        validation,
+        "_running_image_digests",
+        lambda selected, install_dir=None: {"postgres": validation._NOT_RUNNING},
     )
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
@@ -453,7 +457,9 @@ def test_drift_digest_mismatch(
     pinned = (load_descriptors()["postgres"].digest or "").lower()
     assert pinned  # sanity: postgres is digest-pinned
     monkeypatch.setattr(
-        validation, "_running_image_digests", lambda selected: {"postgres": "deadbeef" * 8}
+        validation,
+        "_running_image_digests",
+        lambda selected, install_dir=None: {"postgres": "deadbeef" * 8},
     )
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
@@ -472,7 +478,7 @@ def test_drift_orphan(
     monkeypatch.setattr(
         validation,
         "_running_image_digests",
-        lambda selected: {"postgres": validation._NOT_RUNNING},
+        lambda selected, install_dir=None: {"postgres": validation._NOT_RUNNING},
     )
     monkeypatch.setattr(
         validation, "_running_agmind_containers", lambda: ["agmind-postgres", "agmind-ghost"]
@@ -489,7 +495,9 @@ def test_drift_undeterminable(
     install = tmp_path / "drift-undet"
     install.mkdir()
     _compose_with_postgres(install, _hermetic_secrets_dir)
-    monkeypatch.setattr(validation, "_running_image_digests", lambda selected: {"postgres": ""})
+    monkeypatch.setattr(
+        validation, "_running_image_digests", lambda selected, install_dir=None: {"postgres": ""}
+    )
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
     assert "drift-digest-undeterminable" in _ids(report)
@@ -510,3 +518,43 @@ def test_no_drift_findings_when_check_drift_false(
     report = validate_config(install, check_drift=False)
     drift_ids = {f.id for f in report.findings if f.id.startswith("drift-")}
     assert drift_ids == set()
+
+
+def test_running_container_with_missing_repodigests_is_not_marked_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """live-audit 2026-06-08 UX-2: a running container whose `docker inspect` template ERRORS
+    (no top-level RepoDigests key → rc≠0) must NOT be reported as "not running". Running-ness is
+    decided from `docker ps`; the failed digest only makes the entry undeterminable ("")."""
+    import subprocess
+
+    monkeypatch.setattr(validation.shutil, "which", lambda _name: "/usr/bin/docker")  # type: ignore[attr-defined]
+    monkeypatch.setattr(validation, "_running_service_names", lambda _d: {"authelia"})
+
+    def _fake_run(*_a: object, **_k: object) -> subprocess.CompletedProcess[str]:
+        # Reproduce the live failure: template error → rc=1, error text on stderr.
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr='template: :1:8: executing "" at <.RepoDigests>: map has no entry',
+        )
+
+    monkeypatch.setattr(validation.subprocess, "run", _fake_run)
+    digests = validation._running_image_digests({"authelia"}, Path("/opt/agmind"))
+    assert digests == {"authelia": ""}  # running-but-undeterminable, NOT _NOT_RUNNING
+
+
+def test_drift_uses_docker_ps_for_running_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A service absent from `docker ps` maps to _NOT_RUNNING even if inspect would succeed."""
+    import subprocess
+
+    monkeypatch.setattr(validation.shutil, "which", lambda _name: "/usr/bin/docker")  # type: ignore[attr-defined]
+    monkeypatch.setattr(validation, "_running_service_names", lambda _d: set())  # nothing running
+
+    def _never(*_a: object, **_k: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("inspect must be skipped for a not-running service")
+
+    monkeypatch.setattr(validation.subprocess, "run", _never)
+    digests = validation._running_image_digests({"postgres"}, Path("/opt/agmind"))
+    assert digests == {"postgres": validation._NOT_RUNNING}

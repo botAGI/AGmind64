@@ -165,7 +165,7 @@ def test_cli_config_validate_strict_flips_on_warning(
     monkeypatch.setattr(
         validation,
         "_running_image_digests",
-        lambda selected: {"postgres": validation._NOT_RUNNING},
+        lambda selected, install_dir=None: {"postgres": validation._NOT_RUNNING},
     )
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     runner = CliRunner()
@@ -198,3 +198,50 @@ def test_cli_config_validate_registered_on_main_app() -> None:
     assert result.exit_code in (0, 1)
     payload = json.loads(result.stdout)
     assert "ok" in payload
+
+
+# --------------------------------------------------------------------------- #
+# _format_report — header wording (UX-4) + collapse of homogeneous findings (M2)
+# --------------------------------------------------------------------------- #
+
+
+def _report(*findings: object) -> object:
+    from agmind.config.validation import ConfigValidationReport
+
+    return ConfigValidationReport(findings=tuple(findings))  # type: ignore[arg-type]
+
+
+def _finding(**kw: object) -> object:
+    from agmind.config.validation import ConfigFinding
+
+    base: dict[str, object] = {"id": "x", "severity": "warning", "message": "m"}
+    base.update(kw)
+    return ConfigFinding(**base)  # type: ignore[arg-type]
+
+
+def test_format_report_does_not_say_ok_when_warnings_present() -> None:
+    """live-audit 2026-06-08 UX-4: a warning wall must NOT be headed by an unqualified 'OK'."""
+    rep = _report(_finding(id="drift-orphan", severity="warning", message="m", evidence="agmind-x"))
+    rendered = config_cmd._format_report(rep)  # type: ignore[arg-type]
+    first_line = rendered.splitlines()[0]
+    assert "OK" not in first_line
+    assert "warning" in first_line.lower()
+
+
+def test_format_report_collapses_repeated_not_running() -> None:
+    """M2: 34 identical drift-not-running findings collapse into ONE summarized line."""
+    findings = [
+        _finding(
+            id="drift-not-running",
+            severity="warning",
+            message=f"service s{i} ...",
+            evidence=f"agmind-s{i}",
+            fixable=True,
+            fix_cmd="agmind deploy --apply",
+        )
+        for i in range(34)
+    ]
+    rendered = config_cmd._format_report(_report(*findings))  # type: ignore[arg-type]
+    assert rendered.count("drift-not-running") == 1  # collapsed, not 34 lines
+    assert "34 services affected" in rendered
+    assert "agmind deploy --apply" in rendered
