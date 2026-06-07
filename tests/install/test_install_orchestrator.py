@@ -298,6 +298,7 @@ def test_default_steps_list_is_stable() -> None:
         "compose_config",
         "model_pull",
         "deploy",
+        "gpu_metrics",
         "credentials",
     ]
 
