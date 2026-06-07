@@ -23,6 +23,10 @@ resources:
   mem_limit: 512m
 access:
   first_login_register: true
+  # Portainer locks initial-admin creation ~5 min after the container first starts (security). If you
+  # missed the window and see "you cannot create the initial admin user", reopen it by restarting.
+  note: "Admin creation locks ~5 min after first start. Locked? sudo docker restart agmind-portainer
+    then open portainer.<domain> and create the admin immediately."
 routing:
   host: portainer.agmind.dev
   # unauthenticated 200-JSON endpoint on the HTTP listener (/api/status on older builds)

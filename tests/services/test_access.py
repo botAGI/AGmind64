@@ -170,3 +170,15 @@ def test_model_endpoints_surface_served_model_name() -> None:
         e.service: e for e in build_access_report(descriptors, {"AGMIND_EMBED_FILE": "x.gguf"})
     }
     assert overridden["llama-embed"].model_name == "x.gguf"
+
+
+def test_access_note_surfaces_in_report_and_credentials() -> None:
+    """A descriptor's access.note (e.g. portainer's admin-window restart recovery) must reach both the
+    report entry and credentials.txt, so operators see recovery commands without having to ask."""
+    from agmind.services.access import render_credentials_txt
+
+    descriptors = load_descriptors(DEFAULT_SERVICES_DIR)
+    report = build_access_report(descriptors, {})
+    portainer = {e.service: e for e in report}["portainer"]
+    assert portainer.note and "docker restart agmind-portainer" in portainer.note
+    assert "docker restart agmind-portainer" in render_credentials_txt(report)

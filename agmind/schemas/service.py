@@ -179,6 +179,10 @@ class AccessConfig(BaseModel):
     """If set, the service exposes a machine API (OpenAI-compatible) → render a copy-paste
     "Add Model" block in credentials.txt instead of a human login."""
 
+    note: str | None = None
+    """Optional operator hint shown under the entry in credentials.txt / `creds show` (e.g. a
+    first-login caveat or a recovery command). Plain text, never a secret."""
+
 
 class ObservabilityConfig(BaseModel):
     """Auto-discovery hints для observability stack.

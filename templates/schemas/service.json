@@ -50,6 +50,18 @@
           ],
           "default": null,
           "title": "Api Kind"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
         }
       },
       "title": "AccessConfig",

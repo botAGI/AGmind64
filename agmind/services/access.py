@@ -35,6 +35,7 @@ class AccessEntry:
     lan_only: bool
     api_kind: str | None
     model_name: str | None = None  # for model endpoints: the id llama-server reports at /v1/models
+    note: str | None = None  # optional operator hint (e.g. a first-login caveat / recovery command)
 
     @property
     def is_model_endpoint(self) -> bool:
@@ -117,6 +118,7 @@ def build_access_report(
                 lan_only=access.lan_only,
                 api_kind=access.api_kind,
                 model_name=_resolve_model_name(descriptor, env) if access.api_kind else None,
+                note=access.note,
             )
         )
     return entries
@@ -172,6 +174,8 @@ def render_credentials_txt(
                 lines.append(
                     f"  LAN-only — SSH tunnel: ssh -L PORT:127.0.0.1:PORT <user>@{server_ip}"
                 )
+            if e.note:
+                lines.append(f"  Note:     {e.note}")
             lines.append("")
 
     if endpoints:
