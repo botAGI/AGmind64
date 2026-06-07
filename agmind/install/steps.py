@@ -174,13 +174,22 @@ def _copy_file_atomic(source: Path, target: Path) -> None:
         raise
 
 
-def _write_secret_file(path: Path, value: str) -> None:
+def _write_secret_file(path: Path, value: str, reader_uid: int | None = None) -> None:
     secret_dir = path.parent
     if secret_dir.exists() and (secret_dir.is_symlink() or not secret_dir.is_dir()):
         raise OSError(f"runtime secret directory must be a real directory: {secret_dir}")
     secret_dir.mkdir(parents=True, exist_ok=True)
     secret_dir.chmod(0o700)
     write_private_text(path, value)
+    if reader_uid is not None:
+        # Image reads this *_FILE secret after dropping to a non-root uid (e.g. mongo → 999), so a
+        # root:root 0600 file is unreadable. chown to that uid, keeping 0600 (only it + root read).
+        # Best-effort: the real install runs as root (chown works); a non-root context (tests /
+        # non-sudo) can't chown to another uid — skip rather than fail the secret write.
+        try:
+            os.chown(path, reader_uid, reader_uid)
+        except (PermissionError, OSError):
+            pass
 
 
 def _stage_prometheus_config(observability_dir: Path, prometheus_dir: Path) -> None:
@@ -409,11 +418,15 @@ def _materialize_runtime_files(
     # container does not carry the secret in its env (`docker inspect` / socket-proxy inspect).
     # Consumers keep the env var (their images lack _FILE support). live-audit 2026-06-05
     # db-secrets-plaintext-docker-inspect / secrets-plaintext-env.
-    from agmind.install.secret_keys import DB_SECRET_FILES
+    from agmind.install.secret_keys import DB_SECRET_FILE_READER_UID, DB_SECRET_FILES
 
     for svc, fname, env_key in DB_SECRET_FILES:
         if svc in selected and runtime_env.get(env_key):
-            _write_secret_file(data_dir / "secrets" / fname, runtime_env[env_key])
+            _write_secret_file(
+                data_dir / "secrets" / fname,
+                runtime_env[env_key],
+                reader_uid=DB_SECRET_FILE_READER_UID.get(fname),
+            )
 
     if "traefik" in selected:
         if config.cf_api_token:

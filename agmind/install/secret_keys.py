@@ -110,6 +110,15 @@ DB_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
     ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
 )
 
+# Secret FILES that the consuming image reads AFTER dropping to a non-root uid, so a root:root 0600
+# file is unreadable (EACCES → crash-loop). The mongo image gosu's to uid 999 (mongodb) BEFORE
+# reading MONGO_INITDB_ROOT_PASSWORD_FILE, unlike postgres/mysql which read their *_FILE while still
+# root. chown such files to the reader uid (keeping 0600) so only that uid + root can read them.
+# {secret_filename: reader_uid}. live-deploy 2026-06-07 komodo-mongo "Permission denied" crash-loop.
+DB_SECRET_FILE_READER_UID: dict[str, int] = {
+    "komodo_mongo_password": 999,  # mongo:8 → mongodb
+}
+
 
 def generate_for(key: str) -> str:
     """Generate a fresh value for ``key`` using the installer's exact format."""

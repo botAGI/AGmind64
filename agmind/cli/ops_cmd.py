@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import getpass
+import os
 import shutil
 import subprocess
 import sys
@@ -492,12 +493,20 @@ def cmd_rotate_secrets(
     # reads via *_PASSWORD_FILE (invisible to the ${VAR}-scanning secret_consumers). Re-materialize
     # the FILE and force-recreate the server below, or the server keeps the OLD password while .env
     # consumers move to the new one → auth skew. live-audit 2026-06-07 (SEC-3).
-    from agmind.install.secret_keys import DB_SECRET_FILES
+    from agmind.install.secret_keys import DB_SECRET_FILE_READER_UID, DB_SECRET_FILES
 
     rotated_db_servers: list[str] = []
     for svc, fname, env_key in DB_SECRET_FILES:
         if env_key in plan.rotate:
             write_private_text(secrets_dir / fname, new_env[env_key])
+            reader_uid = DB_SECRET_FILE_READER_UID.get(fname)
+            if reader_uid is not None:
+                # mongo reads its *_FILE as uid 999 — keep the rotated file readable by it.
+                # Best-effort (root rotation works; non-root context skips rather than crashing).
+                try:
+                    os.chown(secrets_dir / fname, reader_uid, reader_uid)
+                except (PermissionError, OSError):
+                    pass
             rotated_db_servers.append(svc)
     if rotated_db_servers:
         print(
