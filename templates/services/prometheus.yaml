@@ -30,6 +30,22 @@ writable_mounts:
 resources:
   cpus: 2.0
   mem_limit: 2g
+# /-/healthy is unauthenticated + 200 once the server is up. Image ships busybox wget at
+# /bin/wget (curl ABSENT — verified `docker run --rm --entrypoint sh ... command -v wget`,
+# 2026-06-08). Without this probe every `depends_on: prometheus` degrades to service_started
+# (CFG-1 / service-config H1). live-audit 2026-06-08.
+health:
+  test:
+  - CMD
+  - wget
+  - -q
+  - -O
+  - /dev/null
+  - http://localhost:9090/-/healthy
+  start_period: 30s
+  interval: 15s
+  timeout: 5s
+  retries: 10
 observability:
   prometheus_scrape: true
 # docker_sd_configs discovers targets over tcp://docker-socket-proxy:2375; consuming docker_api

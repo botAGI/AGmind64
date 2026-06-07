@@ -18,5 +18,20 @@ writable_mounts:
 resources:
   cpus: 1.0
   mem_limit: 512m
+# /-/healthy is unauthenticated + 200 once up. Image ships busybox wget at /bin/wget (curl
+# ABSENT — verified `docker run --rm --entrypoint sh ... command -v wget`, 2026-06-08). Without
+# this probe every `depends_on: alertmanager` degrades to service_started (CFG-1). live-audit 2026-06-08.
+health:
+  test:
+  - CMD
+  - wget
+  - -q
+  - -O
+  - /dev/null
+  - http://localhost:9093/-/healthy
+  start_period: 15s
+  interval: 15s
+  timeout: 5s
+  retries: 10
 observability:
   prometheus_scrape: true

@@ -20,3 +20,10 @@ command:
 resources:
   cpus: 2.0
   mem_limit: 2g
+# NO `health:` block on purpose (CFG-1 / service-config H1 suggested one, but the premise was
+# wrong for THIS image): grafana/loki:3.7.2 is DISTROLESS — the only binary is /usr/bin/loki,
+# there is no sh/wget/curl/nc, and the loki binary has no health/ready subcommand (verified by
+# exporting the image fs + `loki -help`, 2026-06-08). Any wget/curl probe against /ready would
+# hit the A6 'executable file not found' class → container unhealthy forever → false rollback.
+# Loki therefore stays classified in healthcheck_coverage_check._HEALTHCHECK_EXEMPT (no usable
+# in-image probe surface); readiness is observed externally (Prometheus scrape / Grafana panel).

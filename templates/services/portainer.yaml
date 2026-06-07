@@ -13,10 +13,17 @@ ports:
 # by minio / minio-console). Edge TLS is terminated by traefik.
 - 127.0.0.1:9444:9000
 volumes:
+# Docker socket mounted READ-ONLY (SEC-1, security-live H1). A RW socket is root-equivalent:
+# anyone who authenticates to Portainer (or any RCE in it — its CVE history is non-trivial) could
+# `docker run -v /:/host --privileged` = root on the host. With `:ro` Portainer degrades to
+# READ-ONLY management — it can list/inspect containers, images and stacks but can NOT
+# start/stop/exec/create/delete them or mutate the host. That is the conscious tradeoff: full
+# container control would require routing Portainer through a scoped docker-socket-proxy (TCP),
+# never the raw host socket. Until then, read-only is the safe default.
 - /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/portainer:/data
-# Holds the (root-equivalent) docker socket by design — block in-container privilege
-# escalation as defense-in-depth. live-audit 2026-06-05 (portainer-periphery-root-no-priv-guard).
+# Holds the (read-only) docker socket — still block in-container privilege escalation via
+# setuid/file-caps as defense-in-depth. live-audit 2026-06-05 (portainer-periphery-root-no-priv-guard).
 no_new_privileges: true
 resources:
   cpus: 1.0

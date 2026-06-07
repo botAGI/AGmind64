@@ -48,13 +48,11 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "dify-worker": "no-probe: celery worker, no HTTP readiness endpoint",
     "docker-socket-proxy": "no-probe: stateless haproxy Docker-API gateway, running == ready",
     # tech-debt: SHOULD ship a Docker health probe — tracked so it is not silently passing
-    "alertmanager": "tech-debt: add /-/healthy probe",
     "authelia": "tech-debt: add /api/health probe",
     "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
     "homarr": "tech-debt: add web readiness probe (not in default selection)",
     "loki": "tech-debt: add /ready probe",
     "portainer": "tech-debt: add web readiness probe (not in default selection)",
-    "prometheus": "tech-debt: add /-/healthy probe",
     "weaviate": "tech-debt: add /v1/.well-known/ready probe",
 }
 
