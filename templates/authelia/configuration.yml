@@ -21,15 +21,15 @@ authentication_backend:
 access_control:
   default_policy: one_factor
   rules:
-    # Step up to 2FA for the infrastructure-CONTROL consoles (container management,
-    # dashboards-with-admin, automation-that-runs-arbitrary-workflows). Everything else stays
-    # one_factor. Enrollment is via the filesystem notifier (/data/notification.txt, read by the
-    # operator) so there is NO lockout even without SMTP. live-audit 2026-06-05 authelia-no-2fa-stepup.
+    # 2FA step-up DISABLED at operator request (2026-06-07): the filesystem-notifier OTC enrollment
+    # (no SMTP on self-host) was too clunky. These infra consoles (container mgmt / dashboards /
+    # automation) now use one_factor like everything else. To restore the step-up: set policy back to
+    # two_factor (and ideally configure an SMTP notifier so the enrollment code arrives by email).
     - domain:
         - 'portainer.__AGMIND_DOMAIN__'
         - 'grafana.__AGMIND_DOMAIN__'
         - 'n8n.__AGMIND_DOMAIN__'
-      policy: two_factor
+      policy: one_factor
 
 session:
   cookies:
