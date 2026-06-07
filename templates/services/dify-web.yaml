@@ -16,6 +16,20 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 2g
+# Docker healthcheck so the deploy `--wait` actually waits for the web UI to be serving — WITHOUT
+# one it was left "Created" (not started) after a deploy and traefik 404'd the UI. dify-web is a
+# Next.js standalone server: docker sets HOSTNAME=<container-id> and Next binds to THAT, not
+# localhost, so the probe must hit $(hostname) (a localhost probe is always Connection-refused →
+# permanently unhealthy). /apps is the 200 landing (/ is a 307→/apps). wget ships in the image.
+# live 2026-06-07 (dify-web-no-healthcheck-left-created → 404).
+health:
+  test:
+    - CMD-SHELL
+    - wget -qO /dev/null "http://$(hostname):3000/apps"
+  start_period: 60s
+  interval: 30s
+  timeout: 5s
+  retries: 5
 access:
   first_login_register: true
 routing:
