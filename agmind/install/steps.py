@@ -2145,9 +2145,9 @@ class EnvWriteStep(InstallStep):
         # Divergence guard (Правило #11): the hand-maintained list above must never
         # silently drop a generated secret when a new key is added to secret_keys.py.
         # Append every generated secret not already emitted, so EnvWriteStep and
-        # RUNTIME_SECRET_KEYS cannot diverge — the exact gap that let the KOMODO
-        # ops-profile secrets fall through (compose `${VAR:?}` then reds on a fresh
-        # ops deploy while CI hand-injected the values and stayed green).
+        # RUNTIME_SECRET_KEYS cannot diverge — the exact gap class that lets a
+        # generated-but-never-emitted secret fall through (compose `${VAR:?}` then reds
+        # on a fresh deploy while CI hand-injected the values and stayed green).
         _emitted = {
             ln.split("=", 1)[0] for ln in lines if "=" in ln and not ln.lstrip().startswith("#")
         }

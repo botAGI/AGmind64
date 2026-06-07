@@ -1,6 +1,6 @@
 """`agmind uninstall` — tear down the stack for a clean reinstall. live-deploy 2026-06-07:
-the in-place reconcile left a wedged stack (komodo-mongo dependency-failed the deploy step), so the
-operator needs a full-clean path. Default keeps data; --data wipes everything."""
+the in-place reconcile left a wedged stack (a dependency-failed deploy step), so the operator
+needs a full-clean path. Default keeps data; --data wipes everything."""
 
 from __future__ import annotations
 

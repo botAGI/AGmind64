@@ -6,8 +6,8 @@ already-deployed stack leaves on disk and the containers it leaves running:
 - ``<install_dir>/.env``          — the resolved runtime secrets/config
 - ``<install_dir>/docker-compose.yml`` — the rendered selection (authoritative
   set of deployed services + the ``${VAR:?}`` required-var references)
-- ``/var/lib/agmind/secrets/<f>`` — the 0600 DB secret files the non-root
-  database images read (the komodo-mongo "Permission denied" crash class)
+- ``/var/lib/agmind/secrets/<f>`` — the 0600 DB secret files the database
+  images read (the non-root "Permission denied" crash class)
 - ``agmind-<service>`` containers — pinned-digest ↔ running-digest drift
 
 Each problem becomes a :class:`ConfigFinding`. The report's ``ok`` flips to
@@ -116,7 +116,7 @@ class ConfigValidationReport:
 def _uid_can_read(mode: int, file_uid: int, file_gid: int, reader_uid: int) -> bool:
     """Return True if ``reader_uid`` is permitted to read a file with these stats.
 
-    Pure predicate so the komodo-mongo readability check is testable without
+    Pure predicate so the DB-secret readability check is testable without
     root. uid 0 (root) can always read. Otherwise the reader needs at least one
     of: owner-read (and is the owner), group-read (and is the group), or
     world-read.

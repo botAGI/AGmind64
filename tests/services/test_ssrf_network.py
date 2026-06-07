@@ -86,9 +86,7 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
         "postgres",
         "redis",
         "qdrant",
-        "komodo-mongo",
         # data-net dual-homed consumers
-        "komodo-core",
         "milvus",
         "ragflow",
         "dify-api",

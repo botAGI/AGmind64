@@ -21,13 +21,12 @@ authentication_backend:
 access_control:
   default_policy: one_factor
   rules:
-    # Step up to 2FA for the infrastructure-CONTROL consoles (container management, ops console,
+    # Step up to 2FA for the infrastructure-CONTROL consoles (container management,
     # dashboards-with-admin, automation-that-runs-arbitrary-workflows). Everything else stays
     # one_factor. Enrollment is via the filesystem notifier (/data/notification.txt, read by the
     # operator) so there is NO lockout even without SMTP. live-audit 2026-06-05 authelia-no-2fa-stepup.
     - domain:
         - 'portainer.__AGMIND_DOMAIN__'
-        - 'komodo.__AGMIND_DOMAIN__'
         - 'grafana.__AGMIND_DOMAIN__'
         - 'n8n.__AGMIND_DOMAIN__'
       policy: two_factor

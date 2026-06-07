@@ -45,7 +45,7 @@ only that container is recreated.
 2. **Profiles** must be valid `ServiceProfile` enum values. `keycloak` uses
    `security` + `full` (already valid). `tailscale` uses `vpn`, which is **not yet a
    profile** — either add a `vpn` value to the `ServiceProfile` enum (+ topology lane)
-   or re-profile it to `full`/`ops`.
+   or re-profile it to `full`/`automation`.
 3. **Secrets**: add any new `${VAR:?}`/`${VAR:-}` secrets to the runtime `.env`
    generation **and** to the CI compose-validate env (see
    `tests/services/test_ci_compose_secrets.py` + `.github/workflows/ci.yml`

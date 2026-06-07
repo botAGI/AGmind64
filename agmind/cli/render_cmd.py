@@ -225,7 +225,7 @@ def _scenario_stack_readme(
         f"`agmind install` stages + deploys ONLY the DEFAULT `agmind` stack (`/var/lib/agmind`,\n"
         f"`/etc/agmind`) — it **does not stage** this scenario's namespaced roots (`{data_root}` /\n"
         f"`{config_root}`). So this rendered stack is for inspecting the topology, handing to an\n"
-        f"external orchestrator (e.g. Komodo) that does its own staging, or staging the host by\n"
+        f"external orchestrator that does its own staging, or staging the host by\n"
         f"hand. A raw `docker compose up` without first staging those namespaced dirs/secrets/\n"
         f"config WILL crash-loop.\n"
     )
@@ -308,7 +308,7 @@ def cmd_render_scenario(
     print(
         "  NOTE: compose layer only. `agmind install` stages ONLY the default `agmind` stack, "
         "NOT this scenario's namespaced roots — stage host dirs/.env/config by hand (or via an "
-        "external orchestrator like Komodo) before `docker compose up`. See the rendered README.md."
+        "external orchestrator) before `docker compose up`. See the rendered README.md."
     )
     return 0
 

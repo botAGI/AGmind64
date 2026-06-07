@@ -64,7 +64,7 @@ def _env_keys_written_by_envwritestep(tmp_path: Path) -> dict[str, str]:
     """Run the REAL EnvWriteStep and return the KEY=value pairs it writes to .env.
 
     Validates the LIVE path, not tuple membership — `_runtime_env()` generating a
-    secret does NOT prove `EnvWriteStep.run` emits it (the KOMODO ops-profile gap:
+    secret does NOT prove `EnvWriteStep.run` emits it (the historical gap class:
     generated into the dict, dropped before the hand-maintained `lines` list).
     """
     from agmind.install.orchestrator import InstallConfig
@@ -73,7 +73,7 @@ def _env_keys_written_by_envwritestep(tmp_path: Path) -> dict[str, str]:
     cfg = InstallConfig(
         domain="lab.example.com",
         cf_api_token="X" * 40,
-        services=["komodo-core", "komodo-mongo", "komodo-periphery", "postgres", "authelia"],
+        services=["postgres", "authelia"],
         install_dir=tmp_path / "opt",
         models_dir=tmp_path / "var" / "models",
         config_dir=tmp_path / "etc",
@@ -94,8 +94,8 @@ def _env_keys_written_by_envwritestep(tmp_path: Path) -> dict[str, str]:
 def test_envwritestep_actually_writes_every_generated_secret(tmp_path: Path) -> None:
     """Правило #11, LIVE form: every generated secret in secret_keys.py must land in the
     .env EnvWriteStep ACTUALLY writes — not merely exist in the tuple. This is the gate
-    that would have caught the KOMODO ops-profile deploy-blocker (generated but never
-    emitted), and is backed by the EnvWriteStep divergence guard."""
+    that catches the generated-but-never-emitted deploy-blocker class, and is backed by
+    the EnvWriteStep divergence guard."""
     written = _env_keys_written_by_envwritestep(tmp_path)
     secret_keys = set(_RUNTIME_SECRET_KEYS) | set(_AUTHELIA_SECRET_KEYS)
     missing = sorted(key for key in secret_keys if not written.get(key))

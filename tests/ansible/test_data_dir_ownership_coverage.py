@@ -281,11 +281,6 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         # and writes /app/storage (installed plugins) as root → Docker auto-creates the bind
         # root:root. live-audit dify-plugin-daemon-no-storage-volume.
         "dify-plugin-daemon",
-        # Komodo (ops profile): mongo self-chowns /data like postgres; core+periphery
-        # run as root and write keys/backups as root. Verified live (2026-06-04 boot).
-        "komodo-mongo",
-        "komodo-core",
-        "komodo-periphery",
     }
 )
 

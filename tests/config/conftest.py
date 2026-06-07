@@ -1,7 +1,7 @@
 """Hermeticity fixtures for the config-validate tests.
 
-These tests build a compose containing a DB service (postgres / mysql /
-komodo-mongo) and assert ``report.ok``. The A8 secret-file check
+These tests build a compose containing a DB service (postgres / mysql)
+and assert ``report.ok``. The A8 secret-file check
 (:func:`agmind.config.validation._check_secret_files`) resolves a DB service's
 secret to ``_secret_source_path(...)``, which FALLS BACK to
 ``_DEFAULT_SECRETS_DIR / <filename>`` when the test compose has no matching

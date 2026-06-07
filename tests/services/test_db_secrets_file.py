@@ -14,12 +14,6 @@ pytestmark = pytest.mark.backend_any
 _CASES = [
     ("postgres", "POSTGRES_PASSWORD", "POSTGRES_PASSWORD_FILE", "postgres_password"),
     ("mysql", "MYSQL_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD_FILE", "mysql_root_password"),
-    (
-        "komodo-mongo",
-        "MONGO_INITDB_ROOT_PASSWORD",
-        "MONGO_INITDB_ROOT_PASSWORD_FILE",
-        "komodo_mongo_password",
-    ),
 ]
 
 
@@ -42,7 +36,6 @@ def test_installer_writes_db_secret_files() -> None:
     expected = {
         ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
         ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
-        ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
     }
     assert set(DB_SECRET_FILES) == expected
     # _materialize_runtime_files consumes the shared constant (not an inline duplicate)

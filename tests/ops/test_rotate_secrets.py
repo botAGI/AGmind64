@@ -34,7 +34,7 @@ pytestmark = pytest.mark.backend_any
 
 def test_all_generated_keys_cover_runtime_and_authelia() -> None:
     assert set(ALL_GENERATED_SECRET_KEYS) == set(RUNTIME_SECRET_KEYS) | set(AUTHELIA_SECRET_KEYS)
-    assert len(ALL_GENERATED_SECRET_KEYS) == 19  # +ELASTIC_PASSWORD, +MILVUS_MINIO_ROOT_PASSWORD
+    assert len(ALL_GENERATED_SECRET_KEYS) == 15  # -4 KOMODO_* (komodo removed) 2026-06-07
 
 
 def test_every_generated_key_is_classified() -> None:

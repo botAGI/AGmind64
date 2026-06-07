@@ -24,7 +24,7 @@ def test_admin_consoles_require_two_factor() -> None:
             dom = rule["domain"]
             two_factor_domains.update(dom if isinstance(dom, list) else [dom])
     # the infra-control consoles must be behind 2FA
-    for svc in ("portainer", "komodo", "grafana", "n8n"):
+    for svc in ("portainer", "grafana", "n8n"):
         assert f"{svc}.__AGMIND_DOMAIN__" in two_factor_domains, svc
 
 

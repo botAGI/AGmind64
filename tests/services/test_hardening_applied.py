@@ -24,10 +24,8 @@ _MUST_NO_NEW_PRIVILEGES = frozenset(
         "dify-plugin-daemon",
         "dify-sandbox",
         "grafana",
-        # ops-tier docker-socket holders + privileged console (defense-in-depth)
+        # ops-tier docker-socket holders (defense-in-depth)
         "portainer",
-        "komodo-periphery",
-        "komodo-core",
     }
 )
 

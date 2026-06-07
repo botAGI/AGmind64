@@ -61,7 +61,7 @@ def test_no_unexpected_service_binds_raw_docker_socket() -> None:
     # ONLY services that need WRITE (pull/recreate/manage containers) — the read-only proxy can't
     # serve them — or the proxy itself may bind the raw socket. EVERY read-only API consumer is
     # migrated to the proxy. live-audit docker-sock-blast-radius.
-    write_holders = {"portainer", "komodo-periphery", "watchtower", "docker-socket-proxy"}
+    write_holders = {"portainer", "watchtower", "docker-socket-proxy"}
     for name, d in descriptors.items():
         if any("/var/run/docker.sock" in v for v in d.volumes):
             assert name in write_holders, (

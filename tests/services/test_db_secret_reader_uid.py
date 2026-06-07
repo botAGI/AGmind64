@@ -1,6 +1,8 @@
-"""komodo-mongo reads MONGO_INITDB_ROOT_PASSWORD_FILE as uid 999 (it gosu's to mongodb BEFORE
-reading the _FILE), so a root:root 0600 secret is unreadable → EACCES crash-loop. The installer
-must chown that secret to the reader uid. live-deploy 2026-06-07 komodo-mongo "Permission denied".
+"""Some DB images read their ``*_PASSWORD_FILE`` AFTER dropping to a non-root uid (e.g. mongo
+gosu's to uid 999 BEFORE reading the _FILE), so a root:root 0600 secret is unreadable → EACCES
+crash-loop. For such an image the installer must chown the secret to the reader uid. The
+``DB_SECRET_FILE_READER_UID`` map + the ``_write_secret_file`` chown are that mechanism; this
+test pins the mechanism (root-read images need NO entry; a non-root reader gets chown'd).
 """
 
 from __future__ import annotations
@@ -8,12 +10,6 @@ from __future__ import annotations
 import pytest
 
 pytestmark = pytest.mark.backend_any
-
-
-def test_komodo_mongo_secret_reader_uid_is_999() -> None:
-    from agmind.install.secret_keys import DB_SECRET_FILE_READER_UID
-
-    assert DB_SECRET_FILE_READER_UID["komodo_mongo_password"] == 999
 
 
 def test_postgres_mysql_are_root_read_no_chown() -> None:
@@ -29,7 +25,7 @@ def test_write_secret_file_chowns_to_reader_uid(monkeypatch, tmp_path) -> None:
 
     chowns: list[tuple[str, int, int]] = []
     monkeypatch.setattr(steps.os, "chown", lambda p, u, g: chowns.append((str(p), u, g)))
-    target = tmp_path / "secrets" / "komodo_mongo_password"
+    target = tmp_path / "secrets" / "nonroot_db_password"
     steps._write_secret_file(target, "s3cr3t", reader_uid=999)
     assert chowns == [(str(target), 999, 999)]
     assert target.read_text() == "s3cr3t"

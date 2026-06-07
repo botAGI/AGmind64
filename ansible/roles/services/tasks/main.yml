@@ -34,7 +34,6 @@
   loop:
     - { src: ".postgres_password", dest: "postgres_password" }
     - { src: ".mysql_root_password", dest: "mysql_root_password" }
-    - { src: ".komodo_database_password", dest: "komodo_mongo_password" }
   no_log: true
 
 - name: Validate Proxmox exporter token settings

@@ -422,10 +422,6 @@ jobs:
           AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000
           AUTHELIA_STORAGE_ENCRYPTION_KEY=ci-authelia-storage-encryption-key-00000000000000000
           AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
-          KOMODO_DATABASE_PASSWORD=ci-komodo-db-password
-          KOMODO_INIT_ADMIN_PASSWORD=ci-komodo-admin-password
-          KOMODO_WEBHOOK_SECRET=ci-komodo-webhook-secret
-          KOMODO_JWT_SECRET=ci-komodo-jwt-secret
           EOF
           for profile in $(.venv/bin/python -c "from agmind.services.profile_sets import all_profile_names; print('\n'.join(sorted(all_profile_names())))"); do
             echo "=== Rendering --profile $profile ==="
@@ -476,10 +472,6 @@ jobs:
           AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000
           AUTHELIA_STORAGE_ENCRYPTION_KEY=ci-authelia-storage-encryption-key-00000000000000000
           AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
-          KOMODO_DATABASE_PASSWORD=ci-komodo-db-password
-          KOMODO_INIT_ADMIN_PASSWORD=ci-komodo-admin-password
-          KOMODO_WEBHOOK_SECRET=ci-komodo-webhook-secret
-          KOMODO_JWT_SECRET=ci-komodo-jwt-secret
           EOF
       - name: Run compose-up-smoke integration tests
         env:

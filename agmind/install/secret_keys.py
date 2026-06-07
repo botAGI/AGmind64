@@ -41,11 +41,6 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
     "DIFY_PLUGIN_DAEMON_KEY",
     "DIFY_PLUGIN_INNER_API_KEY",
-    # Komodo operator console (ops profile). DATABASE_PASSWORD is shared mongo↔core.
-    "KOMODO_DATABASE_PASSWORD",
-    "KOMODO_INIT_ADMIN_PASSWORD",
-    "KOMODO_WEBHOOK_SECRET",
-    "KOMODO_JWT_SECRET",
 )
 
 # Authelia required secrets (read by the container as AUTHELIA_* env). 64-char so
@@ -69,9 +64,6 @@ ROTATABLE = frozenset(
         "DIFY_PLUGIN_INNER_API_KEY",
         "AUTHELIA_SESSION_SECRET",
         "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
-        # JWT/webhook signing: rotating only invalidates live sessions / unsent webhooks.
-        "KOMODO_JWT_SECRET",
-        "KOMODO_WEBHOOK_SECRET",
     }
 )
 INIT_ONLY = frozenset(
@@ -85,10 +77,6 @@ INIT_ONLY = frozenset(
         "ELASTIC_PASSWORD",
         # MinIO sets the root password on first init of an empty data dir (same as the app minio).
         "MILVUS_MINIO_ROOT_PASSWORD",
-        # mongo sets the root pw on first init of an empty data dir; the admin user is
-        # seeded into mongo on core's first boot — rotating the env afterwards is a no-op.
-        "KOMODO_DATABASE_PASSWORD",
-        "KOMODO_INIT_ADMIN_PASSWORD",
         # Hashed into users_database.yml at materialize; rotating the env alone is a no-op
         # until a re-materialize/re-install regenerates the hash.
         "AUTHELIA_ADMIN_PASSWORD",
@@ -107,17 +95,14 @@ ENCRYPT_AT_REST = frozenset(
 DB_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
     ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
     ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
-    ("komodo-mongo", "komodo_mongo_password", "KOMODO_DATABASE_PASSWORD"),
 )
 
 # Secret FILES that the consuming image reads AFTER dropping to a non-root uid, so a root:root 0600
-# file is unreadable (EACCES → crash-loop). The mongo image gosu's to uid 999 (mongodb) BEFORE
-# reading MONGO_INITDB_ROOT_PASSWORD_FILE, unlike postgres/mysql which read their *_FILE while still
-# root. chown such files to the reader uid (keeping 0600) so only that uid + root can read them.
-# {secret_filename: reader_uid}. live-deploy 2026-06-07 komodo-mongo "Permission denied" crash-loop.
-DB_SECRET_FILE_READER_UID: dict[str, int] = {
-    "komodo_mongo_password": 999,  # mongo:8 → mongodb
-}
+# file is unreadable (EACCES → crash-loop). For such an image, chown the file to the reader uid
+# (keeping 0600) so only that uid + root can read it. postgres/mysql read their *_FILE while still
+# root, so they need NO entry here. {secret_filename: reader_uid}. Currently empty — no DB server in
+# the catalog drops to a non-root uid before reading its password file.
+DB_SECRET_FILE_READER_UID: dict[str, int] = {}
 
 
 def generate_for(key: str) -> str:

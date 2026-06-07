@@ -87,7 +87,7 @@ def test_uid_can_read_root_always_true() -> None:
 
 
 def test_uid_can_read_root_owned_0600_blocks_nonroot_reader() -> None:
-    # komodo-mongo class: file root:root 0600, reader uid 999 → cannot read.
+    # non-root-reader class: file root:root 0600, reader uid 999 → cannot read.
     assert _uid_can_read(0o600, file_uid=0, file_gid=0, reader_uid=999) is False
 
 
@@ -317,7 +317,7 @@ def test_unresolved_placeholder_value(good_install: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# (A8) secret files — komodo-mongo class
+# (A8) secret files — DB-server *_PASSWORD_FILE class
 # --------------------------------------------------------------------------- #
 
 
@@ -327,8 +327,8 @@ def test_secret_file_missing(tmp_path: Path, _hermetic_secrets_dir: Path) -> Non
     # secret-file-missing (no reliance on the host /var/lib/agmind).
     install = tmp_path / "secfile"
     install.mkdir()
-    _write_env(install, {"KOMODO_DATABASE_PASSWORD": "x"}, mode=0o600)
-    _write_compose(install, {"komodo-mongo": {"image": "mongo:8"}})
+    _write_env(install, {"POSTGRES_PASSWORD": "x"}, mode=0o600)
+    _write_compose(install, {"postgres": {"image": "postgres:17"}})
     report = validate_config(install, check_drift=False)
     finding = next(f for f in report.findings if f.id == "secret-file-missing")
     assert finding.severity == "error"
@@ -337,13 +337,21 @@ def test_secret_file_missing(tmp_path: Path, _hermetic_secrets_dir: Path) -> Non
 def test_secret_file_unreadable_by_reader_uid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
 ) -> None:
+    # The catalog currently has no DB server that drops to a non-root uid before reading its
+    # *_FILE, so DB_SECRET_FILE_READER_UID is empty. Inject a synthetic non-root reader entry so
+    # the still-live secret-file-unreadable detection path stays covered (the mechanism is generic).
+    monkeypatch.setattr(
+        validation, "DB_SECRET_FILES", (("nonrootdb", "nonrootdb_password", "NONROOTDB_PASSWORD"),)
+    )
+    monkeypatch.setattr(validation, "DB_SECRET_FILE_READER_UID", {"nonrootdb_password": 999})
+
     install = tmp_path / "secfile2"
     install.mkdir()
-    secret = _hermetic_secrets_dir / "komodo_mongo_password"
+    secret = _hermetic_secrets_dir / "nonrootdb_password"
     secret.write_text("pw", encoding="utf-8")
     os.chmod(secret, 0o600)
-    _write_env(install, {"KOMODO_DATABASE_PASSWORD": "x"}, mode=0o600)
-    _write_compose(install, {"komodo-mongo": {"image": "mongo:8"}})
+    _write_env(install, {"NONROOTDB_PASSWORD": "x"}, mode=0o600)
+    _write_compose(install, {"nonrootdb": {"image": "mongo:8"}})
 
     # Simulate the root:root 0600 live case: stat reports owner uid 0.
     real_stat = os.stat
@@ -362,7 +370,7 @@ def test_secret_file_unreadable_by_reader_uid(
     report = validate_config(install, check_drift=False)
     finding = next(f for f in report.findings if f.id == "secret-file-unreadable")
     assert finding.severity == "error"
-    assert "999" in finding.fix_cmd  # chown to the mongo reader uid
+    assert "999" in finding.fix_cmd  # chown to the non-root reader uid
     assert finding.fixable
 
 
