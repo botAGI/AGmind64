@@ -1,7 +1,10 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: prometheus
-image: prom/prometheus:v3.5.3
-digest: ddc2493835a1509976d5e4e0c94199c4f843ce1f42dd6bcfc8231ba734a93ff7
+image: prom/prometheus:v3.12.0
+# Bumped v3.5.3 → v3.12.0 (latest v3.x; no same-minor patch existed) to clear the lone HIGH
+# GHSA-9h8m-3fm2-qjrq (go.opentelemetry.io/otel/sdk). grype 1H/0C → 0H/0C. INDEX digest
+# (amd64/linux verified via docker manifest inspect). live-audit 2026-06-07 PROD-1.
+digest: 69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
 tier: ops
 purpose: Metrics collection — Prometheus 3.x (PromQL v2→v3 breaking — R12)
 profiles:

@@ -1,7 +1,10 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: authelia
-image: authelia/authelia:4.39.6
-digest: 08776367d54d4482c54ac8ca75b18f7db3287b751106e19736780c5f6811374d
+image: authelia/authelia:4.39.20
+# Bumped 4.39.6 → 4.39.20 (latest 4.39.x patch) to clear the Go-stdlib CVE cluster
+# (CVE-2025-68121 Critical + 8 High; rebuilt on go1.24.13+). grype 9H/2C → 0H/0C. INDEX digest
+# (amd64/linux verified via docker manifest inspect). live-audit 2026-06-07 PROD-1.
+digest: 1b363e9279e742397966333f364e0876ae02bf5c876de73e83af6d48c57ff51b
 tier: edge
 purpose: Optional 2FA / SSO
 profiles:
