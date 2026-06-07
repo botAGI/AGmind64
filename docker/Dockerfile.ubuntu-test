@@ -1,0 +1,46 @@
+# Clean-machine bootstrap test image — Lane A of CLEAN-INSTALL-HARDENING.md §3.
+#
+# A bare Ubuntu 24.04 host with ONLY what a freshly-provisioned operator box has:
+# ansible-core, python3 + the stdlib venv module (python3-venv), python3-pip,
+# and the fetch/sync tooling the playbooks shell out to (curl, git, rsync).
+#
+# DELIBERATELY OMITTED: the separate `virtualenv` PyPI package. A clean host has
+# `python3-venv` (stdlib `python3 -m venv`) but NOT the standalone `virtualenv`
+# executable. The ansible `pip` module defaults to demanding a `virtualenv`
+# binary; the agmind_python role pins `virtualenv_command: python3 -m venv` to
+# avoid that. If that pin ever regresses, the bootstrap test in this image fails
+# at "Create agmind venv"/"Ensure pip tooling" — exactly the clean-machine bug #1
+# that reached the operator. So: do NOT add `virtualenv` here.
+#
+# Pins: an apt snapshot is overkill for a test image; we pin the base by tag and
+# install ansible-core from apt (Ubuntu 24.04 ships ansible-core 2.16.x, which
+# satisfies the >=2.16 floor the --offline galaxy flag needs). pip packages are
+# resolved from the read-only repo mount at test time, not baked here.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_INPUT=1
+
+# ansible-core (>=2.16 — Ubuntu 24.04 ships 2.16.x), python toolchain WITHOUT the
+# `virtualenv` pip pkg, plus the binaries the playbooks shell out to. ca-certificates
+# + sudo round out a realistic clean host. `--no-install-recommends` keeps it lean
+# and, crucially, avoids apt dragging in `virtualenv` as a recommendation.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ansible-core \
+        python3 \
+        python3-pip \
+        python3-venv \
+        curl \
+        git \
+        rsync \
+        ca-certificates \
+        sudo \
+ && rm -rf /var/lib/apt/lists/* \
+ && ! command -v virtualenv \
+ && ansible --version
+
+# The repo is bind-mounted read-only at /work at test time; the test stages a
+# throwaway play + writable install prefix under /tmp inside the container.
+WORKDIR /work

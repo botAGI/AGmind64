@@ -114,6 +114,7 @@ jobs:
             "docker-build (vulkan)",
             "compose-validate",
             "compose-up-smoke",
+            "clean-machine-bootstrap",
             "healthcheck-tool-validate",
             "test-strix-halo (rocm)",
             "test-strix-halo (vulkan)"

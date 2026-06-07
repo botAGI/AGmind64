@@ -435,6 +435,41 @@ def test_download_retries_too_small_then_succeeds(
     assert target.exists()
 
 
+def test_download_retries_zero_mib_glitch_up_to_three_times_then_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lane D regression for the model 0-MiB fix: the HF/Xet backend occasionally answers
+    curl rc=0 with a ~0 MiB body (the "100% then 0 MiB" glitch the operator hit live). That
+    is TRANSIENT, so the step must retry IN-STEP up to 3 times (clearing the poison partial
+    each time) before failing — NOT accept the 0-MiB file and NOT fail the whole install on
+    the first glitch. If the retry loop ever regresses to a single attempt, this fails."""
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.model_file
+    partial = target.with_name(f".{target.name}.part")
+    monkeypatch.setattr(ModelDownloadStep, "_fallback_dirs", staticmethod(lambda _c: []))
+
+    calls = {"n": 0}
+
+    def fake_stream(cmd, callback, step_id, **kw):
+        del callback, step_id, kw
+        calls["n"] += 1
+        output = Path(cmd[cmd.index("-o") + 1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"")  # literal 0 MiB — curl rc=0 but empty body
+        return (0, [])
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
+
+    result = ModelDownloadStep().run(lambda _e: None, cfg)
+
+    assert not result.success
+    assert calls["n"] == 3, "must retry the transient 0-MiB glitch up to 3 times before failing"
+    assert "gave up after 3" in result.message
+    assert not target.exists()  # the 0-MiB body never reaches the final target
+    assert not partial.exists()  # poison partial cleared so a later `curl -C -` is clean
+
+
 def test_skip_step_if_no_model_configured(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     cfg.model_repo = None
