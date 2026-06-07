@@ -504,19 +504,31 @@ jobs:
   # the current commit, not stale tags left on the self-hosted runner.
   test-strix-halo:
     runs-on: [self-hosted, linux, x64, strix-halo]
-    timeout-minutes: 20
+    timeout-minutes: 40
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    needs: [audit, test-cpu, docker-build]
+    # Build the image IN this job rather than depending on docker-build: with multiple self-hosted
+    # runners the docker-build image lands on a different machine than this strix-halo runner, so
+    # `docker run agmind-<backend>:ci` fails with "pull access denied" (the image isn't local).
+    # Building here makes the GPU smoke self-contained + deterministic. Layer cache keeps it fast.
+    needs: [audit, test-cpu]
     strategy:
       fail-fast: false
       matrix:
         backend: [vulkan, rocm]
     steps:
       - uses: actions/checkout@v6
+      - name: Build base + ${{ matrix.backend }} image (self-contained on this runner)
+        run: |
+          docker build -f docker/Dockerfile.base -t agmind-base:ci .
+          docker build \
+            -f docker/Dockerfile.${{ matrix.backend }} \
+            --build-arg BASE_IMAGE=agmind-base:ci \
+            -t agmind-${{ matrix.backend }}:ci \
+            .
       - name: Run backend smoke on ${{ matrix.backend }}
         env:
           AGMIND_BACKEND: ${{ matrix.backend }}
