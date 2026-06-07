@@ -94,8 +94,69 @@ def _headless_validation_errors(
     return errors, normalized_domain
 
 
+def _run_cmd(cmd: list[str]) -> int:
+    """Run a teardown command, streaming output; return its rc. Seam for tests."""
+    try:
+        return subprocess.run(cmd, check=False).returncode
+    except OSError as exc:  # docker / sudo not on PATH
+        typer.echo(f"  ! {' '.join(cmd[:3])}…: {exc}", err=True)
+        return 1
+
+
+def cmd_uninstall(
+    *,
+    data: bool = False,
+    yes: bool = False,
+    install_dir: Path = Path("/opt/agmind"),
+) -> int:
+    """Tear down the AGmind deployment.
+
+    Always: ``docker compose down --remove-orphans`` + remove the install dir + the global
+    ``/usr/local/bin/agmind`` shim. With ``data``: ALSO ``--volumes`` and wipe ``/var/lib/agmind``
+    (all stack data) + ``/etc/agmind`` (config) — destructive, for a clean reinstall.
+    """
+    data_dir = Path("/var/lib/agmind")
+    config_dir = Path("/etc/agmind")
+    shim = Path("/usr/local/bin/agmind")
+    compose_file = install_dir / "docker-compose.yml"
+    removed = [install_dir, shim] + ([data_dir, config_dir] if data else [])
+
+    typer.echo("agmind uninstall will:")
+    typer.echo(f"  • docker compose down --remove-orphans{' --volumes' if data else ''}")
+    for p in removed:
+        typer.echo(f"  • remove {p}")
+    if data:
+        typer.echo(
+            "  ⚠️  --data PERMANENTLY DELETES all stack data (postgres/mysql/mongo/milvus/minio/"
+            "qdrant/elasticsearch/grafana/phoenix/…). This cannot be undone."
+        )
+    else:
+        typer.echo("  (data in /var/lib/agmind is KEPT — pass --data for a full wipe)")
+
+    if not yes and not typer.confirm("Continue?", default=False):
+        typer.echo("aborted.", err=True)
+        return 1
+
+    # compose down (sudo: the install dir + its .env are root-owned)
+    if compose_file.exists():
+        down = ["sudo", "docker", "compose", "-f", str(compose_file), "down", "--remove-orphans"]
+        if data:
+            down.append("--volumes")
+        if _run_cmd(down) != 0:
+            typer.echo("  ! compose down reported an error — continuing teardown anyway", err=True)
+    else:
+        typer.echo(f"  (no {compose_file} — skipping compose down)")
+
+    # remove paths (best-effort, sudo for root-owned trees)
+    for p in removed:
+        _run_cmd(["sudo", "rm", "-rf", str(p)])
+
+    typer.echo("✓ uninstall complete. Reinstall a clean stack with:  make setup")
+    return 0
+
+
 def register(app: typer.Typer) -> None:
-    """Attach the ``setup`` and ``install`` commands to ``app``."""
+    """Attach the ``setup``, ``install`` and ``uninstall`` commands to ``app``."""
 
     # ---- setup TUI wizard (full install entrypoint) ----
     @app.command()
@@ -464,3 +525,23 @@ def register(app: typer.Typer) -> None:
                 self.push_screen(InstallProgressScreen(config=config, steps=steps))
 
         _InstallShell().run()
+
+    @app.command("uninstall")
+    def uninstall(
+        data: bool = typer.Option(
+            False,
+            "--data",
+            help="ALSO permanently delete all stack DATA (/var/lib/agmind), config "
+            "(/etc/agmind) and named volumes. Destructive — use for a clean reinstall.",
+        ),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"), "--install-dir", help="Deployment directory to tear down."
+        ),
+    ) -> None:
+        """Tear down the AGmind stack (containers + networks + install dir + global shim).
+
+        Keeps your data in /var/lib/agmind by default; pass --data for a full wipe before a
+        clean reinstall (`make setup`). Needs sudo (the install dir is root-owned).
+        """
+        raise typer.Exit(code=cmd_uninstall(data=data, yes=yes, install_dir=install_dir))
