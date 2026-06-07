@@ -51,7 +51,6 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "alertmanager": "tech-debt: add /-/healthy probe",
     "authelia": "tech-debt: add /api/health probe",
     "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
-    "dify-web": "tech-debt: add web readiness probe",
     "homarr": "tech-debt: add web readiness probe (not in default selection)",
     "loki": "tech-debt: add /ready probe",
     "portainer": "tech-debt: add web readiness probe (not in default selection)",
