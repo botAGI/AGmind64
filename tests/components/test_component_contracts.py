@@ -221,7 +221,7 @@ def test_component_check_script_json_output() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["contract_count"] == 12
-    assert payload["service_count"] == 45
+    assert payload["service_count"] == 46  # +phoenix (Arize Phoenix tracing) 2026-06-07
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

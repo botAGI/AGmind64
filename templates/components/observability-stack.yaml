@@ -19,6 +19,7 @@ runtime:
     - loki
     - netdata
     - node-exporter
+    - phoenix
     - portainer
     - postgres-exporter
     - prometheus
@@ -29,6 +30,7 @@ runtime:
   compose_profiles:
     - observability
     - proxmox
+    - tracing
   ports:
     - alertmanager:9093
     - cadvisor:8083
@@ -37,6 +39,7 @@ runtime:
     - homarr:7575
     - loki:3100
     - netdata:19999
+    - phoenix:6006
     - portainer:9443
     - prometheus:9090
     - proxmox-exporter:9221
@@ -47,6 +50,7 @@ provides:
   - dashboards
   - service_health_dashboard
   - container_update_monitor
+  - llm_tracing
 verification:
   smoke:
     - agmind render compose --profile core,observability --domain ci.example.com --output /tmp/agmind-obs.yml

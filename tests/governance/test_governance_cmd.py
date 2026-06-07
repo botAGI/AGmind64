@@ -232,7 +232,7 @@ def test_governance_check_script_json_includes_structured_gate_payloads() -> Non
     assert deploy_targets["stdout"].startswith("deployment targets OK:")
     assert tool_candidates["stdout"].startswith("tool candidates OK:")
     assert constraints["stdout"].startswith("dependency constraints OK:")
-    assert components["payload"]["service_count"] == 45
+    assert components["payload"]["service_count"] == 46
     assert deploy_targets["payload"]["target_count"] == 3
     assert tool_candidates["payload"]["candidate_count"] == 11
     assert constraints["payload"]["package_rule_count"] == 46

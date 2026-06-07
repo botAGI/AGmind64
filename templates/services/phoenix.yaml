@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: phoenix
+image: arizephoenix/phoenix:version-17.2.0-nonroot
+# Arize Phoenix — self-hosted LLM-observability backend for Dify's native OpenInference exporter.
+# INDEX digest (amd64/linux verified via `docker buildx imagetools inspect`). Chosen over MLflow in
+# the 2026-06-07 head-to-head (.planning/night/DIFY-TRACING-RESEARCH.md): the whole UI IS the nested
+# LLM-trace waterfall (prompts/completions/tokens/latency + RAG docs with scores), lighter (SQLite,
+# no minio), and its ELv2 license is already an accepted class here (elasticsearch ships ELv2).
+digest: dadeca6d3999e1cdfaf3dba6039f420434216cc084f8b64d6ad8fa1341f53fc6
+tier: ops
+purpose: LLM trace observability for Dify — Arize Phoenix 17.2.0 (2026-06-07)
+owner: observability-stack
+profiles:
+- tracing
+# No networks block → the shared default bridge (implicit). Dify (default + data-net) reaches
+# phoenix:6006 over default for the OTLP push; SQLite means no datastore tier (data-net) is needed.
+ports:
+- 127.0.0.1:6006:6006
+volumes:
+- /var/lib/agmind/phoenix:/var/lib/agmind/phoenix
+run_as_uid: 65532
+# run_as_gid defaults to run_as_uid (65532) — the distroless nonroot user baked into the image.
+writable_mounts:
+- /var/lib/agmind/phoenix
+env:
+  # SQLite under our managed data dir (single-operator scale). PHOENIX_WORKING_DIR overrides the
+  # image default /mnt/data. Postgres was rejected: our postgres is single-DB (dify-only) with no
+  # multi-DB provisioning, so a phoenix DB would mean risky init changes to the dify datastore.
+  PHOENIX_WORKING_DIR: /var/lib/agmind/phoenix
+  # Cap trace growth so the SQLite store doesn't bloat unbounded.
+  PHOENIX_DEFAULT_RETENTION_POLICY_DAYS: '30'
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+# Image is distroless (entrypoint /usr/bin/python3.13, no curl/wget) — health-check via the baked-in
+# python against Phoenix's /healthz (200 when serving). live-audit posture: user-facing svc needs a
+# real healthcheck so Traefik drops it from routing while starting.
+health:
+  test:
+  - CMD
+  - /usr/bin/python3.13
+  - -c
+  - 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen("http://localhost:6006/healthz", timeout=3).status==200 else 1)'
+  start_period: 40s
+  interval: 30s
+  timeout: 5s
+  retries: 5
+routing:
+  host: phoenix.agmind.dev
+  middleware_chain: chain-internal
+  healthcheck_path: /healthz
+# Phoenix native auth is OFF (PHOENIX_ENABLE_AUTH unset) — the UI is gated by Authelia at the edge
+# (chain-internal), exactly like dozzle/netdata/prometheus; Dify pushes OTLP internally on :6006. To
+# also harden the internal API, set PHOENIX_ENABLE_AUTH=true + a generated PHOENIX_SECRET (operator
+# opt-in; would add a secret to EnvWriteStep).
+provides:
+- llm_tracing
+
+# Hardening (night-run 2026-06-07 posture): block privilege escalation + drop all caps. Phoenix is a
+# plain Python HTTP server and needs no Linux capabilities.
+no_new_privileges: true
+cap_drop:
+- ALL

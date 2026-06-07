@@ -135,6 +135,7 @@ _SMOKE_PROFILES = [
     "security",
     "automation",
     "ragflow",
+    "tracing",  # phoenix standalone (SQLite, no model/secret deps) — boot-proven 2026-06-07
 ]
 
 # Container states that indicate a crash-loop or failed start.

@@ -47,6 +47,7 @@ class ServiceProfile(str, Enum):
     OPS = "ops"
     PROXMOX = "proxmox"
     SECURITY = "security"
+    TRACING = "tracing"
     FULL = "full"
 
 
