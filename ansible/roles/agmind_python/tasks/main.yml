@@ -5,8 +5,8 @@
 # bin/python but NO pip → the next "Ensure pip tooling" pip task fails "Unable to find pip in the
 # virtualenv". `--clear` makes such a partial/broken venv SELF-HEAL on re-run (wipe + recreate WITH
 # pip), while a healthy venv (bin/pip present) is skipped by the guard and left untouched (its agmind
-# install survives). Verified: --clear restores pip even on a pip-stripped venv. live clean-install
-# 2026-06-07 (the pip-less-venv rake — `creates: bin/python` reused a venv that had no pip).
+# install survives). Verified: --clear restores pip even on a pip-stripped venv (ensurepip --upgrade
+# does NOT — it no-ops when pip metadata lingers). live clean-install 2026-06-07 (pip-less-venv rake).
 - name: Create agmind venv (self-healing — recreates a partial/pip-less venv)
   ansible.builtin.command:
     cmd: python3 -m venv --clear {{ agmind_install_dir }}/venv
@@ -27,3 +27,57 @@
     virtualenv_command: python3 -m venv
   become_user: "{{ agmind_user }}"
 
+# Re-run safety: a prior interrupted `pip` (e.g. a failed model_pull/bootstrap that left the venv
+# half-installed) drops `~`-prefixed backup dirs and a stale `*.dist-info/INSTALLER*.tmp` in
+# site-packages. The next `pip install` then fails uninstalling the unchanged version with
+# `OSError [Errno 2] … INSTALLER<rand>.tmp` and rolls back → bootstrap rc=2. Purge that poison
+# (root context, same as the install task below, so it can remove root-owned leftovers) BEFORE
+# (re)installing. live clean-install 2026-06-07 (the "pip reinstall corrupts venv on re-run" rake).
+- name: Purge corrupted pip backup leftovers in the agmind venv (re-run safety)
+  ansible.builtin.shell: >-
+    rm -rf {{ agmind_install_dir }}/venv/lib/python*/site-packages/~*
+    {{ agmind_install_dir }}/venv/lib/python*/site-packages/*.dist-info/INSTALLER*.tmp
+  args:
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false
+
+- name: Install agmind package (runtime only — no dev toolchain on deployed nodes)
+  ansible.builtin.pip:
+    name:
+      # Bare `agmind` (runtime deps): a deployed node runs the CLI/ansible, not the test
+      # suite — `[dev]` would drag pytest/ruff/mypy + their tree onto every node (audit M#27).
+      - "agmind @ file://{{ playbook_dir }}/.."
+    virtualenv: "{{ agmind_install_dir }}/venv"
+    virtualenv_command: python3 -m venv
+    # forcereinstall (not present): a `file://` URL dep makes pip reinstall every run anyway; the
+    # explicit clean reinstall — paired with the purge above — avoids the fragile uninstall/rollback
+    # path that corrupted the venv on re-run. live clean-install 2026-06-07.
+    state: forcereinstall
+
+- name: Create /usr/local/bin/agmind wrapper
+  ansible.builtin.copy:
+    dest: /usr/local/bin/agmind
+    content: |
+      #!/bin/sh
+      # AGmind CLI wrapper — pinned venv invocation.
+      exec {{ agmind_install_dir }}/venv/bin/python -m agmind "$@"
+    mode: "0755"
+
+- name: Symlink audit_forbidden.py for CI / pre-commit
+  ansible.builtin.file:
+    src: "{{ playbook_dir }}/../scripts/checks/audit_forbidden.py"
+    dest: "{{ agmind_install_dir }}/audit_forbidden.py"
+    state: link
+    force: true
+
+- name: Smoke test agmind import
+  ansible.builtin.command:
+    cmd: "{{ agmind_install_dir }}/venv/bin/python -c 'import agmind; print(agmind.__version__)'"
+  register: agmind_smoke
+  changed_when: false
+  check_mode: false
+
+- name: Display agmind version
+  ansible.builtin.debug:
+    msg: "agmind installed: {{ agmind_smoke.stdout }}"
