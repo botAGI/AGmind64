@@ -222,14 +222,21 @@ class ResourceLimits(BaseModel):
     mem_limit: str | None = None
     """Docker memory limit, format `\\d+[kmg]` lowercase. None = unlimited."""
 
-    @field_validator("mem_limit")
+    mem_reservation: str | None = None
+    """Docker SOFT memory reservation (compose `mem_reservation:`), same `\\d+[kmg]` lowercase
+    format as ``mem_limit``. None = unset. A reservation is the scheduling floor the kernel tries
+    to keep available under memory pressure (NOT a hard cap — that is ``mem_limit``). Set it to the
+    measured working set (~25-50% of ``mem_limit``) so Docker has a real placement signal instead of
+    only an OOM ceiling (OPT-1, optimization audit 2026-06-08)."""
+
+    @field_validator("mem_limit", "mem_reservation")
     @classmethod
     def _check_mem_limit(cls, v: str | None) -> str | None:
         if v is None:
             return v
         if not _MEM_LIMIT_RE.match(v):
             raise ValueError(
-                f"mem_limit '{v}' invalid: expected lowercase '\\d+[kmg]' (e.g. '4g', '512m')"
+                f"mem value '{v}' invalid: expected lowercase '\\d+[kmg]' (e.g. '4g', '512m')"
             )
         return v
 

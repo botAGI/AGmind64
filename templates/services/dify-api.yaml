@@ -53,6 +53,7 @@ depends_on:
 resources:
   cpus: 4.0
   mem_limit: 4g
+  mem_reservation: 512m
 # /health returns 200 once Flask + the boot migration are up (verified live; curl present).
 # Generous start_period: dify-api runs `db upgrade` on boot. live-audit 2026-06-05
 # userfacing-services-no-docker-healthcheck.

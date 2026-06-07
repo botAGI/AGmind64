@@ -28,6 +28,7 @@ no_new_privileges: true
 resources:
   cpus: 1.0
   mem_limit: 512m
+  mem_reservation: 128m
 access:
   first_login_register: true
   # Portainer locks initial-admin creation ~5 min after the container first starts (security). If you

@@ -42,6 +42,7 @@ depends_on:
 resources:
   cpus: 8.0
   mem_limit: 16g
+  mem_reservation: 3g
 # /api/v1/system/healthz returns 200 (verified live; curl present). Generous start_period —
 # ragflow waits on its data tier + initialises. live-audit 2026-06-05 userfacing-no-healthcheck.
 health:

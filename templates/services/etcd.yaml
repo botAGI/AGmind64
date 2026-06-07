@@ -28,6 +28,7 @@ env:
 resources:
   cpus: 1.0
   mem_limit: 1g
+  mem_reservation: 128m
 health:
   test:
   - CMD
@@ -37,3 +38,8 @@ health:
   interval: 30s
   timeout: 20s
   retries: 3
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

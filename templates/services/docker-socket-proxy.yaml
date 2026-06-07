@@ -44,6 +44,7 @@ no_new_privileges: true
 resources:
   cpus: 0.25
   mem_limit: 128m
+  mem_reservation: 64m
 
 # Capability: prometheus consumes docker_api so selecting prometheus pulls this proxy into the
 # closure (otherwise it is observability-profile-only and an explicit-services selection deploys

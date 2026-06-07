@@ -46,6 +46,7 @@ depends_on:
 resources:
   cpus: 4.0
   mem_limit: 4g
+  mem_reservation: 512m
 
 # Phase O capabilities
 consumes:

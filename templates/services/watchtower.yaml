@@ -24,6 +24,7 @@ env:
 resources:
   cpus: 0.5
   mem_limit: 256m
+  mem_reservation: 64m
 # Block privilege escalation via setuid/file-caps — watchtower holds the docker socket (monitor-
 # only here) so it's a high-value target. Missed the original ops no-new-priv sweep (portainer
 # got it). live-audit 2026-06-07 watchtower-missing-no-new-priv (SEC-2).

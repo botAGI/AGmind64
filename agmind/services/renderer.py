@@ -404,6 +404,11 @@ def descriptor_to_compose_service(
         svc["cpus"] = str(d.resources.cpus)
     if d.resources.mem_limit:
         svc["mem_limit"] = d.resources.mem_limit
+    if d.resources.mem_reservation:
+        # Soft scheduling floor (OPT-1): the kernel tries to keep this much available under
+        # memory pressure. Distinct from mem_limit (the hard OOM cap). Defaults absent so a
+        # descriptor that omits it stays byte-identical to the historical render.
+        svc["mem_reservation"] = d.resources.mem_reservation
     if d.ports:
         svc["ports"] = list(d.ports)
     if d.env:

@@ -18,6 +18,7 @@ writable_mounts:
 resources:
   cpus: 1.0
   mem_limit: 512m
+  mem_reservation: 128m
 # /-/healthy is unauthenticated + 200 once up. Image ships busybox wget at /bin/wget (curl
 # ABSENT — verified `docker run --rm --entrypoint sh ... command -v wget`, 2026-06-08). Without
 # this probe every `depends_on: alertmanager` degrades to service_started (CFG-1). live-audit 2026-06-08.
@@ -35,3 +36,8 @@ health:
   retries: 10
 observability:
   prometheus_scrape: true
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

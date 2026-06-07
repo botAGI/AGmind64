@@ -186,6 +186,18 @@
           ],
           "default": null,
           "title": "Mem Limit"
+        },
+        "mem_reservation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mem Reservation"
         }
       },
       "title": "ResourceLimits",

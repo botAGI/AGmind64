@@ -24,6 +24,7 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 512m
 health:
   test:
   - CMD
@@ -37,3 +38,8 @@ health:
 # Phase O capabilities
 provides:
 - object_storage
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

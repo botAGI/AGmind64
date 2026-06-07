@@ -24,6 +24,7 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 1g
 # /health returns 200 (verified live; curl present). live-audit 2026-06-05
 # userfacing-services-no-docker-healthcheck.
 health:

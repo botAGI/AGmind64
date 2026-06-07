@@ -30,6 +30,7 @@ writable_mounts:
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 512m
 # /-/healthy is unauthenticated + 200 once the server is up. Image ships busybox wget at
 # /bin/wget (curl ABSENT — verified `docker run --rm --entrypoint sh ... command -v wget`,
 # 2026-06-08). Without this probe every `depends_on: prometheus` degrades to service_started
@@ -55,3 +56,8 @@ observability:
 # per-service render does not fail-closed when the proxy is not literally co-listed.
 consumes:
 - docker_api
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

@@ -38,6 +38,7 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 512m
 health:
   test:
   - CMD-SHELL

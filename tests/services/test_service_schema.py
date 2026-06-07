@@ -306,6 +306,27 @@ def test_invalid_mem_limit(bad: str) -> None:
         ResourceLimits(mem_limit=bad)
 
 
+# ---------- mem_reservation validation (OPT-1: soft scheduling floor) ----------
+
+
+@pytest.mark.parametrize("good", ["4g", "512m", "1024k", "16g", "128m"])
+def test_valid_mem_reservation(good: str) -> None:
+    rl = ResourceLimits(mem_reservation=good)
+    assert rl.mem_reservation == good
+
+
+@pytest.mark.parametrize("bad", ["4G", "4GB", "4 g", "4.5g", "4gb"])
+def test_invalid_mem_reservation(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        ResourceLimits(mem_reservation=bad)
+
+
+def test_mem_reservation_defaults_none() -> None:
+    """Omitting mem_reservation leaves it None (byte-identical render for descriptors w/o it)."""
+    assert ResourceLimits().mem_reservation is None
+    assert ResourceLimits(mem_limit="4g").mem_reservation is None
+
+
 # ---------- tier validation ----------
 
 

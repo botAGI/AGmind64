@@ -323,6 +323,22 @@ def test_compose_service_hardening_absent_by_default() -> None:
         assert key not in svc
 
 
+def test_compose_service_renders_mem_reservation() -> None:
+    """OPT-1: the soft scheduling floor is emitted as compose `mem_reservation:` alongside
+    the hard `mem_limit:` cap."""
+    d = _minimal_descriptor(resources={"cpus": 2.0, "mem_limit": "4g", "mem_reservation": "1g"})
+    svc = descriptor_to_compose_service(d)
+    assert svc["mem_limit"] == "4g"
+    assert svc["mem_reservation"] == "1g"
+
+
+def test_compose_service_mem_reservation_absent_by_default() -> None:
+    """A descriptor without mem_reservation emits NO mem_reservation key (byte-identical render)."""
+    d = _minimal_descriptor(resources={"cpus": 2.0, "mem_limit": "4g"})
+    svc = descriptor_to_compose_service(d)
+    assert "mem_reservation" not in svc
+
+
 def test_compose_service_cgroupns_and_privileged() -> None:
     """grafana-dashboards.md CRITICAL-1: cAdvisor needs the host cgroup namespace
     (compose top-level `cgroup:`) under cgroup v2 to walk every cgroup and emit

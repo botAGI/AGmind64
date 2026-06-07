@@ -24,6 +24,7 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 1g
+  mem_reservation: 256m
 # /api/health is unauthenticated + returns 200 (verified live; curl present in the image).
 # live-audit 2026-06-05 userfacing-services-no-docker-healthcheck.
 health:

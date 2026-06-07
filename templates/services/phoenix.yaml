@@ -32,6 +32,7 @@ env:
 resources:
   cpus: 2.0
   mem_limit: 1g
+  mem_reservation: 256m
 # Image is distroless (entrypoint /usr/bin/python3.13, no curl/wget) — health-check via the baked-in
 # python against Phoenix's /healthz (200 when serving). live-audit posture: user-facing svc needs a
 # real healthcheck so Traefik drops it from routing while starting.

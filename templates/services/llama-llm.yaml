@@ -73,6 +73,7 @@ resources:
   # M4.7.4: bumped 64g → 112g чтобы вместить 256K-512K KV cache на Strix Halo.
   # Qwen3.6-A3B Q4_K_M (21 GB) + 512K q8_0 KV (~85 GB) = ~106 GB. С q4_0 = ~67 GB.
   mem_limit: 112g
+  mem_reservation: 24g
 health:
   test:
   - CMD
@@ -97,3 +98,8 @@ observability:
 # Phase O capabilities
 provides:
 - llm_inference
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

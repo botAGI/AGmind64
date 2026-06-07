@@ -22,6 +22,7 @@ env:
 resources:
   cpus: 4.0
   mem_limit: 4g
+  mem_reservation: 512m
 health:
   # Password now lives in a file (MYSQL_ROOT_PASSWORD_FILE), not env — read it via cat.
   test:
@@ -35,3 +36,8 @@ health:
 # Phase O capabilities
 provides:
 - mysql_db
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

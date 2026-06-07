@@ -32,6 +32,7 @@ env:
 resources:
   cpus: 4.0
   mem_limit: 8g
+  mem_reservation: 5g
 # Without a healthcheck, ragflow's depends_on fell back to service_started and could boot
 # before ES was ready (live-audit 2026-06-05 MED). With security ON the probe must AUTHENTICATE,
 # so CMD-SHELL (expands $ELASTIC_PASSWORD from the container env). curl is present in the 8.x image.
@@ -47,3 +48,8 @@ health:
 # Phase O capabilities
 provides:
 - search_index
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

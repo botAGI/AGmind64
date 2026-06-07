@@ -23,6 +23,7 @@ env:
 resources:
   cpus: 0.5
   mem_limit: 512m
+  mem_reservation: 128m
 health:
   test:
   - CMD
@@ -40,3 +41,8 @@ routing:
 # Phase O capabilities — pulls the docker-socket-proxy into the closure (read-only Docker API).
 consumes:
 - docker_api
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

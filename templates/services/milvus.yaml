@@ -57,7 +57,13 @@ health:
 resources:
   cpus: 8.0
   mem_limit: 16g
+  mem_reservation: 1g
 
 # Phase O capabilities
 provides:
 - vector_db
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

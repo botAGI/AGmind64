@@ -16,6 +16,7 @@ depends_on:
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 512m
 # Docker healthcheck so the deploy `--wait` actually waits for the web UI to be serving — WITHOUT
 # one it was left "Created" (not started) after a deploy and traefik 404'd the UI. dify-web is a
 # Next.js standalone server: docker sets HOSTNAME=<container-id> and Next binds to THAT, not

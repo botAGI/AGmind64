@@ -43,6 +43,7 @@ group_add:
 resources:
   cpus: 4.0
   mem_limit: 8g
+  mem_reservation: 2g
 health:
   test:
   - CMD
@@ -63,3 +64,8 @@ observability:
 # Phase O capabilities
 provides:
 - reranker
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true

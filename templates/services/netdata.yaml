@@ -36,11 +36,16 @@ env:
 cap_add:
 - SYS_PTRACE
 - SYS_ADMIN
+# NO no_new_privileges (SEC-2 exclusion): netdata runs setuid-root collector plugins
+# (apps.plugin / ndsudo / debugfs.plugin) to read deep host metrics — no-new-privileges
+# would void the setuid bit and break them. The cap_add + apparmor:unconfined above exist
+# for exactly this privileged introspection, so nnp is intentionally omitted here.
 security_opt:
 - apparmor:unconfined
 resources:
   cpus: 2.0
   mem_limit: 2g
+  mem_reservation: 256m
 routing:
   host: netdata.agmind.dev
   middleware_chain: chain-internal

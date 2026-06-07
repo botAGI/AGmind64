@@ -26,6 +26,7 @@ volumes:
 resources:
   cpus: 1.0
   mem_limit: 256m
+  mem_reservation: 64m
 # No healthcheck: the ubuntu/squid image is distroless-style (no usable shell),
 # so dependents must gate on service_started, which the renderer picks when a
 # dependency has no health block.

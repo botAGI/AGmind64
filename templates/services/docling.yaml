@@ -22,6 +22,7 @@ env:
 resources:
   cpus: 12.0
   mem_limit: 16g
+  mem_reservation: 1g
 # /health returns 200 (verified live; curl present). Generous start_period — docling-serve
 # loads OCR/layout models on boot. live-audit 2026-06-05 userfacing-services-no-docker-healthcheck.
 health:
@@ -34,3 +35,8 @@ health:
   interval: 15s
   timeout: 5s
   retries: 15
+
+# Hardening (SEC-2, security-live 2026-06-08): block runtime privilege escalation via
+# setuid/file-caps. Safe here — the image either runs a plain server or drops privileges
+# via gosu/su-exec (which no-new-privileges does NOT break; it only blocks privilege GAIN).
+no_new_privileges: true
