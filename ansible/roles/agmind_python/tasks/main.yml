@@ -15,6 +15,10 @@
       - "wheel>=0.43,<1"
     state: present
     virtualenv: "{{ agmind_install_dir }}/venv"
+    # Use the stdlib venv module (python3-venv, installed in bootstrap) — NOT the separate
+    # `virtualenv` package, which a clean machine lacks (the ansible pip module otherwise demands a
+    # `virtualenv` executable and fails on a freshly-wiped host). live clean-install 2026-06-07.
+    virtualenv_command: python3 -m venv
   become_user: "{{ agmind_user }}"
 
 - name: Install agmind package (runtime only — no dev toolchain on deployed nodes)
@@ -24,6 +28,7 @@
       # suite — `[dev]` would drag pytest/ruff/mypy + their tree onto every node (audit M#27).
       - "agmind @ file://{{ playbook_dir }}/.."
     virtualenv: "{{ agmind_install_dir }}/venv"
+    virtualenv_command: python3 -m venv
     state: present
 
 - name: Create /usr/local/bin/agmind wrapper
