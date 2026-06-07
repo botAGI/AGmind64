@@ -150,3 +150,23 @@ def test_real_web_ui_descriptors_have_access() -> None:
         acc = descriptors[model_svc].access
         assert acc is not None, model_svc
         assert acc.api_kind == "openai", model_svc
+
+
+def test_model_endpoints_surface_served_model_name() -> None:
+    """credentials.txt / creds show must print the real model id (the llama-server `/v1/models` value
+    = the `--model` basename) so the operator pastes it straight into Dify, not '(your model file)'.
+    Resolved from the descriptor command, honouring the rendered env (with ${VAR:-default} fallback)."""
+    descriptors = load_descriptors(DEFAULT_SERVICES_DIR)
+
+    # no env override → the descriptor's ${VAR:-default} default basename
+    by_name = {e.service: e for e in build_access_report(descriptors, {})}
+    assert by_name["llama-embed"].model_name == "bge-m3-Q8_0.gguf"
+    assert by_name["llama-rerank"].model_name == "bge-reranker-v2-m3-Q8_0.gguf"
+    # a UI service (no --model in its command) carries no model name
+    assert by_name["grafana"].model_name is None
+
+    # an env override flows through to the reported name
+    overridden = {
+        e.service: e for e in build_access_report(descriptors, {"AGMIND_EMBED_FILE": "x.gguf"})
+    }
+    assert overridden["llama-embed"].model_name == "x.gguf"

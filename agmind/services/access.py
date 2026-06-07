@@ -34,6 +34,7 @@ class AccessEntry:
     first_login_register: bool
     lan_only: bool
     api_kind: str | None
+    model_name: str | None = None  # for model endpoints: the id llama-server reports at /v1/models
 
     @property
     def is_model_endpoint(self) -> bool:
@@ -42,6 +43,24 @@ class AccessEntry:
 
 
 _DOMAIN_PLACEHOLDER = "agmind.dev"
+
+
+def _resolve_model_name(descriptor: ServiceDescriptor, env: Mapping[str, str]) -> str | None:
+    """The model id an OpenAI-compatible llama-server reports at ``/v1/models`` is the basename of its
+    ``--model`` arg (e.g. ``bge-m3-Q8_0.gguf``) — exactly what the operator must paste into Dify's
+    "Model name" field. Parse it from the descriptor command, resolving any ``${VAR:-default}`` against
+    the rendered env, so the report shows the real name instead of a "(your model file)" placeholder.
+    Returns None for services whose command has no ``--model`` (i.e. non-model endpoints)."""
+    from pathlib import PurePosixPath
+
+    from agmind.install.secrets_audit import resolve_env_value
+
+    command = list(descriptor.command or [])
+    for i, token in enumerate(command):
+        if token in ("--model", "-m") and i + 1 < len(command):
+            resolved = resolve_env_value(str(command[i + 1]), env)
+            return PurePosixPath(resolved).name or None
+    return None
 
 
 def build_access_report(
@@ -97,6 +116,7 @@ def build_access_report(
                 first_login_register=access.first_login_register,
                 lan_only=access.lan_only,
                 api_kind=access.api_kind,
+                model_name=_resolve_model_name(descriptor, env) if access.api_kind else None,
             )
         )
     return entries
@@ -159,7 +179,9 @@ def render_credentials_txt(
         for e in endpoints:
             lines.append(e.service)
             lines.append(f"  API endpoint URL: {e.url}/v1")
-            lines.append(f"  Model name:       {llama_model or '(your model file)'}")
+            lines.append(
+                f"  Model name:       {e.model_name or llama_model or '(your model file)'}"
+            )
             lines.append("  API Key:          none")
             lines.append("")
 
@@ -171,7 +193,7 @@ def render_endpoint_lines(report: list[AccessEntry]) -> list[str]:
     lines: list[str] = []
     for e in report:
         if e.is_model_endpoint:
-            hint = "OpenAI API"
+            hint = f"OpenAI API — model: {e.model_name}" if e.model_name else "OpenAI API"
         elif e.login:
             hint = f"login: {e.login}"
         elif e.first_login_register:

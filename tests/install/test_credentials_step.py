@@ -26,7 +26,12 @@ def _cfg(tmp_path: Path, services: list[str]) -> InstallConfig:
 
 
 def test_credentials_step_writes_chmod_600_file(tmp_path: Path) -> None:
-    (tmp_path / ".env").write_text("GRAFANA_PASSWORD=topsecret\n", encoding="utf-8")
+    # AGMIND_MODEL_FILE is what EnvWriteStep writes from config.model_file; the model-endpoint block
+    # surfaces the basename it resolves to (what llama-server reports at /v1/models), so the report
+    # mirrors what the container actually serves rather than a placeholder.
+    (tmp_path / ".env").write_text(
+        "GRAFANA_PASSWORD=topsecret\nAGMIND_MODEL_FILE=Qwen3.6-35B.gguf\n", encoding="utf-8"
+    )
     res = CredentialsStep().run(lambda _e: None, _cfg(tmp_path, ["grafana", "llama-llm"]))
     assert res.success
 
