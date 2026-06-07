@@ -16,6 +16,11 @@ profiles:
 - core
 - full
 - observability
+# Caged on the internal mgmt-net ONLY — a compromised internet-facing app on the shared net can no
+# longer reach docker-socket-proxy:2375 (which exposes every container's env via CONTAINERS=1).
+# Only its dual-homed docker_api consumers reach it. live-audit 2026-06-07 (SEC-1).
+networks:
+- mgmt-net
 volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 env:

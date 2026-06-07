@@ -6,6 +6,11 @@ tier: ops
 purpose: Per-container metrics (v0.55.1 — latest published stable; v0.57 was never released)
 profiles:
 - observability
+# Dual-homed: default (scraped by prometheus) + internal mgmt-net (its --docker endpoint is the
+# docker-socket-proxy). live-audit 2026-06-07 (SEC-1).
+networks:
+- default
+- mgmt-net
 ports:
 - 127.0.0.1:8083:8080
 # NO raw /var/run/docker.sock — cadvisor reaches the Docker API through the read-only

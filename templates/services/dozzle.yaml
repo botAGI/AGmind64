@@ -7,6 +7,11 @@ purpose: Container log viewer — Dozzle v10.6.1 (2026-05-24)
 owner: observability-stack
 profiles:
 - observability
+# Dual-homed: default (UI) + internal mgmt-net (its DOCKER_HOST is the docker-socket-proxy).
+# live-audit 2026-06-07 (SEC-1).
+networks:
+- default
+- mgmt-net
 ports:
 - 127.0.0.1:8084:8080
 # NO raw /var/run/docker.sock — dozzle reads container logs via the read-only docker-socket-proxy

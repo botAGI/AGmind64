@@ -7,6 +7,10 @@ purpose: Container update monitor in dry-run mode — Watchtower 1.7.1
 owner: observability-stack
 profiles:
 - observability
+# mgmt-net ONLY — the raw-socket updater has no network callers, so isolate it from the app tier
+# (a compromised app can't reach it). live-audit 2026-06-07 (SEC-1).
+networks:
+- mgmt-net
 volumes:
 - /var/run/docker.sock:/var/run/docker.sock:ro
 env:

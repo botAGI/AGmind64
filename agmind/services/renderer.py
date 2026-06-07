@@ -151,6 +151,12 @@ _EXTRA_NETWORK_ATTRS: dict[str, dict[str, Any]] = {
     # compromised internet-facing app can't pivot to it. live-audit 2026-06-05 (flat-network /
     # etcd-no-auth exposure). Rolled out incrementally (etcd + milvus-minio first).
     "data-net": {"driver": "bridge", "internal": True},
+    # mgmt-net: internal (no host route) tier for the Docker-management plane. The
+    # docker-socket-proxy (+ raw-socket holders) live here ONLY, so a compromised internet-facing
+    # app on the shared net can no longer reach docker-socket-proxy:2375 (which leaks every
+    # container's env via CONTAINERS=1) or the updater. Only the legit docker_api consumers are
+    # dual-homed onto it. live-audit 2026-06-07 (SEC-1 app→mgmt-plane pivot).
+    "mgmt-net": {"driver": "bridge", "internal": True},
 }
 
 

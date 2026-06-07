@@ -6,6 +6,11 @@ tier: ops
 purpose: Log shipping (Promtail successor) — 2026-05-05
 profiles:
 - observability
+# Dual-homed: default (reaches loki + scraped) + internal mgmt-net (its discovery.docker /
+# loki.source.docker endpoint is the docker-socket-proxy). live-audit 2026-06-07 (SEC-1).
+networks:
+- default
+- mgmt-net
 # NO raw /var/run/docker.sock — alloy's discovery.docker + loki.source.docker reach the Docker
 # API through the read-only docker-socket-proxy (validated live: alloy discovered + tailed
 # container logs over tcp). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.

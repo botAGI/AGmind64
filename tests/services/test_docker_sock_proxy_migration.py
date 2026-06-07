@@ -85,3 +85,17 @@ def test_dozzle_uses_socket_proxy_not_raw_sock() -> None:
     assert d.env["DOCKER_HOST"] == "tcp://docker-socket-proxy:2375"
     assert "docker_api" in d.consumes
     assert d.depends_on == []  # NO depends_on (cross-profile hard-raise); consume pulls the proxy
+
+
+def test_socket_proxy_isolated_on_mgmt_net() -> None:
+    """live-audit 2026-06-07 (SEC-1): the env-leaking socket-proxy is caged on the internal
+    mgmt-net so no shared-net app can reach it; only its docker_api consumers are dual-homed."""
+    from agmind.services.renderer import _EXTRA_NETWORK_ATTRS
+
+    d = load_descriptors()
+    assert _EXTRA_NETWORK_ATTRS["mgmt-net"]["internal"] is True
+    assert d["docker-socket-proxy"].networks == ["mgmt-net"]  # NOT on default
+    assert d["watchtower"].networks == ["mgmt-net"]  # raw-socket holder, isolated
+    for consumer in ("traefik", "prometheus", "cadvisor", "alloy", "netdata", "dozzle"):
+        nets = set(d[consumer].networks)
+        assert nets == {"default", "mgmt-net"}, f"{consumer} must dual-home default+mgmt-net"

@@ -9,6 +9,11 @@ tier: ops
 purpose: Metrics collection — Prometheus 3.x (PromQL v2→v3 breaking — R12)
 profiles:
 - observability
+# Dual-homed: default (scraped apps) + internal mgmt-net (docker_sd via docker-socket-proxy).
+# live-audit 2026-06-07 (SEC-1).
+networks:
+- default
+- mgmt-net
 ports:
 - 127.0.0.1:9090:9090
 volumes:

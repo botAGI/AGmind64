@@ -97,6 +97,16 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
         "postgres-exporter",
         "redis-exporter",
         "authelia",
+        # mgmt-net: the Docker-management plane (proxy + raw-socket holders) + its dual-homed
+        # docker_api consumers. live-audit 2026-06-07 (SEC-1).
+        "docker-socket-proxy",
+        "watchtower",
+        "traefik",
+        "prometheus",
+        "cadvisor",
+        "alloy",
+        "netdata",
+        "dozzle",
     }
     rendered = render_to_string(profiles=["full"], domain="ci.example.com")
     doc = yaml.safe_load(rendered)

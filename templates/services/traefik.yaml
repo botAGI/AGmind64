@@ -8,6 +8,11 @@ owner: agmind-core
 profiles:
 - core
 - full
+# Dual-homed: default (the edge net it routes apps on) + the internal mgmt-net (to reach its
+# docker provider via docker-socket-proxy:2375). live-audit 2026-06-07 (SEC-1).
+networks:
+- default
+- mgmt-net
 ports:
 - 80:80
 - 443:443
