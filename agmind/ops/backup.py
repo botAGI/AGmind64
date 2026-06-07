@@ -418,6 +418,106 @@ def read_metadata(backup_path: Path) -> dict[str, object]:
         raise ValueError(f"invalid backup archive: {backup_path} ({exc})") from exc
 
 
+def list_backups(directory: Path) -> list[dict[str, object]]:
+    """List agmind ``*.tar.gz`` archives in ``directory``, newest first.
+
+    Each entry carries cheap, non-secret metadata read from the archive's
+    ``agmind-backup.json`` (no member contents are extracted, so no secret VALUES
+    are read): name, path, byte size, mtime, and — when the archive is a valid
+    agmind backup — its ``created_at`` / ``format_version`` / ``included`` labels
+    and ``data`` member count. A non-agmind / corrupt ``.tar.gz`` is reported with
+    ``ok=False`` and a short ``error`` reason rather than crashing the listing.
+
+    Sort key is the archive's recorded ``created_at`` when available, falling back
+    to the file mtime (so corrupt archives still sort sensibly), newest first.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+
+    entries: list[dict[str, object]] = []
+    for path in sorted(directory.glob("*.tar.gz")):
+        if not path.is_file():
+            continue
+        try:
+            size = path.stat().st_size
+            mtime = path.stat().st_mtime
+        except OSError as exc:
+            entries.append(
+                {
+                    "name": path.name,
+                    "path": str(path),
+                    "size_bytes": 0,
+                    "mtime": 0.0,
+                    "created_at": None,
+                    "ok": False,
+                    "error": str(exc),
+                    "included": [],
+                    "data_members": 0,
+                    "_sort": 0.0,
+                }
+            )
+            continue
+
+        entry: dict[str, object] = {
+            "name": path.name,
+            "path": str(path),
+            "size_bytes": size,
+            "mtime": mtime,
+        }
+        try:
+            metadata = read_metadata(path)
+        except (ValueError, OSError) as exc:
+            entry.update(
+                {
+                    "created_at": None,
+                    "ok": False,
+                    "error": str(exc),
+                    "included": [],
+                    "data_members": 0,
+                    "_sort": mtime,
+                }
+            )
+            entries.append(entry)
+            continue
+
+        created_at = metadata.get("created_at")
+        created_at_str = str(created_at) if isinstance(created_at, str) else None
+        included_raw = metadata.get("included", [])
+        included = [str(x) for x in included_raw] if isinstance(included_raw, list) else []
+        raw_data = metadata.get("data", [])
+        data_members = len(raw_data) if isinstance(raw_data, list) else 0
+        format_version = metadata.get("format_version")
+        sort_key = _created_at_sort_key(created_at_str, mtime)
+        entry.update(
+            {
+                "created_at": created_at_str,
+                "format_version": format_version,
+                "included": included,
+                "data_members": data_members,
+                "ok": True,
+                "error": None,
+                "_sort": sort_key,
+            }
+        )
+        entries.append(entry)
+
+    entries.sort(key=lambda e: e["_sort"], reverse=True)  # type: ignore[arg-type,return-value]
+    for entry in entries:
+        entry.pop("_sort", None)
+    return entries
+
+
+def _created_at_sort_key(created_at: str | None, mtime: float) -> float:
+    """Epoch seconds for sorting: parsed ``created_at`` ISO timestamp, else file mtime."""
+    if created_at:
+        try:
+            return datetime.fromisoformat(created_at).timestamp()
+        except ValueError:
+            pass
+    return mtime
+
+
 def restore_plan(
     backup_path: Path,
     install_dir: Path = DEFAULT_INSTALL_DIR,

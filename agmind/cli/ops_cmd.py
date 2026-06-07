@@ -25,6 +25,7 @@ from agmind.ops.backup import (
     BackupResult,
     create_backup,
     default_sources,
+    list_backups,
     read_metadata,
     restore_backup,
     restore_plan,
@@ -204,6 +205,55 @@ def cmd_backup(
             "--include-data (and --ask-sudo-password) to protect the stateful stores.",
             file=sys.stderr,
         )
+    return 0
+
+
+def _human_size(num_bytes: int) -> str:
+    """Human-readable byte size (binary units), e.g. ``43.56 MiB``."""
+    size = float(num_bytes)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024.0 or unit == "TiB":
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.2f} {unit}"
+        size /= 1024.0
+    return f"{size:.2f} TiB"
+
+
+def cmd_backup_list(directory: Path, as_json: bool = False) -> int:
+    """List agmind backup archives in ``directory`` (default: cwd), newest first.
+
+    Text or ``--json`` output. Never extracts member contents, so no secret VALUES
+    are read; only the archive path + cheap metadata are shown. An empty/absent dir
+    prints a friendly note and exits 0.
+    """
+    import json
+
+    entries = list_backups(Path(directory))
+
+    if as_json:
+        backups = [{k: v for k, v in e.items() if k != "mtime"} for e in entries]
+        print(json.dumps({"backups": backups}, indent=2, ensure_ascii=False))
+        return 0
+
+    if not entries:
+        print(f"no backups found in {directory}")
+        return 0
+
+    print(f"Backup archives in {directory}:")
+    for e in entries:
+        when = e.get("created_at") or "?"
+        size_raw = e.get("size_bytes", 0)
+        size = _human_size(int(size_raw) if isinstance(size_raw, int) else 0)
+        if e.get("ok"):
+            included = e.get("included") or []
+            n_inc = len(included) if isinstance(included, list) else 0
+            data_raw = e.get("data_members", 0)
+            n_data = int(data_raw) if isinstance(data_raw, int) else 0
+            status = f"({n_inc} included, {n_data} data)  [OK]"
+        else:
+            status = f"[CORRUPT: {e.get('error', 'unreadable')}]"
+        print(f"  {when:<26}  {e['name']:<32}  {size:>10}  {status}")
     return 0
 
 
@@ -746,6 +796,19 @@ def register(app: typer.Typer) -> None:
             code=cmd_backup(output, ask_sudo_password=ask_sudo_password, include_data=include_data)
         )
 
+    @app.command("backup-list")
+    def backup_list(
+        directory: Path = typer.Option(
+            Path("."),
+            "--directory",
+            "-d",
+            help="Directory to scan for *.tar.gz backup archives (default: current dir).",
+        ),
+        as_json: bool = typer.Option(False, "--json", help="JSON output."),
+    ) -> None:
+        """List backup archives in a directory (name, timestamp, size), newest first."""
+        raise typer.Exit(code=cmd_backup_list(directory, as_json=as_json))
+
     @app.command("backup-verify")
     def backup_verify(
         backup_file: Path = typer.Argument(..., help="Path to a .tar.gz backup to verify."),
@@ -902,6 +965,7 @@ def register(app: typer.Typer) -> None:
 __all__ = [
     "BACKUP_INSTALL_DIR",  # re-export для backwards compat / tests
     "cmd_backup",
+    "cmd_backup_list",
     "cmd_logs",
     "cmd_restore",
     "cmd_root_owned_backup_smoke",

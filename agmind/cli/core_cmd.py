@@ -7,13 +7,33 @@ not import them.
 
 from __future__ import annotations
 
+import getpass
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from agmind import __version__
 from agmind.core.paths import data_root
+
+if TYPE_CHECKING:
+    from agmind.config.validation import ConfigValidationReport
+    from agmind.diagnostics.doctor import DoctorReport
+
+
+def _run_preflight() -> DoctorReport:
+    """Indirection seam (lazy import + monkeypatchable in tests)."""
+    from agmind.diagnostics.doctor import run_preflight
+
+    return run_preflight()
+
+
+def _validate_config(install_dir: Path) -> ConfigValidationReport:
+    """Indirection seam for the live ConfigValidationReport (monkeypatchable)."""
+    from agmind.config.validation import validate_config
+
+    return validate_config(install_dir, check_drift=True, strict=False)
 
 
 def _deploy_summary(install_dir: Path) -> dict[str, object]:
@@ -71,14 +91,91 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def doctor(
         as_json: bool = typer.Option(False, "--json", help="JSON output"),
+        live: bool = typer.Option(
+            False,
+            "--live",
+            help="Also run validate_config(install_dir) and merge its findings "
+            "(env mode, secret-file perms, required vars, service drift).",
+        ),
+        fix: bool = typer.Option(
+            False,
+            "--fix",
+            help="Implies --live. Auto-apply ONLY safe idempotent perm fixes "
+            "(sudo chmod/chown); every other suggested fix is printed, never run.",
+        ),
+        bundle: Path = typer.Option(
+            None,
+            "--bundle",
+            help="Write a sanitized support tar.gz (redacted .env, compose, docker "
+            "ps/logs, validation + doctor reports). Output path must not exist.",
+        ),
+        install_dir: Path = typer.Option(
+            Path("/opt/agmind"),
+            "--install-dir",
+            help="Deployed install dir (for --live / --fix / --bundle).",
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for a sudo password (used by --fix perm operations).",
+        ),
     ) -> None:
-        """Run preflight diagnostics."""
-        from agmind.diagnostics.doctor import format_doctor_report, run_preflight
+        """Run preflight diagnostics; optionally merge live config, auto-fix, bundle.
 
-        report = run_preflight()
+        Bare ``agmind doctor`` is unchanged (today's preflight). ``--live`` folds the
+        live deployment's ConfigValidationReport in; ``--fix`` (implies ``--live``) runs
+        only the permission-class idempotent fixes; ``--bundle PATH`` writes a redacted
+        support archive.
+        """
+        from agmind.config.validation import ConfigFinding
+        from agmind.diagnostics import live as live_mod
+        from agmind.diagnostics.doctor import format_doctor_report
+
+        if fix:
+            live = True
+
+        report = _run_preflight()
+        live_findings: tuple[ConfigFinding, ...] = ()
+        if live:
+            live_report = _validate_config(install_dir)
+            live_findings = tuple(live_report.findings)
+
+        if fix:
+            sudo_password = getpass.getpass("sudo password: ") if ask_sudo_password else None
+            fix_result = live_mod.apply_safe_fixes(live_findings, sudo_password=sudo_password)
+            if not as_json:
+                for outcome in fix_result.fixed:
+                    typer.echo(f"  ✓ fixed {outcome.finding.id}: {outcome.finding.fix_cmd}")
+                for outcome in fix_result.failed:
+                    typer.echo(
+                        f"  ✗ FAILED to fix {outcome.finding.id}: {outcome.detail}", err=True
+                    )
+                if fix_result.unfixable:
+                    typer.echo("Cannot auto-fix (manual action required):")
+                    for finding in fix_result.unfixable:
+                        typer.echo(f"  - {finding.id}: {finding.fix_cmd}")
+            # Re-evaluate so the merged report reflects the post-fix state.
+            live_report = _validate_config(install_dir)
+            live_findings = tuple(live_report.findings)
+
+        if live:
+            report = live_mod.merge_live_findings(report, live_findings)
+
+        if bundle is not None:
+            try:
+                result = live_mod.create_support_bundle(bundle, install_dir=install_dir)
+            except Exception as exc:  # noqa: BLE001 — surface as exit 3, not a traceback
+                typer.echo(f"ERROR: bundle creation failed: {exc}", err=True)
+                raise typer.Exit(code=3) from exc
+            typer.echo(
+                f"support bundle written: {result.output_path} ({result.bytes_written} bytes)"
+            )
+            for issue in result.issues:
+                typer.echo(f"  note: {issue}")
+
         typer.echo(format_doctor_report(report, as_json=as_json))
         if report.has_failures:
-            raise typer.Exit(code=2)
+            raise typer.Exit(code=2 if not live else 1)
         if report.has_warnings:
             raise typer.Exit(code=1)
 
