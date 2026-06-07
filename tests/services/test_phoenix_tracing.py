@@ -26,6 +26,11 @@ def test_phoenix_descriptor_shape() -> None:
     # default-only (no networks block) → shared default bridge; Dify reaches phoenix:6006 there
     assert p.networks == []
     assert any("6006" in str(port) for port in p.ports), "phoenix UI/OTLP-HTTP port 6006"
+    # The Phoenix SPA streams live traces over SSE/GraphQL-subscriptions; without sse the edge proxy
+    # buffers the stream and the UI loads but never populates ("dead"). live 2026-06-08.
+    assert p.routing is not None and p.routing.sse is True, (
+        "phoenix UI needs sse (no proxy buffering)"
+    )
 
 
 def test_phoenix_is_hardened_nonroot() -> None:

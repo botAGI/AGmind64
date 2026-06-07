@@ -49,6 +49,10 @@ routing:
   host: phoenix.agmind.dev
   middleware_chain: chain-internal
   healthcheck_path: /healthz
+  # Phoenix's UI streams live traces over SSE / GraphQL subscriptions; without sse the traefik default
+  # buffers the stream and the SPA loads but never populates (looks "dead"). sse sets flushinterval=1ms
+  # + no-http2 on the router. live 2026-06-08 (phoenix-dead-behind-buffering-proxy).
+  sse: true
 # Phoenix native auth is OFF (PHOENIX_ENABLE_AUTH unset) — the UI is gated by Authelia at the edge
 # (chain-internal), exactly like dozzle/netdata/prometheus; Dify pushes OTLP internally on :6006. To
 # also harden the internal API, set PHOENIX_ENABLE_AUTH=true + a generated PHOENIX_SECRET (operator
