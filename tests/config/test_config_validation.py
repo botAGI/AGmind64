@@ -36,9 +36,27 @@ def _write_compose(install_dir: Path, services: dict[str, object]) -> Path:
     return compose
 
 
+def _stage_postgres_secret(secrets_dir: Path) -> None:
+    """Stage an owner-readable postgres_password so A8 finds a present secret.
+
+    postgres has NO ``reader_uid`` requirement (it reads ``*_PASSWORD_FILE`` while
+    still root), so a plain 0600 file owned by the test user satisfies the A8 stat
+    (``_check_secret_files`` returns early on ``reader_uid is None``). No chown is
+    needed — which is what keeps this hermetic on a non-root CI runner.
+    """
+    secret = secrets_dir / "postgres_password"
+    secret.write_text("s3cret-value", encoding="utf-8")
+    os.chmod(secret, 0o600)
+
+
 @pytest.fixture
-def good_install(tmp_path: Path) -> Path:
-    """A clean install dir: 0600 .env with the required var, valid compose."""
+def good_install(tmp_path: Path, _hermetic_secrets_dir: Path) -> Path:
+    """A clean install dir: 0600 .env with the required var, valid compose.
+
+    Selects postgres and stages its secret in the hermetic tmp secrets dir so the
+    A8 secret-file check passes deterministically on any host (never reads the
+    live ``/var/lib/agmind``).
+    """
     install = tmp_path / "opt-agmind"
     install.mkdir()
     _write_env(install, {"POSTGRES_PASSWORD": "s3cret-value"}, mode=0o600)
@@ -51,6 +69,7 @@ def good_install(tmp_path: Path) -> Path:
             }
         },
     )
+    _stage_postgres_secret(_hermetic_secrets_dir)
     return install
 
 
@@ -302,12 +321,12 @@ def test_unresolved_placeholder_value(good_install: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_secret_file_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_secret_file_missing(tmp_path: Path, _hermetic_secrets_dir: Path) -> None:
+    # The autouse _hermetic_secrets_dir fixture gives an EMPTY tmp secrets dir, so
+    # selecting a DB service WITHOUT staging its secret naturally fires
+    # secret-file-missing (no reliance on the host /var/lib/agmind).
     install = tmp_path / "secfile"
     install.mkdir()
-    secrets = tmp_path / "secrets"
-    secrets.mkdir()
-    monkeypatch.setattr(validation, "_DEFAULT_SECRETS_DIR", secrets)
     _write_env(install, {"KOMODO_DATABASE_PASSWORD": "x"}, mode=0o600)
     _write_compose(install, {"komodo-mongo": {"image": "mongo:8"}})
     report = validate_config(install, check_drift=False)
@@ -316,14 +335,11 @@ def test_secret_file_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_secret_file_unreadable_by_reader_uid(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
 ) -> None:
     install = tmp_path / "secfile2"
     install.mkdir()
-    secrets = tmp_path / "secrets"
-    secrets.mkdir()
-    monkeypatch.setattr(validation, "_DEFAULT_SECRETS_DIR", secrets)
-    secret = secrets / "komodo_mongo_password"
+    secret = _hermetic_secrets_dir / "komodo_mongo_password"
     secret.write_text("pw", encoding="utf-8")
     os.chmod(secret, 0o600)
     _write_env(install, {"KOMODO_DATABASE_PASSWORD": "x"}, mode=0o600)
@@ -351,13 +367,10 @@ def test_secret_file_unreadable_by_reader_uid(
 
 
 def test_secret_file_not_checked_when_service_unselected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, _hermetic_secrets_dir: Path
 ) -> None:
     install = tmp_path / "secfile3"
     install.mkdir()
-    secrets = tmp_path / "secrets"
-    secrets.mkdir()
-    monkeypatch.setattr(validation, "_DEFAULT_SECRETS_DIR", secrets)
     _write_env(install, {"FOO": "x"}, mode=0o600)
     # grafana is NOT a DB_SECRET_FILES service → no secret-file finding at all.
     _write_compose(install, {"grafana": {"image": "grafana/grafana:11"}})
@@ -371,7 +384,7 @@ def test_secret_file_not_checked_when_service_unselected(
 # --------------------------------------------------------------------------- #
 
 
-def _compose_with_postgres(install: Path) -> None:
+def _compose_with_postgres(install: Path, secrets_dir: Path) -> None:
     _write_env(install, {"POSTGRES_PASSWORD": "x"}, mode=0o600)
     _write_compose(
         install,
@@ -382,12 +395,17 @@ def _compose_with_postgres(install: Path) -> None:
             }
         },
     )
+    # Stage the postgres secret in the hermetic tmp dir so the A8 check is clean
+    # (no spurious secret-file-missing) on a fresh CI runner.
+    _stage_postgres_secret(secrets_dir)
 
 
-def test_drift_skipped_when_docker_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_drift_skipped_when_docker_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
+) -> None:
     install = tmp_path / "drift-skip"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
     monkeypatch.setattr(validation, "_running_image_digests", lambda selected: None)
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
@@ -396,10 +414,12 @@ def test_drift_skipped_when_docker_absent(tmp_path: Path, monkeypatch: pytest.Mo
     assert not report.by_severity("error")
 
 
-def test_drift_not_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_drift_not_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
+) -> None:
     install = tmp_path / "drift-down"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
     monkeypatch.setattr(
         validation, "_running_image_digests", lambda selected: {"postgres": validation._NOT_RUNNING}
     )
@@ -412,10 +432,12 @@ def test_drift_not_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert strict_report.ok is False
 
 
-def test_drift_digest_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_drift_digest_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
+) -> None:
     install = tmp_path / "drift-mismatch"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
 
     # Real postgres descriptor digest vs a bogus running digest.
     from agmind.services.renderer import load_descriptors
@@ -433,10 +455,12 @@ def test_drift_digest_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert "agmind deploy --apply" in finding.fix_cmd
 
 
-def test_drift_orphan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_drift_orphan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
+) -> None:
     install = tmp_path / "drift-orphan"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
     monkeypatch.setattr(
         validation,
         "_running_image_digests",
@@ -451,10 +475,12 @@ def test_drift_orphan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "agmind-ghost" in orphan.evidence
 
 
-def test_drift_undeterminable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_drift_undeterminable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
+) -> None:
     install = tmp_path / "drift-undet"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
     monkeypatch.setattr(validation, "_running_image_digests", lambda selected: {"postgres": ""})
     monkeypatch.setattr(validation, "_running_agmind_containers", list)
     report = validate_config(install, check_drift=True)
@@ -462,11 +488,11 @@ def test_drift_undeterminable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_no_drift_findings_when_check_drift_false(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
 ) -> None:
     install = tmp_path / "no-drift"
     install.mkdir()
-    _compose_with_postgres(install)
+    _compose_with_postgres(install, _hermetic_secrets_dir)
 
     def _boom(*_a: object, **_k: object) -> None:
         raise AssertionError("docker helper must not be called when check_drift=False")

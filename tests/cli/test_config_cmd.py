@@ -14,7 +14,23 @@ from agmind.cli import config_cmd
 pytestmark = pytest.mark.backend_any
 
 
-def _good_install(tmp_path: Path) -> Path:
+@pytest.fixture(autouse=True)
+def _hermetic_secrets_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point ``_DEFAULT_SECRETS_DIR`` at a per-test tmp dir (host-state isolation).
+
+    A ``tests/config/conftest.py`` cannot reach this ``tests/cli/`` module, so the
+    same autouse fixture is declared here. Without it the A8 secret-file check
+    falls back to the live host ``/var/lib/agmind/secrets`` — present on a dev box,
+    absent on a clean CI runner — and emits a spurious ``secret-file-missing``
+    error that breaks the happy-path exit-0 assertions.
+    """
+    secrets = tmp_path / "agmind-secrets"
+    secrets.mkdir()
+    monkeypatch.setattr("agmind.config.validation._DEFAULT_SECRETS_DIR", secrets)
+    return secrets
+
+
+def _good_install(tmp_path: Path, secrets_dir: Path) -> Path:
     install = tmp_path / "opt-agmind"
     install.mkdir()
     env = install / ".env"
@@ -34,6 +50,12 @@ def _good_install(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    # Stage the postgres secret in the hermetic tmp dir. postgres has no reader_uid
+    # requirement, so an owner-readable 0600 file owned by the test user satisfies
+    # the A8 stat without any chown (keeps this green on a non-root CI runner).
+    secret = secrets_dir / "postgres_password"
+    secret.write_text("s3cret", encoding="utf-8")
+    os.chmod(secret, 0o600)
     return install
 
 
@@ -48,9 +70,13 @@ def _app() -> typer.Typer:
 # --------------------------------------------------------------------------- #
 
 
-def test_cmd_validate_json_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cmd_validate_json_ok(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], _hermetic_secrets_dir: Path
+) -> None:
     rc = config_cmd.cmd_validate(
-        install_dir=_good_install(tmp_path), as_json=True, check_drift=False
+        install_dir=_good_install(tmp_path, _hermetic_secrets_dir),
+        as_json=True,
+        check_drift=False,
     )
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
@@ -94,7 +120,7 @@ def test_cmd_validate_never_exits_two(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_cli_config_validate_json(tmp_path: Path) -> None:
+def test_cli_config_validate_json(tmp_path: Path, _hermetic_secrets_dir: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         _app(),
@@ -103,7 +129,7 @@ def test_cli_config_validate_json(tmp_path: Path) -> None:
             "validate",
             "--json",
             "--install-dir",
-            str(_good_install(tmp_path)),
+            str(_good_install(tmp_path, _hermetic_secrets_dir)),
             "--no-drift",
         ],
     )
@@ -127,19 +153,15 @@ def test_cli_config_validate_failure_exit_code(tmp_path: Path) -> None:
 
 
 def test_cli_config_validate_strict_flips_on_warning(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _hermetic_secrets_dir: Path
 ) -> None:
     # A config whose ONLY finding is a warning (drift-not-running): non-strict
     # passes (exit 0 / ok True), --strict fails (exit 1 / ok False).
     from agmind.config import validation
 
-    install = _good_install(tmp_path)
-    # Point the secret-file check at a tmp dir holding a present postgres secret
-    # so the ONLY finding is the drift warning (deterministic across CI hosts).
-    secrets = tmp_path / "secrets"
-    secrets.mkdir()
-    (secrets / "postgres_password").write_text("pw", encoding="utf-8")
-    monkeypatch.setattr(validation, "_DEFAULT_SECRETS_DIR", secrets)
+    # _good_install stages the postgres secret in the hermetic tmp dir, so the
+    # ONLY finding is the drift warning (deterministic across CI hosts).
+    install = _good_install(tmp_path, _hermetic_secrets_dir)
     monkeypatch.setattr(
         validation,
         "_running_image_digests",
