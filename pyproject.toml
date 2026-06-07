@@ -191,10 +191,6 @@ exclude = ["legacy/", "tests/fixtures/"]
 module = ["llama_cpp.*"]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = ["agmind.cli.tui.wizard_screens"]
-disable_error_code = ["attr-defined", "misc"]
-
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
