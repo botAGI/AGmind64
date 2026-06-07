@@ -132,7 +132,10 @@ def check_service_compatibility(
     # resolve_service_selection. This validation runs on the raw `select_services` set, which does
     # NOT expand that closure, so such consumes are NOT genuinely missing — don't hard-error them
     # (matches renderer._check_unresolved_consumes). live-audit 2026-06-05.
-    from agmind.services.topology_checks import KNOWN_CROSS_PROFILE_CONSUMES
+    from agmind.services.topology_checks import (
+        CLOSURE_PULLED_CAPABILITIES,
+        KNOWN_CROSS_PROFILE_CONSUMES,
+    )
 
     consumed: dict[str, list[str]] = defaultdict(list)
     for name, d in selected.items():
@@ -143,6 +146,8 @@ def check_service_compatibility(
             optional = cap in OPTIONAL_MISSING_CAPABILITIES
             if optional:
                 flagged = sorted(consumers)  # optional: surface as info for every consumer
+            elif cap in CLOSURE_PULLED_CAPABILITIES:
+                flagged = []  # sole provider is closure-pulled (docker_api → proxy) — derived
             else:
                 # hard error only for consumers whose consume is NOT a known closure-pulled link
                 flagged = sorted(

@@ -315,21 +315,19 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
     ("ragflow", "llm_inference"),
     ("ragflow", "embedding_inference"),
     ("ragflow", "reranker"),
-    # prometheus (observability) discovers targets via docker-socket-proxy (observability) over
-    # tcp://docker-socket-proxy:2375. Same profile but closure-pulled rather than literally
-    # co-listed — whitelist so a raw per-service prometheus render does not fail-closed when the
-    # proxy is absent. live-audit 2026-06-05 grafana-empty.
-    ("prometheus", "docker_api"),
-    # cadvisor + alloy (observability) reach the Docker API via the same docker-socket-proxy
-    # (closure-pulled). live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
-    ("cadvisor", "docker_api"),
-    ("alloy", "docker_api"),
-    ("netdata", "docker_api"),
-    ("dozzle", "docker_api"),
-    # traefik (core/full) docker provider reaches the API via the proxy (observability),
-    # closure-pulled across profiles. live-audit 2026-06-05 docker-sock-raw-mount-blast-radius.
-    ("traefik", "docker_api"),
+    # NOTE: docker_api consumers are NOT listed here — they are DERIVED via
+    # CLOSURE_PULLED_CAPABILITIES below (the proxy is the sole, always-co-pulled provider), so a
+    # new docker_api consumer needs no edit here. de-slop 2026-06-07 SLOP-H3.
 }
+
+# Capabilities whose SOLE provider is closure-pulled (added to the deploy set by the consumes-walk
+# in resolve_service_selection, not by profile membership). ANY consumer of such a cap is a known,
+# satisfiable cross-profile/closure link — so we derive it instead of hand-listing one
+# (consumer, cap) pair per service (which rippled on every new consumer). Currently only
+# `docker_api` (sole provider = docker-socket-proxy). LLM caps stay EXPLICIT above because their
+# provider (llama-*) is conditional on model_id!=skip — an editorial fact, not mechanical.
+# de-slop 2026-06-07 SLOP-H3.
+CLOSURE_PULLED_CAPABILITIES: frozenset[str] = frozenset({"docker_api"})
 
 
 def check_depends_on_within_profile(

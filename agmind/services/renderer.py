@@ -529,13 +529,18 @@ def _check_unresolved_consumes(
         OPTIONAL_MISSING_CAPABILITIES,
         resolve_capability_provider_for_consumer,
     )
-    from agmind.services.topology_checks import KNOWN_CROSS_PROFILE_CONSUMES
+    from agmind.services.topology_checks import (
+        CLOSURE_PULLED_CAPABILITIES,
+        KNOWN_CROSS_PROFILE_CONSUMES,
+    )
 
     unresolved: list[tuple[str, str]] = []
     for name, d in selected.items():
         for cap in d.consumes:
             if cap in OPTIONAL_MISSING_CAPABILITIES:
                 continue
+            if cap in CLOSURE_PULLED_CAPABILITIES:
+                continue  # sole provider is closure-pulled (e.g. docker_api → docker-socket-proxy)
             if (name, cap) in KNOWN_CROSS_PROFILE_CONSUMES:
                 continue
             provider = resolve_capability_provider_for_consumer(selected, cap, name)
