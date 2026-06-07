@@ -1,19 +1,15 @@
 ---
 # Install agmind Python package в /opt/agmind/venv + CLI entrypoint.
 
-- name: Create agmind venv
+# Guard on bin/PIP, not bin/python: a venv whose ensurepip was interrupted by a prior failed run has
+# bin/python but NO pip → the next "Ensure pip tooling" pip task fails "Unable to find pip in the
+# virtualenv". `--clear` makes such a partial/broken venv SELF-HEAL on re-run (wipe + recreate WITH
+# pip), while a healthy venv (bin/pip present) is skipped by the guard and left untouched (its agmind
+# install survives). Verified: --clear restores pip even on a pip-stripped venv. live clean-install
+# 2026-06-07 (the pip-less-venv rake — `creates: bin/python` reused a venv that had no pip).
+- name: Create agmind venv (self-healing — recreates a partial/pip-less venv)
   ansible.builtin.command:
-    cmd: python3 -m venv {{ agmind_install_dir }}/venv
-    creates: "{{ agmind_install_dir }}/venv/bin/python"
-  become_user: "{{ agmind_user }}"
-
-# Re-run safety: the task above guards on bin/python, but a venv whose ensurepip was interrupted by a
-# prior failed run has bin/python WITHOUT pip → the next "Ensure pip tooling" task fails with "Unable
-# to find pip in the virtualenv". Bootstrap pip explicitly (offline-safe: uses the bundled wheels from
-# python3-pip-whl). Idempotent via creates: bin/pip. live clean-install 2026-06-07 (pip-less-venv rake).
-- name: Bootstrap pip into the venv (a partial prior venv may have python but no pip)
-  ansible.builtin.command:
-    cmd: "{{ agmind_install_dir }}/venv/bin/python -m ensurepip --upgrade"
+    cmd: python3 -m venv --clear {{ agmind_install_dir }}/venv
     creates: "{{ agmind_install_dir }}/venv/bin/pip"
   become_user: "{{ agmind_user }}"
 
