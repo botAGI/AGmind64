@@ -103,6 +103,31 @@ def _run_cmd(cmd: list[str]) -> int:
         return 1
 
 
+def _docker_ids(filter_cmd: list[str]) -> list[str]:
+    """Capture docker object ids for a list/ps query (empty on any failure). Seam for tests."""
+    try:
+        out = subprocess.run(filter_cmd, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [tok for tok in out.stdout.split() if tok]
+
+
+def _sweep_agmind_runtime(*, volumes: bool) -> None:
+    """Force-remove any lingering ``agmind-*`` containers / networks (and, with volumes, agmind
+    volumes) that ``compose down`` missed — e.g. orphans from a prior project/state (a service no
+    longer in the current compose, like a removed subsystem). Best-effort; no sudo (docker-group)."""
+    cids = _docker_ids(["docker", "ps", "-aq", "--filter", "name=agmind-"])
+    if cids:
+        _run_cmd(["docker", "rm", "-f", *cids])
+    nids = _docker_ids(["docker", "network", "ls", "-q", "--filter", "name=agmind"])
+    if nids:
+        _run_cmd(["docker", "network", "rm", *nids])
+    if volumes:
+        vids = _docker_ids(["docker", "volume", "ls", "-q", "--filter", "name=agmind"])
+        if vids:
+            _run_cmd(["docker", "volume", "rm", *vids])
+
+
 def cmd_uninstall(
     *,
     data: bool = False,
@@ -118,8 +143,12 @@ def cmd_uninstall(
     data_dir = Path("/var/lib/agmind")
     config_dir = Path("/etc/agmind")
     shim = Path("/usr/local/bin/agmind")
+    # User-state holds the SAVED wizard selection (setup-state.json). A stale entry here — e.g. a
+    # service later removed from the catalog — makes the next install abort with "Unknown services
+    # requested", so a --data wipe MUST clear it for a truly clean reinstall. live 2026-06-07.
+    user_state = [Path.home() / ".local/share/agmind", Path.home() / ".config/agmind"]
     compose_file = install_dir / "docker-compose.yml"
-    removed = [install_dir, shim] + ([data_dir, config_dir] if data else [])
+    removed = [install_dir, shim] + ([data_dir, config_dir, *user_state] if data else [])
 
     typer.echo("agmind uninstall will:")
     typer.echo(f"  • docker compose down --remove-orphans{' --volumes' if data else ''}")
@@ -146,6 +175,11 @@ def cmd_uninstall(
             typer.echo("  ! compose down reported an error — continuing teardown anyway", err=True)
     else:
         typer.echo(f"  (no {compose_file} — skipping compose down)")
+
+    # Force-remove any agmind-* containers / networks compose-down missed (orphans from a prior
+    # project/state — e.g. a removed subsystem still running). This is why a bare reinstall could
+    # otherwise leave wedged leftovers. live 2026-06-07.
+    _sweep_agmind_runtime(volumes=data)
 
     # remove paths (best-effort, sudo for root-owned trees)
     for p in removed:
