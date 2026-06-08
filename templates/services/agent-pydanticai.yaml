@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: agent-pydanticai
+# AGmind-authored image — built on-host from shipped source (compose build:), not pulled.
+# No registry digest (build-services are exempt from the digest-pin gate).
+image: agmind-agent-pydanticai:0.1.0
+build:
+  context: .
+  dockerfile: docker/Dockerfile.agent-pydanticai
+tier: app
+purpose: Typed agent server (PydanticAI) over the local LLM — opt-in agents-pydantic
+owner: agent-stack
+profiles:
+- agents-pydantic
+# Dual-homed: default (traefik/authelia edge + llama-llm/phoenix) + data-net (agent-db).
+networks:
+- default
+- data-net
+env:
+  # llm_inference / llm_tracing have no BINDINGS row for this service → endpoints hardcoded.
+  AGENT_LLM_BASE_URL: http://llama-llm:8080/v1
+  AGENT_LLM_MODEL: ${AGENT_LLM_MODEL:-llama}
+  AGENT_LLM_API_KEY: sk-no-key-required
+  AGENT_OTEL_ENDPOINT: http://phoenix:6006/v1/traces
+  AGENT_OTEL_SERVICE: agmind-agent-pydanticai
+  # Durable execution (DBOS → agent-db) is OFF by default; flip AGENT_DURABLE=1 to enable.
+  AGENT_DURABLE: ${AGENT_DURABLE:-0}
+  AGENT_DB_URL: postgresql://agent:${AGENT_DB_PASSWORD:?AGENT_DB_PASSWORD is required}@agent-db:5432/agents
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+  mem_reservation: 256m
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:8800/health
+  start_period: 40s
+  interval: 15s
+  timeout: 5s
+  retries: 10
+routing:
+  host: agent.agmind.dev
+  middleware_chain: chain-internal
+  healthcheck_path: /health
+access:
+  note: "PydanticAI agent API — POST /chat {\"message\":\"...\"}. Gated by Authelia at the edge."
+# Providers (llama-llm, phoenix) live in other profiles — modelled via consumes (cross-profile
+# depends_on would hard-raise the standalone render). Endpoints are hardcoded in env above.
+consumes:
+- llm_inference
+- llm_tracing
+no_new_privileges: true
+cap_drop:
+- ALL

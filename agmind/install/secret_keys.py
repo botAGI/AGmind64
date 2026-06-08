@@ -41,6 +41,9 @@ RUNTIME_SECRET_KEYS: tuple[str, ...] = (
     # Dify plugin-daemon ↔ dify-api inner-API handshake (must be shared + generated).
     "DIFY_PLUGIN_DAEMON_KEY",
     "DIFY_PLUGIN_INNER_API_KEY",
+    # agent-db (pgvector) root password — its OWN trust domain (separate from the dify postgres).
+    # Read by the agent apps as ${AGENT_DB_PASSWORD}; written to a 0600 FILE for the DB server.
+    "AGENT_DB_PASSWORD",
 )
 
 # Authelia required secrets (read by the container as AUTHELIA_* env). 64-char so
@@ -80,6 +83,9 @@ INIT_ONLY = frozenset(
         # Hashed into users_database.yml at materialize; rotating the env alone is a no-op
         # until a re-materialize/re-install regenerates the hash.
         "AUTHELIA_ADMIN_PASSWORD",
+        # pgvector sets the agent-db root password only on first init of an empty data dir;
+        # rotating the env afterwards is a no-op (needs an in-DB ALTER USER reset).
+        "AGENT_DB_PASSWORD",
     }
 )
 ENCRYPT_AT_REST = frozenset(
@@ -95,6 +101,8 @@ ENCRYPT_AT_REST = frozenset(
 DB_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
     ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
     ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
+    # agent-db (pgvector) reads POSTGRES_PASSWORD_FILE while still root — no reader-uid entry.
+    ("agent-db", "agent_db_password", "AGENT_DB_PASSWORD"),
 )
 
 # Secret FILES that the consuming image reads AFTER dropping to a non-root uid, so a root:root 0600

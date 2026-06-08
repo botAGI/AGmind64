@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+# AGmind agent-core (Agno) — AgentOS FastAPI platform.
+#
+# Slim upstream Python base (NOT agmind-base). Built LOCALLY on the operator's host at deploy
+# time via the compose `build:` block (no registry dependency → air-gap-friendly). Pinned
+# base digest (amd64/linux verified).
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+
+# curl: container healthcheck. (psycopg ships a binary wheel — no libpq build toolchain needed.)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY services/agent_agno/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY services/agent_agno/ /app/
+
+# Non-root runtime (hardening). Agno persists state to Postgres (network), nothing local.
+RUN useradd -r -u 10001 -m agent
+USER 10001
+
+# Belt: kill Agno's anonymous telemetry at the image level too (server.py also sets it).
+ENV AGNO_TELEMETRY=false
+
+EXPOSE 8800
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=10 \
+    CMD curl -fsS http://localhost:8800/health || exit 1
+ENTRYPOINT ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8800"]

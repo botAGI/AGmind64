@@ -67,6 +67,26 @@
       "title": "AccessConfig",
       "type": "object"
     },
+    "BuildConfig": {
+      "additionalProperties": false,
+      "description": "Local image build for an AGmind-authored app service (compose-native ``build:``).\n\nA descriptor with a ``build:`` block is built on the operator's host from shipped source\nat deploy time — NOT pulled from a registry. This is how AGmind ships its OWN images (the\nagent cores) without a registry/publish step: air-gap-friendly, nothing published. Such a\nservice carries no registry digest, so it is exempt from the digest-pin gate; its ``image``\nis the resulting local tag (still ``:latest``-forbidden, still pinned by tag).",
+      "properties": {
+        "context": {
+          "default": ".",
+          "title": "Context",
+          "type": "string"
+        },
+        "dockerfile": {
+          "title": "Dockerfile",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dockerfile"
+      ],
+      "title": "BuildConfig",
+      "type": "object"
+    },
     "HealthCheck": {
       "additionalProperties": false,
       "description": "Docker healthcheck definition (compose v3 format).\n\nИспользуется тремя потребителями (deep-dive 04 §5):\n- Docker compose: для restart logic\n- Traefik: для исключения unhealthy из роутинга\n- Prometheus blackbox: для алертинга",
@@ -289,6 +309,17 @@
       ],
       "default": null,
       "title": "Digest"
+    },
+    "build": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BuildConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "tier": {
       "enum": [

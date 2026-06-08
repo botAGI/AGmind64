@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../schemas/component.json
+id: agent-stack
+kind: app
+core:
+  upstream: https://github.com/pydantic/pydantic-ai + https://github.com/agno-agi/agno
+  recommended_version: 0.1.0
+  current_pin: 0.1.0
+  update_policy: manual-hold
+  hold_reason: AGmind-authored agent images built on-host from shipped source (compose build:).
+  source: local
+runtime:
+  service_descriptors:
+    - agent-pydanticai
+    - agent-agno
+    - agent-db
+  compose_profiles:
+    - agents-pydantic
+    - agents-agno
+  ports: []
+provides:
+  - agent_api
+  - agent_state
+requires:
+  capabilities: []
+verification:
+  smoke:
+    - agmind render compose --profile core,agents-pydantic --domain ci.example.com --output /tmp/agmind-agent-pydantic.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-agent-pydantic.yml config --quiet
+    - agmind render compose --profile core,agents-agno --domain ci.example.com --output /tmp/agmind-agent-agno.yml
+    - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-agent-agno.yml config --quiet
+  schema_refs:
+    - templates/schemas/service.json

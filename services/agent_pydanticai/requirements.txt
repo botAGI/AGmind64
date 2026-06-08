@@ -1,0 +1,8 @@
+# AGmind agent-core (PydanticAI) runtime deps. pydantic-ai pinned (the load-bearing one);
+# the OpenAI extra = the openai client for the llama.cpp endpoint; dbos extra = optional
+# durable execution (AGENT_DURABLE=1). OTel = raw SDK route to Phoenix (no logfire/SaaS).
+pydantic-ai-slim[openai,dbos]==1.106.0
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+opentelemetry-sdk>=1.27,<2
+opentelemetry-exporter-otlp-proto-http>=1.27,<2

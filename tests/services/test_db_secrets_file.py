@@ -36,6 +36,7 @@ def test_installer_writes_db_secret_files() -> None:
     expected = {
         ("postgres", "postgres_password", "POSTGRES_PASSWORD"),
         ("mysql", "mysql_root_password", "MYSQL_ROOT_PASSWORD"),
+        ("agent-db", "agent_db_password", "AGENT_DB_PASSWORD"),
     }
     assert set(DB_SECRET_FILES) == expected
     # _materialize_runtime_files consumes the shared constant (not an inline duplicate)

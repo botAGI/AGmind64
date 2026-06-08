@@ -30,12 +30,19 @@ _SERVICES_DIR = _REPO_ROOT / "templates" / "services"
 
 
 def _load_descriptor_digests(services_dir: Path = _SERVICES_DIR) -> dict[str, str | None]:
-    """Load {service_name: digest_or_None} from all descriptor YAMLs."""
+    """Load {service_name: digest_or_None} from all descriptor YAMLs.
+
+    Build-services (compose ``build:``) are built on-host from shipped source, carry no
+    registry digest, and are exempt from the pin gate — mirror ``digest_check.py`` and
+    skip them so they do not register as ``unpinned`` (agent-pydanticai / agent-agno).
+    """
     import yaml
 
     result: dict[str, str | None] = {}
     for path in sorted(services_dir.glob("*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if data.get("build") is not None:
+            continue
         name = data.get("name", path.stem)
         result[name] = data.get("digest")
     return result
@@ -76,7 +83,7 @@ def test_digest_check_passes_on_pinned_catalog() -> None:
     from scripts.checks.digest_check import check_digest_pins
 
     issues, service_count = check_digest_pins()
-    assert service_count == 43, f"expected 43 descriptors, got {service_count}"
+    assert service_count == 46, f"expected 46 descriptors, got {service_count}"
     assert issues == [], (
         f"digest check found {len(issues)} unpinned descriptor(s): {[i['service'] for i in issues]}"
     )

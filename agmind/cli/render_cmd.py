@@ -76,6 +76,12 @@ def cmd_render_catalog(
     # services that are pinned — callers should treat missing digest as a gap).
     services: dict[str, object] = {}
     for name, desc in descriptors.items():
+        # Build-services (compose `build:`) are built on-host from shipped source, not pulled by
+        # digest — they have no registry digest/ref and so are not part of the pull-by-digest
+        # release catalog (the air-gap/install host builds them from the wheel's docker/ context).
+        # Mirrors digest_check's build-exemption; keeps every catalog entry digest-pinned.
+        if desc.build is not None:
+            continue
         entry: dict[str, object] = {
             "image": desc.image,
             "tier": desc.tier,

@@ -377,6 +377,8 @@ _PROFILE_DESCRIPTIONS: dict[str, str] = {
     "security": "Authelia + fail2ban",
     "rag-weaviate": "RAG с Weaviate вместо Qdrant",
     "rag-milvus": "RAG с Milvus вместо Qdrant",
+    "agents-pydantic": "PydanticAI agent runtime (typed, structured-output agents)",
+    "agents-agno": "Agno agent runtime (multi-agent teams, tool-calling)",
     "full": "Все профили вместе",
 }
 

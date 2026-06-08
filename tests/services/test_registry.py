@@ -42,6 +42,8 @@ def test_service_profile_values_stable() -> None:
         "proxmox",
         "security",
         "tracing",
+        "agents-pydantic",
+        "agents-agno",
         "full",
     }
     assert {p.value for p in ServiceProfile} == expected

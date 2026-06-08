@@ -86,9 +86,15 @@ def test_real_catalog_only_tiered_services_have_networks() -> None:
         "postgres",
         "redis",
         "qdrant",
+        # agent-db (pgvector) caged on data-net — opt-in agents profiles.
+        "agent-db",
         # data-net dual-homed consumers
         "milvus",
         "ragflow",
+        # agent apps are dual-homed default+data-net (reach llama/phoenix on default,
+        # agent-db on data-net) — opt-in agents profiles.
+        "agent-pydanticai",
+        "agent-agno",
         "dify-api",
         "dify-worker",
         "dify-plugin-daemon",

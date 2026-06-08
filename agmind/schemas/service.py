@@ -241,6 +241,25 @@ class ResourceLimits(BaseModel):
         return v
 
 
+class BuildConfig(BaseModel):
+    """Local image build for an AGmind-authored app service (compose-native ``build:``).
+
+    A descriptor with a ``build:`` block is built on the operator's host from shipped source
+    at deploy time — NOT pulled from a registry. This is how AGmind ships its OWN images (the
+    agent cores) without a registry/publish step: air-gap-friendly, nothing published. Such a
+    service carries no registry digest, so it is exempt from the digest-pin gate; its ``image``
+    is the resulting local tag (still ``:latest``-forbidden, still pinned by tag).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    context: str = "."
+    """Docker build context (repo-relative). Default repo root."""
+
+    dockerfile: str
+    """Dockerfile path relative to the build context (e.g. docker/Dockerfile.agent-pydanticai)."""
+
+
 class ServiceDescriptor(BaseModel):
     """Single source of truth для одного сервиса (Phase H' artifact).
 
@@ -269,6 +288,11 @@ class ServiceDescriptor(BaseModel):
 
     digest: str | None = None
     """Optional SHA256 digest (sha256:abc... — без префикса `sha256:`)."""
+
+    build: BuildConfig | None = None
+    """Local build for an AGmind-authored image (compose `build:`). A build-service is built
+    on-host from shipped source, not pulled — so it carries no `digest` and is exempt from the
+    digest-pin gate. `image` is the resulting local tag."""
 
     tier: ServiceTier
     """Группа сервиса. Используется для middleware chains, ordering."""

@@ -65,7 +65,9 @@ def check_digest_pins(
     descriptors = load_descriptors(services_dir)
     issues: list[dict[str, str]] = []
     for name, desc in descriptors.items():
-        if not desc.digest:
+        # build-services (compose `build:`) are built on-host from shipped source, not pulled
+        # from a registry — they carry no registry digest and are exempt from the digest pin.
+        if not desc.digest and desc.build is None:
             issues.append(_issue(name, desc.image))
     return issues, len(descriptors)
 

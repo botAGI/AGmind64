@@ -112,6 +112,7 @@ _CI_ENV_CONTENT = textwrap.dedent("""\
     AUTHELIA_SESSION_SECRET=ci-authelia-session-secret-0000000000000000000000000000
     AUTHELIA_STORAGE_ENCRYPTION_KEY=ci-authelia-storage-encryption-key-00000000000000000
     AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=ci-authelia-jwt-secret-00000000000000000000000000000000
+    AGENT_DB_PASSWORD=ci-agent-db-password
 """)
 
 # DB SERVER password files (db-secrets→FILE): the installer writes these so the server reads
@@ -121,6 +122,7 @@ _CI_ENV_CONTENT = textwrap.dedent("""\
 _CI_SECRET_FILE_VALUES = {
     "postgres_password": "ci-postgres-password",
     "mysql_root_password": "ci-mysql-root-password",
+    "agent_db_password": "ci-agent-db-password",
 }
 
 # Non-GPU profile lanes — compose profile strings to smoke.
@@ -138,6 +140,10 @@ _SMOKE_PROFILES = [
     "automation",
     "ragflow",
     "tracing",  # phoenix standalone (SQLite, no model/secret deps) — boot-proven 2026-06-07
+    # Agent runtimes boot bare: the agent app is the dify-api class (pure-env FastAPI), agent-db
+    # is the postgres class (root self-chown + synthesised secret FILE). 2026-06-08.
+    "agents-pydantic",
+    "agents-agno",
 ]
 
 # Container states that indicate a crash-loop or failed start.
@@ -300,8 +306,15 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
     services = data.get("services", {})
     removed = [
         k
-        for k in services
-        if k.startswith("llama-") or k in _INSTALL_SETUP_SERVICES or k in _SLOW_MODEL_LOADERS
+        for k, svc in services.items()
+        if k.startswith("llama-")
+        or k in _INSTALL_SETUP_SERVICES
+        or k in _SLOW_MODEL_LOADERS
+        # build-services (AGmind-authored, compose `build:`) cannot build in the smoke's temp
+        # context — the rendered compose sits in a temp dir with no source/Dockerfile, so
+        # `docker compose up` would try to build and fail on a fresh runner. Their image build +
+        # boot is validated by the live deploy + the build-mechanism unit tests, not this smoke.
+        or (isinstance(svc, dict) and "build" in svc)
     ]
     for k in removed:
         del services[k]

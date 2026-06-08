@@ -80,9 +80,13 @@ def scan_rendered(text: str) -> list[LandmineHit]:
         if not isinstance(svc, dict):
             continue
         image = str(svc.get("image", ""))
-        if image and _LATEST_RE.search(image):
+        # Build-services (compose `build:`) are built on-host from shipped source, not pulled
+        # from a registry — they carry a local tag and no `@sha256:` digest by design, so the
+        # :latest / digest-pin landmines (L01/L02, Правила #8) do not apply (mirror digest_check).
+        is_build_service = bool(svc.get("build"))
+        if image and not is_build_service and _LATEST_RE.search(image):
             hits.append(LandmineHit("L01", _sev("L01"), str(name), f"image '{image}' uses :latest"))
-        if image and "@sha256:" not in image:
+        if image and not is_build_service and "@sha256:" not in image:
             hits.append(
                 LandmineHit("L02", _sev("L02"), str(name), f"image '{image}' not digest-pinned")
             )

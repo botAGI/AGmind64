@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: agent-agno
+# AGmind-authored image — built on-host from shipped source (compose build:), not pulled.
+image: agmind-agent-agno:0.1.0
+build:
+  context: .
+  dockerfile: docker/Dockerfile.agent-agno
+tier: app
+purpose: Agent platform (Agno AgentOS) over the local LLM — opt-in agents-agno
+owner: agent-stack
+profiles:
+- agents-agno
+# Dual-homed: default (traefik/authelia edge + llama-llm/phoenix) + data-net (agent-db).
+networks:
+- default
+- data-net
+env:
+  AGENT_LLM_BASE_URL: http://llama-llm:8080/v1
+  AGENT_LLM_MODEL: ${AGENT_LLM_MODEL:-llama}
+  AGENT_LLM_API_KEY: sk-no-key-required
+  # Agno session/memory persists to the dedicated agent-db (psycopg3 driver).
+  AGENT_DB_URL: postgresql+psycopg://agent:${AGENT_DB_PASSWORD:?AGENT_DB_PASSWORD is required}@agent-db:5432/agents
+  AGENT_OTEL_ENDPOINT: http://phoenix:6006/v1/traces
+  AGENT_OTEL_SERVICE: agmind-agent-agno
+  # Kill Agno's anonymous telemetry (belt — server.py + Dockerfile also set it).
+  AGNO_TELEMETRY: 'false'
+resources:
+  cpus: 2.0
+  mem_limit: 1g
+  mem_reservation: 256m
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:8800/health
+  start_period: 60s
+  interval: 15s
+  timeout: 5s
+  retries: 10
+routing:
+  host: agno.agmind.dev
+  # AgentOS run routes stream → chain-llm (Authelia + llm-ratelimit) + sse to avoid buffering.
+  middleware_chain: chain-llm
+  sse: true
+  healthcheck_path: /health
+access:
+  note: "Agno AgentOS — POST /chat {\"message\":\"...\"} + AgentOS run routes. Gated by Authelia."
+consumes:
+- llm_inference
+- llm_tracing
+no_new_privileges: true
+cap_drop:
+- ALL

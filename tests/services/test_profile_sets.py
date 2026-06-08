@@ -50,10 +50,11 @@ def test_all_profile_sets_match_live_profiles() -> None:
     )
 
 
-def test_all_profile_sets_covers_all_12_profiles() -> None:
-    """Spot check: exactly 12 profiles are declared in ALL_PROFILE_SETS (-ops 2026-06-07)."""
-    assert len(ALL_PROFILE_SETS) == 12, (
-        f"Expected 12 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
+def test_all_profile_sets_covers_all_14_profiles() -> None:
+    """Spot check: exactly 14 profiles are declared in ALL_PROFILE_SETS
+    (+agents-pydantic +agents-agno 2026-06-08)."""
+    assert len(ALL_PROFILE_SETS) == 14, (
+        f"Expected 14 profile-set lanes in ALL_PROFILE_SETS, got {len(ALL_PROFILE_SETS)}.\n"
         f"Current: {[','.join(ps) for ps in ALL_PROFILE_SETS]}"
     )
 

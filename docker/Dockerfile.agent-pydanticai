@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+# AGmind agent-core (PydanticAI) — slim FastAPI agent server.
+#
+# Built on the upstream slim Python image (NOT agmind-base — this needs no torch/llama-cpp,
+# only pydantic-ai + fastapi). Built LOCALLY on the operator's host at deploy time via the
+# compose `build:` block (no registry dependency → air-gap-friendly, nothing published).
+# Pinned base digest (amd64/linux verified).
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+
+# curl: container healthcheck only. No other system deps (pydantic-core/openai ship wheels).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY services/agent_pydanticai/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY services/agent_pydanticai/ /app/
+
+# Non-root runtime (hardening — the app is stateless, writes nothing to disk).
+RUN useradd -r -u 10001 -m agent
+USER 10001
+
+EXPOSE 8800
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
+    CMD curl -fsS http://localhost:8800/health || exit 1
+ENTRYPOINT ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8800"]

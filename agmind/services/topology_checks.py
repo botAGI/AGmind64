@@ -315,6 +315,12 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
     ("ragflow", "llm_inference"),
     ("ragflow", "embedding_inference"),
     ("ragflow", "reranker"),
+    # agent-pydanticai / agent-agno (agents-*) consume inference from llama-* (core) and
+    # tracing from phoenix (tracing). Endpoints are hardcoded; co-deploy --profile core,agents-*.
+    ("agent-pydanticai", "llm_inference"),
+    ("agent-pydanticai", "llm_tracing"),
+    ("agent-agno", "llm_inference"),
+    ("agent-agno", "llm_tracing"),
     # NOTE: docker_api consumers are NOT listed here — they are DERIVED via
     # CLOSURE_PULLED_CAPABILITIES below (the proxy is the sole, always-co-pulled provider), so a
     # new docker_api consumer needs no edit here. de-slop 2026-06-07 SLOP-H3.

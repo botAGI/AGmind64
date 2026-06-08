@@ -89,8 +89,17 @@ def test_render_catalog_covers_all_services(tmp_path: Path) -> None:
     )
     catalog = json.loads(out.read_text(encoding="utf-8"))
 
-    # Count actual descriptor files.
-    expected_names = {p.stem for p in _SERVICES_DIR.glob("*.yaml")}
+    # Count actual descriptor files — EXCLUDING build-services (compose `build:`), which are
+    # built on-host from shipped source, carry no registry digest, and are intentionally absent
+    # from the pull-by-digest release catalog (mirror digest_check's build-exemption).
+    import yaml
+
+    expected_names = set()
+    for path in _SERVICES_DIR.glob("*.yaml"):
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if data.get("build") is not None:
+            continue
+        expected_names.add(path.stem)
     actual_names = set(catalog["services"].keys())
     assert expected_names == actual_names, (
         f"catalog services mismatch\n"

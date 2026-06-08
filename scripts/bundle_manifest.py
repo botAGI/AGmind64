@@ -29,6 +29,7 @@ def build_manifest(profiles: Sequence[str] | None = None) -> dict[str, list[str]
     full catalog. Unknown profile names raise ``ValueError`` (via the enum).
     """
     from agmind.services.registry import Service, list_services, services_for_profile
+    from agmind.services.renderer import load_descriptors
 
     services: list[Service]
     if profiles:
@@ -40,7 +41,17 @@ def build_manifest(profiles: Sequence[str] | None = None) -> dict[str, list[str]
     else:
         services = list_services()
 
-    images = sorted({svc.fq_image() for svc in services})
+    # Build-services (compose `build:`) are built on-host from shipped source, not pulled — they
+    # carry no registry digest and cannot be `docker save`d into the offline bundle. Exclude them
+    # (the air-gap host builds them locally from the wheel's docker/ context). Mirrors digest_check.
+    descriptors = load_descriptors()
+    images = sorted(
+        {
+            svc.fq_image()
+            for svc in services
+            if getattr(descriptors.get(svc.name), "build", None) is None
+        }
+    )
     return {"images": images}
 
 

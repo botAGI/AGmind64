@@ -396,6 +396,12 @@ def descriptor_to_compose_service(
         "restart": "unless-stopped",
     }
 
+    # AGmind-authored image built on-host from shipped source (compose-native build:), instead
+    # of pulled from a registry. `image` is the resulting local tag; `docker compose up --build`
+    # builds it. Used by the agent cores so AGmind ships its own apps without a registry/publish.
+    if d.build is not None:
+        svc["build"] = {"context": d.build.context, "dockerfile": d.build.dockerfile}
+
     if d.profiles:
         svc["profiles"] = list(d.profiles)
     if d.depends_on:

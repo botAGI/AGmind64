@@ -220,8 +220,8 @@ def test_component_check_script_json_output() -> None:
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
-    assert payload["contract_count"] == 11  # -komodo (component removed) 2026-06-07
-    assert payload["service_count"] == 43  # -komodo (3 svc) 2026-06-07
+    assert payload["contract_count"] == 12  # +agent-stack (component) 2026-06-08
+    assert payload["service_count"] == 46  # +agent-{pydanticai,agno,db} (3 svc) 2026-06-08
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

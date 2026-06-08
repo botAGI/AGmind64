@@ -260,6 +260,9 @@ def test_full_path_keying_prevents_basename_collision() -> None:
 ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
     {
         "postgres",
+        # agent-db is pgvector/postgres:pg17 — runs as root and self-chowns PGDATA (same as
+        # postgres), no run_as_uid so no numeric-uid bootstrap row.
+        "agent-db",
         "redis",
         "mysql",
         "netdata",

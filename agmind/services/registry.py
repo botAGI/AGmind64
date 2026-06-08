@@ -47,6 +47,8 @@ class ServiceProfile(str, Enum):
     PROXMOX = "proxmox"
     SECURITY = "security"
     TRACING = "tracing"
+    AGENTS_PYDANTIC = "agents-pydantic"
+    AGENTS_AGNO = "agents-agno"
     FULL = "full"
 
 
