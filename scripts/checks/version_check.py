@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -99,6 +100,10 @@ _VARIANT_TOKENS = (
     "hadoop",
     "kafka",
     "spark",
+    "gpu",  # milvus v2.6.18-gpu — accelerator image variant (this AMD/Vulkan target never uses it)
+    "debug",  # milvus v2.6.18-gpu-debug — a debug build, not a stable release
+    "rootless",  # uptime-kuma 2.4.0-rootless — packaging variant of the same version
+    "nonroot",  # arize phoenix version-X.Y.Z-nonroot — packaging variant
 )
 
 # Pre-release / build / dev markers — pin не должен апгрейдиться на это.
@@ -133,6 +138,26 @@ _EMBEDDED_DATE_RE = re.compile(r"\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])
 _BRANCH_TAG_RE = re.compile(r"^[a-z]+(-[a-z]+)*$", re.IGNORECASE)
 _BRANCH_NUMERIC_PREFIX_RE = re.compile(r"^\d+-\d+-[a-z]", re.IGNORECASE)
 
+# Short git-sha build suffix: e.g. n8n "2.25.5-85bf84a", weaviate "1.38.0-636f483" —
+# per-commit nightly builds, not stable releases. An all-hex 7+ char trailing segment.
+_SHORT_SHA_SUFFIX_RE = re.compile(r"-[0-9a-f]{7,}$")
+
+
+def _strip_version_prefix(tag: str) -> str:
+    """Normalise a tag to its semver core for parsing/sorting.
+
+    Strips a bare leading ``v`` (``v1.2.3`` → ``1.2.3``) and the Arize-Phoenix
+    ``version-`` prefix (``version-17.2.0`` → ``17.2.0``). The old ``lstrip('v')`` was
+    WRONG: it ate the ``v`` of ``version`` leaving ``ersion`` → the regex never matched →
+    the row showed a useless ``? unknown`` instead of a real comparison.
+    """
+    s = tag.strip()
+    if s.lower().startswith("version-"):
+        return s[len("version-") :]
+    if len(s) > 1 and s[0] in "vV" and s[1].isdigit():
+        return s[1:]
+    return s
+
 
 def _is_variant_or_prerelease(tag: str) -> bool:
     """True если tag это OS/arch variant, RC, dev build, SHA, or branch."""
@@ -163,11 +188,13 @@ def _is_variant_or_prerelease(tag: str) -> bool:
         return True
     if _BRANCH_NUMERIC_PREFIX_RE.match(tag):
         return True
+    if _SHORT_SHA_SUFFIX_RE.search(low):
+        return True
     return False
 
 
 def _parse_semver(s: str) -> tuple[int, int, int, str]:
-    m = _VERSION_RE.match(s.strip().lstrip("v"))
+    m = _VERSION_RE.match(_strip_version_prefix(s))
     if not m:
         return (-1, 0, 0, s)
     return (
@@ -225,6 +252,7 @@ class PinReport:
             "major": "⚠️",
             "newer_than_probe": "↥",
             "hold": "⏸",
+            "non_semver": "📌",
             "error": "❌",
         }.get(self.status, "?")
 
@@ -284,7 +312,9 @@ def _docker_hub_latest(image: str) -> str | None:
     ]
     # Filter only semver-looking tags
     semver = [
-        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t
+        for t in tags
+        if _VERSION_RE.match(_strip_version_prefix(t)) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -294,6 +324,18 @@ def _docker_hub_latest(image: str) -> str | None:
 
 
 def _ghcr_latest(owner: str, image: str) -> str | None:
+    # Prefer the GitHub Releases API — the authoritative "latest" — to avoid the ghcr
+    # tags/list pagination gap: that endpoint returns tags in lexical order capped at n=200,
+    # so for a repo with many tags the newest is missed (homarr pinned v1.62.0 but the probe
+    # only saw v1.59.3 → bogus ↥ newer_than_probe). ghcr.io/<owner>/<image> maps 1:1 to the
+    # github <owner>/<image> repo. Fall back to tag enumeration if releases has nothing usable.
+    release = _github_release_latest(owner, image)
+    if (
+        release
+        and _VERSION_RE.match(_strip_version_prefix(release))
+        and not _is_variant_or_prerelease(release)
+    ):
+        return release
     try:
         token_data = _http_get_json(
             f"https://ghcr.io/token?scope=repository:{owner}/{image}:pull",
@@ -311,7 +353,9 @@ def _ghcr_latest(owner: str, image: str) -> str | None:
     tags = [tag for tag in raw_tags if isinstance(tag, str)]
     # Filter semver-looking + drop variants / RC / SHA-only
     semver = [
-        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t
+        for t in tags
+        if _VERSION_RE.match(_strip_version_prefix(t)) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -337,7 +381,9 @@ def _quay_latest(owner: str, image: str) -> str | None:
         if isinstance(t, dict) and isinstance(t.get("name"), str)
     ]
     semver = [
-        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t
+        for t in tags
+        if _VERSION_RE.match(_strip_version_prefix(t)) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -360,7 +406,9 @@ def _gcr_latest(project: str, image: str) -> str | None:
     raw_tags = data.get("tags", []) or []
     tags = [tag for tag in raw_tags if isinstance(tag, str)]
     semver = [
-        t for t in tags if _VERSION_RE.match(t.lstrip("v")) and not _is_variant_or_prerelease(t)
+        t
+        for t in tags
+        if _VERSION_RE.match(_strip_version_prefix(t)) and not _is_variant_or_prerelease(t)
     ]
     if not semver:
         return None
@@ -369,10 +417,15 @@ def _gcr_latest(project: str, image: str) -> str | None:
 
 
 def _github_release_latest(owner: str, repo: str) -> str | None:
+    headers = {"Accept": "application/vnd.github+json"}
+    # Honour a CI token to dodge the 60/hr unauthenticated GitHub API rate limit.
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         data = _http_get_json(
             f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
-            headers={"Accept": "application/vnd.github+json"},
+            headers=headers,
         )
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
@@ -650,6 +703,14 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                 continue
 
             if latest is None:
+                # Distinguish a genuine probe failure (a SEMVER-pinned image we couldn't
+                # resolve — actionable: retry/network) from an image that simply does not use
+                # semver at all (minio's calendar ``RELEASE.<date>`` tags). The latter is
+                # expected, not broken, so it gets its own informative status instead of a
+                # scary ❌ error that makes the whole report look half-working.
+                current_is_semver = (
+                    _VERSION_RE.match(_strip_version_prefix(current_tag)) is not None
+                )
                 reports.append(
                     PinReport(
                         image=image,
@@ -657,8 +718,12 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                         latest=None,
                         source=source,
                         file=file,
-                        status="error",
-                        error="probe returned no version",
+                        status="error" if current_is_semver else "non_semver",
+                        error=(
+                            "probe returned no version"
+                            if current_is_semver
+                            else "calendar/non-semver tag (e.g. RELEASE.<date>) — track manually"
+                        ),
                     )
                 )
                 continue
@@ -698,6 +763,9 @@ def render_markdown(reports: list[PinReport]) -> str:
         elif r.status == "error":
             status_cell = "❌ error"
             note = r.error or ""
+        elif r.status == "non_semver":
+            status_cell = "📌 non_semver"
+            note = r.error or ""
         else:
             status_cell = f"{r.glyph} {r.status}"
             note = f"`{r.file}`"
@@ -714,6 +782,7 @@ def render_markdown(reports: list[PinReport]) -> str:
             "- **⚠️ major** — major-bump доступен (semver X). Breaking changes — review.",
             "- **↥ newer_than_probe** — committed pin is newer than probed latest; registry probe may be incomplete.",
             "- **⏸ HOLD** — pin намеренно остановлен, см. `templates/version_holds.yaml` → reason.",
+            "- **📌 non_semver** — image uses calendar/non-semver tags (e.g. minio `RELEASE.<date>`); track manually.",
             "- **❌ error** — probe failed (network / registry rate-limit / unknown image).",
             "- **strict-pin** — component updates must keep the current explicit pin until reviewed.",
             "- **compatible-patch / compatible-minor** — component can move within the stated compatibility window after verification.",

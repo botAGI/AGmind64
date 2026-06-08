@@ -277,3 +277,131 @@ def test_probe_dispatch_gcr() -> None:
     vc._gcr_latest = lambda project, image: called.append((project, image)) or "v0.99.0"
     assert vc.probe_latest("gcr.io/cadvisor/cadvisor") == "v0.99.0"
     assert called[0] == ("cadvisor", "cadvisor")
+
+
+# ---- issue #7: report-quality fixes (parser / filters / non-semver / holds / ghcr) ----
+
+
+def test_parse_semver_handles_version_prefix_tag() -> None:
+    """Arize Phoenix tags as ``version-X.Y.Z``. The old ``lstrip('v')`` turned
+    ``version`` into ``ersion`` → parse failed → the row showed a useless ``? unknown``.
+    The parser must recognise the ``version-`` prefix."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    assert vc._parse_semver("version-17.2.0")[:3] == (17, 2, 0)
+    assert vc._parse_semver("version-17.2.0-nonroot")[:3] == (17, 2, 0)
+
+
+def test_compare_phoenix_version_prefix_is_up_to_date() -> None:
+    """phoenix pin ``version-17.2.0-nonroot`` vs probed ``version-17.2.0`` must compare
+    equal (up_to_date), not ``unknown``."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    assert vc._compare("version-17.2.0-nonroot", "version-17.2.0") == "up_to_date"
+    # a plain leading-v tag must still parse (regression guard for the prefix change)
+    assert vc._compare("v1.2.3", "1.2.3") == "up_to_date"
+
+
+def test_variant_filter_debug_rootless_nonroot() -> None:
+    """The probe picked junk 'latest' tags because these variant suffixes were not filtered:
+    milvus ``v2.6.18-gpu-debug``, uptime-kuma ``2.4.0-rootless``, phoenix ``-nonroot``."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    assert vc._is_variant_or_prerelease("v2.6.18-gpu-debug")
+    assert vc._is_variant_or_prerelease("v2.6.18-gpu")  # bare accelerator variant (unused on AMD)
+    assert vc._is_variant_or_prerelease("v2.6.18-debug")
+    assert vc._is_variant_or_prerelease("2.4.0-rootless")
+    assert vc._is_variant_or_prerelease("version-17.2.0-nonroot")
+
+
+def test_variant_filter_short_git_sha_suffix() -> None:
+    """n8n publishes ``2.25.5-85bf84a`` (version + short git sha) per build — a nightly,
+    not a stable release. The all-hex 7+ char suffix must be filtered."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    assert vc._is_variant_or_prerelease("2.25.5-85bf84a")
+    assert vc._is_variant_or_prerelease("v1.38.0-636f483")
+    # a plain semver and a normal patch tag must NOT be filtered
+    assert not vc._is_variant_or_prerelease("2.25.5")
+    assert not vc._is_variant_or_prerelease("v1.18.2")
+
+
+def test_minio_calendar_tag_reports_non_semver_not_error() -> None:
+    """minio uses calendar ``RELEASE.<date>`` tags, not semver — the probe returns None.
+    That must surface as an informative ``non_semver`` status, not a scary ``❌ error`` that
+    makes the whole report look broken. A genuinely-semver image with a failed probe stays
+    ``error``."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    reports = vc.build_reports(probe_fn=lambda _img: None)
+    by_image = {r.image: r for r in reports}
+    assert by_image["quay.io/minio/minio"].status == "non_semver"
+    # ragflow's current pin IS semver (v0.25.5); a None probe is a real error, not non_semver
+    assert by_image["infiniflow/ragflow"].status == "error"
+
+
+def test_non_semver_status_has_glyph_and_legend() -> None:
+    """The non_semver status renders with its own glyph + a legend entry (not '?')."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    reports = vc.build_reports(probe_fn=lambda _img: None)
+    md = vc.render_markdown(reports)
+    minio = next(r for r in reports if r.image == "quay.io/minio/minio")
+    assert minio.glyph != "?"
+    assert "non_semver" in md  # legend documents it
+
+
+def test_dify_stack_and_mysql_are_held() -> None:
+    """dify-web/dify-sandbox are part of the Dify stack (co-bumped with dify-api, which is
+    already held) — they must be held too so they don't probe-error in isolation. mysql is
+    pinned to 8.x for Dify; hold it so the 9.x major isn't flagged as an actionable bump."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    holds = vc.load_holds()
+    assert "langgenius/dify-web" in holds
+    assert "langgenius/dify-sandbox" in holds
+    assert "mysql" in holds
+
+
+def test_ghcr_probe_prefers_github_releases(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ghcr ``/tags/list`` is lexical + capped (n=200), so for big repos it MISSES the
+    newest tag (homarr showed ``newer_than_probe``: pinned v1.62.0, probe only saw v1.59.3).
+    The GitHub Releases API is authoritative — prefer it for ghcr.io/<owner>/<image>."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    monkeypatch.setattr(
+        vc,
+        "_github_release_latest",
+        lambda owner, repo: "v1.62.0" if (owner, repo) == ("homarr-labs", "homarr") else None,
+    )
+    # must NOT fall through to the (network) tag-list path when releases answers
+    monkeypatch.setattr(
+        vc,
+        "_http_get_json",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not hit tags/list")),
+    )
+    assert vc._ghcr_latest("homarr-labs", "homarr") == "v1.62.0"
+
+
+def test_ghcr_probe_falls_back_to_tags_when_no_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If GitHub Releases has nothing usable, the ghcr tag-list path is still used."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    monkeypatch.setattr(vc, "_github_release_latest", lambda owner, repo: None)
+    monkeypatch.setattr(
+        vc,
+        "_http_get_json",
+        lambda url, headers=None, timeout=10: (
+            {"token": "t"} if "token" in url else {"tags": ["v1.0.0", "v1.2.0", "latest"]}
+        ),
+    )
+    assert vc._ghcr_latest("acme", "widget") == "v1.2.0"

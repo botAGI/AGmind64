@@ -37,3 +37,17 @@ redis:
 # RAGFlow ES requirement:
 elasticsearch:
   reason: "RAGFlow требует ES 9.x совместимый с DOC_ENGINE=elasticsearch."
+
+# Dify stack — web/sandbox are co-bumped with dify-api (already held above). Probing them in
+# isolation is meaningless and produced noisy ❌ error rows; they move only when the whole
+# Dify stack is re-verified together.
+langgenius/dify-web:
+  reason: "Dify stack — co-bumped with dify-api; bump только после full Dify re-verify."
+
+langgenius/dify-sandbox:
+  reason: "Dify stack — co-bumped with dify-api; bump только после full Dify re-verify."
+
+# MySQL pinned to 8.x for Dify metadata compatibility; the 9.x major is a Dify-verify gate,
+# not an actionable bump — hold so the report stops flagging it ⚠️ major every week.
+mysql:
+  reason: "Dify requires MySQL 8.x (verified); do not bump to 9.x until Dify re-verify."
