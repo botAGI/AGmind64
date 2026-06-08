@@ -148,8 +148,13 @@ _CRASH_LOOP_STATES = frozenset({"restarting", "exited", "unhealthy"})
 # so this actually isolates from the live stack too.
 _PROJECT_NAME = "agmind-ci"
 
-# Wait timeout in seconds — matches 07-VALIDATION.md spec.
-_WAIT_TIMEOUT = 180
+# Wait timeout in seconds. MUST exceed the largest service healthcheck ``start_period``
+# with margin for the first post-start-period probe to pass — otherwise ``docker compose
+# up --wait`` quits while the slowest container is still inside its start grace and the
+# lane can NEVER go green. ragflow's start_period alone is 180s (retries: 20), so the old
+# 180s wait was unwinnable for the ragflow/rag-milvus lanes (chronically red, never once
+# green on the self-hosted runner). Overridable via AGMIND_SMOKE_WAIT_TIMEOUT.
+_WAIT_TIMEOUT = int(os.environ.get("AGMIND_SMOKE_WAIT_TIMEOUT", "300"))
 
 _AGMIND_DATA_ROOT = Path("/var/lib/agmind")
 
@@ -290,9 +295,16 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
 
     networks = data.get("networks")
     if isinstance(networks, dict):
-        default_network = networks.get("default")
-        if isinstance(default_network, dict):
-            default_network.pop("name", None)
+        # Strip the fixed ``name:`` from EVERY network so ``-p agmind-ci`` actually scopes
+        # them. The renderer stamps the secondary networks (data-net/mgmt-net/ssrf-net) with
+        # fixed names (e.g. ``agmind_data-net``); if left intact the smoke's containers join
+        # the LIVE stack's network of that name and resolve service DNS (``milvus-minio`` →
+        # live container, different MinIO root password) → S3 signature mismatch → the heavy
+        # lanes never reach healthy. Stripping ALL names (not just ``default``) makes the
+        # smoke truly isolated from a live stack on the same self-hosted runner.
+        for net_spec in networks.values():
+            if isinstance(net_spec, dict):
+                net_spec.pop("name", None)
 
     # Also remove dangling depends_on references to any removed service.
     for svc in services.values():
@@ -363,6 +375,51 @@ def test_filter_unbootable_services_rewrites_live_stack_fields(tmp_path: Path) -
     assert "ports" not in qdrant
     assert qdrant["volumes"] == [f"{data_root}/qdrant:/qdrant/storage"]
     assert "name" not in rendered["networks"]["default"]
+
+
+def test_filter_strips_every_network_name_for_live_stack_isolation(tmp_path: Path) -> None:
+    """Chronic compose-up-smoke red — the real root cause.
+
+    ``-p agmind-ci`` only project-scopes UNNAMED networks. The renderer stamps the
+    secondary networks (``data-net``/``mgmt-net``/``ssrf-net``) with a FIXED ``name:``
+    (e.g. ``agmind_data-net``). When the smoke left those names intact, its milvus joined
+    the LIVE stack's ``agmind_data-net`` and resolved ``milvus-minio`` to the live container
+    (whose MinIO root password differs from the CI env) → S3 ``SignatureDoesNotMatch`` →
+    milvus never reaches healthy → the lane is unwinnable while a live stack is up. The
+    filter must strip the fixed ``name`` from EVERY network, not just ``default``.
+    """
+    import yaml
+
+    compose_path = tmp_path / "compose.yml"
+    data_root = tmp_path / "data"
+    compose_path.write_text(
+        yaml.safe_dump(
+            {
+                "services": {
+                    "milvus": {
+                        "image": "milvusdb/milvus:v2.6.17",
+                        "networks": ["default", "data-net"],
+                    },
+                },
+                "networks": {
+                    "default": {"name": "agmind", "driver": "bridge"},
+                    "data-net": {"name": "agmind_data-net", "driver": "bridge", "internal": True},
+                    "mgmt-net": {"name": "agmind_mgmt-net", "driver": "bridge"},
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _filter_unbootable_services(compose_path, data_root)
+
+    rendered = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    for net_name, spec in rendered["networks"].items():
+        assert "name" not in spec, (
+            f"network {net_name!r} kept its fixed name → smoke joins the live stack's "
+            f"network and resolves service DNS to live containers (cross-talk)"
+        )
 
 
 def _compose_cmd(
