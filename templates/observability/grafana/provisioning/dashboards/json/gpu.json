@@ -27,7 +27,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_temp_edge_celsius",
+          "expr": "amdgpu_temp_edge_celsius{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
@@ -79,7 +79,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_gpu_busy_percent",
+          "expr": "amdgpu_gpu_busy_percent{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
@@ -127,7 +127,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_power_average_watts",
+          "expr": "amdgpu_power_average_watts{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
@@ -179,7 +179,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_sclk_hz",
+          "expr": "amdgpu_sclk_hz{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
@@ -229,7 +229,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_temp_edge_celsius",
+          "expr": "amdgpu_temp_edge_celsius{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}} Temp",
           "refId": "A"
         }
@@ -287,7 +287,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_power_average_watts",
+          "expr": "amdgpu_power_average_watts{node=~\".+\"}",
           "legendFormat": "{{node}} · Power (W)",
           "refId": "A"
         },
@@ -296,7 +296,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_gpu_busy_percent",
+          "expr": "amdgpu_gpu_busy_percent{node=~\".+\"}",
           "legendFormat": "{{node}} · Utilization (%)",
           "refId": "B"
         }
@@ -355,7 +355,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_sclk_hz",
+          "expr": "amdgpu_sclk_hz{node=~\".+\"}",
           "legendFormat": "{{node}} · {{card}} Clock",
           "refId": "A"
         }
@@ -404,7 +404,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+          "expr": "node_memory_MemTotal_bytes{node=~\".+\"} - node_memory_MemAvailable_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} Used",
           "refId": "A"
         },
@@ -413,7 +413,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "node_memory_MemAvailable_bytes",
+          "expr": "node_memory_MemAvailable_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} Available",
           "refId": "B"
         },
@@ -422,7 +422,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+          "expr": "node_memory_SwapTotal_bytes{node=~\".+\"} - node_memory_SwapFree_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} Swap Used",
           "refId": "C"
         }
@@ -459,7 +459,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_vram_used_bytes",
+          "expr": "amdgpu_vram_used_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} VRAM used",
           "refId": "A"
         },
@@ -468,7 +468,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_vram_total_bytes",
+          "expr": "amdgpu_vram_total_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} VRAM total",
           "refId": "B"
         },
@@ -477,7 +477,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_vis_vram_used_bytes",
+          "expr": "amdgpu_vis_vram_used_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} Visible VRAM used",
           "refId": "C"
         },
@@ -486,7 +486,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_gtt_used_bytes",
+          "expr": "amdgpu_gtt_used_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} GTT used (unified)",
           "refId": "D"
         },
@@ -495,7 +495,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "amdgpu_gtt_total_bytes",
+          "expr": "amdgpu_gtt_total_bytes{node=~\".+\"}",
           "legendFormat": "{{node}} GTT total",
           "refId": "E"
         }
