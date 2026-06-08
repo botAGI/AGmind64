@@ -16,11 +16,13 @@ Profiles: ``core``, ``core,observability``, ``core,rag``,
           ``rag-milvus``, ``rag-weaviate``, ``security``,
           ``automation``, ``ragflow``  (eight lanes)
 Exclusions: services that can't boot from a bare ``docker compose up`` —
-``llama-*`` (need GPU + a downloaded GGUF model) and the install-setup set
+``llama-*`` (need GPU + a downloaded GGUF model), the install-setup set
 ``_INSTALL_SETUP_SERVICES`` (prometheus/grafana/loki/alloy/alertmanager/
 authelia/n8n — need ``agmind install`` config materialization or a bootstrap
-data-dir chown). Those are validated by the full ``agmind install`` (DoD
-criterion 3) + the A5 ownership gate, not this bare-compose smoke. The active
+data-dir chown), and ``_SLOW_MODEL_LOADERS`` (docling — loads OCR/layout models
+on boot, healthy only after minutes, variable under load). Those are validated
+by the full ``agmind install`` (DoD criterion 3) + the A5 ownership gate, not
+this bare-compose smoke. The active
 lane profiles are passed via ``docker compose --profile`` so the rendered
 compose-level ``profiles:`` keys actually select services; a lane left empty
 after filtering (e.g. ``automation`` = only n8n) is skipped.
@@ -235,6 +237,13 @@ _INSTALL_SETUP_SERVICES = frozenset(
     }
 )
 
+# Heavyweight model-loaders whose healthcheck legitimately takes many minutes and varies with
+# CPU load (docling loads OCR/layout models on boot). They DO eventually go healthy, but not
+# within a bounded bare-compose ``--wait`` — especially co-tenant with the live stack's own copy
+# on the self-hosted runner — and slow model-load is not the crash-loop/perms/config deploy-blocker
+# class this smoke targets. Boot-validated by the full ``agmind install`` instead (like ``llama-*``).
+_SLOW_MODEL_LOADERS = frozenset({"docling"})
+
 
 def _rewrite_agmind_bind_mount(spec: str, data_root: Path) -> str:
     """Redirect ``/var/lib/agmind`` bind mounts into the smoke temp directory."""
@@ -289,7 +298,11 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
         return 0
 
     services = data.get("services", {})
-    removed = [k for k in services if k.startswith("llama-") or k in _INSTALL_SETUP_SERVICES]
+    removed = [
+        k
+        for k in services
+        if k.startswith("llama-") or k in _INSTALL_SETUP_SERVICES or k in _SLOW_MODEL_LOADERS
+    ]
     for k in removed:
         del services[k]
 
@@ -375,6 +388,39 @@ def test_filter_unbootable_services_rewrites_live_stack_fields(tmp_path: Path) -
     assert "ports" not in qdrant
     assert qdrant["volumes"] == [f"{data_root}/qdrant:/qdrant/storage"]
     assert "name" not in rendered["networks"]["default"]
+
+
+def test_filter_excludes_docling_slow_model_loader(tmp_path: Path) -> None:
+    """docling is a heavyweight CPU model-loader whose ``/health`` legitimately takes many
+    minutes and varies with CPU load (it loads OCR/layout models on boot). It eventually goes
+    healthy but not within a bounded bare-compose wait — especially co-tenant with the live
+    stack's own docling on the self-hosted runner — and a slow model-load is NOT the
+    crash-loop/perms/config deploy-blocker class this smoke targets. Like ``llama-*`` it is
+    boot-validated by the full ``agmind install``, so the filter drops it from the bare smoke.
+    """
+    import yaml
+
+    compose_path = tmp_path / "compose.yml"
+    data_root = tmp_path / "data"
+    compose_path.write_text(
+        yaml.safe_dump(
+            {
+                "services": {
+                    "qdrant": {"image": "qdrant/qdrant:v1.18.0"},
+                    "docling": {"image": "quay.io/docling-project/docling-serve-cpu:v1.18.0"},
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    remaining = _filter_unbootable_services(compose_path, data_root)
+
+    rendered = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert "docling" not in rendered["services"], "docling must be excluded (slow model-loader)"
+    assert "qdrant" in rendered["services"]
+    assert remaining == 1
 
 
 def test_filter_strips_every_network_name_for_live_stack_isolation(tmp_path: Path) -> None:
