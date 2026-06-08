@@ -205,3 +205,17 @@ def test_render_credentials_txt_masks_when_requested() -> None:
     assert "topsecret-value" not in masked
     unmasked = render_credentials_txt(report, header=False)
     assert "topsecret-value" in unmasked
+
+
+def test_credentials_txt_warns_about_wildcard_dns() -> None:
+    """credentials.txt must remind the operator to add a wildcard DNS record — a subdomain with no DNS
+    entry gives the browser NXDOMAIN ('site can't be reached'), the #1 'service is dead' gripe. The
+    domain is derived from the service URLs and the server IP is filled in when known. live 2026-06-08."""
+    from agmind.services.access import render_credentials_txt
+
+    report = build_access_report({"grafana": _svc("grafana", host="grafana.lab.agmind.dev")}, {})
+    out = render_credentials_txt(report, server_ip="192.168.1.33")
+    assert "DNS" in out
+    assert "*.lab.agmind.dev" in out  # domain derived from grafana.lab.agmind.dev
+    assert "192.168.1.33" in out
+    assert "NXDOMAIN" in out

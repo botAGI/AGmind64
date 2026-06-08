@@ -151,6 +151,8 @@ def test_summary_deploy_success_lists_real_endpoints_and_access_cli(tmp_path: Pa
     assert "agmind endpoints" in text
     assert "agmind creds show" in text
     assert "credentials.txt" in text
+    # the explicit open-credentials command is shown in the final screen (live 2026-06-08)
+    assert "sudo cat" in text
     # never leak a secret into the summary
     assert "topsecret" not in text
 

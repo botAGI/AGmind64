@@ -152,6 +152,17 @@ def _password_field(entry: AccessEntry, *, mask: bool = False) -> str | None:
     return None
 
 
+def _derive_domain(report: list[AccessEntry]) -> str:
+    """Best-effort install domain from the report's service URLs (e.g. ``grafana.lab.agmind.dev`` →
+    ``lab.agmind.dev``) for the credentials.txt DNS reminder. Falls back to a generic placeholder."""
+    for entry in report:
+        host = entry.url.split("://", 1)[-1].split("/", 1)[0]
+        labels = host.split(".")
+        if len(labels) > 2:
+            return ".".join(labels[1:])
+    return "<your-domain>"
+
+
 def render_credentials_txt(
     report: list[AccessEntry],
     *,
@@ -174,6 +185,16 @@ def render_credentials_txt(
         lines.append("# AGmind credentials — DO NOT COMMIT")
         if generated_at:
             lines.append(f"# generated: {generated_at}")
+        # DNS reminder: every service URL below is a subdomain that must resolve to this host. The
+        # operator hits NXDOMAIN ("site can't be reached") on any subdomain with no DNS record — the
+        # #1 "service is dead" support gripe. A single wildcard covers all current + future services.
+        _dns_domain = _derive_domain(report)
+        _dns_ip = server_ip or "<server-ip>"
+        lines.append(
+            f"# ⚠️ DNS: add a wildcard `*.{_dns_domain} -> {_dns_ip}` to your LOCAL DNS "
+            f"(AdGuard/Pi-hole/router) — or per-host lines in your OS hosts file — or the browser "
+            f"gets NXDOMAIN and the service looks dead."
+        )
 
     logins = [e for e in report if not e.is_model_endpoint]
     endpoints = [e for e in report if e.is_model_endpoint]
