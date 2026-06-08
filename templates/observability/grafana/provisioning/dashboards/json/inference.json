@@ -57,7 +57,7 @@
       "targets": [
         {
           "expr": "rate(llamacpp:tokens_predicted_total[5m])",
-          "legendFormat": "decode {{service}}",
+          "legendFormat": "{{node}} · decode {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -66,7 +66,7 @@
         },
         {
           "expr": "rate(llamacpp:prompt_tokens_total[5m])",
-          "legendFormat": "prompt {{service}}",
+          "legendFormat": "{{node}} · prompt {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -110,7 +110,7 @@
       "targets": [
         {
           "expr": "llamacpp:requests_processing",
-          "legendFormat": "processing {{service}}",
+          "legendFormat": "{{node}} · processing {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -119,7 +119,7 @@
         },
         {
           "expr": "llamacpp:requests_deferred",
-          "legendFormat": "deferred {{service}}",
+          "legendFormat": "{{node}} · deferred {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -165,7 +165,7 @@
       "targets": [
         {
           "expr": "llamacpp:kv_cache_usage_ratio",
-          "legendFormat": "kv usage {{service}}",
+          "legendFormat": "{{node}} · kv usage {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -209,7 +209,7 @@
       "targets": [
         {
           "expr": "agmind:llama_avg_decode_ms:rate5m",
-          "legendFormat": "{{service}}",
+          "legendFormat": "{{node}} · {{service}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

@@ -28,7 +28,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_temp_edge_celsius",
-          "legendFormat": "{{card}}",
+          "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
       ],
@@ -80,7 +80,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_gpu_busy_percent",
-          "legendFormat": "{{card}}",
+          "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
       ],
@@ -128,7 +128,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_power_average_watts",
-          "legendFormat": "{{card}}",
+          "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
       ],
@@ -180,7 +180,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_sclk_hz",
-          "legendFormat": "{{card}}",
+          "legendFormat": "{{node}} · {{card}}",
           "refId": "A"
         }
       ],
@@ -230,7 +230,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_temp_edge_celsius",
-          "legendFormat": "GPU Temp",
+          "legendFormat": "{{node}} · {{card}} Temp",
           "refId": "A"
         }
       ],
@@ -288,7 +288,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_power_average_watts",
-          "legendFormat": "Power (W)",
+          "legendFormat": "{{node}} · Power (W)",
           "refId": "A"
         },
         {
@@ -297,7 +297,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_gpu_busy_percent",
-          "legendFormat": "Utilization (%)",
+          "legendFormat": "{{node}} · Utilization (%)",
           "refId": "B"
         }
       ],
@@ -311,8 +311,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Power (W)"
+              "id": "byRegexp",
+              "options": ".*Power \\(W\\)"
             },
             "properties": [
               {
@@ -323,8 +323,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Utilization (%)"
+              "id": "byRegexp",
+              "options": ".*Utilization \\(%\\)"
             },
             "properties": [
               {
@@ -356,7 +356,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_sclk_hz",
-          "legendFormat": "Clock (MHz)",
+          "legendFormat": "{{node}} · {{card}} Clock",
           "refId": "A"
         }
       ],
@@ -405,7 +405,7 @@
             "uid": "prometheus"
           },
           "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
-          "legendFormat": "Used",
+          "legendFormat": "{{node}} Used",
           "refId": "A"
         },
         {
@@ -414,7 +414,7 @@
             "uid": "prometheus"
           },
           "expr": "node_memory_MemAvailable_bytes",
-          "legendFormat": "Available",
+          "legendFormat": "{{node}} Available",
           "refId": "B"
         },
         {
@@ -423,7 +423,7 @@
             "uid": "prometheus"
           },
           "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
-          "legendFormat": "Swap Used",
+          "legendFormat": "{{node}} Swap Used",
           "refId": "C"
         }
       ],
@@ -460,7 +460,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_vram_used_bytes",
-          "legendFormat": "VRAM used",
+          "legendFormat": "{{node}} VRAM used",
           "refId": "A"
         },
         {
@@ -469,7 +469,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_vram_total_bytes",
-          "legendFormat": "VRAM total",
+          "legendFormat": "{{node}} VRAM total",
           "refId": "B"
         },
         {
@@ -478,7 +478,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_vis_vram_used_bytes",
-          "legendFormat": "Visible VRAM used",
+          "legendFormat": "{{node}} Visible VRAM used",
           "refId": "C"
         },
         {
@@ -487,7 +487,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_gtt_used_bytes",
-          "legendFormat": "GTT used (unified)",
+          "legendFormat": "{{node}} GTT used (unified)",
           "refId": "D"
         },
         {
@@ -496,7 +496,7 @@
             "uid": "prometheus"
           },
           "expr": "amdgpu_gtt_total_bytes",
-          "legendFormat": "GTT total",
+          "legendFormat": "{{node}} GTT total",
           "refId": "E"
         }
       ],

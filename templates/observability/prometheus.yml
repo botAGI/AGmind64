@@ -44,6 +44,14 @@ scrape_configs:
         regex: "true"
         action: keep
 
+      # Tag every local docker_sd target as node=master. Every container
+      # discovered here runs on THIS host (the master); peer nodes (e.g.
+      # beelink2) are scraped via their own static jobs that set node=<peer>.
+      # Без этого master's GPU/node metrics overlay beelink2's в Grafana
+      # без node label и оператор не отличает их (live-fix 2026-06-08).
+      - target_label: node
+        replacement: master
+
       # Override port: prometheus.port label → __address__
       - source_labels:
           - __address__
