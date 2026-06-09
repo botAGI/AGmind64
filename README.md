@@ -91,10 +91,14 @@ models and secrets, then add `rag` and the rest.
 ```bash
 agmind doctor              # preflight + live diagnostics
 agmind status              # backend + device info ( --tui for live dashboard )
+agmind status --watch      # headless auto-refresh status (no TUI, SSH-friendly)
 agmind endpoints           # published services: URL + state
 agmind open grafana        # print a service URL (SSH-pipeable)
 agmind creds show          # logins + passwords (root-only)
 agmind config validate     # check the live deployment config
+agmind verify install      # prove setup inputs render/deploy cleanly
+agmind upgrade --check     # scan for newer pinned image versions
+agmind loadtest chat       # k6 load-test the local LLM endpoint
 agmind logs llama-llm -f   # stream service logs
 agmind backup  --output ~/agmind-backup.tar.gz
 agmind restore ~/agmind-backup.tar.gz
