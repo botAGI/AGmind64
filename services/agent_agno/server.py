@@ -20,14 +20,19 @@ Config is 100% environment-driven (boots bare, no install-time materialization).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
+import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 # Kill Agno's anonymous telemetry before importing agno (belt: env + per-instance flag).
 os.environ["AGNO_TELEMETRY"] = "false"
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import StreamingResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -45,6 +50,8 @@ DB_URL = os.environ.get("AGENT_DB_URL", "postgresql+psycopg://agent:agent@agent-
 OTEL_ENDPOINT = os.environ.get("AGENT_OTEL_ENDPOINT", "http://phoenix:6006/v1/traces")
 OTEL_SERVICE = os.environ.get("AGENT_OTEL_SERVICE", "agmind-agent-agno")
 OFFLINE = os.environ.get("AGMIND_OFFLINE", "0") == "1"
+# Model id this agent advertises on the OpenAI-compatible surface (so a chat UI lists it).
+MODEL_ID = os.environ.get("AGENT_MODEL_ID", "agmind-agno")
 
 _APP_VERSION = "0.1.0"
 
@@ -147,6 +154,98 @@ async def chat(req: ChatRequest) -> ChatResponse:
         log.warning("agent run failed: %s", exc)
         raise HTTPException(status_code=503, detail="agent upstream unavailable") from exc
     return ChatResponse(reply=_run_text(run), model=LLM_MODEL)
+
+
+# --- OpenAI-compatible surface ------------------------------------------------------
+# Lets any OpenAI-compatible chat UI/client (e.g. self-hosted Open WebUI) use this agent as a
+# selectable "model" — no vendor UI needed. Single-turn per call; streaming sends one SSE chunk.
+
+
+@app.get("/v1/models")
+def list_models() -> dict[str, Any]:
+    """OpenAI-style model list — advertises this agent as one selectable model."""
+    return {
+        "object": "list",
+        "data": [{"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "agmind"}],
+    }
+
+
+def _last_user_message(messages: list[dict[str, Any]]) -> str:
+    for m in reversed(messages):
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            return m["content"]
+    return ""
+
+
+async def _run_reply(prompt: str) -> str:
+    try:
+        run = await _agent.arun(prompt)
+    except Exception as exc:  # noqa: BLE001 — clean 503, no raw 500/stack leak
+        log.warning("agent run failed: %s", exc)
+        raise HTTPException(status_code=503, detail="agent upstream unavailable") from exc
+    return _run_text(run)
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(req: dict[str, Any]) -> Any:
+    """OpenAI chat-completions shim — run the agent on the latest user message."""
+    prompt = _last_user_message(req.get("messages") or [])
+    if not prompt.strip():
+        raise HTTPException(status_code=400, detail="no user message")
+    reply = await _run_reply(prompt)
+    created = int(time.time())
+    cid = f"chatcmpl-{uuid.uuid4().hex}"
+
+    if req.get("stream"):
+
+        async def _sse() -> AsyncIterator[str]:
+            base = {
+                "id": cid,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": MODEL_ID,
+            }
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        **base,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"role": "assistant", "content": reply},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                )
+                + "\n\n"
+            )
+            yield (
+                "data: "
+                + json.dumps(
+                    {**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+                )
+                + "\n\n"
+            )
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(_sse(), media_type="text/event-stream")
+
+    return {
+        "id": cid,
+        "object": "chat.completion",
+        "created": created,
+        "model": MODEL_ID,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": reply},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
 
 
 def main() -> None:

@@ -46,6 +46,9 @@ routing:
   healthcheck_path: /health
 access:
   note: "Agno AgentOS — POST /chat {\"message\":\"...\"} + AgentOS run routes. Gated by Authelia."
+# Exposes an OpenAI-compatible surface (/v1/models + /v1/chat/completions) for the agent-ui morda.
+provides:
+- agent_api
 consumes:
 - llm_inference
 - llm_tracing

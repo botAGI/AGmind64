@@ -221,7 +221,7 @@ def test_component_check_script_json_output() -> None:
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["contract_count"] == 12  # +agent-stack (component) 2026-06-08
-    assert payload["service_count"] == 46  # +agent-{pydanticai,agno,db} (3 svc) 2026-06-08
+    assert payload["service_count"] == 47  # +agent-{pydanticai,agno,db,ui} (4 svc) 2026-06-09
     assert payload["error_count"] == 0
     assert payload["issues"] == []
 

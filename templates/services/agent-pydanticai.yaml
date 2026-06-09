@@ -45,6 +45,9 @@ routing:
   healthcheck_path: /health
 access:
   note: "PydanticAI agent API — POST /chat {\"message\":\"...\"}. Gated by Authelia at the edge."
+# Exposes an OpenAI-compatible surface (/v1/models + /v1/chat/completions) for the agent-ui morda.
+provides:
+- agent_api
 # Providers (llama-llm, phoenix) live in other profiles — modelled via consumes (cross-profile
 # depends_on would hard-raise the standalone render). Endpoints are hardcoded in env above.
 consumes:

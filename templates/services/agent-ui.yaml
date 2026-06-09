@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../schemas/service.json
+name: agent-ui
+# Self-hosted Open WebUI as the agents' chat morda — NOT a vendor/cloud UI. Same pinned image as
+# the stack's `openwebui` (OCI index digest). Pre-wired to the agent(s) via their OpenAI-compatible
+# surface, so it works out of the box with no operator config.
+image: ghcr.io/open-webui/open-webui:v0.9.5
+digest: e045bde3b004cc7f8c319412345eb56c87ea6ac57031534a31ca37ad5424beb3
+tier: app
+purpose: Self-hosted chat UI for the agent cores (Open WebUI → agent OpenAI surface) — opt-in agents
+owner: agent-stack
+# In BOTH agent profiles (like agent-db): selecting either profile gives a working morda for the
+# agent(s) that got deployed. Both agents are pre-listed; Open WebUI silently skips an endpoint that
+# is not deployed (so agents-pydantic shows only agmind-pydanticai, agents-agno only agmind-agno).
+profiles:
+- agents-pydantic
+- agents-agno
+volumes:
+- /var/lib/agmind/agent-ui:/app/backend/data
+env:
+  ENABLE_OPENAI_API: 'true'
+  ENABLE_OLLAMA_API: 'false'
+  WEBUI_AUTH: 'true'
+  WEBUI_NAME: AGmind Agents
+  # The agents expose an OpenAI-compatible /v1 surface; point Open WebUI at both. Open WebUI
+  # queries each base's /v1/models and lists whatever answers — an undeployed agent is skipped.
+  OPENAI_API_BASE_URLS: http://agent-pydanticai:8800/v1;http://agent-agno:8800/v1
+  OPENAI_API_KEYS: none;none
+  # Disable Open WebUI's auxiliary "task" features (title/tag/autocomplete/query generation):
+  # they resolve a task model that is None with only external agent models, crashing the chat
+  # flow ('NoneType' has no attribute 'startswith'). Not needed for an agent morda. live 2026-06-09.
+  ENABLE_TITLE_GENERATION: 'false'
+  ENABLE_TAGS_GENERATION: 'false'
+  ENABLE_AUTOCOMPLETE_GENERATION: 'false'
+  ENABLE_RETRIEVAL_QUERY_GENERATION: 'false'
+resources:
+  cpus: 2.0
+  mem_limit: 2g
+  mem_reservation: 1g
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:8080/health
+  start_period: 60s
+  interval: 15s
+  timeout: 5s
+  retries: 10
+access:
+  first_login_register: true
+  note: "Self-hosted chat morda for the agents. First visitor claims the admin account (Authelia gates the edge)."
+routing:
+  host: agents.agmind.dev
+  middleware_chain: chain-llm
+  sse: true
+consumes:
+- agent_api
+# Hardening: block privilege escalation via setuid/file-caps.
+no_new_privileges: true

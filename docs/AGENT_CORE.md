@@ -14,6 +14,18 @@ stack's local LLM, tracing, and a dedicated database — no external services, v
 Both share a dedicated **`agent-db`** (Postgres 17 + pgvector) for agent state/memory and DBOS
 checkpoints, caged on the internal `data-net`.
 
+## Web morda — out of the box
+
+Either profile also stands up **`agent-ui`** — a **self-hosted Open WebUI** (not a vendor/cloud UI),
+pre-wired to the agent(s), behind Authelia at `https://agents.<domain>`. No config: open it, claim the
+first admin, and the deployed agents appear as selectable models (`agmind-pydanticai`, `agmind-agno`) —
+chat away. Both agents expose an **OpenAI-compatible** surface (`/v1/models`, `/v1/chat/completions`,
+streaming), so any OpenAI client/UI can use them too. (`agent-ui` is in both profiles, like `agent-db`,
+and silently skips an agent that isn't deployed.)
+
+> Needs a DNS record for `agents.<domain>` (wildcard `*.<domain> → server IP` recommended) — like
+> every other service, no DNS = browser NXDOMAIN.
+
 ## Architecture
 
 ```

@@ -13,6 +13,7 @@ runtime:
     - agent-pydanticai
     - agent-agno
     - agent-db
+    - agent-ui
   compose_profiles:
     - agents-pydantic
     - agents-agno
