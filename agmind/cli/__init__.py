@@ -60,6 +60,7 @@ def _make_app() -> typer.Typer:
         estimate_cmd,
         governance_cmd,
         install_cmd,
+        loadtest_cmd,
         migrate_cmd,
         models_cmd,
         ops_cmd,
@@ -94,6 +95,7 @@ def _make_app() -> typer.Typer:
     ops_cmd.register(app)
     migrate_cmd.register(app)
     access_cmd.register(app)
+    loadtest_cmd.register(app)
     return app
 
 
