@@ -1,5 +1,11 @@
 # Agent core
 
+> **⚠️ Experimental / opt-in.** This is for embedding agents **in your own code** (PydanticAI's
+> typed structured output; Agno's code-first multi-agent + memory). If you just want to **configure
+> and run agents through a UI** (prompts, tools, RAG, workflows, chat) — use **Dify** (already in the
+> stack, `dify` profile), no code. The agent core only earns its place when you write software that
+> embeds an agent as a library/service. Off by default; never part of the core stack.
+
 AGmind ships a reference **agent core** as two opt-in installer profiles. Tick one (or both) in
 `agmind setup` like any other profile; each stands up a self-hosted agent server wired to the
 stack's local LLM, tracing, and a dedicated database — no external services, vendor telemetry off.
