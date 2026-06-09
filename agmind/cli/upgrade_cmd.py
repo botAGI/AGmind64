@@ -95,13 +95,38 @@ def _find_descriptor_for_service(service_name: str) -> Path | None:
     return None
 
 
+_DIGEST_LINE_RE = re.compile(r"^digest:\s*(?:sha256:)?(?P<digest>[a-f0-9]+)\s*$")
+
+
 def _read_current_pin(yaml_path: Path) -> tuple[str, str, str | None] | None:
-    """Return (image, tag, digest_or_None) from descriptor. None if no `image:` line."""
+    """Return (image, tag, digest_or_None) from descriptor. None if no `image:` line.
+
+    The returned digest is ONLY the inline `@sha256:` one (captured off the
+    `image:` line). The catalog norm is the SEPARATE `digest:` line, which this
+    does not see — read it with `_read_separate_digest`. Both forms render to
+    `name:tag@sha256:<digest>` (ServiceDescriptor.image_ref), so a tag-only bump
+    that drops either digest source pins the new tag to the OLD digest.
+    """
     text = yaml_path.read_text(encoding="utf-8")
     for line in text.splitlines():
         m = _IMAGE_LINE_RE.match(line)
         if m:
             return m.group("image"), m.group("tag"), m.group("digest")
+    return None
+
+
+def _read_separate_digest(yaml_path: Path) -> str | None:
+    """Return the descriptor's separate `digest:` line value, or None if absent.
+
+    This is the catalog-norm digest source (43/43 catalog descriptors; 0 inline).
+    A tag bump that leaves this line stale renders the new tag against the OLD
+    digest — docker then resolves BY DIGEST and silently deploys the OLD image.
+    """
+    text = yaml_path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        m = _DIGEST_LINE_RE.match(line)
+        if m:
+            return m.group("digest")
     return None
 
 
@@ -298,6 +323,25 @@ def build_component_upgrade_plan(
         else:
             new_tag = version
             member_digest = digest
+            # Release-blocker (deep audit: 34/40 separate-digest descriptors
+            # corrupted): a tag bump that keeps the OLD digest renders the new
+            # tag as `name:NEWTAG@sha256:OLDDIGEST` (ServiceDescriptor.image_ref),
+            # so docker resolves BY DIGEST and silently deploys the OLD image.
+            # When the member is actually changing tag AND carries a digest pin
+            # (separate `digest:` line — the catalog norm — or an inline
+            # `@sha256:`) but no replacement digest was supplied, REFUSE rather
+            # than mutate. The operator must fetch the matching digest first.
+            if new_tag != old_tag and digest is None:
+                pinned_digest = old_digest or _read_separate_digest(Path(yaml_path_str))
+                if pinned_digest is not None:
+                    raise ValueError(
+                        f"refusing to bump {service_name} {old_tag} -> {version} without a "
+                        f"matching --digest: {image} is digest-pinned, so a tag-only bump would "
+                        f"keep the OLD digest and silently deploy the OLD image under the new "
+                        f"tag. Get the new digest:\n"
+                        f"  docker buildx imagetools inspect {image}:{version}\n"
+                        f"then re-run with --digest <sha256-hex> (no 'sha256:' prefix)."
+                    )
         items.append(
             UpgradePlanItem(
                 service=service_name,

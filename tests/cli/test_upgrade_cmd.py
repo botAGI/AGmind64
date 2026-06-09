@@ -192,6 +192,116 @@ def test_component_bumps_tag(
     assert "vendor/alpha:1.0.1" in yaml
 
 
+# ---------- tag-bump without a digest must REFUSE (silent old-image deploy) ----------
+#
+# A descriptor that carries a separate `digest:` line renders to
+# `name:tag@sha256:<digest>` (ServiceDescriptor.image_ref). Bumping ONLY the tag
+# leaves the OLD digest, so docker resolves BY DIGEST and silently deploys the
+# OLD image under the new tag. The deep audit found this corrupts 34/40
+# separate-digest descriptors. The bump entrypoint must FAIL FAST and demand the
+# matching `--digest` rather than mutate the file.
+
+
+def test_component_refuses_tag_bump_without_digest_separate_form(
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A separate-digest descriptor bumped WITHOUT --digest must error, untouched."""
+    services = tmp_repo / "templates" / "services"
+    p = _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest="a" * 64)
+    original = p.read_text(encoding="utf-8")
+
+    rc = upgrade_cmd.cmd_component("alpha", "1.0.1")
+
+    assert rc != 0
+    # The descriptor on disk is byte-for-byte unchanged (no tag/digest mutation).
+    assert p.read_text(encoding="utf-8") == original
+    err = capsys.readouterr().err
+    # The operator message must name the remedy (the imagetools command + --digest).
+    assert "--digest" in err
+    assert "imagetools inspect" in err
+    # No upgrade state was written for the refused bump.
+    assert not upgrade_cmd.UPGRADE_STATE_DIR.exists()
+
+
+def test_component_refuses_tag_bump_in_plan_builder_separate_form(
+    tmp_repo: Path,
+) -> None:
+    """build_component_upgrade_plan raises for a separate-digest tag-only bump."""
+    services = tmp_repo / "templates" / "services"
+    _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest="a" * 64)
+
+    with pytest.raises(ValueError, match="--digest"):
+        upgrade_cmd.build_component_upgrade_plan("alpha", "1.0.1")
+
+
+def test_component_bumps_separate_form_with_digest(
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """WITH both --version and --digest: image tag AND digest line both update."""
+    services = tmp_repo / "templates" / "services"
+    p = _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest="a" * 64)
+    new_digest = "b" * 64
+
+    rc = upgrade_cmd.cmd_component("alpha", "1.0.1", digest=new_digest)
+
+    assert rc == 0
+    text = p.read_text(encoding="utf-8")
+    # New tag on a bare image line (no inline @sha256:) + new separate digest.
+    assert "image: vendor/alpha:1.0.1" in text
+    assert "@sha256:" not in text
+    assert f"digest: {new_digest}" in text
+
+
+def test_component_plan_only_also_refuses_separate_form(
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--plan without --digest also refuses: no safe plan exists, file untouched.
+
+    The refusal is single-sourced in the plan builder, so even a read-only
+    preview surfaces the missing-digest error (and the remedy) before the
+    operator wastes a deploy. The descriptor is never mutated.
+    """
+    services = tmp_repo / "templates" / "services"
+    p = _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest="a" * 64)
+    original = p.read_text(encoding="utf-8")
+
+    rc = upgrade_cmd.cmd_component("alpha", "1.0.1", plan_only=True)
+
+    assert rc != 0
+    assert p.read_text(encoding="utf-8") == original
+    assert "--digest" in capsys.readouterr().err
+
+
+def test_component_digestless_descriptor_still_bumps_without_digest(
+    tmp_repo: Path,
+) -> None:
+    """The guard must NOT over-fire: a descriptor with no digest pin bumps freely."""
+    services = tmp_repo / "templates" / "services"
+    p = _make_descriptor(services, "alpha", "vendor/alpha", "1.0.0")  # no digest line
+
+    rc = upgrade_cmd.cmd_component("alpha", "1.0.1")
+
+    assert rc == 0
+    assert "vendor/alpha:1.0.1" in p.read_text(encoding="utf-8")
+
+
+def test_component_separate_form_noop_does_not_refuse(
+    tmp_repo: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Already at target → no bump → no digest needed (guard only fires on a real bump)."""
+    services = tmp_repo / "templates" / "services"
+    _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest="a" * 64)
+
+    rc = upgrade_cmd.cmd_component("alpha", "1.0.0")  # same tag → no-op
+
+    assert rc == 0
+    assert "already at" in capsys.readouterr().out.lower()
+
+
 def test_component_unknown_service(
     tmp_repo: Path,
     capsys: pytest.CaptureFixture[str],
