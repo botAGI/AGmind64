@@ -43,8 +43,14 @@ def test_build_config_requires_dockerfile() -> None:
 
 
 def test_renderer_emits_compose_build_block() -> None:
+    from agmind.services.renderer import REPO_ROOT
+
     svc = descriptor_to_compose_service(_build_svc())
-    assert svc["build"] == {"context": ".", "dockerfile": "docker/Dockerfile.agent-x"}
+    # The context is resolved to the ABSOLUTE repo path (not the descriptor's relative ".") so the
+    # on-host build finds docker/ + services/ at deploy time — compose runs with cwd=install_dir
+    # (/opt/agmind), which does NOT contain the source tree. A relative "." would break the build.
+    assert svc["build"]["context"] == str(REPO_ROOT.resolve())
+    assert svc["build"]["dockerfile"] == "docker/Dockerfile.agent-x"
     assert svc["image"] == "agmind-agent-x:0.1.0"
 
 

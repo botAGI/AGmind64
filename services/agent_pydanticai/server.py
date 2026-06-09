@@ -26,7 +26,7 @@ import logging
 import os
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -149,9 +149,18 @@ def info() -> dict[str, Any]:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    """Run the agent on a single message and return its text reply."""
-    result = await _AGENT.run(req.message)
-    return ChatResponse(reply=result.output, model=LLM_MODEL, durable=DURABLE)
+    """Run the agent on a single message and return its text reply.
+
+    Failures (LLM endpoint unreachable, timeout, upstream error) surface as a clean 503 —
+    never a raw 500 with a stack trace. ``result.output`` can be empty for a reasoning model
+    that spent its whole token budget thinking; we return "" rather than crash.
+    """
+    try:
+        result = await _AGENT.run(req.message)
+    except Exception as exc:  # noqa: BLE001 — clean 503, no raw 500/stack leak to the client
+        log.warning("agent run failed: %s", exc)
+        raise HTTPException(status_code=503, detail="agent upstream unavailable") from exc
+    return ChatResponse(reply=result.output or "", model=LLM_MODEL, durable=DURABLE)
 
 
 def main() -> None:

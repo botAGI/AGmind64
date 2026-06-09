@@ -399,8 +399,15 @@ def descriptor_to_compose_service(
     # AGmind-authored image built on-host from shipped source (compose-native build:), instead
     # of pulled from a registry. `image` is the resulting local tag; `docker compose up --build`
     # builds it. Used by the agent cores so AGmind ships its own apps without a registry/publish.
+    # The context is resolved to an ABSOLUTE repo path: at real deploy time compose runs with
+    # cwd=install_dir (/opt/agmind), which does NOT contain docker/ + services/ — so a relative
+    # "." context would point at install_dir and the build would fail. `context: "."` in the
+    # descriptor means "the repo root", resolved here against REPO_ROOT (the live source tree).
     if d.build is not None:
-        svc["build"] = {"context": d.build.context, "dockerfile": d.build.dockerfile}
+        svc["build"] = {
+            "context": str((REPO_ROOT / d.build.context).resolve()),
+            "dockerfile": d.build.dockerfile,
+        }
 
     if d.profiles:
         svc["profiles"] = list(d.profiles)

@@ -27,7 +27,7 @@ from typing import Any
 # Kill Agno's anonymous telemetry before importing agno (belt: env + per-instance flag).
 os.environ["AGNO_TELEMETRY"] = "false"
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -136,8 +136,16 @@ def info() -> dict[str, Any]:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    """Fixed-contract chat route (AgentOS also mounts its own run routes)."""
-    run = await _agent.arun(req.message)
+    """Fixed-contract chat route (AgentOS also mounts its own run routes).
+
+    Failures (LLM endpoint unreachable, DB error, upstream timeout) surface as a clean 503,
+    never a raw 500 with a stack trace.
+    """
+    try:
+        run = await _agent.arun(req.message)
+    except Exception as exc:  # noqa: BLE001 — clean 503, no raw 500/stack leak to the client
+        log.warning("agent run failed: %s", exc)
+        raise HTTPException(status_code=503, detail="agent upstream unavailable") from exc
     return ChatResponse(reply=_run_text(run), model=LLM_MODEL)
 
 
