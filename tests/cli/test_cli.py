@@ -1122,7 +1122,7 @@ def test_governance_validate_command() -> None:
     runner = CliRunner()
     result = runner.invoke(cli_app, ["governance", "validate"])
     assert result.exit_code == 0
-    assert "governance OK: 9 checks" in result.output
+    assert "governance OK: 10 checks" in result.output
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")

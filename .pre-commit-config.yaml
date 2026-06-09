@@ -60,6 +60,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(templates/services/|scripts/checks/healthcheck_tool_check\.py$)
+      - id: agmind-egress-telemetry-check
+        name: AGmind A8 zero-egress telemetry check
+        entry: .venv/bin/python scripts/checks/egress_telemetry_check.py
+        language: system
+        pass_filenames: false
+        files: ^(templates/services/|scripts/checks/egress_telemetry_check\.py$)
       - id: agmind-landmines-check
         name: AGmind rendered-output landmines (Правила)
         entry: .venv/bin/python scripts/checks/landmines_check.py
@@ -71,7 +77,7 @@ repos:
         entry: .venv/bin/python scripts/checks/governance_check.py
         language: system
         pass_filenames: false
-        files: ^(README\.md|README\.ru\.md|agmind/governance/|agmind/cli/governance_cmd\.py|agmind/deploy/target_checks\.py|templates/deploy-targets/|\.github/workflows/kubernetes-proof\.yml|scripts/checks/governance_check\.py|scripts/checks/docs_mirror_check\.py|scripts/checks/topology_check\.py|scripts/checks/kubernetes_render_check\.py|scripts/checks/kubernetes_proof_workflow_check\.py)$
+        files: ^(README\.md|README\.ru\.md|agmind/governance/|agmind/cli/governance_cmd\.py|agmind/deploy/target_checks\.py|templates/deploy-targets/|\.github/workflows/kubernetes-proof\.yml|scripts/checks/governance_check\.py|scripts/checks/docs_mirror_check\.py|scripts/checks/topology_check\.py|scripts/checks/kubernetes_render_check\.py|scripts/checks/kubernetes_proof_workflow_check\.py|scripts/checks/egress_telemetry_check\.py)$
 
   # ---- Python: ruff (lint + format) ----
   - repo: https://github.com/astral-sh/ruff-pre-commit

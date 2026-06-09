@@ -67,6 +67,7 @@ jobs:
           .venv/bin/python scripts/checks/component_check.py
           .venv/bin/python scripts/checks/topology_check.py
           .venv/bin/python scripts/checks/healthcheck_coverage_check.py
+          .venv/bin/python scripts/checks/egress_telemetry_check.py
           .venv/bin/python scripts/checks/governance_check.py
           .venv/bin/python scripts/checks/audit_forbidden.py
       - name: Unit tests (no integration tier)
@@ -257,6 +258,8 @@ jobs:
         run: .venv/bin/python scripts/checks/healthcheck_tool_check.py
       - name: A7 — healthcheck coverage (probe or classified exemption)
         run: .venv/bin/python scripts/checks/healthcheck_coverage_check.py
+      - name: A8 — zero-egress telemetry (required env key or classified UI-only exempt)
+        run: .venv/bin/python scripts/checks/egress_telemetry_check.py
 
   # ---- Kubernetes renderer validation (M7.D) ----
   kubernetes-render-validate:
