@@ -121,11 +121,11 @@ _SCAFFOLD_TEMPLATE = """# yaml-language-server: $schema=../schemas/service.json
 name: {name}
 image: example/{name}:0.1.0
 tier: {tier}
-purpose: TODO — короткое описание чем занимается
+purpose: <purpose> — короткое описание чем занимается
 profiles:
 - core
 ports:
-- 127.0.0.1:8080:8080  # TODO: host:container port mapping
+- 127.0.0.1:8080:8080  # <host>:<container> port mapping
 resources:
   cpus: 1.0
   mem_limit: 1g
@@ -134,7 +134,7 @@ health:
   - CMD
   - curl
   - -f
-  - http://localhost:8080/health  # TODO: реальный healthcheck URL
+  - http://localhost:8080/health  # http://<host>:<port>/health — реальный healthcheck URL
 """
 
 _TIERS: tuple[str, ...] = ("edge", "inference", "app", "storage", "ops")
