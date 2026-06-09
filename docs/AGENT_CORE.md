@@ -14,17 +14,26 @@ stack's local LLM, tracing, and a dedicated database — no external services, v
 Both share a dedicated **`agent-db`** (Postgres 17 + pgvector) for agent state/memory and DBOS
 checkpoints, caged on the internal `data-net`.
 
-## Web morda — out of the box
+## Web morda — Agno Agent UI, self-hosted
 
-Either profile also stands up **`agent-ui`** — a **self-hosted Open WebUI** (not a vendor/cloud UI),
-pre-wired to the agent(s), behind Authelia at `https://agents.<domain>`. No config: open it, claim the
-first admin, and the deployed agents appear as selectable models (`agmind-pydanticai`, `agmind-agno`) —
-chat away. Both agents expose an **OpenAI-compatible** surface (`/v1/models`, `/v1/chat/completions`,
-streaming), so any OpenAI client/UI can use them too. (`agent-ui` is in both profiles, like `agent-db`,
-and silently skips an agent that isn't deployed.)
+The `agents-agno` profile also stands up **`agent-ui`** — **Agno's own official Agent UI**
+(`agno-agi/agent-ui`), **self-hosted** on your host (built on-host from pinned source), **not** the
+`os.agno.com` hosted control plane. Behind Authelia at `https://agents.<domain>`. Open it, pick the
+`agmind-agno` agent, chat — zero config.
+
+The image bakes a same-origin reverse-proxy (`/os-api/* → agent-agno:8800`), so the browser reaches
+the AgentOS through the UI's own origin: **no CORS, no per-install domain baked in, no separate
+AgentOS exposure.**
+
+Why `agents-agno` only: Agno's Agent UI speaks the **AgentOS** API, which is an Agno construct — it
+can't drive the PydanticAI agent. The **PydanticAI** agent instead exposes an **OpenAI-compatible**
+surface (`/v1/models`, `/v1/chat/completions`, streaming) at `https://agent.<domain>`, so any
+OpenAI-compatible client/UI (or `curl`) can use it. (Both agents expose that OpenAI surface.)
 
 > Needs a DNS record for `agents.<domain>` (wildcard `*.<domain> → server IP` recommended) — like
-> every other service, no DNS = browser NXDOMAIN.
+> every other service, no DNS = browser NXDOMAIN. Note: Agno's *rich* dashboard (configure agents,
+> sessions, memory, knowledge, traces) is **only** available on the hosted `os.agno.com`; the
+> self-hostable `agent-ui` is chat. A fully self-hosted management dashboard would be a custom build.
 
 ## Architecture
 

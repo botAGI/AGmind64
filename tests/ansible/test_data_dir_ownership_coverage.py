@@ -276,10 +276,6 @@ ROOT_WRITER_ALLOWLIST: frozenset[str] = frozenset(
         "authelia",
         "alloy",
         "openwebui",
-        # agent-ui is the same pinned Open WebUI image as `openwebui` — runs as root (no
-        # run_as_uid), writes /var/lib/agmind/agent-ui as root (Docker auto-creates the bind
-        # root:root), self-managed → no numeric-uid bootstrap row, like openwebui.
-        "agent-ui",
         "portainer",
         "traefik",
         "milvus",

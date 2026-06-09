@@ -1,0 +1,43 @@
+# AGmind agent morda — Agno's official open-source Agent UI (agno-agi/agent-ui), self-hosted.
+# Built on-host (compose-native build:), pinned to a commit, NOT pulled from a registry and NOT the
+# os.agno.com hosted control plane. A Next.js chat client that talks to OUR AgentOS (agent-agno).
+#
+# Two source patches make it work behind AGmind's edge with zero operator config:
+#  1. next.config.ts gains a server-side rewrite /os-api/* → ${AGENT_OS_UPSTREAM} (agent-agno:8800),
+#     so the browser talks to AgentOS SAME-ORIGIN through the UI — no CORS, no per-install domain
+#     baked in, no separate AgentOS browser exposure.
+#  2. store.ts default endpoint → window.location.origin + '/os-api' (that same-origin proxy).
+FROM node:22-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate \
+    && apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ARG AGENT_UI_REF=6dad9593fca6756e1813e4f4b3b2620be6377691
+RUN git clone https://github.com/agno-agi/agent-ui.git . && git checkout "${AGENT_UI_REF}"
+# Patch 1: replace next.config.ts with the same-origin AgentOS proxy version.
+COPY docker/agent-ui/next.config.ts ./next.config.ts
+# Patch 2: default the AgentOS endpoint to the same-origin proxy (browser-side).
+RUN sed -i "s@selectedEndpoint: 'http://localhost:7777',@selectedEndpoint: (typeof window !== 'undefined' ? window.location.origin + '/os-api' : 'http://localhost:7777'),@" src/store.ts \
+    && grep -q "os-api" src/store.ts
+RUN pnpm install --no-frozen-lockfile
+RUN pnpm build
+# This pinned commit ships no public/ dir; ensure it exists so the runtime COPY never fails.
+RUN mkdir -p /app/public
+
+FROM node:22-bookworm-slim AS run
+ENV NODE_ENV=production PORT=3000
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* && useradd -m -u 10001 agentui
+WORKDIR /app
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/next.config.ts ./
+USER 10001
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=10 \
+  CMD curl -fsS http://localhost:3000/ || exit 1
+# Run Next.js directly via node — no pnpm at runtime (pnpm's deps-check would try to reinstall).
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
