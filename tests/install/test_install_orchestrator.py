@@ -1765,6 +1765,69 @@ def test_deploy_step_uses_generous_healthcheck_timeout_for_model_load(
     assert timeout >= 900, f"healthcheck_timeout={timeout} too short for first model load"
 
 
+def test_healthcheck_timeout_for_heavy_model_selection() -> None:
+    """A selection containing a 600s-start_period llama server must drive the
+    deploy healthcheck budget to start_period + 600s load margin (>= 1200s),
+    well past the 900s floor, with the slow service named as the driver."""
+    from agmind.install.steps import _healthcheck_timeout_for
+
+    timeout, driver = _healthcheck_timeout_for(["llama-llm", "qdrant"])
+    assert timeout == 1200, timeout
+    assert driver == "llama-llm"
+
+
+def test_healthcheck_timeout_for_light_selection_uses_floor() -> None:
+    """A light selection whose slowest start_period + 600 is below the 900s floor
+    falls back to the floor (qdrant start_period is 10s -> 610 < 900)."""
+    from agmind.install.steps import _healthcheck_timeout_for
+
+    timeout, _driver = _healthcheck_timeout_for(["qdrant"])
+    assert timeout == 900, timeout
+
+
+def test_healthcheck_timeout_for_empty_or_unknown_uses_floor() -> None:
+    """No registered service / no start_period -> the 900s floor still applies."""
+    from agmind.install.steps import _healthcheck_timeout_for
+
+    timeout, driver = _healthcheck_timeout_for([])
+    assert timeout == 900
+    assert driver is None
+    timeout, _driver = _healthcheck_timeout_for(["not-a-real-service"])
+    assert timeout == 900
+
+
+def test_deploy_step_logs_data_driven_healthcheck_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DeployStep sizes the healthcheck budget from the slowest selected service's
+    start_period and LOGs the chosen value + driver for operator visibility."""
+    from agmind.deploy.runner import DeployResult
+    from agmind.install.steps import DeployStep
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+    cfg = InstallConfig(
+        domain="lab.example.com",
+        cf_api_token="X" * 40,
+        services=["llama-llm", "qdrant"],
+        install_dir=tmp_path / "opt",
+    )
+    events: list[ProgressEvent] = []
+
+    result = DeployStep().run(events.append, cfg)
+
+    assert result.success
+    assert calls.get("healthcheck_timeout") == 1200
+    logs = "\n".join(event.text for event in events if event.kind is ProgressKind.LOG)
+    assert "healthcheck timeout: 1200 s" in logs
+    assert "llama-llm" in logs
+
+
 def test_deploy_step_rejects_empty_service_selection_before_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
