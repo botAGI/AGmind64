@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
+import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +23,20 @@ from agmind.core.paths import data_root
 if TYPE_CHECKING:
     from agmind.config.validation import ConfigValidationReport
     from agmind.diagnostics.doctor import DoctorReport
+
+
+def _stdout_is_tty() -> bool:
+    """Whether stdout is an interactive terminal honoring NO_COLOR / AGMIND_NO_COLOR.
+
+    Seam mirrors diagnostics.doctor's TTY/color auto-detect (and is monkeypatchable in
+    tests). The `status --watch` animated rich.Live path is gated on this — over a pipe /
+    CI / ssh-no-tty it degrades to a single pass instead of owning the screen forever.
+    """
+    return (
+        sys.stdout.isatty()
+        and os.environ.get("NO_COLOR", "") == ""
+        and os.environ.get("AGMIND_NO_COLOR", "") == ""
+    )
 
 
 def _run_preflight() -> DoctorReport:
@@ -83,6 +100,104 @@ def _print_deploy_summary(summary: dict[str, object]) -> None:
             "  ⚠ no LLM deployed (model skipped) — chat/generation disabled for: "
             + ", ".join(disabled)  # type: ignore[arg-type]
         )
+
+
+def _build_status_payload(deploy: bool, install_dir: Path) -> dict[str, object]:
+    """One-shot status data source — the SAME picture the plain `status` prints and the
+    `--watch` loop re-renders each tick. Keeps cli/ free of new domain logic: backend +
+    device info from agmind.compute, optional deploy block from `_deploy_summary`."""
+    from agmind.compute import get_backend, list_available_backends
+
+    info = get_backend().device_info()
+    payload: dict[str, object] = {
+        "available_backends": list_available_backends(),
+        "selected": {
+            "backend": info.backend,
+            "engine": info.engine,
+            "device_id": info.device_id,
+            "name": info.name,
+            "total_memory_gib": info.total_memory_bytes / 1024**3,
+            "capabilities": info.capabilities,
+        },
+    }
+    if deploy:
+        payload["deploy"] = _deploy_summary(install_dir)
+    return payload
+
+
+def _print_status_plain(payload: dict[str, object], deploy: bool) -> None:
+    selected = payload["selected"]
+    assert isinstance(selected, dict)
+    typer.echo(f"Available: {payload['available_backends']}")
+    typer.echo(f"Selected:  {selected['backend']} / {selected['engine']}")
+    typer.echo(f"Device:    {selected['name']}")
+    typer.echo(f"Memory:    {selected['total_memory_gib']:.1f} GiB")
+    typer.echo("Capabilities:")
+    for k, v in selected["capabilities"].items():
+        typer.echo(f"  {k}: {v}")
+    if deploy:
+        _print_deploy_summary(payload["deploy"])  # type: ignore[arg-type]
+
+
+def _render_status_table(payload: dict[str, object], deploy: bool):  # type: ignore[no-untyped-def]
+    """Build a rich renderable for a single `--watch` frame (lazy rich import)."""
+    from rich.console import Group
+    from rich.table import Table
+
+    selected = payload["selected"]
+    assert isinstance(selected, dict)
+    table = Table(title="agmind status", expand=False)
+    table.add_column("field", style="bold")
+    table.add_column("value")
+    table.add_row("available", str(payload["available_backends"]))
+    table.add_row("backend", f"{selected['backend']} / {selected['engine']}")
+    table.add_row("device", str(selected["name"]))
+    table.add_row("memory", f"{selected['total_memory_gib']:.1f} GiB")
+    for k, v in selected["capabilities"].items():
+        table.add_row(f"cap.{k}", str(v))
+
+    if not deploy:
+        return table
+
+    dep = payload.get("deploy") or {}
+    assert isinstance(dep, dict)
+    dtable = Table(title="deploy", expand=False)
+    dtable.add_column("field", style="bold")
+    dtable.add_column("value")
+    if dep.get("error"):
+        dtable.add_row("error", str(dep["error"]))
+    else:
+        dtable.add_row("running", f"{dep.get('running')}/{dep.get('total')}")
+        dtable.add_row("healthy", str(dep.get("healthy")))
+        dtable.add_row("unhealthy", str(dep.get("unhealthy")))
+        problems = dep.get("problems") or []
+        if problems:
+            dtable.add_row("problems", ", ".join(problems))
+    return Group(table, dtable)
+
+
+def _watch_status(deploy: bool, install_dir: Path, interval: float) -> None:
+    """Headless auto-refresh loop: re-render the one-shot status picture every ``interval``
+    seconds via rich.Live until Ctrl-C. Each tick rebuilds the payload from the live data
+    source (`query_compose_state` never raises), so the loop is crash-safe."""
+    from rich.console import Console
+    from rich.live import Live
+
+    console = Console()
+    payload = _build_status_payload(deploy, install_dir)
+    with Live(
+        _render_status_table(payload, deploy),
+        console=console,
+        refresh_per_second=4,
+        screen=False,
+    ) as live:
+        while True:
+            try:
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                break
+            payload = _build_status_payload(deploy, install_dir)
+            live.update(_render_status_table(payload, deploy))
 
 
 def register(app: typer.Typer) -> None:
@@ -196,12 +311,24 @@ def register(app: typer.Typer) -> None:
         refresh: float = typer.Option(
             5.0, "--refresh", help="Refresh interval seconds (only for --tui)"
         ),
+        watch: bool = typer.Option(
+            False,
+            "--watch",
+            help="Headless auto-refresh: re-render the status picture every --interval "
+            "seconds (rich.Live) until Ctrl-C. No Textual TUI required (SSH/pipe friendly).",
+        ),
+        interval: float = typer.Option(
+            5.0, "--interval", help="Refresh interval seconds for --watch."
+        ),
     ) -> None:
         """Show selected backend + device info, or a live dashboard with --tui.
 
         ``--deploy`` adds a plain-text/--json deployment picture (services up/healthy + problems
         + an LLM-disabled warning) readable over SSH or pipe — the live health was previously
-        reachable ONLY via the interactive --tui (live-audit 2026-06-07 UI-4).
+        reachable ONLY via the interactive --tui (live-audit 2026-06-07 UI-4). ``--watch``
+        (Phase 4.1) is the headless equivalent of --tui: a rich.Live re-render loop over the
+        same one-shot data source; without a TTY (pipe/CI) or with --json it degrades to a
+        single pass + a stderr warning.
         """
         if tui:
             from agmind.cli.tui.status_dashboard import run_dashboard
@@ -209,35 +336,21 @@ def register(app: typer.Typer) -> None:
             run_dashboard(install_dir=install_dir, refresh_interval=refresh)
             return
 
-        from agmind.compute import get_backend, list_available_backends
+        # --watch animates rich.Live, which owns the screen — only meaningful on an
+        # interactive terminal and incompatible with line-parseable --json. In either
+        # degraded case fall through to a single pass and warn (Phase 4.1).
+        if watch and not as_json and _stdout_is_tty():
+            _watch_status(deploy, install_dir, interval)
+            return
+        if watch:
+            reason = "--json wants line output" if as_json else "stdout is not a TTY"
+            typer.echo(f"warning: --watch falls back to a single pass ({reason})", err=True)
 
-        backend = get_backend()
-        info = backend.device_info()
-        payload: dict[str, object] = {
-            "available_backends": list_available_backends(),
-            "selected": {
-                "backend": info.backend,
-                "engine": info.engine,
-                "device_id": info.device_id,
-                "name": info.name,
-                "total_memory_gib": info.total_memory_bytes / 1024**3,
-                "capabilities": info.capabilities,
-            },
-        }
-        if deploy:
-            payload["deploy"] = _deploy_summary(install_dir)
+        payload = _build_status_payload(deploy, install_dir)
         if as_json:
             typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
         else:
-            typer.echo(f"Available: {payload['available_backends']}")
-            typer.echo(f"Selected:  {info.backend} / {info.engine}")
-            typer.echo(f"Device:    {info.name}")
-            typer.echo(f"Memory:    {info.total_memory_bytes / 1024**3:.1f} GiB")
-            typer.echo("Capabilities:")
-            for k, v in info.capabilities.items():
-                typer.echo(f"  {k}: {v}")
-            if deploy:
-                _print_deploy_summary(payload["deploy"])  # type: ignore[arg-type]
+            _print_status_plain(payload, deploy)
 
     @app.command()
     def version() -> None:
