@@ -21,6 +21,20 @@ env:
   ENABLE_OPENAI_API: 'true'
   WEBUI_AUTH: 'true'
   ENABLE_RAG_HYBRID_SEARCH: 'true'
+  # zero-egress: open-webui bundles ChromaDB, whose PostHog client phones home unless
+  # ANONYMIZED_TELEMETRY=False; DO_NOT_TRACK/SCARF_NO_ANALYTICS suppress the same in bundled
+  # deps (belt-and-suspenders, matches netdata DO_NOT_TRACK). OFFLINE_MODE disables the
+  # version-check + auto model downloads AND sets HF_HUB_OFFLINE=1 internally (env.py), so no
+  # Hugging Face fetch happens at boot. verified 2026-06-09 against open-webui v0.9.5 source
+  # (config.py / env.py) + https://docs.openwebui.com/tutorials/maintenance/offline-mode/
+  # NB: local embeddings are NOT hardcoded here — pointing RAG_OPENAI_API_BASE_URL at
+  # llama-embed:8080 would dangle at a dead DNS when llama-embed is not deployed (same class
+  # as the dangling-llama-llm HIGH, live-audit 2026-06-05). That endpoint must come from a
+  # capability binding when both services are co-deployed, never a static value.
+  ANONYMIZED_TELEMETRY: 'False'
+  DO_NOT_TRACK: 'True'
+  SCARF_NO_ANALYTICS: 'True'
+  OFFLINE_MODE: 'True'
 resources:
   cpus: 2.0
   mem_limit: 2g

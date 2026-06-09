@@ -22,6 +22,13 @@ writable_mounts:
 env:
   MODE: api
   LOG_LEVEL: INFO
+  # zero-egress: dify-api/console polls CHECK_UPDATE_URL (default https://updates.dify.ai) and
+  # the console calls marketplace.dify.ai unless MARKETPLACE_ENABLED=false. Empty CHECK_UPDATE_URL
+  # = disabled (docs: "useful for air-gapped"). These are api/console vars, NOT dify-web. verified
+  # 2026-06-09 against dify 1.14.2 https://docs.dify.ai/en/self-host/configuration/environments +
+  # https://github.com/langgenius/dify/blob/1.14.2/docker/.env.example
+  CHECK_UPDATE_URL: ''
+  MARKETPLACE_ENABLED: 'false'
   # Cage the HTTP-request node + MCP/tool fetches (user-controlled URLs) through the ssrf-proxy
   # squid — blocks SSRF to cloud metadata / the LAN. dify reads SSRF_PROXY_* ONLY for these user
   # fetches, NOT model-provider or DB calls (verified live: api/core/mcp/utils.py).

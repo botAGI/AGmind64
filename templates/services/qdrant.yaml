@@ -16,6 +16,10 @@ volumes:
 - /var/lib/agmind/qdrant:/qdrant/storage
 env:
   QDRANT__SERVICE__GRPC_PORT: '6334'
+  # zero-egress: qdrant POSTs anonymized usage stats to telemetry.qdrant.io on a timer
+  # unless disabled (maps to config telemetry_disabled). verified 2026-06-09 against
+  # qdrant v1.18.0 docs https://qdrant.tech/documentation/guides/usage-statistics/
+  QDRANT__TELEMETRY_DISABLED: 'true'
 resources:
   cpus: 4.0
   mem_limit: 8g
