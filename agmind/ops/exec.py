@@ -29,9 +29,14 @@ def _sudo_stdin(sudo_password: str | None) -> str | None:
 
 
 def _check_prereqs(install_dir: Path) -> str | None:
-    """Returns error message or None if all prerequisites are present."""
-    if shutil.which("docker") is None:
-        return "docker binary not found in PATH"
+    """Returns error message or None if all prerequisites are present.
+
+    Order matters: the compose-file check runs FIRST. On a host that has never
+    deployed (no docker-compose.yml) the actionable next step is to run the
+    installer — surfacing a docker-PATH error there would mis-direct the operator.
+    Reordering also makes the bare logs/shell prereq tests hermetic on a CI box
+    that lacks docker on PATH (2026-06-09 Lane A).
+    """
     compose_file = install_dir / "docker-compose.yml"
     try:
         compose_exists = compose_file.exists()
@@ -39,6 +44,8 @@ def _check_prereqs(install_dir: Path) -> str | None:
         return f"cannot access deployment at {compose_file}: {exc}"
     if not compose_exists:
         return f"no deployment at {compose_file} (run `agmind deploy --apply`)"
+    if shutil.which("docker") is None:
+        return "docker binary not found in PATH"
     return None
 
 

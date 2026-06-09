@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agmind.ops.exec import known_services, logs, shell
+from agmind.ops.exec import _check_prereqs, known_services, logs, shell
 
 pytestmark = pytest.mark.backend_any
 
@@ -57,16 +57,55 @@ def test_known_services_inaccessible_compose_returns_empty(
     assert known_services(tmp_path) == []
 
 
+# ---------- _check_prereqs ordering ----------
+
+
+def test_check_prereqs_missing_compose_wins_over_missing_docker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The actionable error is "no deployment … run `agmind deploy --apply`".
+
+    The compose-file check MUST precede the docker-binary check: on a host that
+    has never deployed (no docker-compose.yml) the operator's next step is to run
+    the installer, NOT to debug a docker PATH issue. Reordering also makes the
+    bare logs/shell no-compose tests hermetic on a docker-less CI box.
+    """
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    err = _check_prereqs(tmp_path)
+    assert err is not None
+    assert "no deployment" in err
+    assert "docker binary" not in err
+
+
+def test_check_prereqs_docker_error_when_compose_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When a deployment exists but docker is gone, surface the docker error."""
+    install = _make_install_dir(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    err = _check_prereqs(install)
+    assert err is not None
+    assert "docker binary not found" in err
+
+
 # ---------- logs ----------
 
 
-def test_logs_no_compose_returns_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logs_no_compose_returns_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Hermetic: pin docker present so the assertion targets the compose-missing
+    # path regardless of whether the runner has docker on PATH.
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
     rc = logs(install_dir=tmp_path)
     assert rc == 2
     assert "no deployment" in capsys.readouterr().out
 
 
-def test_logs_unknown_service(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logs_unknown_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
     install = _make_install_dir(tmp_path)
     rc = logs(install_dir=install, service="nonexistent")
     assert rc == 2
@@ -184,13 +223,19 @@ def test_logs_reports_subprocess_failure_without_traceback(
 # ---------- shell ----------
 
 
-def test_shell_no_compose(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_shell_no_compose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
     rc = shell(install_dir=tmp_path, service="anything")
     assert rc == 2
     assert "no deployment" in capsys.readouterr().out
 
 
-def test_shell_unknown_service(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_shell_unknown_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/docker")
     install = _make_install_dir(tmp_path)
     rc = shell(install_dir=install, service="ghost")
     assert rc == 2
