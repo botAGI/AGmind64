@@ -71,6 +71,13 @@ Tests mirror the runtime domains:
 Path-sensitive tests should derive the repository root with
 `Path(__file__).resolve().parents[2]` from one-level-deep test domains.
 
+The bare `compose up` smoke (`tests/integration/test_compose_up_smoke.py`) boots
+only the subset that comes up from committed descriptors alone — it filters out
+`llama-*` (model inference), `_INSTALL_SETUP_SERVICES` (need installer-staged
+config) and `_SLOW_MODEL_LOADERS` (docling, whose `/health` legitimately takes
+minutes). A green smoke therefore proves descriptor topology boots, NOT that the
+whole stack boots; full-stack boot is covered by `agmind install`.
+
 ## Boundary Rules
 
 - Install code prepares a fresh node; deploy code applies, snapshots, rolls
