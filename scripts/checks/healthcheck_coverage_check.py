@@ -54,6 +54,12 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "health/ready subcommand; readiness observed via Prometheus scrape",
     "portainer": "no-probe: scratch portainer-ce — only /portainer binary, no shell, no health "
     "subcommand to self-probe /api/system/status",
+    # tech-debt: a `/` wget probe was added in Phase 3 but REVERTED 2026-06-10 — homarr needs a
+    # valid HOMARR_SECRET_ENCRYPTION_KEY (64-hex) to serve, so a bare compose-up never reaches
+    # healthy within 300s (proven live by test_compose_up_smoke[core,observability]). Not in the
+    # default selection; re-adding a probe needs installer-staged config + live start_period tuning.
+    "homarr": "tech-debt: / probe reverted 2026-06-10 — needs installer secret + live tuning; "
+    "not in default selection",
 }
 
 

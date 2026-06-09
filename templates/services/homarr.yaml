@@ -21,21 +21,6 @@ resources:
   cpus: 1.0
   mem_limit: 1g
   mem_reservation: 256m
-# Root / returns 307→200 (wget follows the redirect, rc 0); v1.62 has NO /api/health (404) —
-# matches routing.healthcheck_path: /. The image ships wget only (no curl). Long Next.js cold
-# start → 45s start_period. verified live 2026-06-09. Phase 3: removes homarr from the A7 list.
-health:
-  test:
-  - CMD
-  - wget
-  - -q
-  - -O
-  - /dev/null
-  - http://localhost:7575/
-  start_period: 45s
-  interval: 30s
-  timeout: 5s
-  retries: 5
 access:
   first_login_register: true
 routing:
