@@ -40,6 +40,11 @@ env:
   # the daemon panics at startup. Match the langgenius reference compose defaults.
   PLUGIN_REMOTE_INSTALLING_HOST: 0.0.0.0
   PLUGIN_REMOTE_INSTALLING_PORT: '5003'
+  # zero-egress: kill the plugin-daemon's Sentry crash-reporting egress. NOTE we deliberately do
+  # NOT touch FORCE_VERIFYING_SIGNATURE (default true) — that is a security control (allows only
+  # signed plugins), not telemetry, and disabling it gives zero egress benefit. verified
+  # 2026-06-09 against dify 1.14.2 https://github.com/langgenius/dify/blob/1.14.2/docker/.env.example
+  PLUGIN_SENTRY_ENABLED: 'false'
 depends_on:
 - postgres
 - redis
@@ -47,6 +52,19 @@ resources:
   cpus: 2.0
   mem_limit: 2g
   mem_reservation: 512m
+# /health/check returns 200 {"status":"ok"} on SERVER_PORT 5002 (verified live 2026-06-09 against
+# 0.6.1-local; bare /health is 404 — must be /health/check). The image ships curl + bash. Phase 3:
+# removes dify-plugin-daemon from the A7 tech-debt exempt list.
+health:
+  test:
+  - CMD
+  - curl
+  - -fsS
+  - http://localhost:5002/health/check
+  start_period: 30s
+  interval: 30s
+  timeout: 5s
+  retries: 5
 
 # Hardening (live-audit 2026-06-05): block privilege escalation via setuid/file-caps.
 no_new_privileges: true

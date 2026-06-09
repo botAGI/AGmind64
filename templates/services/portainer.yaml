@@ -39,3 +39,10 @@ routing:
   host: portainer.agmind.dev
   # unauthenticated 200-JSON endpoint on the HTTP listener (/api/status on older builds)
   healthcheck_path: /api/system/status
+# NO `health:` block on purpose: portainer-ce:2.41.1 is a SCRATCH image — the only binary is
+# /portainer, there is no /bin/sh and no `portainer healthcheck` subcommand (verified 2026-06-09:
+# `docker run --entrypoint sh` → "executable file not found"). The readiness endpoint
+# (/api/system/status) IS correct, but there is no in-image HTTP client to call it, so any
+# wget/curl probe would hit the A6 'executable file not found' class → unhealthy forever → false
+# rollback. Portainer therefore stays classified no-probe in
+# healthcheck_coverage_check._HEALTHCHECK_EXEMPT; readiness is observed via traefik's own probe.

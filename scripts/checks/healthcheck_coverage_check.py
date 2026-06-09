@@ -47,13 +47,13 @@ _HEALTHCHECK_EXEMPT: dict[str, str] = {
     "dify-sandbox": "no-probe: internal code sandbox (ssrf-caged), no readiness endpoint",
     "dify-worker": "no-probe: celery worker, no HTTP readiness endpoint",
     "docker-socket-proxy": "no-probe: stateless haproxy Docker-API gateway, running == ready",
-    # tech-debt: SHOULD ship a Docker health probe — tracked so it is not silently passing
-    "authelia": "tech-debt: add /api/health probe",
-    "dify-plugin-daemon": "tech-debt: add plugin-daemon health probe",
-    "homarr": "tech-debt: add web readiness probe (not in default selection)",
-    "loki": "tech-debt: add /ready probe",
-    "portainer": "tech-debt: add web readiness probe (not in default selection)",
-    "weaviate": "tech-debt: add /v1/.well-known/ready probe",
+    # no-probe: distroless/scratch image — readiness endpoint exists but NO in-image client to
+    # call it (probed 2026-06-09: image fs export + binary --help). Reclassified from tech-debt
+    # (Phase 3): there is genuinely no probe surface, so the tech-debt label was wrong.
+    "loki": "no-probe: distroless grafana/loki — only /usr/bin/loki, no shell/wget/curl, no "
+    "health/ready subcommand; readiness observed via Prometheus scrape",
+    "portainer": "no-probe: scratch portainer-ce — only /portainer binary, no shell, no health "
+    "subcommand to self-probe /api/system/status",
 }
 
 

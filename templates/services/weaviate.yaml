@@ -12,12 +12,36 @@ volumes:
 - /var/lib/agmind/weaviate:/var/lib/weaviate
 env:
   DEFAULT_VECTORIZER_MODULE: none
+  # Caged on rag-weaviate's network with no public route — anonymous access is acceptable here
+  # for the SAME reason qdrant is caged on the internal data-net: the only consumers reach
+  # weaviate by DNS name over a non-public net, not from the LAN/internet. Flipping this to
+  # 'false' would require provisioning an API-key/OIDC auth scheme the rag-weaviate consumers
+  # do not currently carry. Value unchanged; documented per live-audit 2026-06-05 (flat-network).
   AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+  # zero-egress: weaviate POSTs anonymous telemetry to a hosted endpoint on a timer unless
+  # disabled. verified 2026-06-09 against weaviate 1.37.4 docs
+  # https://docs.weaviate.io/deploy/configuration/telemetry (accepts true/1/on/enabled).
+  DISABLE_TELEMETRY: 'true'
   PERSISTENCE_DATA_PATH: /var/lib/weaviate
 resources:
   cpus: 4.0
   mem_limit: 8g
   mem_reservation: 2g
+# /v1/.well-known/ready returns 200 once weaviate is serving (verified live 2026-06-09 against
+# 1.37.4). The image ships wget (no curl/bash) — probe with wget. Internal port is 8080 (the
+# host map is :8090). Phase 3: removes weaviate from the A7 tech-debt exempt list.
+health:
+  test:
+  - CMD
+  - wget
+  - -q
+  - -O
+  - /dev/null
+  - http://localhost:8080/v1/.well-known/ready
+  start_period: 20s
+  interval: 30s
+  timeout: 5s
+  retries: 3
 
 # Phase O capabilities
 provides:

@@ -67,6 +67,12 @@ _KNOWN_PRESENT_TOOLS: dict[str, frozenset[str]] = {
     "mysql:8.0.46-oraclelinux9": frozenset({"curl"}),
     # curl verified present by live `docker exec ... command -v curl` (2026-06-05).
     "elasticsearch:8.19.16": frozenset({"curl"}),
+    # Phase 3 healthchecks (probed `docker run --entrypoint sh ... command -v <tool>` 2026-06-09):
+    # authelia/homarr/weaviate ship wget only (no curl); dify-plugin-daemon ships curl + bash.
+    "authelia/authelia:4.39.20": frozenset({"wget"}),
+    "ghcr.io/homarr-labs/homarr:v1.62.0": frozenset({"wget"}),
+    "semitechnologies/weaviate:1.37.4": frozenset({"wget"}),
+    "langgenius/dify-plugin-daemon:0.6.1-local": frozenset({"curl"}),
 }
 
 _PIPELINE_SEPARATORS: frozenset[str] = frozenset({"&&", "||", ";", "|", "&"})
