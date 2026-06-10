@@ -39,19 +39,21 @@ def test_mysql_and_elasticsearch_caged_ragflow_dual_homed() -> None:
 
 
 def test_postgres_redis_caged_consumers_dual_homed() -> None:
-    """K-2b: postgres + redis caged on data-net; every consumer dual-homed [default, data-net]."""
+    """K-2b: postgres + redis caged on data-net; every consumer dual-homed [default, data-net].
+    Exception: dify-api/dify-worker are TRI-homed — they additionally join ssrf-net to reach the
+    caged dify-sandbox for workflow Code-node execution (2026-06-10 live blocker)."""
     d = load_descriptors()
     assert d["postgres"].networks == ["data-net"]
     assert d["redis"].networks == ["data-net"]
     for consumer in (
-        "dify-api",
-        "dify-worker",
         "dify-plugin-daemon",
         "postgres-exporter",
         "redis-exporter",
         "authelia",
     ):
         assert set(d[consumer].networks) == {"default", "data-net"}, consumer
+    for consumer in ("dify-api", "dify-worker"):
+        assert set(d[consumer].networks) == {"default", "data-net", "ssrf-net"}, consumer
 
 
 def test_qdrant_caged_and_host_ports_dropped() -> None:

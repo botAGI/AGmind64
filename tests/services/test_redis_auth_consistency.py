@@ -255,3 +255,61 @@ def test_dify_worker_celery_broker_url_embeds_password() -> None:
         f"got: {url!r}. The `:` before the password is required (empty username, "
         f"password follows). See dify upstream shared.env.example."
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 7: dify-api ↔ dify-worker run-the-same-generation config parity
+# ---------------------------------------------------------------------------
+
+
+def test_dify_api_worker_generation_config_parity() -> None:
+    """The worker runs advanced-chat/workflow generation (dispatched via the Celery broker),
+    so it must share dify-api's plugin-daemon handshake AND code-execution config. A subset
+    asymmetry is a silent deploy-blocker: chatflow/workflow apps enqueue to the broker, the
+    worker picks them up, then fails to resolve the model ("Failed to request plugin daemon")
+    or run Code nodes ("sandbox: Name or service not known"). The handshake keys MUST be
+    byte-identical so they match at runtime. 2026-06-10 live blocker."""
+    api = _load_yaml("dify-api").get("env") or {}
+    worker = _load_yaml("dify-worker").get("env") or {}
+
+    # Both enqueue/consume via the broker; missing it on either side = "Failed to enqueue".
+    for svc_name, env in (("dify-api", api), ("dify-worker", worker)):
+        assert "CELERY_BROKER_URL" in env, (
+            f"{svc_name} must carry CELERY_BROKER_URL — without it the advanced-chat/workflow "
+            f"streaming-task dispatch falls back to Celery's default amqp://localhost (no broker)"
+        )
+
+    # These keys MUST be present AND identical on both sides (runtime handshake/endpoint).
+    shared = [
+        "PLUGIN_DAEMON_URL",
+        "PLUGIN_DAEMON_KEY",
+        "INNER_API_KEY_FOR_PLUGIN",
+        "CODE_EXECUTION_ENDPOINT",
+        "CODE_EXECUTION_API_KEY",
+    ]
+    mismatches: list[str] = []
+    for key in shared:
+        if key not in api:
+            mismatches.append(f"dify-api missing {key}")
+        if key not in worker:
+            mismatches.append(f"dify-worker missing {key}")
+        if key in api and key in worker and api[key] != worker[key]:
+            mismatches.append(f"{key} differs: api={api[key]!r} worker={worker[key]!r}")
+    assert not mismatches, (
+        "dify-api ↔ dify-worker generation-config parity failed (the worker runs workflow "
+        "generation and must share api's plugin-daemon + code-exec config):\n"
+        + "\n".join(f"  - {m}" for m in mismatches)
+    )
+
+
+def test_dify_api_worker_on_ssrf_net_for_code_exec() -> None:
+    """Workflow Code nodes execute in dify-sandbox, caged on the internal-only ssrf-net. Both
+    dify-api (editor single-step debug runs) and dify-worker (full workflow generation) must
+    join ssrf-net to reach http://dify-sandbox:8194, else Code nodes fail with "sandbox: Name
+    or service not known". 2026-06-10 live blocker."""
+    for name in ("dify-api", "dify-worker"):
+        nets = _load_yaml(name).get("networks") or []
+        assert "ssrf-net" in nets, (
+            f"{name} must be on ssrf-net to reach the caged dify-sandbox for Code-node "
+            f"execution; got networks={nets}"
+        )

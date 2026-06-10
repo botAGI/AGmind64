@@ -16,6 +16,9 @@ env:
   ENABLE_NETWORK: 'true'
   HTTP_PROXY: http://ssrf-proxy:3128
   HTTPS_PROXY: http://ssrf-proxy:3128
+  # Code-exec auth shared with dify-api/dify-worker CODE_EXECUTION_API_KEY. Default matches the
+  # image default so existing deploys are unchanged; override via DIFY_SANDBOX_API_KEY. 2026-06-10.
+  API_KEY: ${DIFY_SANDBOX_API_KEY:-dify-sandbox}
 resources:
   cpus: 2.0
   mem_limit: 1g
