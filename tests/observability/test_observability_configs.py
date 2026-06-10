@@ -57,6 +57,41 @@ def test_containers_dashboard_uses_real_restart_metric() -> None:
     assert "changes(container_start_time_seconds" in text
 
 
+def test_inference_dashboard_exposes_decode_speed_tokens_per_second() -> None:
+    """Operator-visible tok/s: the chat UI reports per-request decode speed (e.g. 215 tok/s) =
+    rate(tokens_predicted_total) / rate(tokens_predicted_seconds_total) — NOT the wall-time
+    rate(tokens_predicted_total) the 'Throughput' panel shows. The Inference board must surface it."""
+    dash = json.loads(
+        (OBS_DIR / "grafana" / "provisioning" / "dashboards" / "json" / "inference.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    exprs = [t.get("expr", "") for p in dash["panels"] for t in p.get("targets", [])]
+    assert any(
+        "tokens_predicted_total" in e and "tokens_predicted_seconds_total" in e for e in exprs
+    ), (
+        "inference dashboard must expose decode speed (tokens_predicted_total / tokens_predicted_seconds_total)"
+    )
+    titles = {p.get("title", "").lower() for p in dash["panels"]}
+    assert any("tok/s" in t and "decode" in t for t in titles), (
+        "needs a labelled decode tok/s panel"
+    )
+
+
+def test_overview_dashboard_surfaces_llm_inference_tokens_per_second() -> None:
+    """The main monitoring board (overview) must show LLM inference tok/s, so the operator sees
+    generation activity and speed without opening the dedicated Inference dashboard."""
+    dash = json.loads(
+        (OBS_DIR / "grafana" / "provisioning" / "dashboards" / "json" / "overview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    exprs = [t.get("expr", "") for p in dash["panels"] for t in p.get("targets", [])]
+    assert any(
+        "tokens_predicted_total" in e and "tokens_predicted_seconds_total" in e for e in exprs
+    ), "overview dashboard must surface LLM decode tok/s"
+
+
 def test_expected_files_present() -> None:
     expected = [
         "prometheus.yml",
