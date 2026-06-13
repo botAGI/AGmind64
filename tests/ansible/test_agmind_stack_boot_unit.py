@@ -25,6 +25,11 @@ def test_boot_unit_orders_after_docker_and_runs_compose_up() -> None:
     # ordered bring-up: compose up -d (respects depends_on), not a per-container restart
     assert "docker compose" in unit and "up -d" in unit
     assert "WantedBy=multi-user.target" in unit
+    # behavioural contract, not just "a line that says up -d": the rendered compose tags every
+    # service with `profiles:`, so a bare `up -d` brings up ZERO services. The unit MUST pass the
+    # deployed --profile set (live 2026-06-13 reboot: profile-blind unit would have stayed empty).
+    assert "--profile" in unit, "boot unit's up -d is profile-blind → would start no profiled svc"
+    assert "agmind_profiles" in unit, "unit must render the deployed agmind_profiles selection"
 
 
 def test_services_role_installs_and_enables_boot_unit() -> None:

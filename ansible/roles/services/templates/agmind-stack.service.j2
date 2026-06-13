@@ -14,8 +14,10 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={{ agmind_install_dir }}
-ExecStart=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml up -d --remove-orphans
-ExecStop=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml stop
+# A bare `up -d` skips every profiled service (renderer tags all services with `profiles:`),
+# so the deployed --profile set is rendered in. Mirrors agmind.install.steps._agmind_stack_unit.
+ExecStart=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml {% for p in agmind_profiles %}--profile {{ p }} {% endfor %}up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f {{ agmind_install_dir }}/docker-compose.yml {% for p in agmind_profiles %}--profile {{ p }} {% endfor %}stop
 # compose itself waits on container health; give it room and never kill mid-bring-up.
 TimeoutStartSec=0
 
