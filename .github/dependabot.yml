@@ -16,3 +16,20 @@ updates:
       version-updates:
         applies-to: version-updates
         patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      version-updates:
+        applies-to: version-updates
+        patterns: ["*"]
