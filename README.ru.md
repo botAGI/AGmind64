@@ -34,6 +34,18 @@ OpenAI-совместимым API, embeddings и reranking, RAG-приложен
 > **Статус:** pre-1.0. Поддерживаемый путь — одноузловой Docker Compose на Ubuntu;
 > обнаружение многоузлового кластера экспериментально.
 
+## Чем отличается
+
+| | AGmind | Ручной Docker Compose | Облачный AI-стек |
+|---|---|---|---|
+| Установка | одна `make setup` | руками связать 40+ сервисов | регистрация + настройка каждого сервиса |
+| Локальность данных | 100% на вашей машине | на вашей машине | уходят из вашей сети |
+| Стоимость | только железо | только железо | за токены / за место |
+| AMD GPU (ROCm/Vulkan) | first-class (gfx1151) | DIY | обычно только NVIDIA |
+| Пиннинг образов | по digest + governance-гейты | вручную | непрозрачно |
+| Observability + SSO | встроены (опц. профили) | собираете сами | доп. модули |
+| Backup / restore / DR | `agmind backup`/`restore` + runbook'и | пишете сами | управляет вендор |
+
 ## Быстрый старт
 
 ```bash
@@ -112,6 +124,49 @@ agmind uninstall           # tear the stack down
 отдельно. См. [`docs/DR.md`](docs/DR.md).
 
 ## Архитектура
+
+```mermaid
+flowchart TD
+    op(["Operator"]) -->|"make setup"| cli["agmind CLI"]
+    cli --> ansible["Ansible host bootstrap"]
+    cli --> compose["Docker Compose (digest-pinned)"]
+
+    subgraph edge [Secure edge]
+        traefik["Traefik reverse proxy"]
+        authelia["Authelia SSO"]
+    end
+    subgraph core [core profile]
+        llm["llama.cpp LLM :8080"]
+        embed["embeddings :8081"]
+        rerank["rerank :8082"]
+        qdrant[("Qdrant")]
+    end
+    subgraph rag [rag profile]
+        dify["Dify api / worker / web"]
+        docling["Docling"]
+        pg[("Postgres")]
+        redis[("Redis")]
+    end
+    subgraph obs [observability profile]
+        prom["Prometheus"]
+        graf["Grafana"]
+        loki["Loki"]
+    end
+
+    compose --> edge
+    compose --> core
+    compose --> rag
+    compose --> obs
+    authelia -.->|forward-auth| traefik
+    traefik --> dify
+    traefik --> graf
+    dify --> llm
+    dify --> embed
+    dify --> qdrant
+    dify --> docling
+    dify --> pg
+    dify --> redis
+```
 
 Python-пакет `agmind` владеет CLI, определением backend, обнаружением кластера по
 mDNS, планированием install/deploy и рендерингом закреплённых дескрипторов

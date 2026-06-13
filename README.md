@@ -32,6 +32,18 @@ wired together and deployed by a single `make setup`.
 > **Status:** pre-1.0. Single-node Docker Compose on Ubuntu is the supported
 > lane; multi-node cluster discovery is experimental.
 
+## How it compares
+
+| | AGmind | Manual Docker Compose | Cloud AI stack |
+|---|---|---|---|
+| Setup | one `make setup` | hand-wire 40+ services | sign-up + per-service config |
+| Data locality | 100% on your box | on your box | leaves your network |
+| Cost | hardware only | hardware only | per-token / per-seat |
+| AMD GPU (ROCm/Vulkan) | first-class (gfx1151) | DIY | usually NVIDIA-only |
+| Image pinning | digest-pinned + governance gates | manual | opaque |
+| Observability + SSO | built in (opt-in profiles) | assemble yourself | extra add-ons |
+| Backup / restore / DR | `agmind backup`/`restore` + runbooks | roll your own | vendor-managed |
+
 ## Quick start
 
 ```bash
@@ -110,6 +122,49 @@ setup state and snapshots — not model files or volume data; snapshot those
 separately. See [`docs/DR.md`](docs/DR.md).
 
 ## Architecture
+
+```mermaid
+flowchart TD
+    op(["Operator"]) -->|"make setup"| cli["agmind CLI"]
+    cli --> ansible["Ansible host bootstrap"]
+    cli --> compose["Docker Compose (digest-pinned)"]
+
+    subgraph edge [Secure edge]
+        traefik["Traefik reverse proxy"]
+        authelia["Authelia SSO"]
+    end
+    subgraph core [core profile]
+        llm["llama.cpp LLM :8080"]
+        embed["embeddings :8081"]
+        rerank["rerank :8082"]
+        qdrant[("Qdrant")]
+    end
+    subgraph rag [rag profile]
+        dify["Dify api / worker / web"]
+        docling["Docling"]
+        pg[("Postgres")]
+        redis[("Redis")]
+    end
+    subgraph obs [observability profile]
+        prom["Prometheus"]
+        graf["Grafana"]
+        loki["Loki"]
+    end
+
+    compose --> edge
+    compose --> core
+    compose --> rag
+    compose --> obs
+    authelia -.->|forward-auth| traefik
+    traefik --> dify
+    traefik --> graf
+    dify --> llm
+    dify --> embed
+    dify --> qdrant
+    dify --> docling
+    dify --> pg
+    dify --> redis
+```
 
 The `agmind` Python package owns the CLI, backend detection, mDNS cluster
 discovery, install/deploy planning, and the rendering of pinned service
