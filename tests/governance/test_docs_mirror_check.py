@@ -40,10 +40,11 @@ def test_docs_mirror_check_json_output_includes_counts() -> None:
     payload = json.loads(out)
     assert payload["ok"] is True
     assert payload["error_count"] == 0
-    # README rewritten 2026-06-08 to a concise git-canon page (10 headings, 3 shell code blocks);
+    # README: 11 headings, 4 code blocks (3 shell + 1 mermaid). The 2026-06-13 polish added a
+    # "How it compares" section (+1 heading) and a mermaid architecture diagram (+1 code block);
     # the check excludes `#` bash comments inside ``` fences (see docs_mirror_check._heading_topology).
-    assert payload["heading_count"] == 10
-    assert payload["code_block_count"] == 3
+    assert payload["heading_count"] == 11
+    assert payload["code_block_count"] == 4
 
 
 def test_docs_mirror_check_rejects_shell_command_drift(tmp_path: Path) -> None:
