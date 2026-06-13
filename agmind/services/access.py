@@ -36,6 +36,9 @@ class AccessEntry:
     api_kind: str | None
     model_name: str | None = None  # for model endpoints: the id llama-server reports at /v1/models
     note: str | None = None  # optional operator hint (e.g. a first-login caveat / recovery command)
+    internal_url: str | None = (
+        None  # model endpoints: in-stack docker URL (http://svc:port) for Dify
+    )
 
     @property
     def is_model_endpoint(self) -> bool:
@@ -62,6 +65,30 @@ def _resolve_model_name(descriptor: ServiceDescriptor, env: Mapping[str, str]) -
             resolved = resolve_env_value(str(command[i + 1]), env)
             return PurePosixPath(resolved).name or None
     return None
+
+
+def _internal_model_url(descriptor: ServiceDescriptor) -> str | None:
+    """The in-stack OpenAI-API base URL a co-deployed container (Dify, openwebui) must call to
+    reach this model: ``http://<service>:<container-port>``.
+
+    Docker's embedded DNS resolves the compose service name on the shared ``default`` network, so
+    a container talks to the model DIRECTLY — no DNS record, no TLS, and crucially NO Authelia. The
+    public ``https://<host>`` route sits behind the chain-llm Authelia middleware, which 302s every
+    unauthenticated API call → pasting it into Dify never connects (live-audit 2026-06-13). The
+    container port is ``routing.port`` when set, else the container side of the first ``ports``
+    mapping (``[ip:]host:container`` → ``container``). Returns None when neither is discoverable, so
+    the caller falls back to the public URL."""
+    routing = descriptor.routing
+    port = routing.port if routing and routing.port else None
+    if port is None:
+        for spec in descriptor.ports:
+            container = spec.split("/", 1)[0].rsplit(":", 1)[-1]  # drop /proto, take container side
+            if container.isdigit():
+                port = int(container)
+                break
+    if port is None:
+        return None
+    return f"http://{descriptor.name}:{port}"
 
 
 def build_access_report(
@@ -125,6 +152,7 @@ def build_access_report(
                 api_kind=access.api_kind,
                 model_name=_resolve_model_name(descriptor, env) if access.api_kind else None,
                 note=note,
+                internal_url=_internal_model_url(descriptor) if access.api_kind else None,
             )
         )
     return entries
@@ -221,14 +249,31 @@ def render_credentials_txt(
             lines.append("")
 
     if endpoints:
-        lines += ["== Model endpoints (OpenAI-compatible — Dify → Model Provider → OpenAI-API) =="]
+        lines += ["== Model endpoints (OpenAI-compatible) =="]
+        lines.append(
+            "# In Dify: Settings → Model Provider → OpenAI-API-compatible. Paste the API endpoint"
+        )
+        lines.append(
+            "# URL below — it is the in-stack docker address, so Dify reaches the model container"
+        )
+        lines.append(
+            "# directly (no DNS record, no TLS, no Authelia login, unlike the browser URL)."
+        )
         for e in endpoints:
             lines.append(e.service)
-            lines.append(f"  API endpoint URL: {e.url}/v1")
+            # The in-stack docker URL is the one that actually works from a co-deployed container.
+            # The public https:// route is behind the chain-llm Authelia middleware (302s API
+            # calls) + needs DNS/TLS, so it is a SECONDARY host/LAN line, never the primary one.
+            base = e.internal_url or e.url
+            lines.append(f"  API endpoint URL: {base}/v1")
             lines.append(
                 f"  Model name:       {e.model_name or llama_model or '(your model file)'}"
             )
             lines.append("  API Key:          none")
+            if e.internal_url:
+                lines.append(
+                    f"  Host/LAN clients (outside docker): {e.url}/v1 — behind Authelia login"
+                )
             lines.append("")
 
     return "\n".join(lines).rstrip("\n") + "\n"

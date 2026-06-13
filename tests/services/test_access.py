@@ -152,6 +152,21 @@ def test_real_web_ui_descriptors_have_access() -> None:
         assert acc.api_kind == "openai", model_svc
 
 
+def test_model_endpoints_surface_in_stack_url() -> None:
+    """The endpoint a co-deployed container (Dify, openwebui) must call is the IN-STACK docker
+    URL ``http://<service>:<container-port>`` — NOT the public ``https://…`` route, which sits
+    behind the chain-llm Authelia middleware and 302s every unauthenticated API call. All three
+    llama-server model services listen on container port 8080 and share the default network with
+    Dify, so docker's embedded DNS resolves the service name directly."""
+    descriptors = load_descriptors(DEFAULT_SERVICES_DIR)
+    by_name = {e.service: e for e in build_access_report(descriptors, {})}
+    assert by_name["llama-llm"].internal_url == "http://llama-llm:8080"
+    assert by_name["llama-embed"].internal_url == "http://llama-embed:8080"
+    assert by_name["llama-rerank"].internal_url == "http://llama-rerank:8080"
+    # a plain UI service is not a machine endpoint → no in-stack URL
+    assert by_name["grafana"].internal_url is None
+
+
 def test_model_endpoints_surface_served_model_name() -> None:
     """credentials.txt / creds show must print the real model id (the llama-server `/v1/models` value
     = the `--model` basename) so the operator pastes it straight into Dify, not '(your model file)'.

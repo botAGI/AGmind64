@@ -26,6 +26,7 @@ def _entry(
     first_login_register: bool = False,
     lan_only: bool = False,
     api_kind: str | None = None,
+    internal_url: str | None = None,
 ) -> AccessEntry:
     return AccessEntry(
         service=service,
@@ -36,6 +37,7 @@ def _entry(
         first_login_register=first_login_register,
         lan_only=lan_only,
         api_kind=api_kind,
+        internal_url=internal_url,
     )
 
 
@@ -81,11 +83,35 @@ def test_credentials_txt_password_env_fallback_when_value_missing() -> None:
 
 
 def test_credentials_txt_model_endpoint_block() -> None:
+    # no in-stack URL known → falls back to the public URL (legacy behaviour)
     report = [_entry("llama-llm", "https://llama.lab.test", api_kind="openai")]
     txt = render_credentials_txt(report, llama_model="Qwen3.6-35B.gguf")
     assert "https://llama.lab.test/v1" in txt
     assert "Qwen3.6-35B.gguf" in txt
     assert "none" in txt.lower()  # API key: none
+
+
+def test_credentials_txt_model_endpoint_uses_in_stack_url() -> None:
+    """The 'API endpoint URL' an operator pastes into Dify must be the in-stack docker URL — Dify
+    reaches the model container directly on the shared network. The public ``https://…`` route is
+    behind Authelia (302s API calls) and needs DNS/TLS, so it is shown only as a secondary
+    host/LAN line, never as the primary endpoint."""
+    report = [
+        _entry(
+            "llama-llm",
+            "https://llama.lab.test",
+            api_kind="openai",
+            internal_url="http://llama-llm:8080",
+        )
+    ]
+    txt = render_credentials_txt(report, llama_model="Qwen3.6-35B.gguf")
+    assert "API endpoint URL: http://llama-llm:8080/v1" in txt
+    assert "Qwen3.6-35B.gguf" in txt
+    # public URL still surfaced for host/LAN clients, but clearly secondary + auth-gated
+    assert "https://llama.lab.test/v1" in txt
+    assert "Authelia" in txt
+    # the public route must NOT be presented as the endpoint to paste into Dify
+    assert "API endpoint URL: https://llama.lab.test/v1" not in txt
 
 
 def test_credentials_txt_generated_at_header_optional() -> None:

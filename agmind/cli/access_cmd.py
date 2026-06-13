@@ -263,6 +263,9 @@ def register(app: typer.Typer) -> None:
                     "note": e.note,
                     "api_kind": e.api_kind,
                     "model_name": e.model_name,
+                    # in-stack URL Dify/other containers must call (None for plain UIs); the public
+                    # `url` is auth-gated and won't work as a model-provider endpoint.
+                    "internal_url": e.internal_url,
                 }
                 for e in creds
             ]
