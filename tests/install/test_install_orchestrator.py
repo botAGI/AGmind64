@@ -299,6 +299,7 @@ def test_default_steps_list_is_stable() -> None:
         "model_pull",
         "deploy",
         "gpu_metrics",
+        "boot_unit",
         "credentials",
     ]
 
