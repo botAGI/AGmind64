@@ -1,0 +1,24 @@
+# Code ownership for AGmind.
+# https://docs.github.com/articles/about-code-owners
+# Listed owners are requested for review automatically on matching paths.
+
+# Default owner for everything not matched below.
+*                   @botAGI
+
+# Python package: CLI, backend detection, install/deploy, renderers.
+/agmind/            @botAGI
+
+# Service descriptors, components, schemas — the deploy-blocker surface.
+/templates/         @botAGI
+
+# Host bootstrap and infrastructure targets.
+/ansible/           @botAGI
+/infra/             @botAGI
+
+# CI, governance, release automation, and gate scripts.
+/.github/           @botAGI
+/scripts/           @botAGI
+
+# Documentation (kept EN/RU in sync).
+/docs/              @botAGI
+*.md                @botAGI
