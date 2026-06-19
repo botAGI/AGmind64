@@ -27,10 +27,12 @@ permissions:
 
 jobs:
   check:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install PyYAML with runner-local uv
         run: |

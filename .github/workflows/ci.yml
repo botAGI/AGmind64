@@ -22,14 +22,11 @@ concurrency:
 jobs:
   # ---- Static checks via pre-commit hooks (single gate для всего consistency) ----
   pre-commit:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev deps
         run: |
           "$HOME/.local/bin/uv" --version
@@ -95,12 +92,7 @@ jobs:
 
   # ---- Forbidden-pattern audit ----
   audit:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Run forbidden-pattern audit
@@ -113,14 +105,11 @@ jobs:
 
   # ---- Schema validation (Phase H'.B) — отдельная job для visibility ----
   schema-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Validate all service descriptors
         run: |
           "$HOME/.local/bin/uvx" check-jsonschema \
@@ -138,15 +127,12 @@ jobs:
 
   # ---- Component contract/conflict validation (M7.A) ----
   component-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -157,15 +143,12 @@ jobs:
 
   # ---- Deployment target validation (M7.B) ----
   deploy-target-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -176,15 +159,12 @@ jobs:
 
   # ---- Optional tool candidate validation (M7.C) ----
   tool-candidate-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -195,12 +175,7 @@ jobs:
 
   # ---- Dependency constraint validation (M7.A) ----
   constraints-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Validate dependency constraint planes
@@ -208,12 +183,7 @@ jobs:
 
   # ---- Documentation mirror validation ----
   docs-mirror-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Validate README language mirrors
@@ -221,15 +191,12 @@ jobs:
 
   # ---- Service topology validation (M7.C) ----
   topology-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -240,15 +207,12 @@ jobs:
 
   # ---- A6: healthcheck tool-in-image gate ----
   healthcheck-tool-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -263,15 +227,12 @@ jobs:
 
   # ---- Kubernetes renderer validation (M7.D) ----
   kubernetes-render-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate, deploy-target-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -282,15 +243,12 @@ jobs:
 
   # ---- Kubernetes proof workflow validation (M7.D) ----
   kubernetes-proof-workflow-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [deploy-target-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -301,15 +259,12 @@ jobs:
 
   # ---- Aggregate governance summary (M7) ----
   governance-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [docs-mirror-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, healthcheck-tool-validate, kubernetes-render-validate, kubernetes-proof-workflow-validate]
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -320,16 +275,13 @@ jobs:
 
   # ---- Python lint + type + test (CPU backend on Linux runner) ----
   test-cpu:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [audit, schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate, topology-validate, healthcheck-tool-validate, kubernetes-render-validate]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev
         run: |
           "$HOME/.local/bin/uv" --version
@@ -355,12 +307,7 @@ jobs:
   # Build the base image once; the backend matrix reuses the daemon-local tag
   # (single self-hosted runner) instead of rebuilding it three times.
   docker-build-base:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [audit, constraints-validate]
     timeout-minutes: 30
     steps:
@@ -369,12 +316,7 @@ jobs:
         run: docker build -f docker/Dockerfile.base -t agmind-base:ci .
 
   docker-build:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [audit, constraints-validate, docker-build-base]
     timeout-minutes: 45
     strategy:
@@ -394,16 +336,13 @@ jobs:
 
   # ---- Compose validation (Phase L.A) ----
   compose-validate:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate, component-validate, deploy-target-validate, tool-candidate-validate, constraints-validate]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind
         run: |
           "$HOME/.local/bin/uv" --version
@@ -445,16 +384,13 @@ jobs:
   # does not collide with or write into the live GPU stack on the self-hosted runner.
   # Fork-guarded: same pattern as test-strix-halo — fork PRs are skipped.
   compose-up-smoke:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [docker-build, compose-validate]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev
         run: |
           "$HOME/.local/bin/uv" --version
@@ -504,16 +440,13 @@ jobs:
   # Needs Docker; fork-guarded with the same `if:` as compose-up-smoke (fork code
   # must never run on the box that holds the secrets + docker group).
   clean-machine-bootstrap:
-    runs-on: [self-hosted, linux, x64]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
     needs: [schema-validate]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev
         run: |
           "$HOME/.local/bin/uv" --version
