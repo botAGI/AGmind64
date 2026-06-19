@@ -389,13 +389,18 @@ jobs:
   # does not collide with or write into the live GPU stack on the self-hosted runner.
   # Fork-guarded: same pattern as test-strix-halo — fork PRs are skipped.
   compose-up-smoke:
-    runs-on: ubuntu-latest
+    # Stays self-hosted: the smoke boots services whose `cpus:` reservations exceed the 4 vCPUs
+    # on GitHub-hosted runners ("range of CPUs is from 0.01 to 4.00"). Genuinely hardware-bound.
+    runs-on: [self-hosted, linux, x64]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: [docker-build, compose-validate]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev
         run: |
           "$HOME/.local/bin/uv" --version
