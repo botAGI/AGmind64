@@ -85,6 +85,34 @@ def test_scan_extracts_correct_tag() -> None:
     assert by_image["infiniflow/ragflow"] == "v0.25.5"
 
 
+def test_scan_compose_skips_on_host_build_services() -> None:
+    """Build-on-host images (agmind-agent-*, compose `build:`) carry no registry digest and have
+    NO upstream version — the probe can only ❌ "probe returned no version" on them. They must not
+    be scanned at all (operator screenshot: 3 permanent agent errors)."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    images = {p[0] for p in vc.scan_compose_pins(REPO_ROOT / "templates" / "services")}
+    assert "agmind-agent-agno" not in images
+    assert "agmind-agent-pydanticai" not in images
+    assert "agmind-agent-ui" not in images
+    # real pulled images are still tracked
+    assert "infiniflow/ragflow" in images
+
+
+def test_scan_dockerfile_skips_test_dockerfiles() -> None:
+    """Dockerfile.*-test are CI fixtures (ubuntu-test = clean-machine bootstrap), not shipped
+    components — their FROM base must not surface as a tracked component (the absurd
+    ubuntu 24.04→26.04 row). Real build Dockerfiles (their upstream base IS actionable) stay."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    pins = vc.scan_dockerfile_pins(REPO_ROOT / "docker")
+    files = {p[2] for p in pins}
+    assert files, "expected real Dockerfile FROM pins to remain"
+    assert not any(f.endswith("-test") for f in files), files
+
+
 def test_scan_pyproject_deps_finds_textual() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
     import version_check as vc

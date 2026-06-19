@@ -472,6 +472,7 @@ def load_holds() -> dict[str, dict[str, str]]:
 
 
 _COMPOSE_IMAGE_RE = re.compile(r"^image:\s*([^\s]+):([^\s@]+)(?:@sha256:[a-f0-9]+)?", re.MULTILINE)
+_COMPOSE_BUILD_RE = re.compile(r"^build:", re.MULTILINE)
 
 
 def scan_compose_pins(services_dir: Path) -> list[tuple[str, str, str]]:
@@ -481,6 +482,11 @@ def scan_compose_pins(services_dir: Path) -> list[tuple[str, str, str]]:
     out: list[tuple[str, str, str]] = []
     for p in sorted(services_dir.glob("*.yaml")):
         text = p.read_text(encoding="utf-8")
+        # Skip AGmind-authored on-host builds (compose `build:`): they carry no registry digest
+        # and have no upstream version, so the probe can only ❌ "probe returned no version" on
+        # them (agmind-agent-agno/pydanticai/ui). Not pulled → nothing to upgrade-check.
+        if _COMPOSE_BUILD_RE.search(text):
+            continue
         m = _COMPOSE_IMAGE_RE.search(text)
         if m:
             out.append((m.group(1), m.group(2), str(p.relative_to(REPO_ROOT))))
@@ -495,6 +501,10 @@ def scan_dockerfile_pins(docker_dir: Path) -> list[tuple[str, str, str]]:
         return []
     out: list[tuple[str, str, str]] = []
     for p in sorted(docker_dir.glob("Dockerfile*")):
+        # Skip CI test fixtures (Dockerfile.*-test, e.g. ubuntu-test = the clean-machine bootstrap
+        # image): their FROM base is not a shipped component (the absurd ubuntu 24.04→26.04 row).
+        if p.name.endswith("-test"):
+            continue
         text = p.read_text(encoding="utf-8")
         for m in _DOCKERFILE_FROM_RE.finditer(text):
             image, tag = m.group(1), m.group(2)
