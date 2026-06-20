@@ -113,6 +113,43 @@ def test_scan_dockerfile_skips_test_dockerfiles() -> None:
     assert not any(f.endswith("-test") for f in files), files
 
 
+def test_noisy_dockerhub_images_probe_github_releases(monkeypatch) -> None:
+    """grafana/loki (~26k tags), milvusdb/milvus (~19k), semitechnologies/weaviate (~70k) bury the
+    clean X.Y.Z releases under nightly/branch/arch tags past page 1 → docker-hub probe returns None
+    ("probe returned no version"). Probe their GitHub Releases — the canonical stable source."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    calls: dict[str, object] = {}
+
+    def _fake_gh(owner: str, repo: str) -> str:
+        calls["gh"] = (owner, repo)
+        return "v9.9.9"
+
+    def _fake_hub(image: str) -> None:
+        calls["hub"] = image
+        return None
+
+    monkeypatch.setattr(vc, "_github_release_latest", _fake_gh)
+    monkeypatch.setattr(vc, "_docker_hub_latest", _fake_hub)
+
+    assert vc.probe_latest("grafana/loki") == "v9.9.9"
+    assert calls["gh"] == ("grafana", "loki") and "hub" not in calls
+
+    calls.clear()
+    assert vc.probe_latest("milvusdb/milvus") == "v9.9.9"
+    assert calls["gh"] == ("milvus-io", "milvus")
+
+    calls.clear()
+    assert vc.probe_latest("semitechnologies/weaviate") == "v9.9.9"
+    assert calls["gh"] == ("weaviate", "weaviate")
+
+    # a normal docker-hub image still routes to the docker-hub probe
+    calls.clear()
+    vc.probe_latest("infiniflow/ragflow")
+    assert calls.get("hub") == "infiniflow/ragflow" and "gh" not in calls
+
+
 def test_scan_pyproject_deps_finds_textual() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
     import version_check as vc

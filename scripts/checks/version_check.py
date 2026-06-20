@@ -433,6 +433,17 @@ def _github_release_latest(owner: str, repo: str) -> str | None:
     return tag if isinstance(tag, str) else None
 
 
+# Docker Hub repos whose tag stream is dominated by nightly/branch/arch-variant tags (loki ~26k,
+# milvus ~19k, weaviate ~70k tags) — the clean X.Y.Z releases are buried far past page 1, so
+# `_docker_hub_latest` returns None ("probe returned no version"). Probe GitHub Releases instead,
+# the canonical stable-release source. {docker_hub_repo: (github_owner, github_repo)}.
+_DOCKERHUB_GITHUB_RELEASE_SOURCE: dict[str, tuple[str, str]] = {
+    "grafana/loki": ("grafana", "loki"),
+    "milvusdb/milvus": ("milvus-io", "milvus"),
+    "semitechnologies/weaviate": ("weaviate", "weaviate"),
+}
+
+
 def probe_latest(image_with_path: str) -> str | None:
     """Dispatch на правильный registry probe basedon image prefix."""
     if image_with_path.startswith("ghcr.io/"):
@@ -450,6 +461,9 @@ def probe_latest(image_with_path: str) -> str | None:
         if len(parts) == 2:
             return _gcr_latest(parts[0], parts[1])
         return None
+    src = _DOCKERHUB_GITHUB_RELEASE_SOURCE.get(image_with_path)
+    if src is not None:
+        return _github_release_latest(*src)
     # Docker Hub fallback: 'foo/bar' или 'bar' (library/bar)
     return _docker_hub_latest(image_with_path)
 
