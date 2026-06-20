@@ -150,6 +150,29 @@ def test_noisy_dockerhub_images_probe_github_releases(monkeypatch) -> None:
     assert calls.get("hub") == "infiniflow/ragflow" and "gh" not in calls
 
 
+def test_prerelease_filter_catches_embedded_and_milestone() -> None:
+    """Embedded prerelease without a separator (postgres '19beta1', '1.0rc1') and milestone markers
+    (redis '8.8-m03', '2.5.0-m1') must be rejected — else the probe returns a beta/RC as 'latest'."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    for t in ["19beta1", "1.0rc1", "20.0alpha2", "8.8-m03", "2.5.0-m1"]:
+        assert vc._is_variant_or_prerelease(t), f"{t} should be flagged as pre-release"
+    for t in ["18", "8.4.3", "17.10", "v2.6.18", "1.14.2"]:
+        assert not vc._is_variant_or_prerelease(t), f"{t} wrongly flagged"
+
+
+def test_held_images_are_probed_not_skipped() -> None:
+    """Held images must still be probed (show 'held @ X, latest Y'), not skipped to a bare '?'."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    reports = vc.build_reports(probe_fn=lambda image: "v9.9.9")
+    held = [r for r in reports if r.status == "hold"]
+    assert held, "expected held images in the report"
+    assert all(r.latest == "v9.9.9" for r in held), "held images must carry the probed latest"
+
+
 def test_scan_pyproject_deps_finds_textual() -> None:
     sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
     import version_check as vc

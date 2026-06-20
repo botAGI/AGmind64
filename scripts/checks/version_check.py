@@ -142,6 +142,12 @@ _BRANCH_NUMERIC_PREFIX_RE = re.compile(r"^\d+-\d+-[a-z]", re.IGNORECASE)
 # per-commit nightly builds, not stable releases. An all-hex 7+ char trailing segment.
 _SHORT_SHA_SUFFIX_RE = re.compile(r"-[0-9a-f]{7,}$")
 
+# Pre-release word glued to a digit WITHOUT a separator: postgres "19beta1", "1.0rc2" — the
+# `-{tok}`/`.{tok}` checks miss these because there is no delimiter before the token.
+_EMBEDDED_PRERELEASE_RE = re.compile(r"\d(?:" + "|".join(_PRERELEASE_TOKENS) + r")", re.IGNORECASE)
+# Milestone / preview build marker: redis "8.8-m03", "2.5.0-m1" — `-m<NN>` is pre-stable.
+_MILESTONE_RE = re.compile(r"[-.]m\d", re.IGNORECASE)
+
 
 def _strip_version_prefix(tag: str) -> str:
     """Normalise a tag to its semver core for parsing/sorting.
@@ -174,6 +180,10 @@ def _is_variant_or_prerelease(tag: str) -> bool:
             or low.endswith(f".{tok}")
         ):
             return True
+    if _EMBEDDED_PRERELEASE_RE.search(low):
+        return True
+    if _MILESTONE_RE.search(low):
+        return True
     if _SHA_TAG_RE.match(low):
         return True
     if _DATE_TAG_RE.match(low):
@@ -441,6 +451,11 @@ _DOCKERHUB_GITHUB_RELEASE_SOURCE: dict[str, tuple[str, str]] = {
     "grafana/loki": ("grafana", "loki"),
     "milvusdb/milvus": ("milvus-io", "milvus"),
     "semitechnologies/weaviate": ("weaviate", "weaviate"),
+    # Dify stack — docker-hub tags are noisy/None; the stable versions live in GitHub Releases.
+    "langgenius/dify-api": ("langgenius", "dify"),
+    "langgenius/dify-web": ("langgenius", "dify"),
+    "langgenius/dify-plugin-daemon": ("langgenius", "dify-plugin-daemon"),
+    "langgenius/dify-sandbox": ("langgenius", "dify-sandbox"),
 }
 
 
@@ -697,11 +712,17 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
 
             hold = holds.get(image)
             if hold:
+                # Probe held images too — show "held @ X, latest Y" so the operator can see whether
+                # an update exists (e.g. a Dify bump worth re-verifying) instead of an opaque "?".
+                try:
+                    held_latest = probe_fn(image)
+                except Exception:  # noqa: BLE001
+                    held_latest = None
                 reports.append(
                     PinReport(
                         image=image,
                         current=current_tag,
-                        latest=None,
+                        latest=held_latest,
                         source=source,
                         file=file,
                         status="hold",
