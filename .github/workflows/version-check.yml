@@ -1,4 +1,4 @@
-# Phase P: weekly upstream version check.
+# Phase P: daily upstream version check.
 #
 # Scans templates/services/*.yaml + docker/Dockerfile.* pins,
 # probes upstream registries (Docker Hub, GHCR, GitHub Releases),
@@ -11,8 +11,8 @@ name: Upstream Version Check
 
 on:
   schedule:
-    # Каждый понедельник 06:00 UTC = 09:00 МСК
-    - cron: "0 6 * * 1"
+    # Каждый день 06:00 UTC = 09:00 МСК
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
