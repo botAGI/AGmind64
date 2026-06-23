@@ -2,7 +2,7 @@
 
 **Собственный приватный AI-стек — LLM, RAG, observability и SSO — на одной машине, одной командой.**
 
-> 🔗 У вас NVIDIA DGX Spark / GB10 (arm64)? → [**AGmind**](https://github.com/botAGI/AGmind)
+> 🔗 Другое железо? Это сборка под AMD Strix Halo / x86_64 — смотри родственный проект [**AGmind**](https://github.com/botAGI/AGmind).
 
 [English](README.md) | Русская версия
 
