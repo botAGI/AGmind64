@@ -1,6 +1,8 @@
-# AGmind
+# AGmind64
 
 **Your own private AI stack — LLM, RAG, observability and SSO — on one box, one command.**
+
+> 🔗 Running NVIDIA DGX Spark / GB10 (arm64) instead? → [**AGmind**](https://github.com/botAGI/AGmind)
 
 English | [Русская версия](README.ru.md)
 
