@@ -48,7 +48,7 @@ jobs:
       checks: read       # read check-runs for the target SHA
       actions: read      # read workflow runs (for check-run context)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # Check out at the target SHA so git history is available.

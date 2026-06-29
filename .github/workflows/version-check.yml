@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv (fresh — ubuntu-latest has no pre-provisioned uv)
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
