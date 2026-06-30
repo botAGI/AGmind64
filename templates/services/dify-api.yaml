@@ -40,6 +40,11 @@ env:
   # instead of an unreachable 127.0.0.1. Live-debugged 2026-06-30 (markitdown chatflow file output).
   INTERNAL_FILES_URL: http://dify-api:5001
   FILES_URL: ''
+  # Per-message chat upload + per-workflow file-var counts default to 5 and 10 — too low for
+  # batch document conversion (markitdown). Raise both. NB: a per-APP cap also exists
+  # (file_upload.number_limits in each app's features); the UI uses min(app, system). 2026-06-30.
+  UPLOAD_FILE_BATCH_LIMIT: '50'
+  WORKFLOW_FILE_UPLOAD_LIMIT: '50'
   # zero-egress: dify-api/console polls CHECK_UPDATE_URL (default https://updates.dify.ai) and
   # the console calls marketplace.dify.ai unless MARKETPLACE_ENABLED=false. Empty CHECK_UPDATE_URL
   # = disabled (docs: "useful for air-gapped"). These are api/console vars, NOT dify-web. verified

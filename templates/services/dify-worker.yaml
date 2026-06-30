@@ -34,6 +34,10 @@ env:
   # Live-debugged 2026-06-30.
   INTERNAL_FILES_URL: http://dify-api:5001
   FILES_URL: ''
+  # Mirror dify-api: raise per-message chat upload (5) + per-workflow file-var (10) counts to 50
+  # for batch document conversion. 2026-06-30.
+  UPLOAD_FILE_BATCH_LIMIT: '50'
+  WORKFLOW_FILE_UPLOAD_LIMIT: '50'
   # Cage user-controlled HTTP/MCP fetches through the ssrf-proxy (NOT provider/DB calls — see
   # dify-api). live-audit 2026-06-05 dify-api-worker-egress-unproxied.
   SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128
