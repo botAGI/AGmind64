@@ -28,6 +28,12 @@ env:
   # Mirror dify-api: raise doc upload cap 15 MB → 100 MB (default UPLOAD_FILE_SIZE_LIMIT is 15).
   # Dify ships this via a shared .env across api+worker; keep parity. 2026-06-30.
   UPLOAD_FILE_SIZE_LIMIT: '100'
+  # Mirror dify-api: in-stack file access for plugins/sandbox (default fallback is
+  # http://127.0.0.1:5001 = plugin-daemon's own localhost → ECONNREFUSED on file fetch), and
+  # FILES_URL='' for relative browser-facing file URLs. See dify-api.yaml for the full rationale.
+  # Live-debugged 2026-06-30.
+  INTERNAL_FILES_URL: http://dify-api:5001
+  FILES_URL: ''
   # Cage user-controlled HTTP/MCP fetches through the ssrf-proxy (NOT provider/DB calls — see
   # dify-api). live-audit 2026-06-05 dify-api-worker-egress-unproxied.
   SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128

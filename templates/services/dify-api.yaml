@@ -30,6 +30,16 @@ env:
   # body ceiling on the external route). Dify ships this via a shared .env, so set on api+worker.
   # 2026-06-30.
   UPLOAD_FILE_SIZE_LIMIT: '100'
+  # Plugins/sandbox fetch uploaded files over the docker network. Dify's default for the file
+  # base URL falls back FILES_URL→CONSOLE_API_URL→http://127.0.0.1:5001, which inside the
+  # plugin-daemon container is ITS OWN localhost (nothing on :5001) → ECONNREFUSED → e.g. the
+  # markitdown tool "Connection refused", conversion yields no file. Point internal file access
+  # at the in-stack api (docker DNS), same host the plugin daemon already uses for DIFY_INNER_API_URL.
+  # FILES_URL='' makes BROWSER-facing file URLs relative (/files/tools/...), so downloads resolve
+  # against whatever origin the app is opened on (LAN/traefik or CF tunnel) in that auth context —
+  # instead of an unreachable 127.0.0.1. Live-debugged 2026-06-30 (markitdown chatflow file output).
+  INTERNAL_FILES_URL: http://dify-api:5001
+  FILES_URL: ''
   # zero-egress: dify-api/console polls CHECK_UPDATE_URL (default https://updates.dify.ai) and
   # the console calls marketplace.dify.ai unless MARKETPLACE_ENABLED=false. Empty CHECK_UPDATE_URL
   # = disabled (docs: "useful for air-gapped"). These are api/console vars, NOT dify-web. verified
