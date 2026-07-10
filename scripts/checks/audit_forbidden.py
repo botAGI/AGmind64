@@ -61,9 +61,9 @@ EXCLUDED_PATHS = {
     # Meta docs that intentionally discuss platform support boundaries.
     "README.md",
     "CLAUDE.md",
-    # Публикационный черновик о миграции GB10→Strix Halo: описывает старый стек
-    # (GB10/CUDA/aarch64) как исторический контекст. Gitignored (habr-article*.md).
-    "habr-article-strix-halo-vs-gb10.md",
+    # Публикационный черновик (field report по Strix Halo-узлу): упоминает старый
+    # стек (GB10/CUDA/aarch64) как исторический контекст. Gitignored (habr-article*.md).
+    "habr-article-strix-halo-node.md",
     "docs/HARDWARE.md",
     "docs/BENCHMARKS.md",
     "docs/QUICKSTART.md",
