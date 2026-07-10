@@ -1,9 +1,11 @@
 """Task H.6 (3): missing-digest governance gate — fail-closed, mutation-verified.
 
 The digest-pins check returns FAIL (non-zero + error_count > 0) when any
-deploy-facing descriptor lacks a `digest:` field.  All 44 current descriptors
-are deploy-facing.  This gate was previously absent; it now surfaces as a
-governance ERROR (not WARN) — preventing mutable-tag images from entering deploy.
+registry-backed deploy-facing descriptor lacks a `digest:` field (descriptors
+with `build:` are exempt; counts follow the live catalog — the pinned
+service_count assertion lives in tests/components/test_component_contracts.py).
+This gate was previously absent; it now surfaces as a governance ERROR
+(not WARN) — preventing mutable-tag images from entering deploy.
 
 Mutation-verified RED proof:
 - Strip traefik's digest in-test → digest_check reports 1 unpinned → FAIL.

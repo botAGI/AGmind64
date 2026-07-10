@@ -2,8 +2,9 @@
 """Fail-closed governance gate: every deploy-facing descriptor must have a digest pin.
 
 A descriptor is "deploy-facing" when it appears in a real deploy profile (any
-profile listed in its descriptor's `profiles` field, since all 42 AGmind
-descriptors are deploy-facing — there are no build-locally-only descriptors).
+profile listed in its descriptor's `profiles` field). The count follows the
+live catalog; descriptors that carry `build:` (on-host builds) are exempt from
+the digest requirement, registry-backed ones are not.
 
 Disposition: FAIL (non-zero exit + error_count > 0 in JSON) when any
 deploy-facing descriptor is missing a `digest:` field.  This was previously a
