@@ -3,7 +3,7 @@
 Purpose
 -------
 Renders the NON-GPU AGmind subset to a temp compose file, runs
-``docker compose -p agmind-ci -f <file> --env-file <ci-env> up -d --wait
+``docker compose -p agmind-smoke -f <file> --env-file <ci-env> up -d --wait
 --wait-timeout 180``, asserts every container reaches healthy (compose
 --wait fails if any container with a healthcheck exits or never becomes
 healthy), then runs a post-wait ``docker compose ps --format json``
@@ -29,13 +29,13 @@ after filtering (e.g. ``automation`` = only n8n) is skipped.
 
 Isolation
 ---------
-Project name ``-p agmind-ci`` scopes Compose-managed names. The rendered AGmind
+Project name ``-p agmind-smoke`` scopes Compose-managed names. The rendered AGmind
 compose file also contains fixed ``container_name``, fixed host ports, a fixed
 network name, and bind mounts under ``/var/lib/agmind``; those bypass project
 scoping and can collide with or write into a live stack on the same self-hosted
 runner. The smoke rewrites those deploy-time fields before ``up``:
 
-* remove ``container_name`` so Compose generates ``agmind-ci-...`` names;
+* remove ``container_name`` so Compose generates ``agmind-smoke-...`` names;
 * remove host ``ports`` because inter-container readiness does not need them;
 * remove the fixed default network name so ``-p`` scopes the network;
 * remap ``/var/lib/agmind`` bind mounts into the test temp directory.
@@ -154,7 +154,15 @@ _CRASH_LOOP_STATES = frozenset({"restarting", "exited", "unhealthy"})
 
 # Project isolation name. The smoke strips deploy-time fixed names/ports/binds
 # so this actually isolates from the live stack too.
-_PROJECT_NAME = "agmind-ci"
+#
+# NOT "agmind-ci": historic smoke runs (compose 5.1.x, before the network-name strip)
+# created the live stack's fixed-name networks first, so agmind_data-net/agmind_mgmt-net
+# on the runner carry the stale label com.docker.compose.project=agmind-ci. Compose
+# >= 5.3 reconciles networks BY PROJECT LABEL and tries to remove/recreate those live
+# networks on every "-p agmind-ci" up (fails: active endpoints -> lane red, 2026-07-10).
+# A never-before-used project name cannot match any stale label. If you rename this,
+# pick a name that has never run on the self-hosted runner.
+_PROJECT_NAME = "agmind-smoke"
 
 # Wait timeout in seconds. MUST exceed the largest service healthcheck ``start_period``
 # with margin for the first post-start-period probe to pass — otherwise ``docker compose
@@ -290,7 +298,7 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
     ``_INSTALL_SETUP_SERVICES`` (need agmind-install config materialization /
     data-dir chown). Dangling ``depends_on`` references to removed services are
     cleaned up. Fixed deploy-time names/ports/binds/network fields are rewritten
-    so ``-p agmind-ci`` can isolate the smoke stack from live ``agmind-*``
+    so ``-p agmind-smoke`` can isolate the smoke stack from live ``agmind-*``
     services on the same self-hosted runner. The remaining set is the subset
     that boots from committed descriptors alone — where the phase's
     deploy-blocker classes actually live. A lane that becomes empty (e.g.
@@ -322,7 +330,7 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
 
     networks = data.get("networks")
     if isinstance(networks, dict):
-        # Strip the fixed ``name:`` from EVERY network so ``-p agmind-ci`` actually scopes
+        # Strip the fixed ``name:`` from EVERY network so ``-p agmind-smoke`` actually scopes
         # them. The renderer stamps the secondary networks (data-net/mgmt-net/ssrf-net) with
         # fixed names (e.g. ``agmind_data-net``); if left intact the smoke's containers join
         # the LIVE stack's network of that name and resolve service DNS (``milvus-minio`` →
@@ -358,11 +366,11 @@ def _filter_unbootable_services(compose_path: Path, data_root: Path) -> int:
 
 
 def test_filter_unbootable_services_rewrites_live_stack_fields(tmp_path: Path) -> None:
-    """Regression: ``-p agmind-ci`` cannot isolate fixed deploy-time fields.
+    """Regression: ``-p agmind-smoke`` cannot isolate fixed deploy-time fields.
 
     A live stack may already own ``agmind-qdrant``. The smoke must remove fixed
     container names before ``docker compose up`` so Compose can generate
-    project-scoped names such as ``agmind-ci-qdrant-1``. It must also avoid live
+    project-scoped names such as ``agmind-smoke-qdrant-1``. It must also avoid live
     host ports, the live ``agmind`` network, and live ``/var/lib/agmind`` bind
     mounts.
     """
@@ -440,7 +448,7 @@ def test_filter_excludes_docling_slow_model_loader(tmp_path: Path) -> None:
 def test_filter_strips_every_network_name_for_live_stack_isolation(tmp_path: Path) -> None:
     """Chronic compose-up-smoke red — the real root cause.
 
-    ``-p agmind-ci`` only project-scopes UNNAMED networks. The renderer stamps the
+    ``-p agmind-smoke`` only project-scopes UNNAMED networks. The renderer stamps the
     secondary networks (``data-net``/``mgmt-net``/``ssrf-net``) with a FIXED ``name:``
     (e.g. ``agmind_data-net``). When the smoke left those names intact, its milvus joined
     the LIVE stack's ``agmind_data-net`` and resolved ``milvus-minio`` to the live container
