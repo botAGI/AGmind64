@@ -26,6 +26,17 @@
   ansible.builtin.set_fact:
     agmind_ttm_pages_limit: "{{ ((ansible_memtotal_mb * 1024 * 1024 * agmind_strix_halo.ttm_pages_limit_pct) / 4096) | int }}"
 
+# Per-param toggles (group_vars agmind_strix_halo.*): pages_limit is the only GTT
+# prerequisite; page_pool / iommu-off / zswap-off are independent node choices —
+# see the WHY-comments next to each toggle in group_vars/all.yml.
+- name: Assemble agmind GRUB params from toggles
+  ansible.builtin.set_fact:
+    agmind_grub_params: >-
+      {{ (['ttm.pages_limit=' ~ agmind_ttm_pages_limit])
+         + (['ttm.page_pool_size=' ~ agmind_ttm_pages_limit] if agmind_strix_halo.ttm_page_pool | default(true) else [])
+         + (['amd_iommu=off'] if agmind_strix_halo.amd_iommu_off | default(true) else [])
+         + (['zswap.enabled=0'] if agmind_strix_halo.zswap_off | default(true) else []) }}
+
 # Append agmind kernel params via a grub.d drop-in (sourced by grub-mkconfig AFTER
 # /etc/default/grub) instead of REPLACING the whole GRUB_CMDLINE_LINUX_DEFAULT line —
 # overwriting it would silently drop distro/operator args (resume=, console=, LUKS/
@@ -60,8 +71,9 @@
     mode: "0644"
     content: |
       # Managed by AGmind (strix_halo role). Appends to the existing cmdline; does NOT
-      # replace operator/distro args. ttm.pages_limit = 94% RAM as GTT pool (R10).
-      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT amd_iommu=off ttm.pages_limit={{ agmind_ttm_pages_limit }} ttm.page_pool_size={{ agmind_ttm_pages_limit }} zswap.enabled=0"
+      # replace operator/distro args. ttm.pages_limit = 94% RAM as GTT pool (R10);
+      # the remaining params are per-node toggles (group_vars agmind_strix_halo.*).
+      GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT {{ agmind_grub_params | join(' ') }}"
   notify: regenerate grub
 
 - name: Verify Mesa version (R2 — min 25.2.8)

@@ -21,9 +21,18 @@ agmind_firmware_min: "20260110"
 
 # ---- Strix Halo specifics ----
 agmind_strix_halo:
-  # GRUB cmdline params — 94% of system RAM as GTT pool (per R10)
+  # ttm.pages_limit — the ONLY param required for the big GTT pool: max system pages
+  # TTM allows to map for the GPU (mem_info_gtt_total). 94% of RAM per R10.
   ttm_pages_limit_pct: 0.94
+  # ttm.page_pool_size — TTM's WC/UC/DMA page-cache pool (per NUMA node), NOT the GTT
+  # size source. Set to the same page count on our nodes; optional performance choice.
+  ttm_page_pool: true
+  # amd_iommu=off disables DMA isolation. Fine on a dedicated bare-metal AI node;
+  # do NOT enable on hosts running VMs / PCI passthrough — they need the IOMMU.
   amd_iommu_off: true
+  # zswap.enabled=0 — our nodes swap rarely and the GPU shares the memory bus;
+  # optional, not a GTT prerequisite.
+  zswap_off: true
   # Vulkan ICD enforcement (Spec §1.2.1)
   vulkan_icd: RADV
   radv_icd_path: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json
