@@ -53,10 +53,11 @@ def _issue(service_name: str, image: str) -> dict[str, str]:
 
 def check_digest_pins(
     services_dir: Path | None = None,
-) -> tuple[list[dict[str, str]], int]:
-    """Return (issues, service_count).
+) -> tuple[list[dict[str, str]], int, int]:
+    """Return (issues, service_count, exempt_build_count).
 
-    issues is empty when all deploy-facing descriptors carry a digest.
+    issues is empty when all registry-backed deploy-facing descriptors carry a
+    digest; exempt_build_count is the number of on-host `build:` descriptors.
     """
     if services_dir is None:
         services_dir = REPO_ROOT / "templates" / "services"
@@ -65,12 +66,16 @@ def check_digest_pins(
 
     descriptors = load_descriptors(services_dir)
     issues: list[dict[str, str]] = []
+    exempt_build_count = 0
     for name, desc in descriptors.items():
         # build-services (compose `build:`) are built on-host from shipped source, not pulled
         # from a registry — they carry no registry digest and are exempt from the digest pin.
-        if not desc.digest and desc.build is None:
+        if desc.build is not None:
+            exempt_build_count += 1
+            continue
+        if not desc.digest:
             issues.append(_issue(name, desc.image))
-    return issues, len(descriptors)
+    return issues, len(descriptors), exempt_build_count
 
 
 def _payload(
@@ -78,12 +83,17 @@ def _payload(
     ok: bool,
     service_count: int,
     pinned_count: int,
+    exempt_build_count: int,
     issues: list[dict[str, str]],
 ) -> dict[str, Any]:
     return {
         "ok": ok,
         "service_count": service_count,
+        # pinned_count keeps its historical meaning (service_count - unpinned) for
+        # downstream compat; the registry/exempt split is in the two keys below.
         "pinned_count": pinned_count,
+        "registry_backed_count": service_count - exempt_build_count,
+        "exempt_build_count": exempt_build_count,
         "unpinned_count": len(issues),
         "error_count": len(issues),
         "issues": issues,
@@ -94,8 +104,10 @@ def main(argv: Sequence[str] | None = None, *, services_dir: Path | None = None)
     args = tuple(argv if argv is not None else sys.argv[1:])
     as_json = "--json" in args
 
-    issues, service_count = check_digest_pins(services_dir)
+    issues, service_count, exempt_build_count = check_digest_pins(services_dir)
     pinned_count = service_count - len(issues)
+    registry_total = service_count - exempt_build_count
+    registry_pinned = registry_total - len(issues)
     ok = len(issues) == 0
 
     if as_json:
@@ -105,6 +117,7 @@ def main(argv: Sequence[str] | None = None, *, services_dir: Path | None = None)
                     ok=ok,
                     service_count=service_count,
                     pinned_count=pinned_count,
+                    exempt_build_count=exempt_build_count,
                     issues=issues,
                 ),
                 indent=2,
@@ -114,13 +127,16 @@ def main(argv: Sequence[str] | None = None, *, services_dir: Path | None = None)
         return 0 if ok else 1
 
     if ok:
-        print(f"digest-pins OK: all {pinned_count} deploy-facing descriptors pinned")
+        print(
+            f"digest-pins OK: {registry_pinned} registry-backed pinned, "
+            f"{exempt_build_count} local-build exempt ({service_count} total)"
+        )
     else:
         for issue in issues:
             print(f"FAIL: {issue['message']}", file=sys.stderr)
         print(
-            f"digest-pins FAILED: {len(issues)} unpinned descriptor(s) "
-            f"({pinned_count}/{service_count} pinned)",
+            f"digest-pins FAILED: {len(issues)} unpinned registry-backed descriptor(s) "
+            f"({registry_pinned}/{registry_total} pinned, {exempt_build_count} local-build exempt)",
             file=sys.stderr,
         )
 

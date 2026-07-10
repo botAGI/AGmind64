@@ -73,8 +73,9 @@ def test_digest_gate_exempts_build_services_only(tmp_path) -> None:  # type: ign
         "name: bad-nodigest\nimage: vendor/bad:1.0\ntier: app\n",
         encoding="utf-8",
     )
-    issues, count = check_digest_pins(services_dir=tmp_path)
+    issues, count, exempt_build_count = check_digest_pins(services_dir=tmp_path)
     assert count == 2
+    assert exempt_build_count == 1, "the build-service must be counted as exempt"
     flagged = {i["kind"] and i.get("service") or i for i in issues}  # tolerate issue shape
     names = {i.get("service") for i in issues}
     assert "bad-nodigest" in names, f"plain digest-less service must still fail: {issues}"

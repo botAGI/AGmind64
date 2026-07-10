@@ -84,7 +84,7 @@ def test_digest_check_passes_on_pinned_catalog() -> None:
     """digest_check.check_digest_pins() returns no issues on the current catalog."""
     from scripts.checks.digest_check import check_digest_pins
 
-    issues, service_count = check_digest_pins()
+    issues, service_count, _exempt = check_digest_pins()
     assert service_count == 47, f"expected 47 descriptors, got {service_count}"
     assert issues == [], (
         f"digest check found {len(issues)} unpinned descriptor(s): {[i['service'] for i in issues]}"
@@ -126,7 +126,7 @@ def test_mutation_verified_red_when_digest_stripped(tmp_services_dir: Path) -> N
     original_text = _strip_digest_from_yaml(traefik_path)
 
     # Gate must FAIL when traefik has no digest.
-    issues, service_count = check_digest_pins(services_dir=tmp_services_dir)
+    issues, service_count, _exempt = check_digest_pins(services_dir=tmp_services_dir)
     assert len(issues) == 1, (
         f"Expected exactly 1 issue after stripping traefik's digest, got {len(issues)}: "
         f"{[i['service'] for i in issues]}"
@@ -139,7 +139,7 @@ def test_mutation_verified_red_when_digest_stripped(tmp_services_dir: Path) -> N
     traefik_path.write_text(original_text, encoding="utf-8")
 
     # Gate must PASS after restore.
-    issues_after, _ = check_digest_pins(services_dir=tmp_services_dir)
+    issues_after, _, _ = check_digest_pins(services_dir=tmp_services_dir)
     assert issues_after == [], (
         f"Gate still reports failures after restoring traefik digest: "
         f"{[i['service'] for i in issues_after]}"
