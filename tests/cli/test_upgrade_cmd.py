@@ -628,6 +628,68 @@ def test_grouped_rollback_restores_all_files(
     assert "1.14.2" in (services / "dify-web.yaml").read_text()
 
 
+def test_rollback_restores_old_digest_on_separate_form_descriptor(tmp_repo: Path) -> None:
+    """D-01 (P0.2) regression: rollback of a separate-form descriptor must restore
+    the ORIGINAL digest, not leave the bumped NEW digest under the restored old tag.
+
+    `_read_current_pin` only ever sees an inline `@sha256:` digest; 34/40 catalog
+    descriptors carry the digest on a SEPARATE `digest:` line instead. Pre-fix,
+    `old_digest` persisted as None in upgrade-state, so rollback wrote
+    `image: OLD_TAG` while leaving `digest:` at the NEW value — docker then
+    resolves by digest and silently deploys the NEW image under the OLD tag.
+    """
+    services = tmp_repo / "templates" / "services"
+    old_digest = "a" * 64
+    new_digest = "b" * 64
+    _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "1.0.0", digest=old_digest)
+
+    rc = upgrade_cmd.cmd_component("alpha", "2.0.0", digest=new_digest)
+    assert rc == 0
+    bumped = (services / "alpha.yaml").read_text()
+    assert "image: vendor/alpha:2.0.0" in bumped
+    assert f"digest: {new_digest}" in bumped
+
+    rc = upgrade_cmd.cmd_rollback()
+    assert rc == 0
+
+    restored = (services / "alpha.yaml").read_text()
+    assert "image: vendor/alpha:1.0.0" in restored
+    assert f"digest: {old_digest}" in restored
+    assert new_digest not in restored
+
+
+def test_grouped_rollback_restores_old_digest_on_separate_form_descriptors(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D-01 (P0.2) regression: grouped/component rollback restores each member's
+    OWN original digest on separate-form descriptors, not the bumped NEW digest."""
+    services = tmp_repo / "templates" / "services"
+    old_digest_api = "a" * 64
+    old_digest_web = "c" * 64
+    new_digest = "b" * 64
+    _make_separate_form_descriptor(
+        services, "dify-api", "langgenius/dify-api", "1.14.2", digest=old_digest_api
+    )
+    _make_separate_form_descriptor(
+        services, "dify-web", "langgenius/dify-web", "1.14.2", digest=old_digest_web
+    )
+    components = tmp_repo / "templates" / "components"
+    _make_component_contract(components, "dify", ["dify-api", "dify-web"])
+    monkeypatch.setattr(upgrade_cmd, "COMPONENTS_DIR", components)
+
+    upgrade_cmd.cmd_component("dify", "1.14.3", digest=new_digest, plan_only=False)
+    rc = upgrade_cmd.cmd_rollback()
+
+    assert rc == 0
+    api_text = (services / "dify-api.yaml").read_text()
+    web_text = (services / "dify-web.yaml").read_text()
+    assert "image: langgenius/dify-api:1.14.2" in api_text
+    assert f"digest: {old_digest_api}" in api_text
+    assert "image: langgenius/dify-web:1.14.2" in web_text
+    assert f"digest: {old_digest_web}" in web_text
+
+
 # ---------- cmd_apply ----------
 
 

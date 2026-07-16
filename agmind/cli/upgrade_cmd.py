@@ -294,6 +294,16 @@ def build_component_upgrade_plan(
         if current is None:
             raise ValueError(f"no image line in {yaml_path}")
         image, old_tag, old_digest = current
+        if old_digest is None:
+            # D-01 (P0.2): _read_current_pin only sees an inline `@sha256:`
+            # digest. 34/40 catalog descriptors carry it on a SEPARATE
+            # `digest:` line instead, invisible here. Without this fallback,
+            # UpgradePlanItem.old_digest (and thus the persisted upgrade-state)
+            # would carry None for those descriptors, and a later rollback
+            # would restore old_tag while leaving the NEW digest in place —
+            # docker resolves by digest, so it silently deploys the NEW image
+            # under the restored OLD tag.
+            old_digest = _read_separate_digest(yaml_path)
         members.append((service_name, str(yaml_path), image, old_tag, old_digest))
 
     # Modal fallback: when a component contract declares no pin, treat the
