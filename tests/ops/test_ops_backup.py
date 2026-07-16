@@ -1340,3 +1340,34 @@ def test_cmd_backup_warns_config_only_when_no_include_data(
     assert rc == 0
     err = capsys.readouterr().err.lower()
     assert "config-only" in err and "no database" in err
+
+
+def test_restore_refused_while_deploy_lock_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Fix 8/D-08: restore mutates a live deployment same as deploy/rollback — it must share
+    the deploy_lock. A concurrent deploy/rollback holding the lock refuses the restore
+    (rc != 0, "in progress" in stderr) BEFORE the mutating restore_backup call is reached."""
+    from agmind.cli import ops_cmd
+    from agmind.core.locks import deploy_lock
+
+    backup, install, user, system = _make_minimal_backup(tmp_path)
+
+    def must_not_run(**_kw: object) -> object:
+        raise AssertionError("restore_backup must not run while the deploy lock is held")
+
+    monkeypatch.setattr(ops_cmd, "restore_backup", must_not_run)
+
+    with deploy_lock(install):
+        rc = ops_cmd.cmd_restore(
+            backup_path=backup,
+            yes=True,
+            install_dir=install,
+            user_dir=user,
+            system_dir=system,
+        )
+    assert rc != 0
+    err = capsys.readouterr().err.lower()
+    assert "in progress" in err

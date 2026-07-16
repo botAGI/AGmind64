@@ -220,3 +220,31 @@ def test_rotate_resyncs_db_secret_file_and_recreates_server(tmp_path, monkeypatc
     assert file_val != "oldpg"  # FILE re-materialized, not left stale
     assert file_val == new_pg  # FILE matches the rotated .env value (no skew)
     assert "postgres" in " ".join(seen["cmd"])  # the server is force-recreated to re-read the file
+
+
+def test_rotate_secrets_refused_while_deploy_lock_held(
+    tmp_path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix 8/D-08: rotate-secrets mutates a live deployment same as deploy/rollback/restore — it
+    must share the deploy_lock. A concurrent deploy/rollback holding the lock refuses the
+    rotation (rc != 0, "in progress" in stderr) BEFORE the mutating rotation is applied."""
+    from agmind.cli import ops_cmd
+    from agmind.core.locks import deploy_lock
+    from agmind.ops import rotate as rotate_module
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    env_path = install / ".env"
+    env_path.write_text("REDIS_PASSWORD=oldredis\n", encoding="utf-8")
+
+    def must_not_run(*_a: object, **_kw: object) -> object:
+        raise AssertionError("apply_rotation must not run while the deploy lock is held")
+
+    monkeypatch.setattr(rotate_module, "apply_rotation", must_not_run)
+
+    with deploy_lock(install):
+        rc = ops_cmd.cmd_rotate_secrets(install_dir=install, yes=True)
+    assert rc != 0
+    err = capsys.readouterr().err.lower()
+    assert "in progress" in err
+    assert env_path.read_text(encoding="utf-8") == "REDIS_PASSWORD=oldredis\n"

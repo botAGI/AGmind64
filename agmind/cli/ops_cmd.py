@@ -16,6 +16,7 @@ from pathlib import Path
 
 import typer
 
+from agmind.core.locks import deploy_lock
 from agmind.ops.backup import (
     DEFAULT_INSTALL_DIR as BACKUP_INSTALL_DIR,
 )
@@ -285,196 +286,210 @@ def cmd_restore(
         print(f"agmind restore: file not found: {backup_path}", file=sys.stderr)
         return 2
 
-    try:
-        metadata = read_metadata(backup_path)
-    except (ValueError, OSError) as exc:
-        print(f"agmind restore: {exc}", file=sys.stderr)
-        return 1
+    # F3-lite/D-08: restore mutates live deployment state (compose config, volume data,
+    # DB dumps) same as `deploy`/`rollback` — share the single-flight deploy_lock so a
+    # concurrent deploy/rollback/rotate-secrets cannot race a restore on the same
+    # install_dir. Contention refuses (rc=1) before any of the mutating body below runs.
+    with deploy_lock(install_dir) as acquired:
+        if not acquired:
+            print("agmind restore: operation already in progress", file=sys.stderr)
+            return 1
 
-    included_raw = metadata.get("included", [])
-    included = [str(x) for x in included_raw] if isinstance(included_raw, list) else []
-    print(f"agmind restore: backup from {metadata.get('created_at', '?')}")
-    print(f"  format v{metadata.get('format_version', '?')}")
-    print(f"  includes: {', '.join(included) or '<none>'}")
+        try:
+            metadata = read_metadata(backup_path)
+        except (ValueError, OSError) as exc:
+            print(f"agmind restore: {exc}", file=sys.stderr)
+            return 1
 
-    # Validate --label values up-front (a typo'd label would otherwise silently
-    # restore nothing, since restore_backup skips labels with no destination).
-    if labels:
-        unknown = [lbl for lbl in labels if lbl not in included]
-        if unknown:
+        included_raw = metadata.get("included", [])
+        included = [str(x) for x in included_raw] if isinstance(included_raw, list) else []
+        print(f"agmind restore: backup from {metadata.get('created_at', '?')}")
+        print(f"  format v{metadata.get('format_version', '?')}")
+        print(f"  includes: {', '.join(included) or '<none>'}")
+
+        # Validate --label values up-front (a typo'd label would otherwise silently
+        # restore nothing, since restore_backup skips labels with no destination).
+        if labels:
+            unknown = [lbl for lbl in labels if lbl not in included]
+            if unknown:
+                print(
+                    f"agmind restore: unknown label(s): {', '.join(unknown)}; "
+                    f"available: {', '.join(included) or '<none>'}",
+                    file=sys.stderr,
+                )
+                return 2
+
+        if dry_run:
+            rows = restore_plan(
+                backup_path,
+                install_dir=install_dir,
+                user_dir=user_dir,
+                system_dir=system_dir,
+                labels=labels,
+            )
+            print("\nRestore plan (dry-run):")
+            for row in rows:
+                print(
+                    f"  {row.label:<14} {row.kind:<8} {row.target or '<no target>'}  ({row.detail})"
+                )
+            print("\nno changes made (dry-run).")
+            return 0
+
+        # L.E.5: detect running deployment ДО overwrite — restore поверх работающего
+        # compose'а гарантированно ломает container'ы (compose файл меняется на лету).
+        running = _running_compose_services(install_dir)
+
+        # F2/D-03: volume-kind members overwrite a service's /var/lib/agmind/<svc> dir on disk
+        # (mv/rm -rf) — doing that while the SAME service's container is live can corrupt its
+        # on-disk state. Derive the consuming service per volume member from its label
+        # (`volume/<rel>`, set by agmind.ops.backup_data.data_sources — the FIRST path segment
+        # of `rel` is the owning service) and intersect with the running set. dbdump members are
+        # the OPPOSITE: their restore execs into the live container (`docker exec ... psql`), so
+        # they are excluded from both the hard-fail and the advice below.
+        raw_data_members = metadata.get("data", [])
+        data_members = raw_data_members if isinstance(raw_data_members, list) else []
+        volume_members = [
+            m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"
+        ]
+        volume_consumers = {
+            str(m["label"]).removeprefix("volume/").split("/")[0]
+            for m in volume_members
+            if m.get("label")
+        }
+        blocked = volume_consumers & set(running)
+
+        if running:
+            print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")
+            print(f"  {', '.join(running)}")
+            print("Restoring over a running compose can break containers.")
+            if volume_members:
+                print("Recommended: run `docker compose -f docker-compose.yml down` first.")
+
+        if blocked and not force:
+            # Unconditional of `-y` — a volume restore over a live consumer is data loss, not a
+            # "proceed anyway" prompt. --force is the only documented bypass (T-restore-force).
             print(
-                f"agmind restore: unknown label(s): {', '.join(unknown)}; "
-                f"available: {', '.join(included) or '<none>'}",
+                "agmind restore: refusing — this archive would overwrite volume data for live "
+                f"consumer(s): {', '.join(sorted(blocked))}. Stop them first "
+                "(`docker compose -f docker-compose.yml down`) or pass --force to accept the "
+                "data loss risk (restoring volume data under a live daemon can corrupt "
+                "on-disk state).",
                 file=sys.stderr,
             )
-            return 2
+            return 1
 
-    if dry_run:
-        rows = restore_plan(
-            backup_path,
-            install_dir=install_dir,
-            user_dir=user_dir,
-            system_dir=system_dir,
-            labels=labels,
-        )
-        print("\nRestore plan (dry-run):")
-        for row in rows:
-            print(f"  {row.label:<14} {row.kind:<8} {row.target or '<no target>'}  ({row.detail})")
-        print("\nno changes made (dry-run).")
-        return 0
+        if not yes:
+            try:
+                answer = input("Proceed restore? [y/N]: ").strip().lower()
+            except EOFError:
+                answer = ""
+            if answer not in ("y", "yes"):
+                print("aborted.")
+                return 1
 
-    # L.E.5: detect running deployment ДО overwrite — restore поверх работающего
-    # compose'а гарантированно ломает container'ы (compose файл меняется на лету).
-    running = _running_compose_services(install_dir)
+        # Integrity gate (audit M#17): re-hash the backup's dump members against their recorded
+        # sha256 BEFORE overwriting live data — a bit-rotted/truncated archive must not be loaded.
+        if not skip_verify:
+            issues = verify_backup(backup_path)
+            if issues:
+                print("agmind restore: backup integrity check FAILED:", file=sys.stderr)
+                for issue in issues:
+                    print(f"  - {issue}", file=sys.stderr)
+                print("aborting (pass --skip-verify to override).", file=sys.stderr)
+                return 1
 
-    # F2/D-03: volume-kind members overwrite a service's /var/lib/agmind/<svc> dir on disk
-    # (mv/rm -rf) — doing that while the SAME service's container is live can corrupt its
-    # on-disk state. Derive the consuming service per volume member from its label
-    # (`volume/<rel>`, set by agmind.ops.backup_data.data_sources — the FIRST path segment
-    # of `rel` is the owning service) and intersect with the running set. dbdump members are
-    # the OPPOSITE: their restore execs into the live container (`docker exec ... psql`), so
-    # they are excluded from both the hard-fail and the advice below.
-    raw_data_members = metadata.get("data", [])
-    data_members = raw_data_members if isinstance(raw_data_members, list) else []
-    volume_members = [m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"]
-    volume_consumers = {
-        str(m["label"]).removeprefix("volume/").split("/")[0]
-        for m in volume_members
-        if m.get("label")
-    }
-    blocked = volume_consumers & set(running)
+        sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
+        if labels:
+            wanted = set(labels)
+            sources = [s for s in sources if s.label in wanted]
 
-    if running:
-        print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")
-        print(f"  {', '.join(running)}")
-        print("Restoring over a running compose can break containers.")
-        if volume_members:
-            print("Recommended: run `docker compose -f docker-compose.yml down` first.")
+        # Route every volume/<svc> data member to its trusted system_dir destination.
+        # default_sources carries no volume/* label, so without this restore_backup drops
+        # every volume member silently while printing "✓ restored" (review HIGH
+        # restore-volume-data-unreachable). Destinations come ONLY from the local system_dir
+        # + the label suffix — never the archive's host_path (audit H#4).
+        destinations: dict[str, Path] = {}
+        raw_data = metadata.get("data", [])
+        db_passwords: dict[str, str] = {}
+        from agmind.core.env import parse_env_file
 
-    if blocked and not force:
-        # Unconditional of `-y` — a volume restore over a live consumer is data loss, not a
-        # "proceed anyway" prompt. --force is the only documented bypass (T-restore-force).
-        print(
-            "agmind restore: refusing — this archive would overwrite volume data for live "
-            f"consumer(s): {', '.join(sorted(blocked))}. Stop them first "
-            "(`docker compose -f docker-compose.yml down`) or pass --force to accept the "
-            "data loss risk (restoring volume data under a live daemon can corrupt "
-            "on-disk state).",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not yes:
+        env_path = install_dir / ".env"
         try:
-            answer = input("Proceed restore? [y/N]: ").strip().lower()
-        except EOFError:
-            answer = ""
-        if answer not in ("y", "yes"):
-            print("aborted.")
+            env = parse_env_file(env_path) if env_path.exists() else {}
+        except PermissionError:
+            # Root-owned .env unreadable as non-root: don't crash with a traceback — restore the
+            # config/volume members and let DB-dump members that need a password surface as
+            # failed (RestoreResult.failed). For a full DB restore, re-run with sudo.
+            print(
+                "agmind restore: .env is root-owned (0600) — DB-credential restores need sudo; "
+                "config/volume members will still restore.",
+                file=sys.stderr,
+            )
+            env = {}
+        for member in raw_data if isinstance(raw_data, list) else []:
+            if not isinstance(member, dict):
+                continue
+            dlabel = str(member.get("label", ""))
+            if member.get("kind") == "volume":
+                vol_target = volume_restore_target(dlabel, system_dir)
+                if vol_target is not None:
+                    destinations[dlabel] = vol_target
+            elif member.get("kind") == "dbdump":
+                # Wire the live DB password so a mysql restore has MYSQL_PWD (postgres uses
+                # in-container trust). Read from the current .env, not the archive.
+                if member.get("engine") == "mysql":
+                    db_passwords[dlabel] = env.get("MYSQL_ROOT_PASSWORD", "")
+                elif member.get("engine") == "postgres":
+                    db_passwords[dlabel] = env.get("POSTGRES_PASSWORD", "")
+
+        try:
+            result = restore_backup(
+                backup_path=backup_path,
+                sources=sources,
+                destinations=destinations,
+                sudo_password=_prompt_sudo_password(ask_sudo_password),
+                db_passwords=db_passwords,
+                labels=labels,
+            )
+        except Exception as exc:
+            print(f"agmind restore: failed: {exc}", file=sys.stderr)
             return 1
 
-    # Integrity gate (audit M#17): re-hash the backup's dump members against their recorded
-    # sha256 BEFORE overwriting live data — a bit-rotted/truncated archive must not be loaded.
-    if not skip_verify:
-        issues = verify_backup(backup_path)
-        if issues:
-            print("agmind restore: backup integrity check FAILED:", file=sys.stderr)
-            for issue in issues:
-                print(f"  - {issue}", file=sys.stderr)
-            print("aborting (pass --skip-verify to override).", file=sys.stderr)
+        if result.failed:
+            print(
+                f"✗ {len(result.failed)} member(s) FAILED to restore: {', '.join(result.failed)}",
+                file=sys.stderr,
+            )
+        print(f"✓ restored {len(result.extracted)}: {', '.join(result.extracted) or '<none>'}")
+        if result.failed:
             return 1
 
-    sources = default_sources(install_dir=install_dir, user_dir=user_dir, system_dir=system_dir)
-    if labels:
-        wanted = set(labels)
-        sources = [s for s in sources if s.label in wanted]
+        # A selective (--label) restore skips the whole-deployment hints below — they
+        # only apply to a full restore.
+        if labels:
+            return 0
 
-    # Route every volume/<svc> data member to its trusted system_dir destination. default_sources
-    # carries no volume/* label, so without this restore_backup drops every volume member silently
-    # while printing "✓ restored" (review HIGH restore-volume-data-unreachable). Destinations come
-    # ONLY from the local system_dir + the label suffix — never the archive's host_path (audit H#4).
-    destinations: dict[str, Path] = {}
-    raw_data = metadata.get("data", [])
-    db_passwords: dict[str, str] = {}
-    from agmind.core.env import parse_env_file
+        # L.E.1: hint про cf_dns_api_token — он не в backup'е, secret.
+        token_path = user_dir / "cf_dns_api_token"
+        if not token_path.exists():
+            print(
+                "\nNOTE: cf_dns_api_token was NOT restored (the secret is not in the backup). "
+                "Restore it manually:"
+            )
+            print(f'  echo "$TOKEN" > {token_path} && chmod 600 {token_path}')
 
-    env_path = install_dir / ".env"
-    try:
-        env = parse_env_file(env_path) if env_path.exists() else {}
-    except PermissionError:
-        # Root-owned .env unreadable as non-root: don't crash with a traceback — restore the
-        # config/volume members and let DB-dump members that need a password surface as failed
-        # (RestoreResult.failed). For a full DB restore, re-run with sudo.
-        print(
-            "agmind restore: .env is root-owned (0600) — DB-credential restores need sudo; "
-            "config/volume members will still restore.",
-            file=sys.stderr,
+        # L.E.4: warn если каталог моделей пуст после restore
+        models_dir = system_dir / "models"
+        has_models = models_dir.exists() and any(
+            p.suffix in (".gguf", ".safetensors", ".bin") for p in models_dir.iterdir()
         )
-        env = {}
-    for member in raw_data if isinstance(raw_data, list) else []:
-        if not isinstance(member, dict):
-            continue
-        dlabel = str(member.get("label", ""))
-        if member.get("kind") == "volume":
-            vol_target = volume_restore_target(dlabel, system_dir)
-            if vol_target is not None:
-                destinations[dlabel] = vol_target
-        elif member.get("kind") == "dbdump":
-            # Wire the live DB password so a mysql restore has MYSQL_PWD (postgres uses
-            # in-container trust). Read from the current .env, not the archive.
-            if member.get("engine") == "mysql":
-                db_passwords[dlabel] = env.get("MYSQL_ROOT_PASSWORD", "")
-            elif member.get("engine") == "postgres":
-                db_passwords[dlabel] = env.get("POSTGRES_PASSWORD", "")
+        if not has_models:
+            print(
+                f"\nWARNING: {models_dir} is empty — models are not in the backup (too large). "
+                f"Run `agmind models pull <name>` to populate it."
+            )
 
-    try:
-        result = restore_backup(
-            backup_path=backup_path,
-            sources=sources,
-            destinations=destinations,
-            sudo_password=_prompt_sudo_password(ask_sudo_password),
-            db_passwords=db_passwords,
-            labels=labels,
-        )
-    except Exception as exc:
-        print(f"agmind restore: failed: {exc}", file=sys.stderr)
-        return 1
-
-    if result.failed:
-        print(
-            f"✗ {len(result.failed)} member(s) FAILED to restore: {', '.join(result.failed)}",
-            file=sys.stderr,
-        )
-    print(f"✓ restored {len(result.extracted)}: {', '.join(result.extracted) or '<none>'}")
-    if result.failed:
-        return 1
-
-    # A selective (--label) restore skips the whole-deployment hints below — they
-    # only apply to a full restore.
-    if labels:
         return 0
-
-    # L.E.1: hint про cf_dns_api_token — он не в backup'е, secret.
-    token_path = user_dir / "cf_dns_api_token"
-    if not token_path.exists():
-        print(
-            "\nNOTE: cf_dns_api_token was NOT restored (the secret is not in the backup). "
-            "Restore it manually:"
-        )
-        print(f'  echo "$TOKEN" > {token_path} && chmod 600 {token_path}')
-
-    # L.E.4: warn если каталог моделей пуст после restore
-    models_dir = system_dir / "models"
-    has_models = models_dir.exists() and any(
-        p.suffix in (".gguf", ".safetensors", ".bin") for p in models_dir.iterdir()
-    )
-    if not has_models:
-        print(
-            f"\nWARNING: {models_dir} is empty — models are not in the backup (too large). "
-            f"Run `agmind models pull <name>` to populate it."
-        )
-
-    return 0
 
 
 def _force_recreate(install_dir: Path, services: list[str], run: object | None = None) -> int:
@@ -522,113 +537,127 @@ def cmd_rotate_secrets(
         print(f"agmind rotate-secrets: no .env found at {env_path}", file=sys.stderr)
         return 2
 
-    try:
-        text = env_path.read_text(encoding="utf-8")
-        env = parse_env_file(env_path)
-    except PermissionError as exc:
-        # /opt/agmind/.env is root:root 0600; rotate-secrets must READ and WRITE it, so it
-        # genuinely needs root. Guide the operator instead of dumping a raw traceback
-        # (live-audit 2026-06-05 rotate-secrets-permissionerror-traceback).
-        print(
-            f"agmind rotate-secrets: cannot read {env_path} ({exc}) — the .env is root-owned. "
-            "Re-run with sudo (e.g. `sudo -E agmind ops rotate-secrets ...`).",
-            file=sys.stderr,
-        )
-        return 1
-    plan = plan_rotation(env, include=include or [], force_destructive=force_destructive)
-
-    print("rotate-secrets plan:")
-    print(f"  rotate ({len(plan.rotate)}): {', '.join(plan.rotate) or '<none>'}")
-    if plan.skipped_init:
-        print(f"  skipped INIT-ONLY (need --include): {', '.join(plan.skipped_init)}")
-    if plan.refused_encrypt:
-        print(
-            f"  refused ENCRYPT-AT-REST (need --force-destructive): {', '.join(plan.refused_encrypt)}"
-        )
-    for warning in plan.warnings:
-        print(f"  ! {warning}")
-
-    if dry_run:
-        print("no changes made (dry-run).")
-        return 0
-    if not plan.rotate:
-        print("nothing to rotate.")
-        return 0
-
-    if not yes:
-        try:
-            answer = input("Proceed rotation? [y/N]: ").strip().lower()
-        except EOFError:
-            answer = ""
-        if answer not in ("y", "yes"):
-            print("aborted.")
+    # F3-lite/D-08: rotate-secrets mutates live deployment state (.env, secret FILEs, and
+    # force-recreates holders) same as `deploy`/`rollback`/`restore` — share the single-flight
+    # deploy_lock so a concurrent deploy/rollback/restore cannot race a rotation on the same
+    # install_dir. Contention refuses (rc=1) before any of the mutating body below runs.
+    with deploy_lock(install_dir) as acquired:
+        if not acquired:
+            print("agmind rotate-secrets: operation already in progress", file=sys.stderr)
             return 1
 
-    ts = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = env_path.with_name(f".env.pre-rotation.{ts}")
-    write_private_text(backup_path, text)
+        try:
+            text = env_path.read_text(encoding="utf-8")
+            env = parse_env_file(env_path)
+        except PermissionError as exc:
+            # /opt/agmind/.env is root:root 0600; rotate-secrets must READ and WRITE it, so it
+            # genuinely needs root. Guide the operator instead of dumping a raw traceback
+            # (live-audit 2026-06-05 rotate-secrets-permissionerror-traceback).
+            print(
+                f"agmind rotate-secrets: cannot read {env_path} ({exc}) — the .env is "
+                "root-owned. Re-run with sudo (e.g. `sudo -E agmind ops rotate-secrets ...`).",
+                file=sys.stderr,
+            )
+            return 1
+        plan = plan_rotation(env, include=include or [], force_destructive=force_destructive)
 
-    new_env = apply_rotation(env, plan)
-    rewritten = rewrite_env_text(text, {key: new_env[key] for key in plan.rotate})
-    write_private_text(env_path, rewritten)
-    print(f"✓ rotated {len(plan.rotate)} secret(s); old .env backed up at {backup_path}")
+        print("rotate-secrets plan:")
+        print(f"  rotate ({len(plan.rotate)}): {', '.join(plan.rotate) or '<none>'}")
+        if plan.skipped_init:
+            print(f"  skipped INIT-ONLY (need --include): {', '.join(plan.skipped_init)}")
+        if plan.refused_encrypt:
+            print(
+                "  refused ENCRYPT-AT-REST (need --force-destructive): "
+                f"{', '.join(plan.refused_encrypt)}"
+            )
+        for warning in plan.warnings:
+            print(f"  ! {warning}")
 
-    # db-secrets→FILE: a rotated DB-server password also lives in a 0600 secret FILE the server
-    # reads via *_PASSWORD_FILE (invisible to the ${VAR}-scanning secret_consumers). Re-materialize
-    # the FILE and force-recreate the server below, or the server keeps the OLD password while .env
-    # consumers move to the new one → auth skew. live-audit 2026-06-07 (SEC-3).
-    from agmind.install.secret_keys import DB_SECRET_FILE_READER_UID, DB_SECRET_FILES
+        if dry_run:
+            print("no changes made (dry-run).")
+            return 0
+        if not plan.rotate:
+            print("nothing to rotate.")
+            return 0
 
-    rotated_db_servers: list[str] = []
-    for svc, fname, env_key in DB_SECRET_FILES:
-        if env_key in plan.rotate:
-            write_private_text(secrets_dir / fname, new_env[env_key])
-            reader_uid = DB_SECRET_FILE_READER_UID.get(fname)
-            if reader_uid is not None:
-                # mongo reads its *_FILE as uid 999 — keep the rotated file readable by it.
-                # Best-effort (root rotation works; non-root context skips rather than crashing).
-                try:
-                    os.chown(secrets_dir / fname, reader_uid, reader_uid)
-                except (PermissionError, OSError):
-                    pass
-            rotated_db_servers.append(svc)
-    if rotated_db_servers:
-        print(
-            f"✓ re-materialized {len(rotated_db_servers)} DB secret file(s): "
-            f"{', '.join(rotated_db_servers)}"
+        if not yes:
+            try:
+                answer = input("Proceed rotation? [y/N]: ").strip().lower()
+            except EOFError:
+                answer = ""
+            if answer not in ("y", "yes"):
+                print("aborted.")
+                return 1
+
+        ts = timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        backup_path = env_path.with_name(f".env.pre-rotation.{ts}")
+        write_private_text(backup_path, text)
+
+        new_env = apply_rotation(env, plan)
+        rewritten = rewrite_env_text(text, {key: new_env[key] for key in plan.rotate})
+        write_private_text(env_path, rewritten)
+        print(f"✓ rotated {len(plan.rotate)} secret(s); old .env backed up at {backup_path}")
+
+        # db-secrets→FILE: a rotated DB-server password also lives in a 0600 secret FILE the
+        # server reads via *_PASSWORD_FILE (invisible to the ${VAR}-scanning secret_consumers).
+        # Re-materialize the FILE and force-recreate the server below, or the server keeps the
+        # OLD password while .env consumers move to the new one → auth skew.
+        # live-audit 2026-06-07 (SEC-3).
+        from agmind.install.secret_keys import DB_SECRET_FILE_READER_UID, DB_SECRET_FILES
+
+        rotated_db_servers: list[str] = []
+        for svc, fname, env_key in DB_SECRET_FILES:
+            if env_key in plan.rotate:
+                write_private_text(secrets_dir / fname, new_env[env_key])
+                reader_uid = DB_SECRET_FILE_READER_UID.get(fname)
+                if reader_uid is not None:
+                    # mongo reads its *_FILE as uid 999 — keep the rotated file readable by it.
+                    # Best-effort (root rotation works; non-root context skips rather than
+                    # crashing).
+                    try:
+                        os.chown(secrets_dir / fname, reader_uid, reader_uid)
+                    except (PermissionError, OSError):
+                        pass
+                rotated_db_servers.append(svc)
+        if rotated_db_servers:
+            print(
+                f"✓ re-materialized {len(rotated_db_servers)} DB secret file(s): "
+                f"{', '.join(rotated_db_servers)}"
+            )
+
+        if not recreate:
+            print(
+                "skipped recreate (--no-recreate). Run "
+                "`docker compose up -d --force-recreate <holders>` (NOT restart — that keeps "
+                "the old env)."
+            )
+            return 0
+
+        from agmind.services.renderer import load_descriptors
+
+        # Union the consumers (from ${VAR} scan) with the DB SERVERS whose FILE we just
+        # rewrote — the servers reference the secret via *_PASSWORD_FILE so secret_consumers
+        # can't see them, but they MUST be recreated to re-read the file.
+        # live-audit 2026-06-07 (SEC-3).
+        holders = sorted(
+            set(holders_for(plan.rotate, secret_consumers(load_descriptors())))
+            | set(rotated_db_servers)
         )
-
-    if not recreate:
-        print(
-            "skipped recreate (--no-recreate). Run "
-            "`docker compose up -d --force-recreate <holders>` (NOT restart — that keeps the old env)."
-        )
+        running = set(_running_compose_services(install_dir))
+        to_recreate = [h for h in holders if h in running]
+        if not to_recreate:
+            print("no running holders to recreate.")
+            return 0
+        rc = _force_recreate(install_dir, to_recreate, run=compose_run)
+        if rc != 0:
+            print(
+                f"WARNING: force-recreate rc={rc}; recreate manually: "
+                f"docker compose up -d --force-recreate {' '.join(to_recreate)}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"✓ force-recreated {len(to_recreate)} holder(s): {', '.join(to_recreate)}")
         return 0
-
-    from agmind.services.renderer import load_descriptors
-
-    # Union the consumers (from ${VAR} scan) with the DB SERVERS whose FILE we just rewrote — the
-    # servers reference the secret via *_PASSWORD_FILE so secret_consumers can't see them, but they
-    # MUST be recreated to re-read the file. live-audit 2026-06-07 (SEC-3).
-    holders = sorted(
-        set(holders_for(plan.rotate, secret_consumers(load_descriptors())))
-        | set(rotated_db_servers)
-    )
-    running = set(_running_compose_services(install_dir))
-    to_recreate = [h for h in holders if h in running]
-    if not to_recreate:
-        print("no running holders to recreate.")
-        return 0
-    rc = _force_recreate(install_dir, to_recreate, run=compose_run)
-    if rc != 0:
-        print(
-            f"WARNING: force-recreate rc={rc}; recreate manually: "
-            f"docker compose up -d --force-recreate {' '.join(to_recreate)}",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"✓ force-recreated {len(to_recreate)} holder(s): {', '.join(to_recreate)}")
-    return 0
 
 
 def cmd_dr_drill(
