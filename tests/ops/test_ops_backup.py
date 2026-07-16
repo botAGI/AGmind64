@@ -1088,7 +1088,11 @@ def test_restore_warns_on_running_deployment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """L.E.5: detect running compose services и WARN перед restore."""
+    """L.E.5: detect running compose services и WARN перед restore. Regression for a
+    config-only archive (no volume-kind members, via `_make_minimal_backup`): still just
+    warns, rc==0 — F2/D-03 scopes the "compose down first" advice to volume-kind members
+    only (it contradicts the dbdump path, which needs a live container), so it is absent
+    here."""
     from agmind.cli import ops_cmd
 
     backup, install, user, system = _make_minimal_backup(tmp_path)
@@ -1110,7 +1114,132 @@ def test_restore_warns_on_running_deployment(
     assert "running services" in out
     assert "traefik" in out
     assert "llama-llm" in out
-    assert "docker compose" in out
+
+
+def test_restore_hard_fails_on_live_volume_consumer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """F2/D-03: a volume-kind archive member whose consuming service is a LIVE compose
+    container must hard-fail (rc!=0) — even with -y — BEFORE the mutating restore runs.
+    Restoring volume data under a live daemon (mv/rm -rf) can corrupt on-disk state."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import create_backup
+    from agmind.ops.backup_data import DataVolumeSource
+
+    install, user, system = _make_repo(tmp_path)
+    voldir = tmp_path / "src-qdrant"
+    voldir.mkdir()
+    (voldir / "seg.dat").write_text("vec", encoding="utf-8")
+
+    backup = tmp_path / "b.tar.gz"
+    create_backup(
+        output_path=backup,
+        sources=_custom_sources(install, user, system),
+        data_sources=[DataVolumeSource("volume/qdrant", voldir)],
+    )
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: ["qdrant"])
+
+    def must_not_run(**_kw: object) -> object:
+        raise AssertionError("restore_backup must not run over a live volume consumer")
+
+    monkeypatch.setattr(ops_cmd, "restore_backup", must_not_run)
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "qdrant" in err
+
+
+def test_restore_force_bypasses_live_volume_consumer_hard_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--force is the only documented bypass of the live-volume-consumer hard-fail."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import RestoreResult, create_backup
+    from agmind.ops.backup_data import DataVolumeSource
+
+    install, user, system = _make_repo(tmp_path)
+    voldir = tmp_path / "src-qdrant"
+    voldir.mkdir()
+    (voldir / "seg.dat").write_text("vec", encoding="utf-8")
+
+    backup = tmp_path / "b.tar.gz"
+    create_backup(
+        output_path=backup,
+        sources=_custom_sources(install, user, system),
+        data_sources=[DataVolumeSource("volume/qdrant", voldir)],
+    )
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: ["qdrant"])
+    monkeypatch.setattr(ops_cmd, "verify_backup", lambda _p: [])
+    calls: dict[str, object] = {}
+
+    def fake_restore_backup(**_kw: object) -> RestoreResult:
+        calls["reached"] = True
+        return RestoreResult(extracted=("volume/qdrant",), metadata={})
+
+    monkeypatch.setattr(ops_cmd, "restore_backup", fake_restore_backup)
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+        force=True,
+    )
+    assert rc == 0
+    assert calls.get("reached") is True
+
+
+def test_restore_dbdump_only_archive_unaffected_by_live_consumer_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """dbdump restores REQUIRE a live container (`docker exec ... psql/mysql`) — the new
+    volume-consumer hard-fail must never trigger for a dbdump-only archive, even when its
+    consuming DB service is running."""
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import RestoreResult, create_backup
+    from agmind.ops.backup_data import DbDumpSource
+
+    install, user, system = _make_repo(tmp_path)
+    db = DbDumpSource("dbdump/postgres", "agmind-postgres", "postgres", "dify", "dify")
+
+    def fake_dump(cmd: list[str], **_kw: object) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"-- dump\n", stderr=b"")
+
+    backup = tmp_path / "b.tar.gz"
+    create_backup(
+        output_path=backup,
+        sources=_custom_sources(install, user, system),
+        data_sources=[db],
+        data_run=fake_dump,
+    )
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _i: ["postgres"])
+    monkeypatch.setattr(ops_cmd, "verify_backup", lambda _p: [])
+
+    def fake_restore_backup(**_kw: object) -> RestoreResult:
+        return RestoreResult(extracted=("dbdump/postgres",), metadata={})
+
+    monkeypatch.setattr(ops_cmd, "restore_backup", fake_restore_backup)
+
+    rc = ops_cmd.cmd_restore(
+        backup_path=backup,
+        yes=True,
+        install_dir=install,
+        user_dir=user,
+        system_dir=system,
+    )
+    assert rc == 0
 
 
 def test_running_compose_services_no_compose_file(tmp_path: Path) -> None:

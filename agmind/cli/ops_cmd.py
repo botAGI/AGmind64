@@ -278,6 +278,7 @@ def cmd_restore(
     dry_run: bool = False,
     labels: list[str] | None = None,
     skip_verify: bool = False,
+    force: bool = False,
 ) -> int:
     backup_path = Path(backup_path)
     if not backup_path.exists():
@@ -325,11 +326,45 @@ def cmd_restore(
     # L.E.5: detect running deployment ДО overwrite — restore поверх работающего
     # compose'а гарантированно ломает container'ы (compose файл меняется на лету).
     running = _running_compose_services(install_dir)
+
+    # F2/D-03: volume-kind members overwrite a service's /var/lib/agmind/<svc> dir on disk
+    # (mv/rm -rf) — doing that while the SAME service's container is live can corrupt its
+    # on-disk state. Derive the consuming service per volume member from its label
+    # (`volume/<rel>`, set by agmind.ops.backup_data.data_sources — the FIRST path segment
+    # of `rel` is the owning service) and intersect with the running set. dbdump members are
+    # the OPPOSITE: their restore execs into the live container (`docker exec ... psql`), so
+    # they are excluded from both the hard-fail and the advice below.
+    raw_data_members = metadata.get("data", [])
+    data_members = raw_data_members if isinstance(raw_data_members, list) else []
+    volume_members = [
+        m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"
+    ]
+    volume_consumers = {
+        str(m["label"]).removeprefix("volume/").split("/")[0]
+        for m in volume_members
+        if m.get("label")
+    }
+    blocked = volume_consumers & set(running)
+
     if running:
         print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")
         print(f"  {', '.join(running)}")
         print("Restoring over a running compose can break containers.")
-        print("Recommended: run `docker compose -f docker-compose.yml down` first.")
+        if volume_members:
+            print("Recommended: run `docker compose -f docker-compose.yml down` first.")
+
+    if blocked and not force:
+        # Unconditional of `-y` — a volume restore over a live consumer is data loss, not a
+        # "proceed anyway" prompt. --force is the only documented bypass (T-restore-force).
+        print(
+            "agmind restore: refusing — this archive would overwrite volume data for live "
+            f"consumer(s): {', '.join(sorted(blocked))}. Stop them first "
+            "(`docker compose -f docker-compose.yml down`) or pass --force to accept the "
+            "data loss risk (restoring volume data under a live daemon can corrupt "
+            "on-disk state).",
+            file=sys.stderr,
+        )
+        return 1
 
     if not yes:
         try:
@@ -840,6 +875,11 @@ def register(app: typer.Typer) -> None:
             "--skip-verify",
             help="Skip the pre-restore sha256 integrity check (NOT recommended).",
         ),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Bypass the live-consumer hard-fail for volume restores; data loss risk.",
+        ),
     ) -> None:
         """Restore deployment from an `agmind backup` archive."""
         raise typer.Exit(
@@ -850,6 +890,7 @@ def register(app: typer.Typer) -> None:
                 dry_run=dry_run,
                 labels=label,
                 skip_verify=skip_verify,
+                force=force,
             )
         )
 
