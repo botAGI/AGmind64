@@ -196,15 +196,20 @@ def test_uninstall_sentinel_present_proceeds_without_force(monkeypatch, tmp_path
     assert any(f"rm -rf {tmp_path}" in " ".join(c) for c in calls)
 
 
-def test_uninstall_force_help_distinct_from_upgrade_force(monkeypatch):
-    """The new uninstall --force help text must be distinct from `agmind upgrade --force`
-    (different command namespace, different meaning — no operator confusion)."""
-    from typer.testing import CliRunner
+def test_uninstall_force_help_distinct_from_upgrade_force():
+    """The new uninstall --force option must exist and its help must be distinct from
+    `agmind upgrade --force` (different command namespace, different meaning — no operator
+    confusion). Introspect the click param directly rather than parsing rendered --help
+    text: typer 0.26 rich-wraps option names by terminal width, so a substring check on
+    help output is CI-terminal-dependent (see project journal / CLAUDE.md)."""
+    import typer
 
     from agmind.cli import _make_app
 
-    result = CliRunner().invoke(_make_app(), ["uninstall", "--help"])
+    group = typer.main.get_command(_make_app())
+    uninstall_cmd = group.commands["uninstall"]
+    force_params = [p for p in uninstall_cmd.params if p.name == "force"]
 
-    assert result.exit_code == 0
-    assert "--force" in result.output
-    assert "held in version_holds" not in result.output
+    assert force_params, "uninstall must expose a --force option"
+    assert "--force" in force_params[0].opts
+    assert "held in version_holds" not in (force_params[0].help or "")
