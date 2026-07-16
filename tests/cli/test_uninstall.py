@@ -55,17 +55,59 @@ def test_uninstall_data_wipes_data_config_and_volumes(monkeypatch, tmp_path):
 def test_uninstall_sweeps_lingering_agmind_containers_and_networks(monkeypatch, tmp_path):
     calls = _capture(monkeypatch)
     (tmp_path / "docker-compose.yml").write_text("services: {}\n")
-    # simulate compose-down-missed orphans (e.g. a removed subsystem still running)
-    monkeypatch.setattr(
-        install_cmd,
-        "_docker_ids",
-        lambda cmd: ["agmind-phoenix"] if "ps" in cmd else (["agmind"] if "network" in cmd else []),
-    )
+    sweep_argvs: list[list[str]] = []
+
+    def fake_docker_ids(cmd: list[str]) -> list[str]:
+        sweep_argvs.append(cmd)
+        # simulate compose-down-missed orphans (e.g. a removed subsystem still running)
+        if "ps" in cmd:
+            return ["agmind-phoenix"]
+        if "network" in cmd:
+            return ["agmind"]
+        return []
+
+    monkeypatch.setattr(install_cmd, "_docker_ids", fake_docker_ids)
+
     rc = install_cmd.cmd_uninstall(yes=True, install_dir=tmp_path)
     assert rc == 0
     flat = [" ".join(c) for c in calls]
     assert any("docker rm -f agmind-phoenix" in f for f in flat)  # orphan container force-removed
     assert any("docker network rm agmind" in f for f in flat)  # orphan network removed
+
+    # Test C (label-filter argv): every sweep query filters by the compose-project label,
+    # never by a name substring that a foreign `agmind-*` project could also match.
+    assert sweep_argvs, "expected at least one sweep query"
+    for argv in sweep_argvs:
+        joined = " ".join(argv)
+        assert "label=com.docker.compose.project=agmind" in joined
+        assert "name=agmind-" not in joined
+        assert "name=agmind" not in joined
+
+
+def test_uninstall_decoy_foreign_compose_project_survives(monkeypatch, tmp_path):
+    """Test D (decoy survives — unit level, per orchestrator decision 3): a foreign compose
+    project's container (e.g. the live `agmind-dify-cf` tunnel decoy class) is matchable ONLY
+    by a name-substring query, never by the fixed `agmind` compose-project label — so the sweep
+    must never hand it to `_run_cmd` for removal."""
+    calls = _capture(monkeypatch)
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+
+    def fake_docker_ids(cmd: list[str]) -> list[str]:
+        # The label-filtered query (what the fixed sweep issues) sees nothing for the decoy;
+        # only an (obsolete) name-substring query would have matched it.
+        if "label=com.docker.compose.project=agmind" in " ".join(cmd):
+            return []
+        if "ps" in cmd:
+            return ["agmind-foo-decoy"]  # foreign compose project, name-substring match only
+        return []
+
+    monkeypatch.setattr(install_cmd, "_docker_ids", fake_docker_ids)
+
+    rc = install_cmd.cmd_uninstall(yes=True, install_dir=tmp_path)
+
+    assert rc == 0
+    flat = [" ".join(c) for c in calls]
+    assert not any("agmind-foo-decoy" in f for f in flat)  # decoy survives, never removed
 
 
 def test_uninstall_aborts_when_not_confirmed(monkeypatch, tmp_path):

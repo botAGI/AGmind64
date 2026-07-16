@@ -130,18 +130,33 @@ def _forbidden_uninstall_target(resolved: Path) -> str | None:
     return None
 
 
+_AGMIND_COMPOSE_PROJECT_LABEL_FILTER = "label=com.docker.compose.project=agmind"
+
+
 def _sweep_agmind_runtime(*, volumes: bool) -> None:
-    """Force-remove any lingering ``agmind-*`` containers / networks (and, with volumes, agmind
+    """Force-remove any lingering agmind containers / networks (and, with volumes, agmind
     volumes) that ``compose down`` missed — e.g. orphans from a prior project/state (a service no
-    longer in the current compose, like a removed subsystem). Best-effort; no sudo (docker-group)."""
-    cids = _docker_ids(["docker", "ps", "-aq", "--filter", "name=agmind-"])
+    longer in the current compose, like a removed subsystem). Best-effort; no sudo (docker-group).
+
+    Filters by the fixed ``agmind`` compose-project LABEL, not a `name=agmind*` substring
+    (mirrors ``ops_cmd._running_compose_services``'s "don't trust a name substring" rationale).
+    A name-substring filter would also force-remove a FOREIGN compose project that merely
+    shares the ``agmind-`` name prefix — e.g. the live ``agmind-dify-cf`` Cloudflare tunnel,
+    a separate compose deployment (P0.10 / D-02). The label filter is a fixed catalog project
+    name (NOT derived per-install-dir): the sweep targets orphans left behind by ANY prior
+    ``agmind`` compose project, which all carry this label."""
+    cids = _docker_ids(["docker", "ps", "-aq", "--filter", _AGMIND_COMPOSE_PROJECT_LABEL_FILTER])
     if cids:
         _run_cmd(["docker", "rm", "-f", *cids])
-    nids = _docker_ids(["docker", "network", "ls", "-q", "--filter", "name=agmind"])
+    nids = _docker_ids(
+        ["docker", "network", "ls", "-q", "--filter", _AGMIND_COMPOSE_PROJECT_LABEL_FILTER]
+    )
     if nids:
         _run_cmd(["docker", "network", "rm", *nids])
     if volumes:
-        vids = _docker_ids(["docker", "volume", "ls", "-q", "--filter", "name=agmind"])
+        vids = _docker_ids(
+            ["docker", "volume", "ls", "-q", "--filter", _AGMIND_COMPOSE_PROJECT_LABEL_FILTER]
+        )
         if vids:
             _run_cmd(["docker", "volume", "rm", *vids])
 
