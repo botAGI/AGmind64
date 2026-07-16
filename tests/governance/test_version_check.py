@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -477,6 +478,65 @@ def test_ghcr_probe_prefers_github_releases(monkeypatch: pytest.MonkeyPatch) -> 
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not hit tags/list")),
     )
     assert vc._ghcr_latest("homarr-labs", "homarr") == "v1.62.0"
+
+
+# ---- fix 10: hold_until expiry ----
+
+
+def test_expired_hold_falls_through_to_normal_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An expired hold_until (< today, per the mockable `_today()` seam) must stop masking
+    the real upstream status — falls through to the normal patch/minor/major/etc compare,
+    and carries a 'HOLD expired since <date>' warning instead of a bare hold."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    monkeypatch.setattr(vc, "_today", lambda: date(2099, 1, 1))
+    monkeypatch.setattr(
+        vc,
+        "load_holds",
+        lambda: {"infiniflow/ragflow": {"reason": "test hold", "hold_until": "2026-01-01"}},
+    )
+    reports = vc.build_reports(probe_fn=lambda _img: "v9.9.9")
+    ragflow = next(r for r in reports if r.image == "infiniflow/ragflow")
+    assert ragflow.status != "hold"
+    assert "HOLD expired since" in (ragflow.warning or "")
+
+
+def test_future_hold_until_stays_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hold_until still in the future (per the mocked date) keeps the current hold
+    behavior — no fall-through, no expiry warning."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    monkeypatch.setattr(vc, "_today", lambda: date(2020, 1, 1))
+    monkeypatch.setattr(
+        vc,
+        "load_holds",
+        lambda: {"infiniflow/ragflow": {"reason": "test hold", "hold_until": "2026-01-01"}},
+    )
+    reports = vc.build_reports(probe_fn=lambda _img: "v9.9.9")
+    ragflow = next(r for r in reports if r.image == "infiniflow/ragflow")
+    assert ragflow.status == "hold"
+    assert not ragflow.warning
+
+
+def test_hold_without_hold_until_stays_held_regardless_of_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hold with no hold_until key is an open-ended hold — unaffected by any date."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
+    import version_check as vc
+
+    monkeypatch.setattr(vc, "_today", lambda: date(2099, 1, 1))
+    monkeypatch.setattr(
+        vc,
+        "load_holds",
+        lambda: {"infiniflow/ragflow": {"reason": "test hold, no expiry"}},
+    )
+    reports = vc.build_reports(probe_fn=lambda _img: "v9.9.9")
+    ragflow = next(r for r in reports if r.image == "infiniflow/ragflow")
+    assert ragflow.status == "hold"
+    assert not ragflow.warning
 
 
 def test_ghcr_probe_falls_back_to_tags_when_no_release(monkeypatch: pytest.MonkeyPatch) -> None:

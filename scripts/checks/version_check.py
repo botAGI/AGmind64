@@ -37,7 +37,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -252,6 +252,7 @@ class PinReport:
     status: str  # "up_to_date" / "patch" / "minor" / "major" / "hold" / "error"
     hold_reason: str | None = None
     error: str | None = None
+    warning: str | None = None  # e.g. "HOLD expired since <date>" — distinct from `error`
 
     @property
     def glyph(self) -> str:
@@ -486,6 +487,12 @@ def probe_latest(image_with_path: str) -> str | None:
 # ---- holds parser ----
 
 
+def _today() -> date:
+    """Current UTC date — a mockable seam so hold_until expiry checks are deterministic
+    in tests (D-10: tests must not depend on the real wall-clock)."""
+    return datetime.now(UTC).date()
+
+
 def load_holds() -> dict[str, dict[str, str]]:
     if not HOLDS_FILE.exists():
         return {}
@@ -710,26 +717,41 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                 continue
             seen.add(key)
 
+            expiry_warning: str | None = None
             hold = holds.get(image)
             if hold:
-                # Probe held images too — show "held @ X, latest Y" so the operator can see whether
-                # an update exists (e.g. a Dify bump worth re-verifying) instead of an opaque "?".
-                try:
-                    held_latest = probe_fn(image)
-                except Exception:  # noqa: BLE001
-                    held_latest = None
-                reports.append(
-                    PinReport(
-                        image=image,
-                        current=current_tag,
-                        latest=held_latest,
-                        source=source,
-                        file=file,
-                        status="hold",
-                        hold_reason=hold.get("reason", "(no reason given)"),
+                hold_until_str = hold.get("hold_until")
+                hold_until: date | None = None
+                if hold_until_str:
+                    try:
+                        hold_until = date.fromisoformat(str(hold_until_str))
+                    except ValueError:
+                        hold_until = None
+                if hold_until is None or hold_until >= _today():
+                    # No hold_until (open-ended) or still in the future — honor the hold as
+                    # before. Probe held images too — show "held @ X, latest Y" so the operator
+                    # can see whether an update exists (e.g. a Dify bump worth re-verifying)
+                    # instead of an opaque "?".
+                    try:
+                        held_latest = probe_fn(image)
+                    except Exception:  # noqa: BLE001
+                        held_latest = None
+                    reports.append(
+                        PinReport(
+                            image=image,
+                            current=current_tag,
+                            latest=held_latest,
+                            source=source,
+                            file=file,
+                            status="hold",
+                            hold_reason=hold.get("reason", "(no reason given)"),
+                        )
                     )
-                )
-                continue
+                    continue
+                # hold_until has passed: the hold no longer masks the status — fall through
+                # to the normal probe/compare path below, carrying an expiry warning (D-10 /
+                # ADR-0012 P.7: a stale hold could otherwise hide a CVE-fixed version).
+                expiry_warning = f"HOLD expired since {hold_until.isoformat()}"
 
             try:
                 latest = probe_fn(image)
@@ -743,6 +765,7 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                         file=file,
                         status="error",
                         error=str(exc),
+                        warning=expiry_warning,
                     )
                 )
                 continue
@@ -769,6 +792,7 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                             if current_is_semver
                             else "calendar/non-semver tag (e.g. RELEASE.<date>) — track manually"
                         ),
+                        warning=expiry_warning,
                     )
                 )
                 continue
@@ -782,6 +806,7 @@ def build_reports(probe_fn: Callable[[str], str | None] = probe_latest) -> list[
                     source=source,
                     file=file,
                     status=status,
+                    warning=expiry_warning,
                 )
             )
 
@@ -814,6 +839,8 @@ def render_markdown(reports: list[PinReport]) -> str:
         else:
             status_cell = f"{r.glyph} {r.status}"
             note = f"`{r.file}`"
+        if r.warning:
+            note = f"{note} ({r.warning})" if note else r.warning
         lines.append(f"| `{r.image}` | {r.current} | {latest} | {status_cell} | {note} |")
 
     lines.extend(
