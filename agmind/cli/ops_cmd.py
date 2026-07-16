@@ -336,9 +336,7 @@ def cmd_restore(
     # they are excluded from both the hard-fail and the advice below.
     raw_data_members = metadata.get("data", [])
     data_members = raw_data_members if isinstance(raw_data_members, list) else []
-    volume_members = [
-        m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"
-    ]
+    volume_members = [m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"]
     volume_consumers = {
         str(m["label"]).removeprefix("volume/").split("/")[0]
         for m in volume_members
