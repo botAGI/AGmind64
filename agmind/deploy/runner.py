@@ -7,8 +7,6 @@ automatic rollback если healthcheck не прошёл за timeout.
 
 from __future__ import annotations
 
-import fcntl
-import hashlib
 import json
 import os
 import shutil
@@ -16,8 +14,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +23,7 @@ import yaml
 
 from agmind.components.checks import check_deploy_conflicts
 from agmind.core.docker_auth import user_docker_config_dir
+from agmind.core.locks import deploy_lock as _deploy_lock
 from agmind.core.logging import logger
 from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
@@ -69,43 +67,6 @@ def _user_docker_config_dir() -> str | None:
     authenticated and dodges the anon limit.
     """
     return user_docker_config_dir()
-
-
-@contextmanager
-def _deploy_lock(install_dir: Path) -> Iterator[bool]:
-    """Advisory single-flight lock around a deploy apply, keyed on *install_dir*.
-
-    Two concurrent `docker compose up` on the same project race to create the same
-    container names (the `/agmind-watchtower` Conflict). The TUI guard stops in-app
-    re-entry; this `flock` additionally serialises across PROCESSES (e.g. `agmind
-    deploy` started while the installer is mid-deploy). Yields True if acquired, False
-    if another deploy already holds it. The lock file lives under the system temp dir
-    (always writable by the invoking user, unlike root-owned /opt/agmind).
-    """
-    digest = hashlib.sha256(str(install_dir.resolve()).encode("utf-8")).hexdigest()[:16]
-    lock_path = Path(tempfile.gettempdir()) / f"agmind-deploy-{digest}.lock"
-    fd: int | None = None
-    try:
-        try:
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
-        except OSError as exc:
-            # Cannot create the lock file — do not block the deploy on lock infra.
-            log.debug("deploy lock unavailable (%s); proceeding without it", exc)
-            yield True
-            return
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            yield False
-            return
-        yield True
-    finally:
-        if fd is not None:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-            os.close(fd)
 
 
 def _offline_pull_enabled() -> bool:
