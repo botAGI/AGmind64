@@ -1165,8 +1165,19 @@ def test_deploy_apply_starts_rendered_services_by_name(
 
     assert result.success
     # Streamed pull phase, then `up --pull never` (no silent --quiet-pull inside up).
+    # --ignore-buildable: build-only services (agent-agno/pydanticai/ui) have no
+    # registry image; `up` still builds them regardless of --pull policy.
     assert calls == [
-        ["--progress", "plain", "pull", "--policy", "missing", "llama-llm", "qdrant"],
+        [
+            "--progress",
+            "plain",
+            "pull",
+            "--ignore-buildable",
+            "--policy",
+            "missing",
+            "llama-llm",
+            "qdrant",
+        ],
         ["up", "-d", "--remove-orphans", "--pull", "never", "llama-llm", "qdrant"],
     ]
 
@@ -1212,7 +1223,16 @@ def test_deploy_apply_offline_uses_policy_never(
     assert result.success
     # Air-gap: NO network pull. `--policy never` skips, `up --pull never` uses local images.
     assert calls == [
-        ["--progress", "plain", "pull", "--policy", "never", "llama-llm", "qdrant"],
+        [
+            "--progress",
+            "plain",
+            "pull",
+            "--ignore-buildable",
+            "--policy",
+            "never",
+            "llama-llm",
+            "qdrant",
+        ],
         ["up", "-d", "--remove-orphans", "--pull", "never", "llama-llm", "qdrant"],
     ]
 

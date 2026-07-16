@@ -984,10 +984,22 @@ def _deploy_impl(
     # 5. Pull images as a VISIBLE, STREAMED phase (no --quiet-pull buried inside `up`).
     # During a multi-GB pull this streams per-layer lines so the TUI isn't a frozen 0%;
     # `up` then starts with --pull never (images are already local) and returns fast.
+    # --ignore-buildable: services with a `build:` key and no `image:` (agent-agno,
+    # agent-pydanticai, agent-ui) have no registry image to pull — without this flag,
+    # a plain `pull` errors out on them. `up --pull never` still builds them locally
+    # regardless of the pull policy, so skipping them here loses nothing.
     _emit("pull", f"pulling images for {len(service_names)} services")
     log.info("pulling images for %d services", len(service_names))
     pull_rc, pull_tail = _stream_compose(
-        ["--progress", "plain", "pull", "--policy", resolve_pull_policy(), *service_names],
+        [
+            "--progress",
+            "plain",
+            "pull",
+            "--ignore-buildable",
+            "--policy",
+            resolve_pull_policy(),
+            *service_names,
+        ],
         cwd=install_dir,
         sudo_password=sudo_password,
         on_line=lambda line: _emit("pull", line),
