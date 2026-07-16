@@ -536,7 +536,14 @@ def expand_selected_services_for_setup(services: list[str]) -> list[str]:
             component_contracts=load_component_contracts(),
         )
         return sorted(selected)
-    except Exception:
+    except ValueError:
+        # P0.4/D-06: every domain-level resolver failure (unknown service/profile,
+        # incompatible selection) raises ValueError — including pydantic's
+        # ValidationError, which subclasses it. Narrowed from `except Exception` so a
+        # genuine resolver bug (ImportError/AttributeError/a missing templates dir)
+        # fails loudly instead of silently returning the unexpanded selection. The 2
+        # live TUI call sites (wizard_screens.py) are guarded separately so this
+        # narrowing cannot crash the running wizard.
         return list(dict.fromkeys(services))
 
 

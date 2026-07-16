@@ -16,6 +16,7 @@ buttons вызывают `app.next_step()` / `app.prev_step()`. App tracks
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from textual.app import ComposeResult
@@ -63,6 +64,28 @@ class WizardApp(Protocol):
 def _wizard_app(screen: Screen[None]) -> WizardApp:
     """Typed view of ``screen.app`` as the concrete wizard app (see :class:`WizardApp`)."""
     return cast("WizardApp", screen.app)
+
+
+def _expand_services_or_notify(
+    services: list[str], notify: Callable[[str], None]
+) -> list[str] | None:
+    """Expand a checkbox selection into a deployable closure, or degrade gracefully.
+
+    P0.4/D-06: narrowing ``expand_selected_services_for_setup``'s except to
+    ``ValueError`` lets a genuine resolver bug propagate loudly on the CLI/headless
+    path — but this helper is also called from 2 LIVE Textual call sites
+    (``_sync_expanded_service_selection``, fires on every checkbox toggle, and
+    ``_save_and_advance``, fires on "Next"). Without this guard, that same ValueError
+    would crash the running wizard. On failure: `notify` the operator and return
+    ``None`` so the caller keeps the prior selection instead of crashing.
+    """
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+
+    try:
+        return expand_selected_services_for_setup(services)
+    except ValueError as exc:
+        notify(str(exc))
+        return None
 
 
 # ---- Shared helpers (M5.3) ----
@@ -652,9 +675,13 @@ class ServicesScreen(Screen[None]):
         _wizard_app(self).state.services = sorted(selected)
 
     def _sync_expanded_service_selection(self) -> None:
-        from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
-
-        expanded = set(expand_selected_services_for_setup(self._checked_service_names()))
+        expanded_list = _expand_services_or_notify(
+            self._checked_service_names(),
+            lambda message: self.app.notify(message, severity="error"),
+        )
+        if expanded_list is None:
+            return
+        expanded = set(expanded_list)
         _wizard_app(self).state.services = sorted(expanded)
         self._syncing_service_selection = True
         try:
@@ -680,9 +707,12 @@ class ServicesScreen(Screen[None]):
         self._save_and_advance()
 
     def _save_and_advance(self) -> None:
-        from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
-
-        services = expand_selected_services_for_setup(self._checked_service_names())
+        services = _expand_services_or_notify(
+            self._checked_service_names(),
+            lambda message: self.app.notify(message, severity="error"),
+        )
+        if services is None:
+            return
         _wizard_app(self).state.services = services
         _wizard_app(self).state.normalize_model_fields_and_services()
         departments = self._departments()

@@ -384,6 +384,74 @@ def test_expand_selected_services_for_setup_keeps_ragflow_search_index_separate(
     assert "qdrant" not in services
 
 
+def test_expand_selected_services_for_setup_propagates_non_valueerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P0.4/D-06: a genuine resolver bug (not the resolver's own domain-error type) must
+    fail loudly instead of being swallowed into a silent unexpanded-list return."""
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+    from agmind.services import selection as selection_mod
+
+    def _boom(descriptors: object, *, services: list[str], component_contracts: object) -> object:
+        raise RuntimeError("resolver bug: unexpected")
+
+    monkeypatch.setattr(selection_mod, "resolve_service_selection", _boom)
+
+    with pytest.raises(RuntimeError, match="resolver bug"):
+        expand_selected_services_for_setup(["traefik"])
+
+
+def test_expand_selected_services_for_setup_still_swallows_valueerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The resolver's own domain-error type (ValueError) keeps degrading gracefully to
+    the unexpanded selection — only genuinely unexpected exceptions now propagate."""
+    from agmind.cli.tui.setup_wizard import expand_selected_services_for_setup
+    from agmind.services import selection as selection_mod
+
+    def _boom(descriptors: object, *, services: list[str], component_contracts: object) -> object:
+        raise ValueError("unknown services: nope")
+
+    monkeypatch.setattr(selection_mod, "resolve_service_selection", _boom)
+
+    assert expand_selected_services_for_setup(["traefik"]) == ["traefik"]
+
+
+def test_expand_services_or_notify_returns_expanded_list_without_notifying() -> None:
+    """Function-level guard test (no Textual boot needed): the happy path passes the
+    expanded closure through untouched and never calls `notify`."""
+    from agmind.cli.tui.wizard_screens import _expand_services_or_notify
+
+    notified: list[str] = []
+    result = _expand_services_or_notify(["dify-api"], notified.append)
+
+    assert result is not None
+    assert "postgres" in result
+    assert notified == []
+
+
+def test_expand_services_or_notify_guards_wizard_on_resolver_valueerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Narrowing expand_selected_services_for_setup's except to ValueError would crash
+    BOTH live TUI call sites (checkbox toggle + Next, wizard_screens.py) on a resolver
+    bug unless they are guarded. This is that guard, tested at the function level (no
+    Textual app boot needed) — it must notify and signal "keep the prior selection"
+    (None) instead of letting the ValueError propagate into the running wizard."""
+    from agmind.cli.tui import wizard_screens
+
+    def _boom(_services: list[str]) -> list[str]:
+        raise ValueError("unknown selected service: nope-svc")
+
+    monkeypatch.setattr("agmind.cli.tui.setup_wizard.expand_selected_services_for_setup", _boom)
+
+    notified: list[str] = []
+    result = wizard_screens._expand_services_or_notify(["nope-svc"], notified.append)
+
+    assert result is None
+    assert notified == ["unknown selected service: nope-svc"]
+
+
 # ---------- Phase M3.S.1: inline Input validators ----------
 
 
