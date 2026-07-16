@@ -1427,6 +1427,11 @@ class BootstrapStep(InstallStep):
                     "agmind_domain": config.domain,
                     "agmind_cf_api_token": config.cf_api_token,
                     "ansible_become_password": config.sudo_password,
+                    # ansible/install.yml gates its domain/CF-token asserts on this: a
+                    # no-traefik headless install has no public edge to TLS-terminate, so
+                    # an empty domain/token (already permitted by install_cmd.py) must not
+                    # die in the playbook (P0.7).
+                    "agmind_edge_enabled": "traefik" in config.services,
                 },
                 ensure_ascii=False,
             ).encode("utf-8")

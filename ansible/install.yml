@@ -36,6 +36,13 @@
         Создать: https://dash.cloudflare.com/profile/api-tokens
       private: true
   pre_tasks:
+    # Both asserts below are gated on agmind_edge_enabled: a no-traefik headless install has
+    # no public edge to TLS-terminate, so an empty domain/token (already permitted by
+    # install_cmd.py) must not die here (P0.7). BootstrapStep passes agmind_edge_enabled from
+    # `"traefik" in config.services`. default(true) preserves today's always-validate behavior
+    # for a bare `ansible-playbook install.yml` direct invocation, which has no way to set the
+    # var and still relies on the vars_prompt above — a bare `| bool` on an undefined var raises
+    # rather than skips.
     - name: Validate domain format
       ansible.builtin.assert:
         that:
@@ -44,6 +51,7 @@
           - "'.' in agmind_domain"
           - agmind_domain != 'agmind.dev'
         fail_msg: "agmind_domain '{{ agmind_domain }}' invalid — нужен реальный public domain (содержит '.', не дефолтный placeholder)."
+      when: agmind_edge_enabled | default(true) | bool
 
     - name: Validate CF API token presence
       ansible.builtin.assert:
@@ -52,6 +60,7 @@
           - agmind_cf_api_token | length >= 20
         fail_msg: "Cloudflare API token не задан / слишком короткий (<20 chars). Создай токен на https://dash.cloudflare.com/profile/api-tokens"
       no_log: true
+      when: agmind_edge_enabled | default(true) | bool
   roles:
     - role: preflight
 

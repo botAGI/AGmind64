@@ -2082,6 +2082,96 @@ def test_bootstrap_passes_cf_token_outside_process_arguments(
     assert not Path(captured["extra_vars_path"]).exists()
 
 
+def test_bootstrap_extra_vars_payload_edge_enabled_with_traefik(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """agmind_edge_enabled must be true in the extra-vars payload when traefik is selected,
+    so ansible/install.yml's domain/CF-token asserts stay active for an edge install."""
+    from agmind.install import steps
+    from agmind.install.steps import BootstrapStep
+
+    ansible_dir = tmp_path / "ansible"
+    ansible_dir.mkdir()
+    (ansible_dir / "install.yml").write_text("---\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> FakeProc:
+        captured["cmd"] = cmd
+        extra_vars = cmd[cmd.index("--extra-vars") + 1]
+        if isinstance(extra_vars, str) and extra_vars.startswith("@"):
+            captured["extra_vars_payload"] = Path(extra_vars[1:]).read_text(encoding="utf-8")
+        return FakeProc()
+
+    monkeypatch.setattr(steps, "DEFAULT_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(steps.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(steps, "resolve_ansible_command", lambda name: f"/venv/bin/{name}")
+
+    cfg = _make_config(tmp_path)  # services already includes "traefik"
+
+    result = BootstrapStep().run(lambda _e: None, cfg)
+
+    assert result.success is True
+    payload = str(captured["extra_vars_payload"])
+    assert '"agmind_edge_enabled": true' in payload
+
+
+def test_bootstrap_extra_vars_payload_edge_disabled_without_traefik(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A no-traefik headless install must carry agmind_edge_enabled=false in the extra-vars
+    payload, so ansible/install.yml's domain/CF-token asserts skip instead of dying on an
+    intentionally empty domain/token (install_cmd.py already permits this for --no-tui)."""
+    from agmind.install import steps
+    from agmind.install.steps import BootstrapStep
+
+    ansible_dir = tmp_path / "ansible"
+    ansible_dir.mkdir()
+    (ansible_dir / "install.yml").write_text("---\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        stdout = _FakeStdout(["ok\n"])
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    def fake_popen(cmd: list[str], **kwargs: object) -> FakeProc:
+        captured["cmd"] = cmd
+        extra_vars = cmd[cmd.index("--extra-vars") + 1]
+        if isinstance(extra_vars, str) and extra_vars.startswith("@"):
+            captured["extra_vars_payload"] = Path(extra_vars[1:]).read_text(encoding="utf-8")
+        return FakeProc()
+
+    monkeypatch.setattr(steps, "DEFAULT_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(steps.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(steps, "resolve_ansible_command", lambda name: f"/venv/bin/{name}")
+
+    cfg = _make_config(tmp_path)
+    cfg.services = ["llama-llm"]  # no traefik
+    cfg.domain = ""
+    cfg.cf_api_token = ""
+
+    result = BootstrapStep().run(lambda _e: None, cfg)
+
+    assert result.success is True
+    payload = str(captured["extra_vars_payload"])
+    assert '"agmind_edge_enabled": false' in payload
+
+
 def test_bootstrap_passes_sudo_password_via_extra_vars_not_become_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
