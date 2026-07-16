@@ -468,6 +468,35 @@ def cmd_apply(install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int 
     return 0
 
 
+def _digest_currently_pinned(yaml_path: Path) -> bool:
+    """True if `yaml_path` currently carries ANY digest pin (inline or separate).
+
+    Used by the legacy-state rollback guard (D-01 / P0.2): a state file written
+    before that fix has `old_digest=None` even when the descriptor WAS
+    digest-pinned pre-upgrade, because `_read_current_pin` alone cannot see the
+    separate `digest:` line. If the descriptor is STILL digest-pinned now
+    (post-upgrade), a tag-only rollback would leave that stale NEW digest in
+    place while restoring old_tag — silently deploying the new image under the
+    restored old tag.
+    """
+    current = _read_current_pin(yaml_path)
+    inline_digest = current[2] if current is not None else None
+    return inline_digest is not None or _read_separate_digest(yaml_path) is not None
+
+
+def _refuse_legacy_digest_rollback(yaml_path: Path, service: str, old_tag: str) -> None:
+    print(
+        f"ERROR: legacy upgrade-state for {service} has no recorded old_digest, but "
+        f"{yaml_path} is currently digest-pinned. A tag-only rollback would restore "
+        f"old_tag while leaving the NEW digest in place, so docker would resolve by "
+        f"digest and silently keep deploying the NEW image under the restored old "
+        f"tag. Re-pin {yaml_path} manually to the desired digest, or re-run "
+        f"`agmind upgrade --component {service} --version {old_tag} --digest "
+        f"<sha256-hex>` to rebuild a state file with old_digest recorded.",
+        file=sys.stderr,
+    )
+
+
 def cmd_rollback() -> int:
     """Revert last bump (read latest state file + restore template)."""
     state = _latest_upgrade_state()
@@ -478,11 +507,20 @@ def cmd_rollback() -> int:
     if "items" in state:
         component = state["component"]
         print(f"Rolling back component {component}")
+        # D-01 (P0.2): pre-check EVERY member before mutating ANY of them, so a
+        # legacy-state refuse on a later member never leaves earlier members
+        # partially rolled back.
         for item in state["items"]:
             yaml_path = Path(item["yaml_path"])
             if not yaml_path.exists():
                 print(f"ERROR: descriptor missing: {yaml_path}", file=sys.stderr)
                 return 1
+            if item.get("old_digest") is None and _digest_currently_pinned(yaml_path):
+                _refuse_legacy_digest_rollback(yaml_path, item["service"], item["old_tag"])
+                return 1
+
+        for item in state["items"]:
+            yaml_path = Path(item["yaml_path"])
             _bump_pin_in_yaml(yaml_path, item["old_tag"], item.get("old_digest"))
             print(f"  ✓ restored {item['service']}: {item['old_tag']}")
 
@@ -504,6 +542,12 @@ def cmd_rollback() -> int:
         print(f"ERROR: no image line in {yaml_path}", file=sys.stderr)
         return 1
     _, current_tag, _ = current
+
+    # D-01 (P0.2): refuse BEFORE mutating rather than silently rolling back the
+    # tag while leaving a stale (post-upgrade) digest in place.
+    if old_digest is None and _digest_currently_pinned(yaml_path):
+        _refuse_legacy_digest_rollback(yaml_path, service, old_tag)
+        return 1
 
     print(f"Rolling back {service}: {current_tag} → {old_tag}")
     _bump_pin_in_yaml(yaml_path, old_tag, old_digest)

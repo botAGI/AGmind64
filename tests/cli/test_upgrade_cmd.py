@@ -690,6 +690,100 @@ def test_grouped_rollback_restores_old_digest_on_separate_form_descriptors(
     assert f"digest: {old_digest_web}" in web_text
 
 
+def test_rollback_refuses_legacy_state_against_digest_pinned_descriptor(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """D-01 (P0.2) guard: a legacy state file (old_digest absent/None) rolling
+    back against a descriptor that is CURRENTLY digest-pinned must refuse rather
+    than silently write old_tag while leaving the NEW digest in place."""
+    services = tmp_repo / "templates" / "services"
+    _make_separate_form_descriptor(services, "alpha", "vendor/alpha", "2.0.0", digest="b" * 64)
+
+    state_dir = upgrade_cmd.UPGRADE_STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    state_file = state_dir / "2020-01-01T00-00-00Z_alpha.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "service": "alpha",
+                "yaml_path": str(services / "alpha.yaml"),
+                "old_tag": "1.0.0",
+                "new_tag": "2.0.0",
+                "old_digest": None,
+                "timestamp": "2020-01-01T00-00-00Z",
+            }
+        )
+    )
+
+    def must_not_mutate(*_a: object, **_kw: object) -> object:
+        raise AssertionError("_bump_pin_in_yaml must not be called on a legacy-state refuse")
+
+    monkeypatch.setattr(upgrade_cmd, "_bump_pin_in_yaml", must_not_mutate)
+
+    rc = upgrade_cmd.cmd_rollback()
+
+    assert rc == 1
+    err = capsys.readouterr().err.lower()
+    assert "digest" in err
+    assert "--digest" in err or "re-pin" in err
+    # Confirm nothing was mutated or archived.
+    assert "vendor/alpha:2.0.0" in (services / "alpha.yaml").read_text()
+    assert list(state_dir.glob("*.json")) == [state_file]
+
+
+def test_grouped_rollback_refuses_legacy_state_against_digest_pinned_descriptor(
+    tmp_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """D-01 (P0.2) guard, grouped/component branch: same refuse behavior as the
+    single-service case, for a legacy component-plan state file."""
+    services = tmp_repo / "templates" / "services"
+    _make_separate_form_descriptor(
+        services, "dify-api", "langgenius/dify-api", "1.14.3", digest="b" * 64
+    )
+
+    state_dir = upgrade_cmd.UPGRADE_STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    state_file = state_dir / "2020-01-01T00-00-00Z_dify.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "component": "dify",
+                "policy": "strict-pin",
+                "timestamp": "2020-01-01T00-00-00Z",
+                "items": [
+                    {
+                        "service": "dify-api",
+                        "yaml_path": str(services / "dify-api.yaml"),
+                        "image": "langgenius/dify-api",
+                        "old_tag": "1.14.2",
+                        "new_tag": "1.14.3",
+                        "old_digest": None,
+                        "new_digest": "b" * 64,
+                    }
+                ],
+            }
+        )
+    )
+
+    def must_not_mutate(*_a: object, **_kw: object) -> object:
+        raise AssertionError("_bump_pin_in_yaml must not be called on a legacy-state refuse")
+
+    monkeypatch.setattr(upgrade_cmd, "_bump_pin_in_yaml", must_not_mutate)
+
+    rc = upgrade_cmd.cmd_rollback()
+
+    assert rc == 1
+    err = capsys.readouterr().err.lower()
+    assert "digest" in err
+    assert "--digest" in err or "re-pin" in err
+    assert "langgenius/dify-api:1.14.3" in (services / "dify-api.yaml").read_text()
+    assert list(state_dir.glob("*.json")) == [state_file]
+
+
 # ---------- cmd_apply ----------
 
 
