@@ -474,6 +474,21 @@ def register(app: typer.Typer) -> None:
                 initial.profiles = prior.profiles
                 if not domain and prior.domain:
                     initial.domain = prior.domain
+                # P0.4/D-06: a plain --no-tui re-run has no wizard screens to re-expand the
+                # selection (unlike the TUI path, which re-expands on every checkbox toggle —
+                # left untouched here), so a prior component leaf without its siblings would
+                # reach InstallConfig unexpanded, letting `compose up --remove-orphans` silently
+                # drop them. Mirrors the --from-state fix (install_state.load_setup_state_from_file).
+                if no_tui and initial.services:
+                    from agmind.cli.tui.setup_wizard import (
+                        expand_selected_services_for_setup,
+                    )
+
+                    try:
+                        initial.services = expand_selected_services_for_setup(initial.services)
+                    except ValueError as exc:
+                        typer.echo(f"ERROR: invalid prior selected services: {exc}", err=True)
+                        raise typer.Exit(code=2) from exc
         if not no_tui:
             # M4.1: multi-step wizard default; --legacy-wizard для escape hatch
             ms = False if legacy_wizard else None  # None = default (multi-step)

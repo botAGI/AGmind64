@@ -48,3 +48,81 @@ def test_headless_traefik_valid_passes_and_normalizes_domain() -> None:
     errors, domain = _headless_validation_errors(["traefik"], [], "Lab.Example.COM.", "X" * 40)
     assert errors == []
     assert domain == "lab.example.com"
+
+
+# ---------- P0.4/D-06: plain --no-tui prior-state closure expansion ----------
+
+
+def test_no_tui_prior_state_reaches_install_config_expanded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plain `--no-tui` re-run (prior-state path, no --from-state) must run the prior
+    selection through the dependency closure before InstallConfig — mirrors the
+    --from-state fix (1fdf201) so a component's siblings are not silently dropped by
+    `compose up --remove-orphans`."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.cli.tui.setup_wizard import SetupState
+    from agmind.install.orchestrator import InstallResult
+
+    monkeypatch.setattr(
+        "agmind.cli.install_state.load_prior_setup_state",
+        lambda _path: SetupState(domain="lab.example.com", services=["dify-api"]),
+    )
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(self) -> InstallResult:
+            return InstallResult(success=True, steps=(), message="install ok")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    result = CliRunner().invoke(_make_app(), ["install", "--no-tui"])
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert "dify-api" in config.services  # type: ignore[attr-defined]
+    # closure siblings a raw prior.services echo would NOT carry
+    assert "postgres" in config.services  # type: ignore[attr-defined]
+    assert "dify-worker" in config.services  # type: ignore[attr-defined]
+
+
+def test_no_tui_prior_state_resolver_failure_exits_loudly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resolver bug (ValueError) on the prior-state closure must fail loudly (exit 2),
+    not silently continue with the unexpanded selection."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.cli.tui.setup_wizard import SetupState
+
+    monkeypatch.setattr(
+        "agmind.cli.install_state.load_prior_setup_state",
+        lambda _path: SetupState(domain="lab.example.com", services=["dify-api"]),
+    )
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    def _boom(_services: list[str]) -> list[str]:
+        raise ValueError("unknown selected service: nope-svc")
+
+    monkeypatch.setattr("agmind.cli.tui.setup_wizard.expand_selected_services_for_setup", _boom)
+
+    def _must_not_run(**_kwargs: object) -> object:
+        raise AssertionError("orchestrator must not run when the closure resolver fails")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", _must_not_run)
+
+    result = CliRunner().invoke(_make_app(), ["install", "--no-tui"])
+
+    assert result.exit_code == 2
+    assert "invalid prior selected services" in result.output
+    assert "nope-svc" in result.output
