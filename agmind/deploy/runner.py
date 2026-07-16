@@ -45,7 +45,6 @@ ProgressCallback = Callable[[str, str], None]
 log = logger(__name__)
 
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
-DEFAULT_HEALTHCHECK_TIMEOUT = 300  # 5 min
 COMPOSE_SHORT_TIMEOUT = 60
 
 
@@ -714,7 +713,7 @@ def deploy(
     domain: str | None = None,
     apply: bool = False,
     no_prompt: bool = False,
-    healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
+    healthcheck_timeout: int | None = None,
     snapshot_reason: str = "",
     services: list[str] | None = None,
     progress: ProgressCallback | None = None,
@@ -770,7 +769,7 @@ def _deploy_impl(
     domain: str | None = None,
     apply: bool = False,
     no_prompt: bool = False,
-    healthcheck_timeout: int = DEFAULT_HEALTHCHECK_TIMEOUT,
+    healthcheck_timeout: int | None = None,
     snapshot_reason: str = "",
     services: list[str] | None = None,
     progress: ProgressCallback | None = None,
@@ -785,7 +784,11 @@ def _deploy_impl(
         domain: override agmind.dev placeholder (для multi-tenant)
         apply: если False — только показать diff (dry run); True — реально применить
         no_prompt: пропустить interactive confirmation (для CI / Ansible)
-        healthcheck_timeout: сколько ждать healthy state (sec)
+        healthcheck_timeout: сколько ждать healthy state (sec); None resolves to
+            ``healthcheck_timeout_for(selected)`` once the selection is known — sized
+            from the slowest selected service's start_period instead of a flat
+            constant (BREA02: a single slow service can outlast a flat timeout,
+            false-rolling-back an otherwise-healthy stack)
         snapshot_reason: human-readable reason для snapshot meta
         services: explicit service names; when set, service selection takes
             precedence over profile selection in the renderer
@@ -820,6 +823,8 @@ def _deploy_impl(
                 _emit("error", msg)
                 return DeployResult(success=False, message=msg)
         selected = select_services(descriptors, profiles=profiles, services=services)
+        if healthcheck_timeout is None:
+            healthcheck_timeout = healthcheck_timeout_for(sorted(selected))[0]
         conflict_report = check_deploy_conflicts(selected)
     except Exception as exc:
         _emit("error", f"deploy conflict check failed: {exc}")

@@ -132,7 +132,7 @@ def cmd_deploy(
     domain: str | None,
     apply: bool,
     no_prompt: bool,
-    healthcheck_timeout: int,
+    healthcheck_timeout: int | None,
     verbose: bool = False,
     ask_sudo_password: bool = False,
     services: list[str] | None = None,
@@ -253,10 +253,11 @@ def register(app: typer.Typer) -> None:
             "-y",
             help="Skip interactive confirmation before destructive --apply (CI mode)",
         ),
-        healthcheck_timeout: int = typer.Option(
-            300,
+        healthcheck_timeout: int | None = typer.Option(
+            None,
             "--healthcheck-timeout",
-            help="Seconds to wait for healthy state",
+            help="Seconds to wait for healthy state (default: sized from the "
+            "selected services' slowest start_period)",
         ),
         ask_sudo_password: bool = typer.Option(
             False,

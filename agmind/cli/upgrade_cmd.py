@@ -438,7 +438,9 @@ def cmd_component(
     return 0
 
 
-def cmd_apply(install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int = 300) -> int:
+def cmd_apply(
+    install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int | None = None
+) -> int:
     """Re-run deploy after bump. Reuses Phase L.B runner для snapshot+rollback."""
     from agmind.deploy.runner import deploy
 
@@ -628,6 +630,12 @@ def register(app: typer.Typer) -> None:
             "--force",
             help="Bump even if the pin is held in version_holds.yaml.",
         ),
+        healthcheck_timeout: int | None = typer.Option(
+            None,
+            "--healthcheck-timeout",
+            help="Seconds to wait for healthy state on --apply (default: sized "
+            "from the redeployed services' slowest start_period)",
+        ),
     ) -> None:
         """Upgrade lifecycle: bump a pinned image and safely redeploy with rollback."""
         if ctx.invoked_subcommand is not None:
@@ -638,7 +646,7 @@ def register(app: typer.Typer) -> None:
         if rollback:
             raise typer.Exit(code=cmd_rollback())
         if apply and not component:
-            raise typer.Exit(code=cmd_apply())
+            raise typer.Exit(code=cmd_apply(healthcheck_timeout=healthcheck_timeout))
         if component:
             if version is None:
                 typer.echo("ERROR: --component requires --version", err=True)
@@ -652,7 +660,7 @@ def register(app: typer.Typer) -> None:
             )
             if rc != 0 or not apply or plan:
                 raise typer.Exit(code=rc)
-            raise typer.Exit(code=cmd_apply())
+            raise typer.Exit(code=cmd_apply(healthcheck_timeout=healthcheck_timeout))
 
         typer.echo(
             "Usage: agmind upgrade [--check | --component X --version Y "

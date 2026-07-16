@@ -357,6 +357,93 @@ def test_deploy_without_no_prompt_flag_keeps_runner_kwarg_false(
     assert captured["no_prompt"] is False
 
 
+def test_deploy_omitting_healthcheck_timeout_forwards_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting --healthcheck-timeout forwards None so the runner can size the wait
+    budget from the actual selection instead of a flat 300s (BREA02: a single slow
+    service's start_period can outlast a flat timeout, false-rolling-back a healthy
+    stack)."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+            "--no-prompt",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["healthcheck_timeout"] is None
+
+
+def test_deploy_explicit_healthcheck_timeout_still_forwarded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An explicit --healthcheck-timeout still overrides the selection-aware default."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+            "--no-prompt",
+            "--healthcheck-timeout",
+            "7",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["healthcheck_timeout"] == 7
+
+
 def test_cmd_rollback_prompts_for_sudo_password_when_requested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -98,7 +98,7 @@ class DeployProgressScreen(Screen[DeployResult]):
         profiles: list[str],
         domain: str,
         install_dir: Path,
-        healthcheck_timeout: int = 300,
+        healthcheck_timeout: int | None = None,
         services: list[str] | None = None,
     ) -> None:
         super().__init__()

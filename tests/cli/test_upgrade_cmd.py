@@ -808,6 +808,74 @@ def test_apply_redeploys_supported_compose_baseline(
     assert calls["healthcheck_timeout"] == 7
 
 
+def test_apply_bare_forwards_none_healthcheck_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bare `cmd_apply()` (no explicit timeout) forwards None so the runner sizes
+    the wait budget from the actual selection instead of a flat 300s (BREA02)."""
+    from agmind.deploy.runner import DeployResult
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+
+    rc = upgrade_cmd.cmd_apply(install_dir=tmp_path)
+
+    assert rc == 0
+    assert calls["healthcheck_timeout"] is None
+
+
+def test_upgrade_apply_cli_healthcheck_timeout_flag_overrides_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`agmind upgrade --apply --healthcheck-timeout N` overrides the None default."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_cmd_apply(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(upgrade_cmd, "cmd_apply", fake_cmd_apply)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        ["upgrade", "--apply", "--healthcheck-timeout", "42"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["healthcheck_timeout"] == 42
+
+
+def test_upgrade_apply_cli_omitting_healthcheck_timeout_forwards_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting --healthcheck-timeout on `agmind upgrade --apply` forwards None."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_cmd_apply(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(upgrade_cmd, "cmd_apply", fake_cmd_apply)
+
+    result = CliRunner().invoke(_make_app(), ["upgrade", "--apply"])
+
+    assert result.exit_code == 0
+    assert captured["healthcheck_timeout"] is None
+
+
 # ---------- cmd_rollback ----------
 
 
