@@ -3,12 +3,18 @@
 # Format:
 #   <image-without-tag>:
 #     reason: "human-readable why we don't bump"
-#     hold_until: ISO-date (optional — auto-clear после)
+#     hold_until: ISO-date (optional — auto-clear after this date, see below)
 #     max_version: "v1.x"  (optional cap — bump до этого OK, выше — нет)
 #
 # Используется scripts/checks/version_check.py чтобы pad'нуть statuses:
 #   ⏸ HOLD <reason>
 #   🔒 X-pinned (if dependency requires)
+#
+# hold_until "auto-clear": once the date has passed, build_reports() stops
+# REPORTING the image as HOLD (status falls through to the normal
+# patch/minor/major/etc compare, with a "HOLD expired since <date>" warning)
+# — this entry itself is NOT auto-deleted or mutated. Bump the date (or drop
+# hold_until) to re-extend the hold once reviewed.
 #
 # Edit при появлении upstream breaking changes / known regressions.
 

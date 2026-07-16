@@ -152,8 +152,11 @@ ghcr.io/ggml-org/llama.cpp:
 - **Docker Hub rate limits**: 100 anonymous probes per 6h. Запас на 4×
   weekly run + ad-hoc dispatch. Если разрастаемся выше 80 pins — добавить
   Docker Hub login secret.
-- **hold_until не enforced**. После даты status всё ещё 'hold' без auto-
-  переходa. Manual review каждой holdовой. OK для текущего scale.
+- **hold_until enforced (P.7)**. `build_reports()` compares `hold_until`
+  against a mockable `_today()` seam; после даты status выпадает в обычный
+  patch/minor/major/etc compare плюс `PinReport.warning` = `"HOLD expired
+  since <date>"`. The yaml entry itself is not auto-deleted — bump the date
+  to re-extend a hold after review.
 - **No per-image rationale link**. Legend объясняет глифы, но не где
   читать **подробности** про `Dify-pinned`. Mitigation: hold reason
   message содержит inline ссылку на ADR (e.g.
@@ -168,7 +171,7 @@ ghcr.io/ggml-org/llama.cpp:
 - [x] P.5: 11 unit tests + ADR-0012
 - [ ] P.6 (future): GitHub Releases probe для cases когда registry tags
       не semver-friendly
-- [ ] P.7 (future): auto-clear HOLDs где `hold_until` прошёл
+- [x] P.7: auto-clear HOLDs где `hold_until` прошёл
 - [ ] P.8 (future): scan pyproject.toml deps (currently only image pins)
 
 ## Откат
