@@ -112,6 +112,24 @@ def _docker_ids(filter_cmd: list[str]) -> list[str]:
     return [tok for tok in out.stdout.split() if tok]
 
 
+_FORBIDDEN_UNINSTALL_ANCESTORS: frozenset[Path] = frozenset(
+    {Path("/"), Path("/home"), Path("/etc"), Path("/var"), Path("/opt"), Path.home()}
+)
+
+
+def _forbidden_uninstall_target(resolved: Path) -> str | None:
+    """Refusal reason if ``resolved`` IS (not merely under) a forbidden ancestor, else None.
+
+    EXACT equality only — NOT ``is_relative_to`` — so a real install dir that happens to be a
+    CHILD of a forbidden ancestor (e.g. the default ``/opt/agmind``, a child of ``/opt``) is
+    still allowed. Guards against a `--install-dir /` / `/etc` / `$HOME` operator typo feeding
+    straight into `sudo rm -rf` (P0.10 / D-02).
+    """
+    if resolved in _FORBIDDEN_UNINSTALL_ANCESTORS:
+        return f"{resolved} is a forbidden ancestor path, not a specific install directory"
+    return None
+
+
 def _sweep_agmind_runtime(*, volumes: bool) -> None:
     """Force-remove any lingering ``agmind-*`` containers / networks (and, with volumes, agmind
     volumes) that ``compose down`` missed — e.g. orphans from a prior project/state (a service no
@@ -132,6 +150,7 @@ def cmd_uninstall(
     *,
     data: bool = False,
     yes: bool = False,
+    force: bool = False,
     install_dir: Path = Path("/opt/agmind"),
 ) -> int:
     """Tear down the AGmind deployment.
@@ -139,7 +158,32 @@ def cmd_uninstall(
     Always: ``docker compose down --remove-orphans`` + remove the install dir + the global
     ``/usr/local/bin/agmind`` shim. With ``data``: ALSO ``--volumes`` and wipe ``/var/lib/agmind``
     (all stack data) + ``/etc/agmind`` (config) — destructive, for a clean reinstall.
+
+    Before anything else (P0.10 / D-02): refuse if ``install_dir`` resolves to a forbidden
+    ancestor (``/``, ``/home``, ``/etc``, ``/var``, ``/opt``, ``$HOME``) or lacks the
+    ``docker-compose.yml`` install sentinel — a routine uninstall must not be able to
+    `rm -rf` an unintended target. Both checks are bypassable only via an explicit ``--force``.
     """
+    install_dir = install_dir.resolve()
+    if not force:
+        reason = _forbidden_uninstall_target(install_dir)
+        if reason is not None:
+            typer.echo(f"ERROR: refusing to uninstall {install_dir}: {reason}", err=True)
+            typer.echo(
+                "Pass --force to bypass (only if --install-dir is certainly correct).", err=True
+            )
+            return 1
+        if not (install_dir / "docker-compose.yml").exists():
+            typer.echo(
+                f"ERROR: refusing to uninstall {install_dir}: no docker-compose.yml found here "
+                "(missing install sentinel — this does not look like an agmind install dir).",
+                err=True,
+            )
+            typer.echo(
+                "Pass --force to bypass (only if --install-dir is certainly correct).", err=True
+            )
+            return 1
+
     data_dir = Path("/var/lib/agmind")
     config_dir = Path("/etc/agmind")
     shim = Path("/usr/local/bin/agmind")
@@ -569,6 +613,12 @@ def register(app: typer.Typer) -> None:
             "(/etc/agmind) and named volumes. Destructive — use for a clean reinstall.",
         ),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+        force: bool = typer.Option(
+            False,
+            "--force",
+            help="Bypass the install-dir safety check (forbidden ancestors / missing "
+            "sentinel). Use only when --install-dir is certainly correct.",
+        ),
         install_dir: Path = typer.Option(
             Path("/opt/agmind"), "--install-dir", help="Deployment directory to tear down."
         ),
@@ -578,4 +628,6 @@ def register(app: typer.Typer) -> None:
         Keeps your data in /var/lib/agmind by default; pass --data for a full wipe before a
         clean reinstall (`make setup`). Needs sudo (the install dir is root-owned).
         """
-        raise typer.Exit(code=cmd_uninstall(data=data, yes=yes, install_dir=install_dir))
+        raise typer.Exit(
+            code=cmd_uninstall(data=data, yes=yes, force=force, install_dir=install_dir)
+        )
