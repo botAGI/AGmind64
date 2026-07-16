@@ -650,6 +650,64 @@ def _wait_healthy(
     return False, last_unhealthy
 
 
+# healthcheck timeout sizing — relocated here from agmind/install/steps.py (was defined
+# upward-only in the install layer despite the deploy runner being the actual consumer of
+# the wait budget; steps.py now re-exports this under the old private name). A flat 900s
+# used to cover the three 600s-start_period llama servers, but it is blind to the actual
+# selection: size the budget from the slowest selected service's start_period + a load
+# margin, with 900s kept as a never-go-below floor. live install reliability 2026-06-09.
+_HEALTHCHECK_TIMEOUT_FLOOR = 900
+_HEALTHCHECK_LOAD_MARGIN = 600
+
+
+def _parse_duration_seconds(raw: object) -> int:
+    """Parse a Docker duration string (``"600s"`` / ``"5m"`` / ``"1h"``) to seconds.
+
+    Best-effort: the registry only ever emits ``<int>s`` today, but accept the other
+    plain Docker units defensively. Anything unparseable -> 0 (treated as "no hint").
+    """
+    if not isinstance(raw, str):
+        return 0
+    text = raw.strip()
+    if not text:
+        return 0
+    units = {"s": 1, "m": 60, "h": 3600}
+    unit = text[-1]
+    if unit in units and text[:-1].isdigit():
+        return int(text[:-1]) * units[unit]
+    if text.isdigit():  # bare number -> seconds
+        return int(text)
+    return 0
+
+
+def healthcheck_timeout_for(services: list[str]) -> tuple[int, str | None]:
+    """Size the deploy healthcheck budget to the slowest selected service.
+
+    Returns ``(timeout_seconds, driving_service)``. The timeout is
+    ``max(floor, slowest_start_period + load_margin)``; *driving_service* names the
+    service whose start_period set the budget, or None when the floor wins (no
+    selected service declares a start_period, or all are small).
+    """
+    from agmind.services.registry import load_registry
+
+    registry = load_registry()
+    slowest_service: str | None = None
+    slowest_start = 0
+    for name in services:
+        service = registry.get(name)
+        if service is None:
+            continue
+        start = _parse_duration_seconds(service.health.get("start_period"))
+        if start > slowest_start:
+            slowest_start = start
+            slowest_service = name
+
+    data_driven = slowest_start + _HEALTHCHECK_LOAD_MARGIN if slowest_start else 0
+    if data_driven > _HEALTHCHECK_TIMEOUT_FLOOR:
+        return data_driven, slowest_service
+    return _HEALTHCHECK_TIMEOUT_FLOOR, None
+
+
 def deploy(
     profiles: list[str],
     install_dir: Path = DEFAULT_INSTALL_DIR,
