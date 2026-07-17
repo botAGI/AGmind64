@@ -33,6 +33,11 @@ agmind_strix_halo:
   # zswap.enabled=0 — our nodes swap rarely and the GPU shares the memory bus;
   # optional, not a GTT prerequisite.
   zswap_off: true
+  # amdgpu.lockup_timeout=60000 — batched Vulkan submits on the iGPU under np4
+  # continuous-batching load exceed the kernel's default ~2000ms timeout and trigger
+  # a compute-ring reset (llama.cpp #21724); raising it to 60000ms avoids false GPU
+  # resets. Independent per-node toggle, not a GTT prerequisite.
+  lockup_timeout: true
   # Vulkan ICD enforcement (Spec §1.2.1)
   vulkan_icd: RADV
   radv_icd_path: /usr/share/vulkan/icd.d/radeon_icd.x86_64.json

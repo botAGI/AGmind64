@@ -35,7 +35,8 @@
       {{ (['ttm.pages_limit=' ~ agmind_ttm_pages_limit])
          + (['ttm.page_pool_size=' ~ agmind_ttm_pages_limit] if agmind_strix_halo.ttm_page_pool | default(true) else [])
          + (['amd_iommu=off'] if agmind_strix_halo.amd_iommu_off | default(true) else [])
-         + (['zswap.enabled=0'] if agmind_strix_halo.zswap_off | default(true) else []) }}
+         + (['zswap.enabled=0'] if agmind_strix_halo.zswap_off | default(true) else [])
+         + (['amdgpu.lockup_timeout=60000'] if agmind_strix_halo.lockup_timeout | default(true) else []) }}
 
 # Append agmind kernel params via a grub.d drop-in (sourced by grub-mkconfig AFTER
 # /etc/default/grub) instead of REPLACING the whole GRUB_CMDLINE_LINUX_DEFAULT line —
