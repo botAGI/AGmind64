@@ -566,9 +566,7 @@ def test_deploy_omitted_profile_keeps_string_default_when_no_state(
 
     monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
 
-    result = CliRunner().invoke(
-        _make_app(), ["deploy", "--install-dir", str(tmp_path / "install")]
-    )
+    result = CliRunner().invoke(_make_app(), ["deploy", "--install-dir", str(tmp_path / "install")])
 
     assert result.exit_code == 0, result.output
     assert captured["profiles"] == ["core", "observability"]
