@@ -8,6 +8,7 @@ InstallStepResult с success / message / elapsed.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -29,6 +30,7 @@ import yaml
 from agmind.config.env import write_env
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.env import compose_env_quote, parse_env_file, parse_env_text
+from agmind.core.files import write_text_atomic
 from agmind.core.proc import sudo_argv, sudo_stdin_bytes, sudo_stdin_text
 from agmind.core.secrets import write_private_text
 from agmind.install.ansible_tools import resolve_ansible_command
@@ -1812,6 +1814,66 @@ class ModelDownloadStep(InstallStep):
             f"{free_mb} MiB free, need at least {needed_mb} MiB"
         )
 
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        """Compute a file's sha256 in chunks — multi-GB models stay off the heap.
+
+        Mirrors `agmind.cli.models_cmd._file_sha256` (the existing G.5 verify helper for
+        the standalone `agmind models download` CLI path); kept local to the install layer
+        so it does not reach up into the CLI layer.
+        """
+        h = hashlib.sha256()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    @staticmethod
+    def _verify_marker_path(target: Path) -> Path:
+        return target.with_name(f".{target.name}.sha256-verified.json")
+
+    def _verify_sha256_or_mark(
+        self, role: str, target: Path, sha256: str | None
+    ) -> tuple[bool, str | None]:
+        """Post-download/reuse integrity gate (T-15.2-04, T-15.2-05).
+
+        Empty/unset sha256 → no verification (back-compat: unpinned catalog entries
+        download/reuse exactly as before — e.g. the 3 unfetchable filename-mismatch
+        models from plan 15-05). A mismatch removes the poisoned file so it can never
+        reach a container. A match writes a small marker recording the verified
+        (sha256, size) so a later reuse of the SAME file does not re-hash a 20-100 GiB
+        model on every install — only a missing/stale marker triggers a re-hash.
+        """
+        if not sha256:
+            return True, None
+        marker = self._verify_marker_path(target)
+        try:
+            size = target.stat().st_size
+        except OSError as exc:
+            return False, f"{role}: cannot stat {target} for sha256 verify: {exc}"
+        try:
+            recorded = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            recorded = None
+        if (
+            isinstance(recorded, dict)
+            and recorded.get("sha256") == sha256
+            and recorded.get("size") == size
+        ):
+            return True, None  # verify-once: already verified for this exact file+hash
+        actual = self._file_sha256(target)
+        if actual != sha256:
+            target.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                marker.unlink()
+            return (
+                False,
+                f"{role}: sha256 mismatch for {target.name} — expected {sha256}, "
+                f"got {actual} (removed {target})",
+            )
+        write_text_atomic(marker, json.dumps({"sha256": sha256, "size": size}))
+        return True, None
+
     def _download_one(
         self,
         role: str,
@@ -1820,6 +1882,7 @@ class ModelDownloadStep(InstallStep):
         config: InstallConfig,
         callback: ProgressCallback,
         revision: str | None = None,
+        sha256: str | None = None,
     ) -> tuple[bool, str]:
         """Download single (repo, file). Returns (success, message)."""
         if not repo or not file_name:
@@ -1840,6 +1903,9 @@ class ModelDownloadStep(InstallStep):
         if existing is not None:
             size_mb = existing.stat().st_size // (1024 * 1024)
             if existing == target:
+                ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
+                if not ok:
+                    return False, verify_err or f"{role}: sha256 verify failed"
                 callback(
                     _make_event(
                         self.step_id,
@@ -1863,6 +1929,9 @@ class ModelDownloadStep(InstallStep):
                     existing.unlink()
                 except OSError as exc2:
                     return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
+            ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
+            if not ok:
+                return False, verify_err or f"{role}: sha256 verify failed"
             return True, f"{role}: relocated {size_mb} MiB"
 
         # Not present anywhere. In air-gap (AGMIND_OFFLINE) the curl download below cannot run —
@@ -1995,6 +2064,9 @@ class ModelDownloadStep(InstallStep):
                     )
                 continue
             partial.replace(target)
+            ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
+            if not ok:
+                return False, verify_err or f"{role}: sha256 verify failed"
             size_mb = target.stat().st_size // (1024 * 1024)
             return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
         return False, f"{last_err}; gave up after {attempts} clean attempts"
@@ -2015,14 +2087,34 @@ class ModelDownloadStep(InstallStep):
             )
 
         roles = (
-            ("llm", config.model_repo, config.model_file, config.model_revision),
-            ("embed", config.embed_repo, config.embed_file, config.embed_revision),
-            ("rerank", config.rerank_repo, config.rerank_file, config.rerank_revision),
+            (
+                "llm",
+                config.model_repo,
+                config.model_file,
+                config.model_revision,
+                config.model_sha256,
+            ),
+            (
+                "embed",
+                config.embed_repo,
+                config.embed_file,
+                config.embed_revision,
+                config.embed_sha256,
+            ),
+            (
+                "rerank",
+                config.rerank_repo,
+                config.rerank_file,
+                config.rerank_revision,
+                config.rerank_sha256,
+            ),
         )
 
         messages: list[str] = []
-        for role, repo, file_name, revision in roles:
-            ok, msg = self._download_one(role, repo, file_name, config, callback, revision=revision)
+        for role, repo, file_name, revision, sha256 in roles:
+            ok, msg = self._download_one(
+                role, repo, file_name, config, callback, revision=revision, sha256=sha256
+            )
             messages.append(msg)
             if not ok:
                 return InstallStepResult(

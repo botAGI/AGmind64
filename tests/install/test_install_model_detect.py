@@ -555,7 +555,7 @@ def test_model_download_run_prepares_models_dir_before_downloading(
     monkeypatch.setattr(
         ModelDownloadStep,
         "_download_one",
-        lambda self, role, repo, fn, config, cb, revision=None: (
+        lambda self, role, repo, fn, config, cb, revision=None, sha256=None: (
             order.append(f"dl:{role}"),
             (True, f"{role} ok"),
         )[1],
