@@ -2127,6 +2127,309 @@ def test_deploy_snapshot_captures_deploy_state_when_present(
     assert captured["deploy_state_file"] == install_dir / "deploy-state.json"
 
 
+# ---------- D-04: narrowing guard (refuse removal vs prior resolved_services) ----------
+
+
+def _write_prior_state_with_redis(install_dir: Path) -> None:
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    write_deploy_state(
+        install_dir,
+        DeployState.new(
+            agmind_version="0.1.0.dev0",
+            profiles=["core"],
+            requested_services=["postgres", "redis"],
+            resolved_services=["postgres", "redis"],
+            domain="ci.example.com",
+            edge_mode="local",
+        ),
+    )
+
+
+def test_deploy_apply_refuses_narrowing_without_allow_removal_no_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+    _write_prior_state_with_redis(install_dir)
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+
+    def fail_stream_compose(*_a: object, **_k: object) -> tuple[int, str]:
+        raise AssertionError("compose up must not run when narrowing is refused")
+
+    monkeypatch.setattr(runner, "_stream_compose", fail_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success is False
+    assert "redis" in result.message
+    assert "redis" in capsys.readouterr().err
+
+
+def test_deploy_apply_narrowing_with_allow_removal_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+    _write_prior_state_with_redis(install_dir)
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+        allow_removal=True,
+    )
+
+    assert result.success is True
+
+
+def test_deploy_apply_narrowing_guard_noop_without_prior_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+    # No deploy-state.json written — the guard must be a no-op (nothing to compare).
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success is True
+
+
+def test_deploy_apply_refuses_narrowing_without_allow_removal_interactive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D-04 refuses BY DEFAULT — not a yes/no confirm — in interactive mode too."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+    _write_prior_state_with_redis(install_dir)
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+
+    def fail_confirm(*_a: object, **_k: object) -> bool:
+        raise AssertionError("D-04 refuses by default — must not prompt, even interactively")
+
+    monkeypatch.setattr(runner.typer, "confirm", fail_confirm)
+
+    def fail_stream_compose(*_a: object, **_k: object) -> tuple[int, str]:
+        raise AssertionError("compose up must not run when narrowing is refused")
+
+    monkeypatch.setattr(runner, "_stream_compose", fail_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+        services=["postgres"],
+    )
+
+    assert result.success is False
+    assert "redis" in result.message
+
+
+# ---------- D-06: stateful-backup guard (refuse recreate without fresh marker) ----------
+
+
+def _stateful_recreate_install_dir(tmp_path: Path) -> Path:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / "docker-compose.yml").write_text(
+        "services:\n  postgres:\n    image: postgres:16-alpine\n", encoding="utf-8"
+    )
+    return install_dir
+
+
+def test_deploy_apply_refuses_stateful_recreate_without_fresh_backup_no_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = _stateful_recreate_install_dir(tmp_path)
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  postgres:\n    image: postgres:17.6-alpine\n",
+    )
+    monkeypatch.setattr(runner, "data_backup_is_fresh", lambda *_a, **_k: False)
+
+    def fail_stream_compose(*_a: object, **_k: object) -> tuple[int, str]:
+        raise AssertionError("compose up must not run when the stateful guard refuses")
+
+    monkeypatch.setattr(runner, "_stream_compose", fail_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success is False
+    assert "postgres" in result.message
+
+
+def test_deploy_apply_stateful_recreate_proceeds_with_fresh_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = _stateful_recreate_install_dir(tmp_path)
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  postgres:\n    image: postgres:17.6-alpine\n",
+    )
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "data_backup_is_fresh", lambda *_a, **_k: True)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success is True
+
+
+def test_deploy_apply_stateful_recreate_skip_data_backup_warns_and_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    install_dir = _stateful_recreate_install_dir(tmp_path)
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  postgres:\n    image: postgres:17.6-alpine\n",
+    )
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "data_backup_is_fresh", lambda *_a, **_k: False)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+        skip_data_backup=True,
+    )
+
+    assert result.success is True
+    assert "postgres" in capsys.readouterr().err
+
+
+def test_deploy_apply_stateful_recreate_interactive_confirm_no_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = _stateful_recreate_install_dir(tmp_path)
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  postgres:\n    image: postgres:17.6-alpine\n",
+    )
+    monkeypatch.setattr(runner, "data_backup_is_fresh", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner.typer, "confirm", lambda *_a, **_k: False)
+
+    def fail_stream_compose(*_a: object, **_k: object) -> tuple[int, str]:
+        raise AssertionError("compose up must not run after a declined stateful confirm")
+
+    monkeypatch.setattr(runner, "_stream_compose", fail_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+        services=["postgres"],
+    )
+
+    assert result.success is False
+
+
+def test_deploy_apply_stateful_recreate_interactive_confirm_yes_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = _stateful_recreate_install_dir(tmp_path)
+
+    monkeypatch.setattr(
+        runner,
+        "render_to_string",
+        lambda **_kwargs: "services:\n  postgres:\n    image: postgres:17.6-alpine\n",
+    )
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "data_backup_is_fresh", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner.typer, "confirm", lambda *_a, **_k: True)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=False,
+        services=["postgres"],
+    )
+
+    assert result.success is True
+
+
 def test_wait_healthy_accepts_compose_json_array(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

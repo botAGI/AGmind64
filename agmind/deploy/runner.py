@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -26,12 +27,15 @@ import yaml
 import agmind
 from agmind.components.checks import check_deploy_conflicts
 from agmind.core.docker_auth import user_docker_config_dir
+from agmind.core.env import parse_env_file_or_empty
 from agmind.core.locks import deploy_lock as _deploy_lock
 from agmind.core.logging import logger
 from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
-from agmind.deploy.state import DeployState, write_deploy_state
+from agmind.deploy.state import DeployState, load_deploy_state, write_deploy_state
+from agmind.ops.backup import data_backup_is_fresh
+from agmind.ops.backup_data import data_sources
 from agmind.services.renderer import (
     load_descriptors,
     render_to_string,
@@ -707,12 +711,17 @@ def deploy(
     progress: ProgressCallback | None = None,
     sudo_password: str | None = None,
     cancel_event: threading.Event | None = None,
+    allow_removal: bool = False,
+    skip_data_backup: bool = False,
 ) -> DeployResult:
     """Single-flight wrapper around :func:`_deploy_impl`.
 
     A dry run (``apply=False``) is read-only and runs unguarded. An apply takes an
     advisory flock keyed on ``install_dir`` so a second concurrent apply (in-app or
     another process) cannot race the first into a duplicate ``docker compose up``.
+
+    ``allow_removal``/``skip_data_backup`` are explicit opt-outs of the D-04/D-06
+    safety guards (default False — never defaulted on; see runner._deploy_impl).
     """
     if not apply:
         return _deploy_impl(
@@ -727,6 +736,8 @@ def deploy(
             progress=progress,
             sudo_password=sudo_password,
             cancel_event=cancel_event,
+            allow_removal=allow_removal,
+            skip_data_backup=skip_data_backup,
         )
     with _deploy_lock(install_dir) as acquired:
         if not acquired:
@@ -748,6 +759,8 @@ def deploy(
             progress=progress,
             sudo_password=sudo_password,
             cancel_event=cancel_event,
+            allow_removal=allow_removal,
+            skip_data_backup=skip_data_backup,
         )
 
 
@@ -763,6 +776,8 @@ def _deploy_impl(
     progress: ProgressCallback | None = None,
     sudo_password: str | None = None,
     cancel_event: threading.Event | None = None,
+    allow_removal: bool = False,
+    skip_data_backup: bool = False,
 ) -> DeployResult:
     """Main deploy orchestrator.
 
@@ -780,6 +795,16 @@ def _deploy_impl(
         snapshot_reason: human-readable reason для snapshot meta
         services: explicit service names; when set, service selection takes
             precedence over profile selection in the renderer
+        allow_removal: explicit opt-out of the D-04 narrowing guard — without it, an
+            apply that would drop a service present in the prior
+            deploy-state.resolved_services is refused before any mutation (P0.1).
+            Never defaulted on.
+        skip_data_backup: explicit opt-out of the D-06 stateful-backup guard —
+            without it, an apply that recreates/version-changes a stateful service
+            (has data_sources()) with no fresh ``backup --include-data`` marker is
+            refused (no_prompt) or blocked on a confirm (interactive). Never
+            defaulted on; bypassing an actual stale/missing marker prints a loud
+            stderr warning.
 
     Returns DeployResult.
     """
@@ -895,6 +920,74 @@ def _deploy_impl(
             log.info("%s", msg)
             _emit("error", msg)
             return DeployResult(success=False, diff=diff, message=msg)
+
+    # D-04: narrowing guard — refuse a selection that drops a service the last
+    # successful apply had, unless --allow-removal. Compares against prior
+    # deploy-state.resolved_services (NOT diff.removed), so a narrower --profile/
+    # --service selection is caught even when the render itself doesn't error (e.g.
+    # the dropped service was never in the CURRENT rendered compose either). This is
+    # a hard refuse-by-default in BOTH no_prompt and interactive mode — never a
+    # yes/no confirm like the G.1 gate above — and runs BEFORE any mutating call
+    # (mkdir/snapshot/write/pull/compose up).
+    if not allow_removal:
+        prior_state = load_deploy_state(install_dir)
+        if prior_state is not None:
+            removed_from_state = sorted(set(prior_state.resolved_services) - set(selected))
+            if removed_from_state:
+                removed_label = ", ".join(removed_from_state)
+                msg = (
+                    f"refusing to apply: {len(removed_from_state)} previously deployed "
+                    f"service(s) would be removed ({removed_label}) — re-run with "
+                    "--allow-removal to confirm, or include them in --profile/--service"
+                )
+                log.error("%s", msg)
+                _emit("error", msg)
+                print(f"⚠️  {msg}", file=sys.stderr)
+                return DeployResult(success=False, diff=diff, message=msg)
+
+    # D-06: stateful-backup guard — refuse recreating/version-changing a stateful
+    # service (has data_sources()) without evidence of a fresh `backup
+    # --include-data` (the `.agmind-last-data-backup.json` marker, <24h), unless
+    # --skip-data-backup. NEVER triggers a new backup itself — the deploy lock is
+    # already held — only checks the marker.
+    changed_names = sorted(
+        {change.name for change in diff.image_changed}
+        | {change.name for change in diff.config_changed}
+        | set(diff.removed)
+    )
+    if changed_names:
+        env = parse_env_file_or_empty(install_dir / ".env")
+        stateful_hits = [
+            name for name in changed_names if data_sources([name], descriptors, env)
+        ]
+        if stateful_hits and not data_backup_is_fresh(install_dir):
+            hits_label = ", ".join(stateful_hits)
+            if skip_data_backup:
+                print(
+                    "⚠️  --skip-data-backup bypassing stale/missing data-backup evidence "
+                    f"for stateful service(s): {hits_label} — proceeding WITHOUT a "
+                    "verified recent backup.",
+                    file=sys.stderr,
+                )
+            elif no_prompt:
+                msg = (
+                    "refusing to apply: stateful service(s) recreated without a fresh "
+                    f"data backup ({hits_label}) — run `agmind backup --include-data` "
+                    "first, or re-run with --skip-data-backup"
+                )
+                log.error("%s", msg)
+                _emit("error", msg)
+                return DeployResult(success=False, diff=diff, message=msg)
+            else:
+                proceed = typer.confirm(
+                    f"⚠️  Recreating stateful service(s) ({hits_label}) — есть свежий "
+                    "backup --include-data? [y/N]"
+                )
+                if not proceed:
+                    msg = "deploy aborted by user — no fresh data backup confirmed"
+                    log.info("%s", msg)
+                    _emit("error", msg)
+                    return DeployResult(success=False, diff=diff, message=msg)
 
     try:
         install_dir.mkdir(parents=True, exist_ok=True)
