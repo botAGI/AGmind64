@@ -125,6 +125,19 @@ def _print_deploy_summary(summary: dict[str, object]) -> None:
             + ", ".join(disabled)  # type: ignore[arg-type]
         )
 
+    # D-07: desired-vs-live drift, sourced from deploy-state.json. Omitted entirely
+    # when no deploy-state exists (no empty-section noise).
+    desired = summary.get("desired")
+    if desired is not None:
+        assert isinstance(desired, dict)
+        typer.echo(f"  desired: domain={desired.get('domain')}")
+        missing = summary.get("missing") or []
+        extra = summary.get("extra") or []
+        if missing:
+            typer.echo(f"  missing: {', '.join(missing)}")  # type: ignore[arg-type]
+        if extra:
+            typer.echo(f"  extra:   {', '.join(extra)}")  # type: ignore[arg-type]
+
 
 def _build_status_payload(deploy: bool, install_dir: Path) -> dict[str, object]:
     """One-shot status data source — the SAME picture the plain `status` prints and the
@@ -197,6 +210,19 @@ def _render_status_table(payload: dict[str, object], deploy: bool):  # type: ign
         problems = dep.get("problems") or []
         if problems:
             dtable.add_row("problems", ", ".join(problems))
+
+    # D-07: desired-vs-live drift rows, folded into the same table. Omitted entirely
+    # when no deploy-state exists (no empty-section noise).
+    desired = dep.get("desired")
+    if desired is not None:
+        assert isinstance(desired, dict)
+        dtable.add_row("domain", str(desired.get("domain")))
+        missing = dep.get("missing") or []
+        extra = dep.get("extra") or []
+        if missing:
+            dtable.add_row("missing", ", ".join(missing))
+        if extra:
+            dtable.add_row("extra", ", ".join(extra))
     return Group(table, dtable)
 
 

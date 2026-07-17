@@ -183,3 +183,120 @@ def test_status_deploy_json_no_state_degrades_gracefully(monkeypatch, tmp_path) 
     assert dep["desired"] is None
     assert dep["missing"] == []
     assert dep["extra"] == []
+
+
+def _render_to_text(renderable) -> str:
+    from rich.console import Console
+
+    console = Console(width=200, record=True)
+    console.print(renderable)
+    return console.export_text()
+
+
+def test_status_deploy_plain_shows_drift_summary(monkeypatch, tmp_path) -> None:
+    """D-07: plain (non-JSON) `status --deploy` names missing/extra services + domain."""
+    from agmind.cli import _make_app, core_cmd
+    from agmind.cli.tui import status_dashboard as sd
+
+    snap = sd.ComposeStateSnapshot(
+        services=(
+            sd.ServiceState("traefik", "running", "healthy", "Up", "img", "agmind-traefik-1"),
+            sd.ServiceState("stray-svc", "running", "healthy", "Up", "img", "agmind-stray-svc-1"),
+        ),
+        error=None,
+        compose_file=tmp_path / "docker-compose.yml",
+    )
+    monkeypatch.setattr(sd, "query_compose_state", lambda _d: snap)
+    monkeypatch.setattr(
+        core_cmd,
+        "load_deploy_state",
+        lambda _d: _fake_deploy_state(
+            resolved_services=["traefik", "postgres"], domain="lab.example.com"
+        ),
+    )
+
+    result = CliRunner().invoke(_make_app(), ["status", "--deploy", "--install-dir", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "lab.example.com" in result.output
+    assert "postgres" in result.output
+    assert "stray-svc" in result.output
+
+
+def test_status_deploy_plain_no_state_no_drift_noise(monkeypatch, tmp_path) -> None:
+    """D-07: no deploy-state → plain output has no desired/drift noise, no crash, exit 0."""
+    from agmind.cli import _make_app, core_cmd
+    from agmind.cli.tui import status_dashboard as sd
+
+    snap = sd.ComposeStateSnapshot(
+        services=(
+            sd.ServiceState("traefik", "running", "healthy", "Up", "img", "agmind-traefik-1"),
+        ),
+        error=None,
+        compose_file=tmp_path / "docker-compose.yml",
+    )
+    monkeypatch.setattr(sd, "query_compose_state", lambda _d: snap)
+    monkeypatch.setattr(core_cmd, "load_deploy_state", lambda _d: None)
+
+    result = CliRunner().invoke(_make_app(), ["status", "--deploy", "--install-dir", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "desired" not in result.output.lower()
+    assert "missing" not in result.output.lower()
+
+
+def test_status_deploy_rich_table_adds_drift_rows(monkeypatch, tmp_path) -> None:
+    """D-07: rich-table renderer folds missing/extra/domain rows into the existing deploy table
+    without breaking the existing live rows."""
+    from agmind.cli import core_cmd
+    from agmind.cli.tui import status_dashboard as sd
+
+    snap = sd.ComposeStateSnapshot(
+        services=(
+            sd.ServiceState("traefik", "running", "healthy", "Up", "img", "agmind-traefik-1"),
+            sd.ServiceState("stray-svc", "running", "healthy", "Up", "img", "agmind-stray-svc-1"),
+        ),
+        error=None,
+        compose_file=tmp_path / "docker-compose.yml",
+    )
+    monkeypatch.setattr(sd, "query_compose_state", lambda _d: snap)
+    monkeypatch.setattr(
+        core_cmd,
+        "load_deploy_state",
+        lambda _d: _fake_deploy_state(
+            resolved_services=["traefik", "postgres"], domain="lab.example.com"
+        ),
+    )
+
+    payload = core_cmd._build_status_payload(True, tmp_path)
+    renderable = core_cmd._render_status_table(payload, True)
+    text = _render_to_text(renderable)
+
+    # existing live rows preserved
+    assert "running" in text
+    assert "healthy" in text
+    # new drift rows present
+    assert "lab.example.com" in text
+    assert "postgres" in text
+    assert "stray-svc" in text
+
+
+def test_status_deploy_rich_table_no_state_no_drift_rows(monkeypatch, tmp_path) -> None:
+    """D-07: rich-table renderer emits no desired/drift rows and does not crash without state."""
+    from agmind.cli import core_cmd
+    from agmind.cli.tui import status_dashboard as sd
+
+    snap = sd.ComposeStateSnapshot(
+        services=(
+            sd.ServiceState("traefik", "running", "healthy", "Up", "img", "agmind-traefik-1"),
+        ),
+        error=None,
+        compose_file=tmp_path / "docker-compose.yml",
+    )
+    monkeypatch.setattr(sd, "query_compose_state", lambda _d: snap)
+    monkeypatch.setattr(core_cmd, "load_deploy_state", lambda _d: None)
+
+    payload = core_cmd._build_status_payload(True, tmp_path)
+    renderable = core_cmd._render_status_table(payload, True)
+    text = _render_to_text(renderable)
+
+    assert "desired" not in text.lower()
+    assert "domain" not in text.lower()
