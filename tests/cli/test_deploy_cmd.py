@@ -444,6 +444,212 @@ def test_deploy_explicit_healthcheck_timeout_still_forwarded(
     assert captured["healthcheck_timeout"] == 7
 
 
+def test_deploy_omitted_profile_reads_deploy_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting --profile entirely reads the previously-applied selection from
+    deploy-state.json instead of silently applying the string default (D-03)."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    install_dir = tmp_path / "install"
+    write_deploy_state(
+        install_dir,
+        DeployState.new(
+            agmind_version="9.9.9",
+            profiles=["rag", "ui"],
+            requested_services=[],
+            resolved_services=["postgres", "openwebui"],
+            domain="state.example.com",
+            edge_mode="lan",
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(_make_app(), ["deploy", "--install-dir", str(install_dir)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["profiles"] == ["rag", "ui"]
+    assert captured["services"] == ["postgres", "openwebui"]
+    assert captured["domain"] == "state.example.com"
+
+
+def test_deploy_explicit_profile_flag_not_overridden_by_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An explicit `--profile` is honored as user intent — deploy-state is not
+    consulted even when present (distinguishes an omitted default from a user
+    who happened to type the same string as the default)."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    install_dir = tmp_path / "install"
+    write_deploy_state(
+        install_dir,
+        DeployState.new(
+            agmind_version="9.9.9",
+            profiles=["rag", "ui"],
+            requested_services=[],
+            resolved_services=["postgres", "openwebui"],
+            domain="state.example.com",
+            edge_mode="lan",
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        ["deploy", "--install-dir", str(install_dir), "--profile", "core,observability"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["profiles"] == ["core", "observability"]
+    assert captured["services"] is None
+
+
+def test_deploy_omitted_profile_keeps_string_default_when_no_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No deploy-state.json at all → omitting --profile keeps today's
+    "core,observability" string default (no-state behavior is unchanged)."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(), ["deploy", "--install-dir", str(tmp_path / "install")]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["profiles"] == ["core", "observability"]
+
+
+def test_deploy_allow_removal_and_skip_data_backup_default_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        ["deploy", "--service", "traefik", "--install-dir", str(tmp_path / "install")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["allow_removal"] is False
+    assert captured["skip_data_backup"] is False
+
+
+def test_deploy_allow_removal_and_skip_data_backup_flags_thread_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object):
+        captured.update(kwargs)
+
+        class Result:
+            success = True
+            diff = None
+            snapshot = None
+            message = "ok"
+            rollback_performed = False
+
+        return Result()
+
+    monkeypatch.setattr(deploy_module, "deploy", fake_deploy)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "deploy",
+            "--service",
+            "traefik",
+            "--install-dir",
+            str(tmp_path / "install"),
+            "--apply",
+            "--no-prompt",
+            "--allow-removal",
+            "--skip-data-backup",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["allow_removal"] is True
+    assert captured["skip_data_backup"] is True
+
+
 def test_cmd_rollback_prompts_for_sudo_password_when_requested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

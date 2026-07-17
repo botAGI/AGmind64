@@ -136,11 +136,17 @@ def cmd_deploy(
     verbose: bool = False,
     ask_sudo_password: bool = False,
     services: list[str] | None = None,
+    allow_removal: bool = False,
+    skip_data_backup: bool = False,
 ) -> int:
     """Idempotent deploy (Phase L.B): dry-run by default, --apply to commit.
 
     Под капотом: snapshot → render → diff → docker compose up --remove-orphans
     → healthcheck wait → rollback at failure. См. agmind/deploy/.
+
+    ``allow_removal``/``skip_data_backup`` are explicit opt-outs of the D-04/D-06
+    safety guards threaded straight through to the runner (default False — never
+    defaulted on).
     """
     from agmind.deploy import deploy as do_deploy
     from agmind.deploy import format_diff
@@ -154,6 +160,8 @@ def cmd_deploy(
         no_prompt=no_prompt,
         healthcheck_timeout=healthcheck_timeout,
         sudo_password=_prompt_sudo_password(ask_sudo_password),
+        allow_removal=allow_removal,
+        skip_data_backup=skip_data_backup,
     )
 
     if result.diff is not None:
@@ -222,7 +230,9 @@ def register(app: typer.Typer) -> None:
             "core,observability",
             "--profile",
             "-p",
-            help="Comma-separated profiles to deploy (ignored when --service is used)",
+            help="Comma-separated profiles to deploy (ignored when --service is "
+            "used; omit entirely to reuse the previously-applied selection from "
+            "deploy-state.json, if one exists)",
         ),
         service: list[str] | None = typer.Option(
             None,
@@ -264,6 +274,20 @@ def register(app: typer.Typer) -> None:
             "--ask-sudo-password",
             help="Prompt for sudo password for root-owned install/snapshot paths",
         ),
+        allow_removal: bool = typer.Option(
+            False,
+            "--allow-removal",
+            help="Explicitly allow a narrower selection to remove services present "
+            "in the prior deploy-state (default: refuse before any "
+            "--remove-orphans; D-04).",
+        ),
+        skip_data_backup: bool = typer.Option(
+            False,
+            "--skip-data-backup",
+            help="Bypass the fresh-data-backup guard before recreating a stateful "
+            "service (default: refuse/prompt without a fresh "
+            "`agmind backup --include-data` marker; D-06).",
+        ),
         verbose: bool = typer.Option(
             False,
             "--verbose",
@@ -276,16 +300,41 @@ def register(app: typer.Typer) -> None:
             return
 
         profiles = [p.strip() for p in profile.split(",") if p.strip()]
+        services = service
+        resolved_domain = domain
+
+        # D-03: an OMITTED --profile (never an explicitly-typed one, even if it
+        # happens to match the string default) reads the previously-applied
+        # selection from deploy-state.json instead of silently applying the
+        # string default. Typer 0.26 vendors its own internal click fork
+        # (`typer._click.core.ParameterSource`), which is NOT the same class as
+        # `click.ParameterSource` — comparing enum members by `==`/`is` across
+        # that boundary silently returns False, so distinguish by `.name`
+        # instead of importing/comparing the enum type directly.
+        profile_source = ctx.get_parameter_source("profile")
+        profile_omitted = profile_source is not None and profile_source.name == "DEFAULT"
+        if profile_omitted and not service:
+            from agmind.deploy.state import load_deploy_state
+
+            state = load_deploy_state(install_dir)
+            if state is not None:
+                profiles = state.profiles
+                services = state.resolved_services or None
+                if resolved_domain is None:
+                    resolved_domain = state.domain
+
         rc = cmd_deploy(
             profiles=profiles,
-            services=service,
+            services=services,
             install_dir=install_dir,
-            domain=domain,
+            domain=resolved_domain,
             apply=apply,
             no_prompt=no_prompt,
             healthcheck_timeout=healthcheck_timeout,
             verbose=verbose,
             ask_sudo_password=ask_sudo_password,
+            allow_removal=allow_removal,
+            skip_data_backup=skip_data_backup,
         )
         raise typer.Exit(code=rc)
 
