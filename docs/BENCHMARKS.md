@@ -225,3 +225,99 @@ make docker-vulkan
 docker run --rm --device=/dev/dri --group-add video --group-add render \
   agmind-vulkan:dev python -m agmind status --json
 ```
+
+## Multi-user load test (k6)
+
+`llama-bench` above measures single-stream throughput. It does not tell us how the
+deployed `llama-llm` service behaves under **concurrent** chat/RAG traffic once
+`AGMIND_LLM_PARALLEL` is raised above 1. `agmind loadtest chat` (a thin wrapper
+around `k6`, see `agmind/loadtest/k6.py` + `templates/loadtest/chat.js`) exists for
+exactly this, but as of this writing it has never been run against a live stack.
+This section is the runbook for that live run — **it ships with NO real numbers**;
+the table below is a placeholder to be filled in by a separate, operator-run commit.
+
+### Install k6
+
+k6 is not installed on the deploy host by default (it is an operator-supplied Go
+binary, not a Python/repo dependency):
+
+```bash
+sudo apt install k6
+```
+
+If the distro package is unavailable or outdated, use the static binary from
+grafana.com instead: https://grafana.com/docs/k6/latest/set-up/install-k6/
+
+### What the metric actually measures — honest label
+
+The shipped `templates/loadtest/chat.js` sends `"stream": false`, so k6's
+`http_req_duration` metric captures the **entire request/response round trip**
+(prefill + full generation) — not time-to-first-token. Every number recorded from
+this runbook must be labeled **"full-response latency p50/p95"**, never "TTFT".
+Streaming support (so a real TTFT number can be measured) is a documented backlog
+item, out of scope for this phase.
+
+Record, per run:
+- `p50_ms` / `p95_ms` — full-response latency (NOT TTFT)
+- `requests_per_sec` — aggregate throughput across all VUs
+- `error_pct` — `http_req_failed` rate as a percentage
+
+(field names match `agmind.loadtest.k6.LoadTestMetrics` / `agmind loadtest chat --json` output.)
+
+### The 8-run matrix
+
+Run the full matrix of `VUS ∈ {1, 2, 4, 8}` × `AGMIND_LLM_PARALLEL ∈ {1, 4}` — 8 runs
+total — against the deployed `llama-llm` endpoint with the real model loaded.
+
+To flip `AGMIND_LLM_PARALLEL` between the two halves of the matrix, edit `.env` and
+recreate only the `llama-llm` service (no full stack restart needed):
+
+```bash
+# edit AGMIND_LLM_PARALLEL=1 -> AGMIND_LLM_PARALLEL=4 in .env, then:
+docker compose up -d --force-recreate llama-llm
+```
+
+Exact reproducible command for each cell (substitute `--vus`):
+
+```bash
+agmind loadtest chat \
+  --model Qwen3.6-35B-A3B-Q4_K_M \
+  --endpoint http://127.0.0.1:8080/v1/chat/completions \
+  --vus <N> \
+  --duration 30s \
+  --api-key dummy \
+  --json
+```
+
+### Hardware caveats (Beelink GTR9 Pro)
+
+Two hardware-specific caveats from the platform verdict apply directly to how this
+matrix must be run and interpreted:
+
+- **10GbE NIC degrades under sustained GPU load** (ServeTheHome). Run k6 **locally
+  on the box itself (`127.0.0.1`, as in the command above) or over LAN — never over
+  WAN**. Measuring across a WAN path mixes network-path latency with the NIC
+  degradation bug, which would skew the recorded full-response latency numbers and
+  make them unusable for capacity planning.
+- **52 dBA fan noise at 160W sustained load.** Before treating any single matrix run
+  as representative, do a burn-in validation pass at a sustained ~120W load level —
+  this is the 3rd hardening item from `STRIX-HALO-PLATFORM-VERDICT.md` (alongside
+  `amdgpu.lockup_timeout` and MES firmware pinning) and should not be silently
+  dropped when reading these results.
+
+### Results (placeholder — awaiting live run 2026-07)
+
+Real numbers land in a **separate, operator-run commit** once the matrix above is
+actually executed against a live, deployed stack with the model loaded. No cell
+below is a real measurement.
+
+| VUS | AGMIND_LLM_PARALLEL | p50 full-response latency | p95 full-response latency | requests/sec | error_pct |
+|----:|---------------------:|---------------------------|---------------------------|---------------|-----------|
+| 1 | 1 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 2 | 1 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 4 | 1 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 8 | 1 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 1 | 4 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 2 | 4 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 4 | 4 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
+| 8 | 4 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 | TBD — awaiting live run 2026-07 |
