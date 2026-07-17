@@ -182,6 +182,97 @@ def test_devices_check_skips_cpu_fallback(monkeypatch: pytest.MonkeyPatch) -> No
     assert "CPU fallback" in result.message
 
 
+def _strix_halo_host() -> SimpleNamespace:
+    return SimpleNamespace(
+        gpu=SimpleNamespace(is_strix_halo=True, card_path="/sys/class/drm/card0")
+    )
+
+
+def test_mes_firmware_check_warns_on_known_bad_0x83(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", lambda _card_index: "0x83")
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status == "warn"
+    assert "0x80" in result.fix_hint
+
+
+def test_mes_firmware_check_ok_on_known_good_0x80(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", lambda _card_index: "0x80")
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status == "ok"
+
+
+def test_mes_firmware_check_skips_on_permission_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Root-only debugfs (PermissionError) degrades to skip — never fail, never auto-sudo."""
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+
+    def _raise_permission_error(_card_index: int) -> str | None:
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", _raise_permission_error)
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status == "skip"
+    assert "sudo cat" in result.fix_hint
+    assert "amdgpu_firmware_info" in result.fix_hint
+
+
+def test_mes_firmware_check_skips_on_none_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", lambda _card_index: None)
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status == "skip"
+
+
+def test_mes_firmware_check_skips_on_missing_debugfs_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing card index (no such debugfs path) degrades to skip."""
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+
+    def _raise_file_not_found(_card_index: int) -> str | None:
+        raise FileNotFoundError("No such file or directory")
+
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", _raise_file_not_found)
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status == "skip"
+
+
+def test_mes_firmware_check_status_is_one_of_four_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard: doctor.py's 4-value icon/summary maps would silently swallow a 5th status
+    (e.g. "info") — the MES check must only ever use the existing ok/warn/fail/skip set."""
+    from agmind.diagnostics import doctor
+
+    monkeypatch.setattr(doctor, "detect_host", _strix_halo_host)
+    monkeypatch.setattr(doctor, "_read_mes_firmware_hex", lambda _card_index: "0x80")
+
+    result = doctor._check_mes_firmware()  # noqa: SLF001
+
+    assert result.status in {"ok", "warn", "fail", "skip"}
+
+
 def test_doctor_report_human_readable_format() -> None:
     out = doctor_report(as_json=False)
     assert "AGmind doctor" in out
