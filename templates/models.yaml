@@ -32,7 +32,7 @@ wizard_catalog:
     - id: qwen36-a3b-q4km
       kind: llm
       name: Qwen3.6-35B-A3B (MoE)
-      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      repo: 0xSero/Qwen3.6-35B-GGUF
       file: Qwen3.6-35B-A3B-Q4_K_M.gguf
       size_gib: 21.2
       params_b: 34.66
@@ -42,10 +42,15 @@ wizard_catalog:
       description: Chat/reasoning MoE — production sweet spot, Phase H measured.
       strix_tested: true
       measured_tg_t_s: 73.5
+      # HF commit sha (immutable pin) + LFS sha256, re-fetched 2026-07-17 via
+      # `GET /api/models/0xSero/Qwen3.6-35B-GGUF?blobs=true` (repo id canonicalized —
+      # the old `0xSero/Qwen3.6-35B-A3B-GGUF-Strix` name 307-redirects here).
+      revision: "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+      sha256: "1d8eda2b6616d1b163d3b8cf9e0ba2cb627b98fe8553190e3183e1553ec82130"
     - id: qwen36-a3b-q4_0
       kind: llm
       name: Qwen3.6-35B-A3B (MoE)
-      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      repo: 0xSero/Qwen3.6-35B-GGUF
       file: Qwen3.6-35B-A3B-Q4_0.gguf
       size_gib: 19.7
       params_b: 34.66
@@ -55,10 +60,13 @@ wizard_catalog:
       description: Same model — faster decode (76 t/s), slightly worse quality vs Q4_K_M.
       strix_tested: true
       measured_tg_t_s: 76.5
+      # Re-fetched 2026-07-17 (same repo/commit as qwen36-a3b-q4km).
+      revision: "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+      sha256: "af1e0e8a6e16ea85da7cb49f2eddd6eff3789f796b2698d9c8b4ab126e2f297b"
     - id: qwen36-a3b-dyn
       kind: llm
       name: Qwen3.6-35B-A3B (MoE, DYNAMIC mix)
-      repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      repo: 0xSero/Qwen3.6-35B-GGUF
       file: Qwen3.6-35B-A3B-DYNAMIC.gguf
       size_gib: 19.0
       params_b: 34.66
@@ -68,6 +76,9 @@ wizard_catalog:
       description: Mixed precision — fastest prefill (1100 t/s), 64 t/s decode.
       strix_tested: true
       measured_tg_t_s: 64.0
+      # Re-fetched 2026-07-17 (same repo/commit as qwen36-a3b-q4km).
+      revision: "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+      sha256: "38782726751af9796d34a2dd6d5973c2593027ce1d1c6df27192486951ba4cc0"
     - id: llama2-7b-q4_0
       kind: llm
       name: Llama-2-7B
@@ -80,6 +91,9 @@ wizard_catalog:
       suggested_ctx: 4096
       description: Light baseline для smoke / CI; community reference 52 t/s.
       strix_tested: false
+      # Re-fetched 2026-07-17 via `GET /api/models/TheBloke/Llama-2-7B-GGUF?blobs=true`.
+      revision: "b4e04e128f421c93a5f1e34ac4d7ca9b0af47b80"
+      sha256: "78b8f9777dd620ad29cd2cffb6653b17fa8a5b1fddc1b8821180d60eedd24d48"
     - id: llama2-7b-q4km
       kind: llm
       name: Llama-2-7B
@@ -92,6 +106,9 @@ wizard_catalog:
       suggested_ctx: 4096
       description: Better quality 7B baseline (recommended by TheBloke).
       strix_tested: false
+      # Re-fetched 2026-07-17 (same repo/commit as llama2-7b-q4_0).
+      revision: "b4e04e128f421c93a5f1e34ac4d7ca9b0af47b80"
+      sha256: "4567208c2221da5a9f2ded6cc26ce58dd47d0410902c3f57a4a3ed104ce51b0b"
     - id: bge-m3-q8
       kind: embed
       name: BGE-M3 (multilingual embed)
@@ -104,6 +121,9 @@ wizard_catalog:
       suggested_ctx: 8192
       description: Dense embedding for RAG (1024-dim, multilingual).
       strix_tested: false
+      # Re-fetched 2026-07-17 via `GET /api/models/lm-kit/bge-m3-gguf?blobs=true` (no redirect).
+      revision: "9379ce497e8814b200f2dc0d18eb4045426dcb8c"
+      sha256: "c98c7c907bb3ab8c3be4c8ad827cc934c7c1a7e014d1c999e0c45c8027c158bb"
     - id: bge-reranker-v2-m3-q8
       kind: rerank
       name: BGE Reranker v2 M3
@@ -116,6 +136,10 @@ wizard_catalog:
       suggested_ctx: 8192
       description: Multilingual cross-encoder reranker for RAG ordering.
       strix_tested: false
+      # Re-fetched 2026-07-17 via `GET /api/models/gpustack/bge-reranker-v2-m3-GGUF?blobs=true`
+      # (no redirect).
+      revision: "3093af03b1a635e67b084b1d8c03c5f5e020fd05"
+      sha256: "a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
 
 llm_tiers:
   S:
@@ -134,6 +158,9 @@ llm_tiers:
       verification: inferred
       backend_preferred: vulkan
       server_flags: ["-fa", "1", "--no-mmap", "-ub", "2048"]
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/Qwen3.5-9B-GGUF?blobs=true`.
+      revision: "3885219b6810b007914f3a7950a8d1b469d598a5"
+      sha256: "6f5d30666c2d8ae16a306e616d95341dcf3cc46810df84d7e6f5a7d1e4c1b293"
     fallback:
       name: llama2-7b-q4-smoke
       hf_repo: TheBloke/Llama-2-7B-GGUF
@@ -144,6 +171,9 @@ llm_tiers:
       strix_tg: 47.3
       strix_pp: 1074
       role: smoke-test-only
+      # Re-fetched 2026-07-17 (same repo/file as the wizard's llama2-7b-q4km entry).
+      revision: "b4e04e128f421c93a5f1e34ac4d7ca9b0af47b80"
+      sha256: "4567208c2221da5a9f2ded6cc26ce58dd47d0410902c3f57a4a3ed104ce51b0b"
 
   M:
     description: "32 GB RAM / ~16 GiB GTT — 13-14B dense или 25-27B MoE Q3-Q4"
@@ -165,6 +195,9 @@ llm_tiers:
       params_active_b: 3.8
       vision_integrated: true
       vision_token_budgets: [70, 140, 280, 560, 1120]
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/gemma-4-26B-A4B-it-GGUF?blobs=true`.
+      revision: "c462057f7ed65ccdb7f7e0778fae67894d425d92"
+      sha256: "34c746b1d50ab813e29cd46c4796e3f43c741901a582f93a67b55b9fc9687b35"
     fallback:
       name: qwen3.6-27b-dense
       hf_repo: unsloth/Qwen3.6-27B-GGUF
@@ -178,6 +211,9 @@ llm_tiers:
       strix_pp: 322
       mtp_capable: true
       mtp_tg: 29.79
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/Qwen3.6-27B-GGUF?blobs=true`.
+      revision: "82d411acf4a06cfb8d9b073a5211bf410bfc29bf"
+      sha256: "cff4a2da6b5350a53f57dc6f798516e0195816f90c196c3f7bd3fd55556632dd"
 
   L:
     description: "64 GB RAM / ~32 GiB GTT — 27-35B Q4 dense, 30-35B MoE Q4"
@@ -199,9 +235,14 @@ llm_tiers:
       params_active_b: 3
       architecture: gdn-hybrid
       requires_llamacpp_build: "b8765"   # GDN Vulkan shader
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/Qwen3.6-35B-A3B-GGUF?blobs=true`.
+      revision: "a483e9e6cbd595906af30beda3187c2663a1118c"
+      sha256: "707a55a8a4397ecde44de0c499d3e68c1ad1d240d1da65826b4949d1043f4450"
     strix_optimized:
       name: qwen3.6-35b-a3b-strix-dynamic
-      hf_repo: 0xSero/Qwen3.6-35B-A3B-GGUF-Strix
+      # Canonicalized 2026-07-17 — `0xSero/Qwen3.6-35B-A3B-GGUF-Strix` (old id) 307-redirects
+      # to this repo (confirmed live via `GET /api/models/<old-id>?blobs=true`).
+      hf_repo: 0xSero/Qwen3.6-35B-GGUF
       filename: Qwen3.6-35B-A3B-DYNAMIC.gguf
       quant: DYNAMIC
       size_gb: 19
@@ -209,6 +250,9 @@ llm_tiers:
       strix_pp: 1100
       verification: verified-strix
       bench_flags: ["-ngl", "99", "-fa", "1", "-ctk", "q8_0", "-ctv", "q8_0", "-ub", "2048", "-b", "2048"]
+      # Re-fetched 2026-07-17 (same repo/commit as the wizard's qwen36-a3b-dyn entry).
+      revision: "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+      sha256: "38782726751af9796d34a2dd6d5973c2593027ce1d1c6df27192486951ba4cc0"
     fallback_coding:
       name: qwen3-coder-30b-a3b
       hf_repo: unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF
@@ -218,6 +262,10 @@ llm_tiers:
       verification: verified-strix
       strix_tg: 96.8   # b9049, hogeheer499
       strix_pp: 1321
+      # Re-fetched 2026-07-17 via
+      # `GET /api/models/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF?blobs=true`.
+      revision: "b17cb02dd882d5b6ab62fc777ad2995f19668350"
+      sha256: "2841aa314d916434860cfb8990347528dcdfe5c350dbcb9d1461dbee88ff2533"
 
   XL:
     description: "128 GB RAM / ~96 GiB GTT — 70B dense, 120B MoE"
@@ -236,6 +284,13 @@ llm_tiers:
       params_total_b: 117
       params_active_b: 5.1
       mxfp4_native_moe: true
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/gpt-oss-120b-GGUF?blobs=true` —
+      # repo/commit confirmed, revision filled. sha256 left UNVERIFIED: the catalog filename
+      # `gpt-oss-120b-MXFP4_MOE.gguf` does not exist as a single blob in this repo (the actual
+      # layout is a multi-part split, e.g. `MXFP4_MOE/gpt-oss-120b-MXFP4_MOE-00001-of-00004.gguf`)
+      # — pre-existing filename/layout mismatch, not fabricating a hash for it (backlog).
+      revision: "ff1a82da6ad466e32284fa3d2b86694db3204789"
+      sha256: ""
     fallback_coding:
       name: qwen3-coder-next-80b-a3b
       hf_repo: unsloth/Qwen3-Coder-Next-GGUF
@@ -249,6 +304,9 @@ llm_tiers:
       strix_pp: 531
       architecture: gdn-hybrid
       requires_llamacpp_build: "b8765"
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/Qwen3-Coder-Next-GGUF?blobs=true`.
+      revision: "ce09c67b53bc8739eef83fe67b2f5d293c270632"
+      sha256: "4bb93f0a0221ef4ff963ca9094df629c8dfdfabc3b4fdd85c1a2e4c0624fce36"
 
   XXL:
     description: "128 GB+ RAM / ~110 GiB GTT — 120B+ MoE, Q3"
@@ -264,6 +322,14 @@ llm_tiers:
       strix_tg: 32.8   # visorcraft
       strix_pp: 156
       params_total_b: 228.7
+      # Re-fetched 2026-07-17 via `GET /api/models/unsloth/MiniMax-M2.5-GGUF?blobs=true` —
+      # repo/commit confirmed, revision filled. sha256 left UNVERIFIED: the catalog filename
+      # `MiniMax-M2.5-Q3_K_M.gguf` does not exist in this repo's actual quant layout (BF16/
+      # IQ4_NL/IQ4_XS/MXFP4_MOE directories, no Q3_K_M) nor in the fallback_repo
+      # (ubergarm/MiniMax-M2.5-GGUF: IQ2_KS/IQ4_NL/IQ4_XS/IQ5_K, also no Q3_K_M) — pre-existing
+      # filename/quant mismatch, not fabricating a hash for it (backlog).
+      revision: "7c50dca0e5592483ad308ecffc876aecac725660"
+      sha256: ""
     note: "Qwen3-235B-A22B Q3 = 17.2 t/s (kyuz0, deprecated by 30B-A3B)"
 
 embedding:
@@ -282,6 +348,10 @@ embedding:
     verification: verified-strix   # R5
     server_flags: ["--embeddings", "--pooling", "cls"]
     port: 8081
+    # Re-fetched 2026-07-17 via `GET /api/models/gpustack/bge-m3-GGUF?blobs=true` (no redirect;
+    # this is a different repo than the wizard catalog's `lm-kit/bge-m3-gguf`).
+    revision: "2d48f1737679ad900d5c26c5aad5410e9c70fdca"
+    sha256: "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167"
   ab_candidate:
     name: qwen3-embedding-0.6b
     hf_repo: Qwen/Qwen3-Embedding-0.6B-GGUF
@@ -294,6 +364,9 @@ embedding:
     license: apache-2.0
     verification: verified-llamacpp
     server_flags: ["--embeddings", "--pooling", "last", "-ub", "8192"]
+    # Re-fetched 2026-07-17 via `GET /api/models/Qwen/Qwen3-Embedding-0.6B-GGUF?blobs=true`.
+    revision: "370f27d7550e0def9b39c1f16d3fbaa13aa67728"
+    sha256: "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439"
 
 reranker:
   primary:
@@ -309,6 +382,10 @@ reranker:
     verification: verified-strix
     server_flags: ["--reranking"]
     port: 8082
+    # Re-fetched 2026-07-17 via `GET /api/models/gpustack/bge-reranker-v2-m3-GGUF?blobs=true`
+    # (same repo/commit as the wizard's bge-reranker-v2-m3-q8 entry).
+    revision: "3093af03b1a635e67b084b1d8c03c5f5e020fd05"
+    sha256: "a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
   ab_candidate:
     name: qwen3-reranker-0.6b
     hf_repo: ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF
@@ -322,6 +399,14 @@ reranker:
     known_issues:
       - "issue #20085: --embedding + --reranking may return zeros"
       - "verify cls.output.weight mapping in convert_hf_to_gguf.py"
+    # Re-fetched 2026-07-17 via
+    # `GET /api/models/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF?blobs=true` — repo/commit
+    # confirmed, revision filled. sha256 left UNVERIFIED: the catalog filename
+    # `Qwen3-Reranker-0.6B-Q8_0.gguf` does not match the actual (lowercase)
+    # `qwen3-reranker-0.6b-q8_0.gguf` in the repo — pre-existing case-mismatch, not
+    # fabricating a hash for the wrong filename (backlog).
+    revision: "a02f48bb4f057028298c21fa033da2b30d7742d5"
+    sha256: ""
 
 vlm:
   light:

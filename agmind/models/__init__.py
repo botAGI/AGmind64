@@ -87,6 +87,8 @@ class CuratedModelEntry:
     kind: ModelKind = "llm"
     strix_tested: bool = False
     measured_tg_t_s: float | None = None
+    revision: str = ""  # optional HF commit sha pin; "" → mutable `main` (back-compat)
+    sha256: str = ""  # optional LFS content checksum; "" → no post-download verify
 
     @property
     def display(self) -> str:
@@ -199,6 +201,8 @@ def _curated_model_from_dict(data: dict[str, Any]) -> CuratedModelEntry:
         kind=kind,
         strix_tested=bool(data.get("strix_tested", False)),
         measured_tg_t_s=float(measured) if measured is not None else None,
+        revision=str(data.get("revision") or ""),
+        sha256=str(data.get("sha256") or ""),
     )
 
 

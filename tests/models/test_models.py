@@ -7,10 +7,13 @@ from pathlib import Path
 import pytest
 
 from agmind.models import (
+    CuratedModelEntry,
     ModelSpec,
     ModelsRegistry,
+    _curated_model_from_dict,
     detect_tier,
     hf_resolve_url,
+    load_curated_model_entries,
     load_models_registry,
     model_path,
     resolve_embedding,
@@ -405,3 +408,94 @@ def test_xl_primary_is_verified_strix() -> None:
     reg = load_models_registry()
     assert reg is not None
     assert reg.llm_tiers["XL"].primary.verification == "verified-strix"
+
+
+# ---- D-02: CuratedModelEntry.revision + .sha256 (wizard supply-chain provenance) ----
+
+
+def test_curated_model_entry_default_revision_sha256_empty() -> None:
+    """Back-compat: entries without revision/sha256 still construct (frozen defaults)."""
+    entry = CuratedModelEntry(
+        id="x",
+        name="X",
+        repo="org/repo",
+        file="model.gguf",
+        size_gib=1.0,
+        params_b=1.0,
+        active_params_b=None,
+        quant="Q4",
+        suggested_ctx=4096,
+        description="test",
+    )
+    assert entry.revision == ""
+    assert entry.sha256 == ""
+
+
+def test_curated_model_from_dict_with_revision_sha256_parses() -> None:
+    """A YAML dict WITH revision/sha256 parses them onto CuratedModelEntry."""
+    entry = _curated_model_from_dict(
+        {
+            "id": "x",
+            "name": "X",
+            "repo": "org/repo",
+            "file": "model.gguf",
+            "size_gib": 1.0,
+            "params_b": 1.0,
+            "quant": "Q4",
+            "suggested_ctx": 4096,
+            "description": "test",
+            "revision": "abc123def",
+            "sha256": "a" * 64,
+        }
+    )
+    assert entry.revision == "abc123def"
+    assert entry.sha256 == "a" * 64
+
+
+def test_curated_model_from_dict_without_revision_sha256_defaults_empty() -> None:
+    """A YAML dict WITHOUT revision/sha256 still loads (no crash, empty defaults)."""
+    entry = _curated_model_from_dict(
+        {
+            "id": "x",
+            "name": "X",
+            "repo": "org/repo",
+            "file": "model.gguf",
+            "size_gib": 1.0,
+            "params_b": 1.0,
+            "quant": "Q4",
+            "suggested_ctx": 4096,
+            "description": "test",
+        }
+    )
+    assert entry.revision == ""
+    assert entry.sha256 == ""
+
+
+def test_wizard_catalog_no_stale_qwen_repo() -> None:
+    """No wizard entry may reference the stale 307-redirecting repo id."""
+    entries = load_curated_model_entries()
+    stale = {e.id: e.repo for e in entries if e.repo == "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"}
+    assert stale == {}, f"stale repo still referenced by: {stale}"
+    qwen_entries = [e for e in entries if e.id.startswith("qwen36-a3b-")]
+    assert len(qwen_entries) == 3
+    for e in qwen_entries:
+        assert e.repo == "0xSero/Qwen3.6-35B-GGUF"
+
+
+def test_wizard_catalog_sha256_is_64_hex_when_present() -> None:
+    """Every filled sha256 must be exactly 64 lowercase-hex chars (no truncation/typo)."""
+    entries = load_curated_model_entries()
+    hex_chars = set("0123456789abcdef")
+    for e in entries:
+        if e.sha256:
+            assert len(e.sha256) == 64, f"{e.id}: sha256 length {len(e.sha256)} != 64"
+            assert set(e.sha256) <= hex_chars, f"{e.id}: sha256 has non-hex chars"
+
+
+def test_wizard_catalog_entries_carry_real_revision() -> None:
+    """The 7 load-bearing wizard entries carry a fetched HF commit revision (D-02)."""
+    entries = load_curated_model_entries()
+    assert len(entries) == 7
+    for e in entries:
+        assert e.revision, f"{e.id}: revision must be filled (fetched HF commit sha)"
+        assert len(e.revision) == 40, f"{e.id}: revision should be a 40-hex commit sha"

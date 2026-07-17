@@ -60,7 +60,8 @@ def test_moe_models_declare_active_params() -> None:
 def test_find_by_id_known() -> None:
     m = find_by_id("qwen36-a3b-q4km")
     assert m is not None
-    assert m.repo == "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"
+    # Repo id canonicalized (2026-07-17): the old `-Strix` suffix 307-redirects here.
+    assert m.repo == "0xSero/Qwen3.6-35B-GGUF"
     assert m.file == "Qwen3.6-35B-A3B-Q4_K_M.gguf"
 
 

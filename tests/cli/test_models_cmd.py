@@ -435,7 +435,8 @@ def test_pull_curated_invokes_curl(
     rc = models_cmd.cmd_pull(model_id="qwen36-a3b-q4km", force=True)
     assert rc == 0
     assert captured[0][0] == "curl"
-    assert "huggingface.co/0xSero/Qwen3.6-35B-A3B-GGUF-Strix" in " ".join(captured[0])
+    # Repo id canonicalized (2026-07-17): the old `-Strix` suffix 307-redirects here.
+    assert "huggingface.co/0xSero/Qwen3.6-35B-GGUF" in " ".join(captured[0])
 
 
 def test_pull_rejects_truncated_curated_download(

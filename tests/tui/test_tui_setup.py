@@ -552,7 +552,8 @@ def test_resolve_model_repo_file_curated() -> None:
     """resolve_model_repo_file() возвращает curated repo/file для known id."""
     s = SetupState(model_id="qwen36-a3b-q4km")
     repo, file = s.resolve_model_repo_file()
-    assert repo == "0xSero/Qwen3.6-35B-A3B-GGUF-Strix"
+    # Repo id canonicalized (2026-07-17): the old `-Strix` suffix 307-redirects here.
+    assert repo == "0xSero/Qwen3.6-35B-GGUF"
     assert file == "Qwen3.6-35B-A3B-Q4_K_M.gguf"
 
 
