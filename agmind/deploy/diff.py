@@ -176,6 +176,12 @@ def format_diff(diff: ComposeDiff, verbose: bool = False) -> str:
         for change in diff.config_changed:
             lines.append(f"     ~ {change.name}")
 
+    if diff.top_level_changed:
+        lines.append(
+            f"\n  🌐 Top-level changed ({len(diff.top_level_changed)}): "
+            f"{', '.join(diff.top_level_changed)}"
+        )
+
     if verbose and diff.raw_unified:
         lines.append("\n--- Full unified diff ---")
         lines.append(diff.raw_unified)
