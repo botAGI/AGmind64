@@ -21,10 +21,13 @@ env:
   # Defaults match Qwen3.6-35B-A3B Q4_K_M baseline (Phase H verified).
   # Legacy AGMIND_CTX_SIZE etc. fall through к LLM_* (см. EnvWriteStep).
   AGMIND_MODEL_FILE: ${AGMIND_MODEL_FILE:-Qwen3.6-35B-A3B-Q4_K_M.gguf}
-  AGMIND_LLM_CTX_SIZE: ${AGMIND_LLM_CTX_SIZE:-${AGMIND_CTX_SIZE:-16384}}
+  AGMIND_LLM_CTX_SIZE: ${AGMIND_LLM_CTX_SIZE:-${AGMIND_CTX_SIZE:-65536}}
   AGMIND_LLM_KV_CACHE: ${AGMIND_LLM_KV_CACHE:-${AGMIND_KV_CACHE:-q8_0}}
   AGMIND_LLM_THREADS: ${AGMIND_LLM_THREADS:-${AGMIND_THREADS:--1}}
-  AGMIND_LLM_PARALLEL: ${AGMIND_LLM_PARALLEL:-${AGMIND_PARALLEL:-1}}
+  # Phase 14 (M9.C, D-01): np 1→4 turns on llama-server continuous batching
+  # (-cb default-enabled, needs np>1 to matter). np≤8 cap — Vulkan MoE dispatch
+  # cliff np8→np9 on gfx1151 (llama.cpp b9979); 4 is conservative headroom under it.
+  AGMIND_LLM_PARALLEL: ${AGMIND_LLM_PARALLEL:-${AGMIND_PARALLEL:-4}}
   # M4.7.4: RoPE scaling — for ctx > native (Qwen3.6 native = 260K).
   # Empty = disabled (default behaviour). Set к 'yarn' + scale 2.0 для 512K.
   AGMIND_ROPE_SCALING: ${AGMIND_ROPE_SCALING:-}
@@ -56,11 +59,15 @@ command:
 - '2048'
 - --no-mmap
 - --ctx-size
-- ${AGMIND_LLM_CTX_SIZE:-${AGMIND_CTX_SIZE:-16384}}
+- ${AGMIND_LLM_CTX_SIZE:-${AGMIND_CTX_SIZE:-65536}}
 - --threads
 - ${AGMIND_LLM_THREADS:-${AGMIND_THREADS:--1}}
 - --parallel
-- ${AGMIND_LLM_PARALLEL:-${AGMIND_PARALLEL:-1}}
+- ${AGMIND_LLM_PARALLEL:-${AGMIND_PARALLEL:-4}}
+# --cache-reuse: min matching KV-chunk (tokens) reused on prefix hit — cuts
+# prefill cost for RAG's repeated static system-prompt/context prefix.
+- --cache-reuse
+- '256'
 devices:
 - /dev/dri
 group_add:
@@ -72,8 +79,12 @@ resources:
   cpus: 8.0
   # M4.7.4: bumped 64g → 112g чтобы вместить 256K-512K KV cache на Strix Halo.
   # Qwen3.6-A3B Q4_K_M (21 GB) + 512K q8_0 KV (~85 GB) = ~106 GB. С q4_0 = ~67 GB.
+  # Phase 14 (M9.C, D-01): np4 × ctx65536 (per-slot ctx unchanged vs today's
+  # single-slot 16K default) = 65536 total q8_0 KV tokens ≈ 10.6 GB (~166 KB/token,
+  # same ratio as the 512K figure above) + 21 GB model ≈ ~32 GB steady-state
+  # with all 4 slots active. mem_limit 112g stays comfortably above worst case.
   mem_limit: 112g
-  mem_reservation: 24g
+  mem_reservation: 32g
 health:
   test:
   - CMD

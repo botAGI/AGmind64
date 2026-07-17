@@ -35,6 +35,11 @@ command:
 - '999'
 - --ctx-size
 - ${AGMIND_RERANK_CTX_SIZE:-2048}
+# Phase 14 (M9.C, D-01): rerank batches concurrent requests well (short inputs,
+# no per-request state) — 2 slots, matching llama-embed's env-driven np4 precedent
+# in spirit but hardcoded (no existing tunability infra for rerank; minimal diff).
+- --parallel
+- '2'
 devices:
 - /dev/dri
 group_add:
