@@ -639,7 +639,10 @@ def verify_backup(backup_path: Path) -> list[str]:
         return [f"backup file not found: {backup_path}"]
     try:
         metadata = read_metadata(backup_path)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, EOFError, tarfile.TarError) as exc:
+        # A truncated/corrupt gzip surfaces here as EOFError ("Compressed file ended before the
+        # end-of-stream marker") — catch it so a corrupt backup is REPORTED, not raised (a DR
+        # integrity checker must never crash on the very corruption it exists to detect).
         return [f"metadata: {exc}"]
 
     raw = metadata.get("data", [])
@@ -664,7 +667,7 @@ def verify_backup(backup_path: Path) -> list[str]:
                     continue
                 if hashlib.sha256(handle.read()).hexdigest() != expected:
                     issues.append(f"{label}: sha256 mismatch (corrupt)")
-    except tarfile.TarError as exc:
+    except (tarfile.TarError, EOFError, OSError) as exc:
         issues.append(f"archive: {exc}")
     return issues
 

@@ -517,10 +517,12 @@ def test_verify_backup_ok_then_detects_corruption(tmp_path: Path) -> None:
     create_backup(out, sources=[], data_sources=[db], data_run=fake_dump)
     assert verify_backup(out) == []  # intact archive verifies clean
 
-    blob = bytearray(out.read_bytes())
-    blob[len(blob) // 2] ^= 0xFF  # flip a byte → corruption
-    out.write_bytes(bytes(blob))
-    assert verify_backup(out)  # corruption detected (sha256 mismatch or archive error)
+    # Truncate the gzip trailer (CRC32 + ISIZE) — this always breaks the stream, unlike a
+    # single mid-byte flip whose position varied with the archive's (non-deterministic) size and
+    # occasionally landed in tar padding, leaving corruption undetected (order-dependent flake).
+    blob = out.read_bytes()
+    out.write_bytes(blob[:-64])
+    assert verify_backup(out)  # corruption detected (archive/metadata error)
 
 
 def test_verify_backup_missing_file() -> None:
