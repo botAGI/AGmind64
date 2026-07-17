@@ -43,6 +43,17 @@ def test_llama_llm_flash_attn_carries_required_value() -> None:
             return
 
 
+def test_llama_rerank_carries_parallel_slots() -> None:
+    """Phase 14 (M9.C, D-01): rerank batches concurrent requests same as llama-embed
+    already does. A hardcoded --parallel 2 token pair (no env var — rerank has zero
+    existing tunability infra, per RESEARCH minimal-diff recommendation)."""
+    cmd = [str(c) for c in (_load("llama-rerank").command or [])]
+    assert "--parallel" in cmd, "llama-rerank command missing --parallel"
+    idx = cmd.index("--parallel")
+    nxt = cmd[idx + 1] if idx + 1 < len(cmd) else None
+    assert nxt == "2", f"expected --parallel 2, got next token {nxt!r}"
+
+
 def test_milvus_storage_type_not_deprecated_minio() -> None:
     """Milvus v2.6 storage-V2 arrow filesystem accepts only {local, remote,
     opendal}; the legacy 'minio' token panics at boot. MinIO stays the backend

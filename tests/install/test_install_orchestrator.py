@@ -1311,10 +1311,10 @@ def test_env_write_step_writes_each_runtime_key_once(tmp_path: object) -> None:
 
 def test_install_config_carries_ctx_kv(tmp_path: object) -> None:
     cfg = _make_config(tmp_path)  # type: ignore[arg-type]
-    assert cfg.ctx_size == 16384
+    assert cfg.ctx_size == 65536
     assert cfg.kv_cache_type == "q8_0"
     payload = cfg.redact()
-    assert payload["ctx_size"] == 16384
+    assert payload["ctx_size"] == 65536
     assert payload["kv_cache_type"] == "q8_0"
 
 

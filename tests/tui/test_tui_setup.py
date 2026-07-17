@@ -544,7 +544,7 @@ def test_state_default_model_settings_phase_n_g() -> None:
     """Phase N.G: SetupState имеет model_id / ctx_size / kv_cache_type defaults."""
     s = SetupState()
     assert s.model_id == "qwen36-a3b-q4km"
-    assert s.ctx_size == 16384
+    assert s.ctx_size == 65536
     assert s.kv_cache_type == "q8_0"
 
 
@@ -656,7 +656,7 @@ def test_state_from_json_backward_compat_missing_fields(
     loaded = SetupState.from_json(path)
     assert loaded.domain == "old.example"
     assert loaded.model_id == "qwen36-a3b-q4km"  # default
-    assert loaded.ctx_size == 16384  # default
+    assert loaded.ctx_size == 65536  # default
 
 
 def test_get_services_by_tier_returns_grouped() -> None:
