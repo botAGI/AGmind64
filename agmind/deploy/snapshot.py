@@ -74,6 +74,10 @@ class Snapshot:
     def version_env_file(self) -> Path:
         return self.path / "version.env.snapshot"
 
+    @property
+    def deploy_state_file(self) -> Path:
+        return self.path / "deploy-state.json.snapshot"
+
 
 @dataclass
 class SnapshotManager:
@@ -169,6 +173,7 @@ class SnapshotManager:
         env_file: Path | None = None,
         version_env_file: Path | None = None,
         agmind_version: str = "",
+        deploy_state_file: Path | None = None,
     ) -> Snapshot:
         """Create new snapshot from current state.
 
@@ -180,6 +185,8 @@ class SnapshotManager:
             env_file: путь к .env файлу для copy
             version_env_file: путь к version.env файлу для copy
             agmind_version: version string
+            deploy_state_file: путь к deploy-state.json (D-02, Phase 13) для copy —
+                non-secret, copied 0644 same as version_env_file
         """
         now = datetime.now(UTC)
         ts = now.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
@@ -200,6 +207,8 @@ class SnapshotManager:
                 self._copy_file(env_file, snap_path / "env.snapshot", "0600")
             if version_env_file is not None and version_env_file.exists():
                 self._copy_file(version_env_file, snap_path / "version.env.snapshot", "0644")
+            if deploy_state_file is not None and deploy_state_file.exists():
+                self._copy_file(deploy_state_file, snap_path / "deploy-state.json.snapshot", "0644")
 
             # meta
             meta = {

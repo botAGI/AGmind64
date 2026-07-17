@@ -7,6 +7,7 @@ automatic rollback если healthcheck не прошёл за timeout.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -17,10 +18,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import typer
 import yaml
 
+import agmind
 from agmind.components.checks import check_deploy_conflicts
 from agmind.core.docker_auth import user_docker_config_dir
 from agmind.core.locks import deploy_lock as _deploy_lock
@@ -28,6 +31,7 @@ from agmind.core.logging import logger
 from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
+from agmind.deploy.state import DeployState, write_deploy_state
 from agmind.services.renderer import (
     load_descriptors,
     render_to_string,
@@ -44,6 +48,29 @@ log = logger(__name__)
 
 DEFAULT_INSTALL_DIR = Path("/opt/agmind")
 COMPOSE_SHORT_TIMEOUT = 60
+
+# D-02 (Phase 13): edge_mode inference signal. The Cloudflare DNS API token secret is
+# staged by agmind.install.steps at ``<system_dir>/secrets/cf_dns_api_token`` where
+# system_dir defaults to /var/lib/agmind (``config.models_dir.parent`` —
+# DEFAULT_MODELS_DIR = /var/lib/agmind/models). This is intentionally NOT
+# ``agmind.core.paths.data_root()`` — that resolves to the package/repo's bundled
+# ``templates/`` directory (dev checkout or site-packages), never a runtime secret path.
+_CF_DNS_TOKEN_PATH = Path("/var/lib/agmind/secrets/cf_dns_api_token")
+
+
+def _cf_dns_token_configured() -> bool:
+    """Whether a Cloudflare DNS API token secret is staged (edge_mode='public' signal).
+
+    Best-effort: the secrets dir is 0700 root-owned, so a non-root caller's ``stat()``
+    raises ``PermissionError`` (which bare ``Path.exists()`` does NOT swallow on
+    Python 3.12+ — only ENOENT-class errors are ignored). Fail closed to "not
+    configured" rather than let the exception propagate and crash an otherwise-healthy
+    apply, or silently claim edge_mode='public' when we cannot actually confirm it.
+    """
+    try:
+        return _CF_DNS_TOKEN_PATH.exists()
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -963,6 +990,7 @@ def _deploy_impl(
                 )
 
             try:
+                deploy_state_path = install_dir / "deploy-state.json"
                 snapshot = snap_mgr.save(
                     compose_text=_read_text_maybe_sudo(compose_file, sudo_password=sudo_password),
                     profile=",".join(profiles),
@@ -972,6 +1000,7 @@ def _deploy_impl(
                     else None,
                     env_file=env_file_for_snapshot,
                     version_env_file=version_env_file_for_snapshot,
+                    deploy_state_file=deploy_state_path if deploy_state_path.exists() else None,
                 )
             except OSError as exc:
                 log.error("snapshot failed: %s", exc)
@@ -1117,6 +1146,31 @@ def _deploy_impl(
             f"configuration: unchanged; runtime: reconciled {len(service_names)} "
             "services; health: passed"
         )
+
+    # D-02: record the паспорт установки — the ONLY write site, immediately before the
+    # single success-after-health return, guarded by `if apply:` so it never fires on a
+    # dry-run and never fires on a failed/rolled-back apply above. Best-effort: a
+    # metadata-write failure must not turn an already-healthy apply into a reported
+    # failure (mirrors the D-06 marker-stamp decision in ops/backup.py::cmd_backup).
+    if apply:
+        edge_mode: Literal["local", "lan", "public"]
+        if "traefik" in selected:
+            edge_mode = "public" if _cf_dns_token_configured() else "lan"
+        else:
+            edge_mode = "local"
+        state = DeployState.new(
+            agmind_version=agmind.__version__,
+            profiles=profiles,
+            requested_services=list(services or []),
+            resolved_services=sorted(selected),
+            domain=domain,
+            edge_mode=edge_mode,
+            config_hash=hashlib.sha256(new_compose.encode("utf-8")).hexdigest()[:16],
+        )
+        try:
+            write_deploy_state(install_dir, state, sudo_password=sudo_password)
+        except OSError as exc:
+            log.warning("write deploy-state failed (apply already healthy): %s", exc)
 
     _emit("success", message)
     return DeployResult(

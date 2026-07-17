@@ -1732,6 +1732,10 @@ def test_deploy_step_uses_selected_services(
     assert result.success
     assert calls["profiles"] == []
     assert calls["services"] == ["llama-llm", "qdrant"]
+    # D-02 (Phase 13): the deploy-state.json writer only fires when apply=True — this
+    # guards against a future DeployStep regression accidentally passing apply=False,
+    # which would silently skip recording the deploy-state for the install path.
+    assert calls["apply"] is True
 
 
 def test_deploy_step_uses_generous_healthcheck_timeout_for_model_load(

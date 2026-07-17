@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import stat
@@ -252,6 +253,33 @@ def test_save_copies_version_env_file(snapshot_mgr: SnapshotManager, tmp_path: P
     assert snap.version_env_file.exists()
     assert stat.S_IMODE(snap.version_env_file.stat().st_mode) == 0o644
     assert "LLAMA_LLM_VERSION=v1" in snap.version_env_file.read_text(encoding="utf-8")
+
+
+def test_save_copies_deploy_state_file(snapshot_mgr: SnapshotManager, tmp_path: Path) -> None:
+    deploy_state = tmp_path / "deploy-state.json"
+    deploy_state.write_text('{"schema_version": 1}\n', encoding="utf-8")
+
+    snap = snapshot_mgr.save(
+        compose_text="",
+        profile="x",
+        deploy_state_file=deploy_state,
+    )
+
+    assert snap.deploy_state_file.exists()
+    assert stat.S_IMODE(snap.deploy_state_file.stat().st_mode) == 0o644
+    assert "schema_version" in snap.deploy_state_file.read_text(encoding="utf-8")
+
+
+def test_save_skips_deploy_state_file_when_missing_or_none(
+    snapshot_mgr: SnapshotManager, tmp_path: Path
+) -> None:
+    missing = tmp_path / "does-not-exist.json"
+
+    snap_missing = snapshot_mgr.save(compose_text="", profile="x", deploy_state_file=missing)
+    assert not snap_missing.deploy_state_file.exists()
+
+    snap_none = snapshot_mgr.save(compose_text="", profile="x", deploy_state_file=None)
+    assert not snap_none.deploy_state_file.exists()
 
 
 def test_save_uses_sudo_for_root_owned_snapshot_store(
@@ -1047,6 +1075,7 @@ def test_deploy_snapshot_uses_sudo_readable_env_copy(
             env_file: Path | None = None,
             version_env_file: Path | None = None,
             agmind_version: str = "",
+            deploy_state_file: Path | None = None,
         ):
             assert env_file is not None
             assert version_env_file is not None
@@ -1898,6 +1927,204 @@ def test_deploy_dry_run_no_changes_does_not_call_compose_up(
 
     assert result.success
     assert result.message == "no changes — current deployment matches rendered"
+
+
+# ---------- D-02: deploy-state.json writer at the single success return ----------
+
+
+def test_deploy_apply_writes_deploy_state_after_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success
+    state_path = install_dir / "deploy-state.json"
+    assert state_path.exists()
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    assert payload["resolved_services"] == ["postgres"]
+    assert payload["requested_services"] == ["postgres"]
+    assert payload["profiles"] == ["core"]
+    assert payload["domain"] == "ci.example.com"
+    assert payload["edge_mode"] == "local"
+    assert payload["config_hash"] == hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:16]
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o644
+
+
+def test_deploy_dry_run_does_not_write_deploy_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+
+    def fail_write_deploy_state(*_a: object, **_k: object) -> None:
+        raise AssertionError("write_deploy_state must not be called on a dry run")
+
+    monkeypatch.setattr(runner, "write_deploy_state", fail_write_deploy_state)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=False,
+        services=["postgres"],
+    )
+
+    assert result.success
+    assert not (install_dir / "deploy-state.json").exists()
+
+
+def test_deploy_apply_health_fail_does_not_write_deploy_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(
+        runner, "_wait_healthy", lambda *_a, **_k: (False, ["postgres (starting)"])
+    )
+
+    def fail_write_deploy_state(*_a: object, **_k: object) -> None:
+        raise AssertionError("write_deploy_state must not be called on a failed health check")
+
+    monkeypatch.setattr(runner, "write_deploy_state", fail_write_deploy_state)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success is False
+    assert not (install_dir / "deploy-state.json").exists()
+
+
+def test_deploy_apply_edge_mode_public_when_traefik_and_cf_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  traefik:\n    image: traefik:v3.6.2\n"
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_cf_dns_token_configured", lambda: True)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["traefik"],
+    )
+
+    assert result.success
+    payload = json.loads((install_dir / "deploy-state.json").read_text(encoding="utf-8"))
+    assert payload["edge_mode"] == "public"
+
+
+def test_deploy_apply_edge_mode_lan_when_traefik_without_cf_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  traefik:\n    image: traefik:v3.6.2\n"
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_cf_dns_token_configured", lambda: False)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["traefik"],
+    )
+
+    assert result.success
+    payload = json.loads((install_dir / "deploy-state.json").read_text(encoding="utf-8"))
+    assert payload["edge_mode"] == "lan"
+
+
+def test_deploy_snapshot_captures_deploy_state_when_present(
+    tmp_path: Path, snapshot_mgr: SnapshotManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runner passes deploy_state_file to snap_mgr.save() when it already exists."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    # postgres-exporter has no data_sources() hits (no /var/lib/agmind volume bind), so
+    # this test exercises the snapshot capture wiring without tripping the D-06 guard.
+    current_compose = (
+        "services:\n  postgres-exporter:\n    image: postgres-exporter:v0.19.0\n"
+    )
+    rendered = "services:\n  postgres-exporter:\n    image: postgres-exporter:v0.19.1\n"
+    (install_dir / "docker-compose.yml").write_text(current_compose, encoding="utf-8")
+    (install_dir / "deploy-state.json").write_text('{"schema_version": 1}\n', encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (True, []))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+
+    class FakeSnapshotManager:
+        def __init__(self, sudo_password: str | None = None) -> None:
+            pass
+
+        def save(self, **kwargs: object):
+            captured.update(kwargs)
+            return snapshot_mgr.save(
+                compose_text=str(kwargs["compose_text"]), profile=str(kwargs["profile"])
+            )
+
+    monkeypatch.setattr(runner, "SnapshotManager", FakeSnapshotManager)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres-exporter"],
+    )
+
+    assert result.success
+    assert captured["deploy_state_file"] == install_dir / "deploy-state.json"
 
 
 def test_wait_healthy_accepts_compose_json_array(
