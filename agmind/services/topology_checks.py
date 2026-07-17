@@ -336,6 +336,39 @@ KNOWN_CROSS_PROFILE_CONSUMES: set[tuple[str, str]] = {
 CLOSURE_PULLED_CAPABILITIES: frozenset[str] = frozenset({"docker_api"})
 
 
+# P0.3 / 15-04 (SPEC-15.3): the composite middleware chains whose middleware list includes
+# the authelia forwardAuth hop (templates/traefik/dynamic/middlewares.yml — chain-llm and
+# chain-internal both end in `authelia`; chain-public carries no auth and stays ungated).
+# A route on a gated chain deployed WITHOUT authelia has no auth backend: every protected
+# request 500s — an absent auth boundary, not a closed one.
+AUTHELIA_GATED_CHAINS: frozenset[str] = frozenset({"chain-llm", "chain-internal"})
+
+
+def check_authelia_required(
+    selected: dict[str, ServiceDescriptor],
+) -> list[str]:
+    """Return violations for routed services whose auth backend is not selected.
+
+    For each selected descriptor with a ``routing`` block whose ``middleware_chain``
+    is in :data:`AUTHELIA_GATED_CHAINS`: if ``authelia`` is not in ``selected``,
+    the topology would deploy forwardAuth routes pointing at a non-existent
+    backend. Pure check — returns human-readable violation strings (empty = clean);
+    the renderer decides whether to raise (only when traefik is enabled).
+    """
+    if "authelia" in selected:
+        return []
+    violations: list[str] = []
+    for name, desc in sorted(selected.items()):
+        routing = desc.routing
+        if routing is None or routing.middleware_chain not in AUTHELIA_GATED_CHAINS:
+            continue
+        violations.append(
+            f"{name}: routed via {routing.middleware_chain} (forwardAuth -> authelia) "
+            f"but authelia is not in the selection"
+        )
+    return violations
+
+
 def check_depends_on_within_profile(
     descriptors: dict[str, ServiceDescriptor],
     *,
@@ -399,11 +432,13 @@ def check_consumes_within_profile(
 
 __all__ = [
     "ALL_PROFILE_SETS",
+    "AUTHELIA_GATED_CHAINS",
     "DEFAULT_TOPOLOGY_PROFILE_SETS",
     "KNOWN_CROSS_PROFILE_CONSUMES",
     "KNOWN_CROSS_PROFILE_DEPENDS",
     "TopologyCheckReport",
     "TopologyProfileReport",
+    "check_authelia_required",
     "check_consumes_within_profile",
     "check_depends_on_within_profile",
     "format_topology_check_report",

@@ -642,6 +642,21 @@ def render_compose(
             f"{name} requires {', '.join(deps)}" for name, deps in sorted(missing_deps.items())
         )
         raise ValueError(f"Missing dependencies in render selection: {details}")
+    # P0.3 / 15-04 (SPEC-15.3): fail-closed authelia topology gate. A chain-llm /
+    # chain-internal route rendered for traefik WITHOUT authelia in the selection ships
+    # forwardAuth pointing at a non-existent backend — healthy containers, every protected
+    # route 500s, auth boundary silently absent. Guarded by traefik_enabled: local renders
+    # and the 14 CI isolation lanes (traefik_enabled=False) never trigger it.
+    if traefik_enabled:
+        from agmind.services.topology_checks import check_authelia_required
+
+        authelia_violations = check_authelia_required(selected_by_name_pre)
+        if authelia_violations:
+            details = "; ".join(authelia_violations)
+            raise ValueError(
+                f"public routes require authelia — add the `security` profile "
+                f"(authelia + redis), or install locally with `--no-traefik`: {details}"
+            )
 
     resolved_descriptors = descriptors_with_capability_env(descriptors)
 
