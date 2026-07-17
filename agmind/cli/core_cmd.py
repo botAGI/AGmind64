@@ -19,6 +19,7 @@ import typer
 
 from agmind import __version__
 from agmind.core.paths import data_root
+from agmind.deploy.state import load_deploy_state
 
 if TYPE_CHECKING:
     from agmind.config.validation import ConfigValidationReport
@@ -55,7 +56,15 @@ def _validate_config(install_dir: Path) -> ConfigValidationReport:
 
 def _deploy_summary(install_dir: Path) -> dict[str, object]:
     """Non-interactive deployment health — reuses the --tui dashboard's compose snapshot
-    (query_compose_state never raises). live-audit 2026-06-07 UI-4."""
+    (query_compose_state never raises). live-audit 2026-06-07 UI-4.
+
+    D-07 (Phase 13.B): also folds in a desired-vs-live drift view sourced from
+    `deploy-state.json` — `desired` (profiles/resolved_services/domain) plus
+    `missing`/`extra` service-name sets computed against THIS SAME compose snapshot
+    (no second `query_compose_state` call). `load_deploy_state` never raises, so a
+    missing/corrupt deploy-state degrades to `desired: None` + empty missing/extra
+    rather than crashing the command.
+    """
     from agmind.cli.tui.status_dashboard import query_compose_state
 
     snap = query_compose_state(install_dir)
@@ -80,6 +89,21 @@ def _deploy_summary(install_dir: Path) -> dict[str, object]:
         disabled = []
     if disabled:
         out["llm_disabled_consumers"] = disabled
+
+    live_service_names = {s.service for s in snap.services}
+    state = load_deploy_state(install_dir)
+    if state is not None:
+        out["desired"] = {
+            "profiles": state.profiles,
+            "resolved_services": state.resolved_services,
+            "domain": state.domain,
+        }
+        out["missing"] = sorted(set(state.resolved_services) - live_service_names)
+        out["extra"] = sorted(live_service_names - set(state.resolved_services))
+    else:
+        out["desired"] = None
+        out["missing"] = []
+        out["extra"] = []
     return out
 
 
