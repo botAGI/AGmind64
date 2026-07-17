@@ -15,6 +15,20 @@ env:
   REDIS_ADDR: redis://redis:6379
   # B1: redis runs with --requirepass; oliver006/redis_exporter reads REDIS_PASSWORD
   # separately from REDIS_ADDR (confirmed per exporter README §3e of B1 research).
+  #
+  # D-04/SPEC-15.4: deliberately NOT converted to REDIS_PASSWORD_FILE. Unlike Authelia's
+  # plain-string `_FILE` convention, oliver006/redis_exporter's REDIS_PASSWORD_FILE is a
+  # JSON-MAP keyed by the EXACT connection URI (`{"redis://redis:6379":"<password>"}`), not a
+  # plain-string secret — a documented upstream footgun (github.com/oliver006/redis_exporter
+  # issue #613): a naive plain-string file or a `{"password":"..."}` wrapper both parse as
+  # valid JSON but silently fail to authenticate (`NOAUTH Authentication required` at scrape
+  # time, visible only in exporter logs / a "no data" Grafana panel — not caught by any
+  # render/compose gate). ALSO: redis itself still exposes this same password via
+  # `Config.Cmd` (`--requirepass`, visible in `docker inspect agmind-redis`), so converting
+  # this consumer alone would not fully close the docker-inspect exposure regardless. This is
+  # a conscious, tracked residual (not an oversight) — see D-04 in the security-truth phase
+  # decisions. Do NOT add REDIS_PASSWORD_FILE / a JSON writer / a secret mount here without
+  # first implementing the JSON-map format correctly.
   REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
 resources:
   cpus: 0.5
