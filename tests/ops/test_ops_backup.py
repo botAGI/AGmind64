@@ -7,6 +7,7 @@ import json
 import stat
 import subprocess
 import tarfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1371,3 +1372,104 @@ def test_restore_refused_while_deploy_lock_held(
     assert rc != 0
     err = capsys.readouterr().err.lower()
     assert "in progress" in err
+
+
+# ---------- D-06: data-backup marker (write side) ----------
+
+
+def test_write_data_backup_marker_creates_file_with_expected_fields(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, write_data_backup_marker
+
+    archive = tmp_path / "b.tar.gz"
+    archive.write_bytes(b"fake archive")
+    write_data_backup_marker(tmp_path, archive, "deadbeef" * 8)
+
+    marker_path = tmp_path / DATA_BACKUP_MARKER_NAME
+    assert marker_path.name == ".agmind-last-data-backup.json"
+    mode = stat.S_IMODE(marker_path.stat().st_mode)
+    assert mode == 0o644
+
+    payload = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert set(payload.keys()) == {"written_at", "archive", "sha256"}
+    assert payload["archive"] == str(archive)
+    assert payload["sha256"] == "deadbeef" * 8
+    datetime.fromisoformat(payload["written_at"])  # parses as ISO — raises if malformed
+
+
+def test_read_data_backup_marker_missing_returns_none(tmp_path: Path) -> None:
+    from agmind.ops.backup import read_data_backup_marker
+
+    assert read_data_backup_marker(tmp_path) is None
+
+
+def test_read_data_backup_marker_corrupt_returns_none(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, read_data_backup_marker
+
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text("not json{{{", encoding="utf-8")
+    assert read_data_backup_marker(tmp_path) is None
+
+
+def test_read_data_backup_marker_round_trips_write(tmp_path: Path) -> None:
+    from agmind.ops.backup import read_data_backup_marker, write_data_backup_marker
+
+    archive = tmp_path / "b.tar.gz"
+    archive.write_bytes(b"fake archive")
+    write_data_backup_marker(tmp_path, archive, "abc123")
+
+    marker = read_data_backup_marker(tmp_path)
+    assert marker is not None
+    assert marker["archive"] == str(archive)
+    assert marker["sha256"] == "abc123"
+
+
+def test_data_backup_is_fresh_true_within_window(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, data_backup_is_fresh
+
+    written_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    marker = {"written_at": written_at, "archive": "x", "sha256": "y"}
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+
+    assert data_backup_is_fresh(tmp_path) is True
+
+
+def test_data_backup_is_fresh_false_when_stale(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, data_backup_is_fresh
+
+    written_at = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+    marker = {"written_at": written_at, "archive": "x", "sha256": "y"}
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+
+    assert data_backup_is_fresh(tmp_path) is False
+
+
+def test_data_backup_is_fresh_false_when_missing(tmp_path: Path) -> None:
+    from agmind.ops.backup import data_backup_is_fresh
+
+    assert data_backup_is_fresh(tmp_path) is False
+
+
+def test_data_backup_is_fresh_false_when_corrupt_json(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, data_backup_is_fresh
+
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text("not json{{{", encoding="utf-8")
+    assert data_backup_is_fresh(tmp_path) is False
+
+
+def test_data_backup_is_fresh_false_when_written_at_unparseable(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, data_backup_is_fresh
+
+    marker = {"written_at": "not-a-timestamp", "archive": "x", "sha256": "y"}
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+
+    assert data_backup_is_fresh(tmp_path) is False
+
+
+def test_data_backup_is_fresh_respects_custom_window_hours(tmp_path: Path) -> None:
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, data_backup_is_fresh
+
+    written_at = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    marker = {"written_at": written_at, "archive": "x", "sha256": "y"}
+    (tmp_path / DATA_BACKUP_MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+
+    assert data_backup_is_fresh(tmp_path, window_hours=1) is False
+    assert data_backup_is_fresh(tmp_path, window_hours=3) is True

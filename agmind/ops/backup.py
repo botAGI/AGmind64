@@ -30,9 +30,10 @@ import tarfile
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
+from agmind.core.files import write_text_atomic
 from agmind.core.logging import logger
 from agmind.core.proc import sudo_argv, sudo_stdin_bytes, sudo_stdin_text
 from agmind.ops.backup_data import (
@@ -50,6 +51,13 @@ DEFAULT_SYSTEM_DIR = Path("/var/lib/agmind")
 
 METADATA_FILENAME = "agmind-backup.json"
 BACKUP_FORMAT_VERSION = 1
+
+# D-06 (Phase 13): write-side of the stateful-apply data-backup guard. There is no canonical
+# backup-archive directory in this codebase (``--output`` is always caller-chosen), so a
+# successful ``agmind backup --include-data`` stamps this lightweight marker at the install
+# dir root instead — the deploy guard reads it (`data_backup_is_fresh`) to prove a recent data
+# backup happened before recreating a stateful service. Non-secret (0644), atomic write.
+DATA_BACKUP_MARKER_NAME = ".agmind-last-data-backup.json"
 
 
 @dataclass(frozen=True)
@@ -122,6 +130,62 @@ def volume_restore_target(label: str, system_dir: Path = DEFAULT_SYSTEM_DIR) -> 
     if not rel or relpath.is_absolute() or ".." in relpath.parts:
         return None
     return system_dir / rel
+
+
+def write_data_backup_marker(install_dir: Path, archive: Path, sha256: str) -> None:
+    """Stamp ``<install_dir>/.agmind-last-data-backup.json`` after a successful
+    ``--include-data`` backup (D-06 write side). Records ``written_at`` (UTC ISO),
+    the produced ``archive`` path, and its ``sha256`` — non-secret metadata, so the
+    marker is written 0644 via the same atomic primitive as other runtime state.
+    """
+    marker = {
+        "written_at": datetime.now(UTC).isoformat(),
+        "archive": str(archive),
+        "sha256": sha256,
+    }
+    write_text_atomic(
+        Path(install_dir) / DATA_BACKUP_MARKER_NAME,
+        json.dumps(marker, indent=2),
+        mode=0o644,
+    )
+
+
+def read_data_backup_marker(install_dir: Path) -> dict[str, object] | None:
+    """Best-effort load of the data-backup marker. NEVER raises — a missing or
+    corrupt marker just means "no fresh data backup known" (fail-closed for the
+    deploy guard), mirroring ``load_prior_setup_state``'s never-raise shape.
+    """
+    path = Path(install_dir) / DATA_BACKUP_MARKER_NAME
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def data_backup_is_fresh(install_dir: Path, window_hours: int = 24) -> bool:
+    """True when the last ``--include-data`` backup marker is younger than
+    ``window_hours`` (D-06 default 24h). False for a missing marker, a corrupt
+    marker, or an unparseable ``written_at`` — never raises (fail-closed: the
+    deploy guard treats "unknown" the same as "not fresh").
+    """
+    marker = read_data_backup_marker(install_dir)
+    if marker is None:
+        return False
+    written_at = marker.get("written_at")
+    if not isinstance(written_at, str):
+        return False
+    try:
+        written = datetime.fromisoformat(written_at)
+    except ValueError:
+        return False
+    if written.tzinfo is None:
+        written = written.replace(tzinfo=UTC)
+    return datetime.now(UTC) - written <= timedelta(hours=window_hours)
 
 
 def _safe_member_name(label: str) -> str:
