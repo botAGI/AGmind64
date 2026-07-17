@@ -18,7 +18,7 @@ provides:
   - ssrf_egress_proxy
 verification:
   smoke:
-    - agmind render compose --profile rag --domain ci.example.com --output /tmp/agmind-ssrf.yml
+    - agmind render compose --profile rag --no-traefik --domain ci.example.com --output /tmp/agmind-ssrf.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-ssrf.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

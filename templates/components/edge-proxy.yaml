@@ -29,7 +29,7 @@ conflicts:
     - "443"
 verification:
   smoke:
-    - agmind render compose --profile core --domain ci.example.com --output /tmp/agmind-edge.yml
+    - agmind render compose --profile core,security --domain ci.example.com --output /tmp/agmind-edge.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-edge.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

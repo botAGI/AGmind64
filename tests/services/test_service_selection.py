@@ -270,10 +270,12 @@ def test_service_selection_n8n_is_isolated_automation_runtime() -> None:
     assert set(selected) == {"n8n"}
     assert check_missing_dependencies(selected, descriptors) == {}
 
+    # The Host(...) assertion below tests the public edge posture: traefik in the render
+    # selection derives traefik_enabled=True, and authelia+redis satisfy the P0.3
+    # topology gate for n8n's chain-internal route (15-04).
     rendered = render_to_string(
-        services=sorted(selected),
+        services=sorted([*selected, "traefik", "authelia", "redis"]),
         domain="lab.example.com",
-        traefik_enabled=True,
     )
     assert "image: n8nio/n8n:2.22.3@sha256:" in rendered
     assert "N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}" in rendered
@@ -304,10 +306,11 @@ def test_service_selection_includes_operator_console_runtime_services() -> None:
     assert set(services) <= set(selected)
     assert check_missing_dependencies(selected, descriptors) == {}
 
+    # Edge trio added for the render: the Host(...) assertions test public routing, and
+    # the P0.3 gate requires authelia for these chain-internal routes (15-04).
     rendered = render_to_string(
-        services=sorted(services),
+        services=sorted([*services, "traefik", "authelia", "redis"]),
         domain="lab.example.com",
-        traefik_enabled=True,
     )
     assert "image: louislam/uptime-kuma:2.3.2@sha256:" in rendered
     assert "image: ghcr.io/homarr-labs/homarr:v1.62.0@sha256:" in rendered

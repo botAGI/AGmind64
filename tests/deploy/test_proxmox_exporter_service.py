@@ -99,8 +99,10 @@ def test_proxmox_exporter_examples_exist_without_real_tokens() -> None:
 
 
 def test_rendered_compose_includes_proxmox_exporter_labels() -> None:
+    # security rides along: core pulls traefik → derive public → the P0.3 gate
+    # requires authelia for the chain-internal routed services in this set (15-04).
     rendered = render_to_string(
-        profiles=["core", "observability", "proxmox"],
+        profiles=["core", "observability", "proxmox", "security"],
         domain="ci.example.com",
     )
     compose = yaml.safe_load(rendered)

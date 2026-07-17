@@ -53,8 +53,8 @@ provides:
   - llm_tracing
 verification:
   smoke:
-    - agmind render compose --profile core,observability --domain ci.example.com --output /tmp/agmind-obs.yml
-    - agmind render compose --profile core,observability,proxmox --domain ci.example.com --output /tmp/agmind-proxmox.yml
+    - agmind render compose --profile core,observability --no-traefik --domain ci.example.com --output /tmp/agmind-obs.yml
+    - agmind render compose --profile core,observability,proxmox --no-traefik --domain ci.example.com --output /tmp/agmind-proxmox.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-obs.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

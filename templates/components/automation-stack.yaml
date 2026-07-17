@@ -22,7 +22,7 @@ requires:
   capabilities: []
 verification:
   smoke:
-    - agmind render compose --profile automation --domain ci.example.com --output /tmp/agmind-n8n.yml
+    - agmind render compose --profile automation --no-traefik --domain ci.example.com --output /tmp/agmind-n8n.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-n8n.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

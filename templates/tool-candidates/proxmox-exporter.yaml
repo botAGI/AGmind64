@@ -30,6 +30,6 @@ risks:
 next_step: Run real Proxmox API-token smoke validation and decide whether to promote remote scrape config into managed provisioning.
 verification:
   commands:
-    - agmind render compose --profile core,observability,proxmox --domain ci.example.com
+    - agmind render compose --profile core,observability,proxmox --no-traefik --domain ci.example.com
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

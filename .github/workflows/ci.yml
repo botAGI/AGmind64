@@ -373,8 +373,12 @@ jobs:
           EOF
           for profile in $(.venv/bin/python -c "from agmind.services.profile_sets import all_profile_names; print('\n'.join(sorted(all_profile_names())))"); do
             echo "=== Rendering --profile $profile ==="
+            # --no-traefik: this lane validates per-profile compose config in isolation
+            # (same posture as the 14 compose_profile_check lanes). Routing topology is
+            # gated separately — a single profile without `security` would otherwise
+            # fail-close on the P0.3 authelia gate (15-04).
             .venv/bin/agmind render compose --profile "$profile" --domain ci.example.com \
-              --output "/tmp/compose-${profile}.yml"
+              --no-traefik --output "/tmp/compose-${profile}.yml"
             echo "=== Validating $profile ==="
             docker compose --env-file /tmp/agmind-compose-ci.env \
               -f "/tmp/compose-${profile}.yml" config --quiet

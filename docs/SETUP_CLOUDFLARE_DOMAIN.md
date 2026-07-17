@@ -80,7 +80,7 @@ grep -r "Host\(" templates/services/ | head -5
 
 После — регенерируй compose:
 ```bash
-.venv/bin/agmind render compose --profile core --output /tmp/check.yml
+.venv/bin/agmind render compose --profile core,security --output /tmp/check.yml
 grep "Host(" /tmp/check.yml | head -5
 # Должно быть: Host(`llama.agmind.example`), Host(`grafana.agmind.example`), и т.д.
 ```

@@ -75,7 +75,9 @@ def _mock_compose_config_rc0(monkeypatch: pytest.MonkeyPatch) -> None:
     "services",
     [
         pytest.param(["prometheus", "grafana", "loki"], id="observability"),
-        pytest.param(["traefik", "llama-llm"], id="traefik-llm"),
+        # Edge selection carries authelia+redis: the P0.3 topology gate fail-closes a
+        # traefik render of a chain-llm service without its auth backend (15-04).
+        pytest.param(["traefik", "llama-llm", "authelia", "redis"], id="traefik-llm"),
     ],
 )
 def test_env_write_then_compose_config_twice_is_idempotent(
@@ -92,7 +94,9 @@ def test_env_write_then_compose_config_twice_is_idempotent(
     version_path = cfg.install_dir / "version.env"
 
     def render() -> str:
-        return render_to_string(services=cfg.services, domain=cfg.domain, traefik_enabled=True)
+        # No explicit traefik_enabled — derive from the selection, exactly like
+        # ComposeConfigStep does (P0.3 / 15-04 selection-derive).
+        return render_to_string(services=cfg.services, domain=cfg.domain)
 
     # ---- run 1 ----
     env1 = EnvWriteStep().run(lambda _e: None, cfg)

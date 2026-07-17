@@ -25,9 +25,9 @@ requires:
   capabilities: []
 verification:
   smoke:
-    - agmind render compose --profile core,agents-pydantic --domain ci.example.com --output /tmp/agmind-agent-pydantic.yml
+    - agmind render compose --profile core,agents-pydantic --no-traefik --domain ci.example.com --output /tmp/agmind-agent-pydantic.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-agent-pydantic.yml config --quiet
-    - agmind render compose --profile core,agents-agno --domain ci.example.com --output /tmp/agmind-agent-agno.yml
+    - agmind render compose --profile core,agents-agno --no-traefik --domain ci.example.com --output /tmp/agmind-agent-agno.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-agent-agno.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

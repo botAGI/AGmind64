@@ -42,7 +42,7 @@ provides:
   - object_storage
 verification:
   smoke:
-    - agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-stateful.yml
+    - agmind render compose --profile core,rag --no-traefik --domain ci.example.com --output /tmp/agmind-stateful.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-stateful.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

@@ -36,6 +36,6 @@ risks:
 next_step: Define enterprise identity boundary and migration story from Authelia before descriptor work.
 verification:
   commands:
-    - agmind render compose --profile enterprise-security --domain ci.example.com
+    - agmind render compose --profile enterprise-security --no-traefik --domain ci.example.com
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

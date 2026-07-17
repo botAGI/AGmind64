@@ -28,4 +28,4 @@ verification:
     - tofu -chdir=infra/proxmox/vm-compose fmt -check
     - tofu -chdir=infra/proxmox/vm-compose validate
     - python scripts/ops/proxmox_inventory.py --help
-    - agmind render compose --profile core,rag --domain ci.example.com
+    - agmind render compose --profile core,rag,security --domain ci.example.com

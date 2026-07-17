@@ -32,6 +32,6 @@ risks:
 next_step: Compare Infisical and Vault, then pick one enterprise secrets service path.
 verification:
   commands:
-    - agmind render compose --profile enterprise-secrets --domain ci.example.com
+    - agmind render compose --profile enterprise-secrets --no-traefik --domain ci.example.com
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

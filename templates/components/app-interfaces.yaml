@@ -25,7 +25,7 @@ requires:
     - llm_inference
 verification:
   smoke:
-    - agmind render compose --profile core,rag,ui --domain ci.example.com --output /tmp/agmind-apps.yml
+    - agmind render compose --profile core,rag,ui --no-traefik --domain ci.example.com --output /tmp/agmind-apps.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-apps.yml config --quiet
   schema_refs:
     - templates/schemas/service.json

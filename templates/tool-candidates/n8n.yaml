@@ -36,7 +36,7 @@ risks:
 next_step: Add an enterprise Postgres mode after AGmind grows first-class multi-database provisioning.
 verification:
   commands:
-    - agmind render compose --profile automation --domain ci.example.com --output /tmp/agmind-n8n.yml
+    - agmind render compose --profile automation --no-traefik --domain ci.example.com --output /tmp/agmind-n8n.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-n8n.yml config --quiet
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

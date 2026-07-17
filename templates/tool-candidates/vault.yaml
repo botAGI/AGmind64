@@ -33,6 +33,6 @@ risks:
 next_step: Compare Vault and Infisical operating models before selecting an enterprise default.
 verification:
   commands:
-    - agmind render compose --profile enterprise-secrets --domain ci.example.com
+    - agmind render compose --profile enterprise-secrets --no-traefik --domain ci.example.com
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

@@ -4,10 +4,14 @@
 ServiceDescriptor catalog. Заменяет Ansible Jinja2 шаблон.
 
 Примеры:
-    agmind render compose --profile core
-    agmind render compose --profile core,rag --output /opt/agmind/docker-compose.yml
-    agmind render compose --profile core --no-traefik    # без Traefik labels
+    agmind render compose --profile core,security        # public edge (traefik + authelia)
+    agmind render compose --profile core --no-traefik    # локальная инспекция, без labels
+    agmind render compose --profile core,rag,security --output /opt/agmind/docker-compose.yml
     agmind render compose --diff /opt/agmind/docker-compose.yml  # diff с текущим
+
+NB (P0.3 / 15-04): `render compose` держит явную семантику флага — traefik labels
+рендерятся по умолчанию. Рендер routed-сервиса (chain-llm/chain-internal) БЕЗ authelia
+в selection fail-closed: добавь `security`-профиль или `--no-traefik`.
 """
 
 from __future__ import annotations
@@ -242,11 +246,16 @@ def cmd_render_scenario(
     project: str | None = None,
     out: Path | None = None,
     domain: str | None = None,
-    traefik: bool = True,
+    traefik: bool | None = None,
     list_only: bool = False,
     services_dir: Path = DEFAULT_SERVICES_DIR,
 ) -> int:
     """Render a named operator scenario into an isolated, namespaced stack dir.
+
+    ``traefik=None`` (default) derives the posture from the scenario itself (P0.3 /
+    15-04): a local preset (no traefik in its service set, e.g. ``inference``) renders
+    without routing labels; an edge preset (traefik + authelia) renders public.
+    ``--no-traefik`` still forces a label-free render of an edge preset.
 
     Returns 0 success, 1 error.
     """
@@ -556,7 +565,9 @@ def register(app: typer.Typer) -> None:
             project=project,
             out=output,
             domain=domain,
-            traefik=not no_traefik,
+            # None = derive from the scenario's own service set (local preset renders
+            # local, edge preset renders public); --no-traefik forces label-free.
+            traefik=False if no_traefik else None,
             list_only=list_scenarios,
         )
         raise typer.Exit(code=rc)

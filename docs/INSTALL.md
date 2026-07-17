@@ -20,7 +20,7 @@ make setup
 
 # Focused descriptor proof for one or more explicit services:
 .venv/bin/agmind render compose --service n8n --service dozzle --domain lab.example.com \
-  --output /tmp/agmind-focused.yml
+  --no-traefik --output /tmp/agmind-focused.yml
 ```
 
 `agmind setup` ведет оператора через wizard, bootstrap, запись runtime `.env`

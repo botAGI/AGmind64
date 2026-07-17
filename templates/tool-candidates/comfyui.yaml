@@ -33,6 +33,6 @@ risks:
 next_step: Research image/runtime strategy and Strix Halo Vulkan/ROCm compatibility before adding a service descriptor.
 verification:
   commands:
-    - agmind render compose --profile creative-ai --domain ci.example.com
+    - agmind render compose --profile creative-ai --no-traefik --domain ci.example.com
   research_refs:
     - docs/adr/0014-deploy-targets-and-provisioning-boundary.md

@@ -77,13 +77,35 @@ DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
             "netdata",
         ),
     ),
+    # The traefik (public edge) scenarios below carry authelia + redis: chain-llm /
+    # chain-internal routes forwardAuth to authelia and the renderer fail-closes a traefik
+    # render without it (P0.3 / 15-04). They are the public-posture fixtures; setup-default
+    # above is the local one.
     InstallVerifyScenario(
         "core-rag",
-        ("dify-api", "llama-llm", "llama-embed", "llama-rerank", "qdrant", "traefik"),
+        (
+            "dify-api",
+            "llama-llm",
+            "llama-embed",
+            "llama-rerank",
+            "qdrant",
+            "traefik",
+            "authelia",
+            "redis",
+        ),
     ),
     InstallVerifyScenario(
         "core-ragflow",
-        ("ragflow", "llama-llm", "llama-embed", "llama-rerank", "qdrant", "traefik"),
+        (
+            "ragflow",
+            "llama-llm",
+            "llama-embed",
+            "llama-rerank",
+            "qdrant",
+            "traefik",
+            "authelia",
+            "redis",
+        ),
     ),
     InstallVerifyScenario(
         "core-rag-ragflow",
@@ -95,6 +117,8 @@ DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
             "llama-rerank",
             "qdrant",
             "traefik",
+            "authelia",
+            "redis",
         ),
     ),
     InstallVerifyScenario(
@@ -115,6 +139,8 @@ DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
             "dozzle",
             "netdata",
             "traefik",
+            "authelia",
+            "redis",
         ),
     ),
     InstallVerifyScenario(
@@ -127,6 +153,8 @@ DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
             "llama-embed",
             "llama-rerank",
             "traefik",
+            "authelia",
+            "redis",
         ),
     ),
 )

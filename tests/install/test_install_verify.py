@@ -75,7 +75,7 @@ def test_verify_install_runs_ansible_and_compose(tmp_path: Path) -> None:
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         run=fake_run,
     )
@@ -123,7 +123,7 @@ def test_verify_install_reports_compose_config_failure(tmp_path: Path) -> None:
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -163,7 +163,7 @@ def test_verify_install_reports_compose_file_write_failure(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -211,7 +211,7 @@ def test_verify_install_reports_duplicate_runtime_env_key(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -251,7 +251,7 @@ def test_verify_install_reports_unreadable_runtime_env(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -295,7 +295,7 @@ def test_verify_install_reports_cloudflare_secret_mode_drift(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -340,7 +340,7 @@ def test_verify_install_reports_cloudflare_secret_content_mismatch(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -381,7 +381,7 @@ def test_verify_install_reports_unreadable_cloudflare_secret(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -429,7 +429,7 @@ def test_verify_install_reports_cloudflare_secret_symlink(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -474,7 +474,7 @@ def test_verify_install_reports_runtime_secret_directory_mode_drift(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -526,7 +526,7 @@ def test_verify_install_reports_runtime_secret_directory_symlink(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -661,7 +661,7 @@ def test_verify_install_reports_runtime_domain_mismatch(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -712,7 +712,7 @@ def test_verify_install_reports_runtime_model_file_mismatch(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -761,7 +761,7 @@ def test_verify_install_reports_runtime_minio_user_mismatch(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -811,7 +811,7 @@ def test_verify_install_reports_missing_version_manifest_pin(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -853,7 +853,7 @@ def test_verify_install_reports_unreadable_version_manifest(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -901,7 +901,7 @@ def test_verify_install_reports_version_manifest_agmind_version_mismatch(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -952,7 +952,7 @@ def test_verify_install_reports_duplicate_version_manifest_key(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,
@@ -997,7 +997,7 @@ def test_verify_install_reports_version_manifest_mode_drift(
 
     report = verify_install(
         domain="lab.example.com",
-        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik")),),
+        scenarios=(InstallVerifyScenario("mini-core", ("llama-llm", "qdrant", "traefik", "authelia", "redis")),),
         work_dir=tmp_path,
         include_ansible=False,
         run=fake_run,

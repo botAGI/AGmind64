@@ -35,15 +35,38 @@ SCENARIO_CATALOG: tuple[Scenario, ...] = (
         "No edge proxy (no Cloudflare token / domain required) — the lean local path.",
         services=("llama-llm", "llama-embed", "llama-rerank", "qdrant"),
     ),
+    # Every traefik (public edge) preset carries authelia + redis: chain-llm/chain-internal
+    # routes forwardAuth to authelia, and the renderer fail-closes a traefik render without
+    # it (P0.3 / 15-04). Local presets (no traefik) stay lean — no auth stack needed.
     Scenario(
         name="core-rag",
-        description="Dify RAG: inference stack + Qdrant + Dify API behind the Traefik edge.",
-        services=("dify-api", "llama-llm", "llama-embed", "llama-rerank", "qdrant", "traefik"),
+        description="Dify RAG: inference stack + Qdrant + Dify API behind the Traefik edge "
+        "with Authelia SSO.",
+        services=(
+            "dify-api",
+            "llama-llm",
+            "llama-embed",
+            "llama-rerank",
+            "qdrant",
+            "traefik",
+            "authelia",
+            "redis",
+        ),
     ),
     Scenario(
         name="core-ragflow",
-        description="RAGFlow RAG: inference stack + Qdrant + RAGFlow behind the Traefik edge.",
-        services=("ragflow", "llama-llm", "llama-embed", "llama-rerank", "qdrant", "traefik"),
+        description="RAGFlow RAG: inference stack + Qdrant + RAGFlow behind the Traefik edge "
+        "with Authelia SSO.",
+        services=(
+            "ragflow",
+            "llama-llm",
+            "llama-embed",
+            "llama-rerank",
+            "qdrant",
+            "traefik",
+            "authelia",
+            "redis",
+        ),
     ),
     Scenario(
         name="core-rag-ragflow",
@@ -56,6 +79,8 @@ SCENARIO_CATALOG: tuple[Scenario, ...] = (
             "llama-rerank",
             "qdrant",
             "traefik",
+            "authelia",
+            "redis",
         ),
     ),
     Scenario(
@@ -69,6 +94,8 @@ SCENARIO_CATALOG: tuple[Scenario, ...] = (
             "llama-embed",
             "llama-rerank",
             "traefik",
+            "authelia",
+            "redis",
         ),
     ),
 )

@@ -109,7 +109,9 @@ def _run_pipeline(cfg: InstallConfig) -> tuple[bool, list[ProgressEvent]]:
     "services",
     [
         pytest.param(["prometheus", "grafana", "loki"], id="observability"),
-        pytest.param(["traefik", "llama-llm"], id="traefik-llm"),
+        # Edge selection carries authelia+redis: the P0.3 topology gate fail-closes a
+        # traefik render of a chain-llm service without its auth backend (15-04).
+        pytest.param(["traefik", "llama-llm", "authelia", "redis"], id="traefik-llm"),
     ],
 )
 def test_full_pipeline_double_run_is_rerun_safe(

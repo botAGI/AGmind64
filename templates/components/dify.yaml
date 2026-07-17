@@ -32,7 +32,7 @@ requires:
     - redis_cache
 verification:
   smoke:
-    - agmind render compose --profile core,rag --domain ci.example.com --output /tmp/agmind-dify.yml
+    - agmind render compose --profile core,rag --no-traefik --domain ci.example.com --output /tmp/agmind-dify.yml
     - docker compose --env-file /opt/agmind/.env -f /tmp/agmind-dify.yml config --quiet
   schema_refs:
     - templates/schemas/service.json
