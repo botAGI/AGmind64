@@ -530,11 +530,31 @@ def test_install_no_tui_hides_runtime_credentials_path_on_failure(
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
 def test_install_no_tui_requires_cf_token_before_sudo_prompt(
+    tmp_path: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A traefik-bearing (public edge) selection demands the CF token BEFORE any sudo
+    prompt or step construction. Selected via --from-state: since the LOCAL default
+    (P0.3 / 15-04) the bare default selection carries no traefik and needs no token —
+    see test_install_no_tui_local_default_needs_no_cf_token."""
     from typer.testing import CliRunner
 
     from agmind.cli import _make_app
+
+    state_file = tmp_path / "setup-state.json"  # type: ignore[operator]
+    state_file.write_text(
+        json.dumps(
+            {
+                "domain": "lab.example.com",
+                "services": ["traefik", "llama-llm", "qdrant"],
+                "profiles": [],
+                "model_id": "custom",
+                "model_repo": "repo/llm",
+                "model_file": "model.gguf",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     def fail_getpass(prompt: str) -> str:
         raise AssertionError(f"sudo prompt should not run before validation: {prompt}")
@@ -552,10 +572,10 @@ def test_install_no_tui_requires_cf_token_before_sudo_prompt(
         [
             "install",
             "--no-tui",
+            "--from-state",
+            str(state_file),
             "--domain",
             "lab.example.com",
-            "--model-file",
-            "model.gguf",
         ],
     )
 
@@ -563,6 +583,44 @@ def test_install_no_tui_requires_cf_token_before_sudo_prompt(
     assert "CF API token" in result.output
     assert "--cf-token-file" in result.output
     assert "Traceback" not in result.output
+
+
+@pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
+def test_install_no_tui_local_default_needs_no_cf_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ratified 2026-07-17 (P0.3 / 15-04): the bare --no-tui default selection is LOCAL
+    (no traefik) → no Cloudflare token and no public domain are demanded; the install
+    proceeds. Prior state is isolated so the operator's real setup-state.json (which may
+    carry traefik) cannot leak into the test."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.install.orchestrator import InstallResult
+
+    monkeypatch.setattr(
+        "agmind.cli.install_state.load_prior_setup_state",
+        lambda _path: None,
+    )
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+        def run(self) -> InstallResult:
+            return InstallResult(success=True, steps=(), message="install ok")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        ["install", "--no-tui", "--domain", "lab.example.com", "--model-file", "model.gguf"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "CF API token" not in result.output
 
 
 @pytest.mark.skipif(not _HAS_TYPER, reason="typer not installed")
@@ -577,6 +635,22 @@ def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
     token_file = tmp_path / "cf-token"  # type: ignore[operator]
     token_file.write_text("super-secret-token-with-length-40-abcdef", encoding="utf-8")
     token_file.chmod(0o600)
+    # Domain validation is a public-edge (traefik) concern since the LOCAL default
+    # (P0.3 / 15-04) — select the edge explicitly via --from-state.
+    state_file = tmp_path / "setup-state.json"  # type: ignore[operator]
+    state_file.write_text(
+        json.dumps(
+            {
+                "domain": "lab.example.com",
+                "services": ["traefik", "llama-llm", "qdrant"],
+                "profiles": [],
+                "model_id": "custom",
+                "model_repo": "repo/llm",
+                "model_file": "model.gguf",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     def fail_getpass(prompt: str) -> str:
         raise AssertionError(f"sudo prompt should not run before validation: {prompt}")
@@ -594,12 +668,12 @@ def test_install_no_tui_rejects_invalid_domain_before_sudo_prompt(
         [
             "install",
             "--no-tui",
+            "--from-state",
+            str(state_file),
             "--domain",
             "bad`domain.example",
             "--cf-token-file",
             str(token_file),
-            "--model-file",
-            "model.gguf",
         ],
     )
 
