@@ -1,18 +1,23 @@
 """Fail-closed docker.sock + /var/run:rw allowlist contract tests.
 
 Lifted verbatim from RESEARCH-ADVANCED-2026-05-31.md §2 C3 + C3b sketches,
-adjusted import path and SOCK_ALLOW constant to match the verified live
-catalog (6 direct sock-mounters today: traefik, watchtower, dozzle, portainer,
-homarr, netdata; cadvisor is NOT a direct socket-mounter today — it mounts
-/var/run:rw — and will be added to SOCK_ALLOW in Task 2 after hardening).
+since made bidirectional: SOCK_ALLOW must equal the actual set of raw-socket
+mounters, not just bound it from above. Only 3 services mount the raw socket
+today (verified live by grep of every descriptor's `volumes:` block): portainer,
+watchtower, docker-socket-proxy. The other 6 (traefik, dozzle, homarr, netdata,
+cadvisor, alloy) migrated to the tcp docker-socket-proxy and carry explicit "NO
+raw /var/run/docker.sock" comments in their own descriptors — corroborated
+independently by tests/services/test_docker_sock_proxy_migration.py.
 
 Mutation-verified RED (recorded in commit): adding
   /var/run/docker.sock:/var/run/docker.sock:ro
 to grafana.yaml (a non-allowlisted service) made test_docker_sock_mount_allowlist
-FAIL naming grafana, then the mutation was reverted clean.
+FAIL naming grafana, then the mutation was reverted clean. Separately, re-adding
+"traefik" to SOCK_ALLOW (a phantom) made the same test FAIL naming traefik as a
+phantom entry, then the mutation was reverted clean.
 
-Purpose: a future PR cannot silently grant a 7th service the docker socket or
-rw /var/run write access without failing CI.
+Purpose: a future PR cannot silently grant a 4th service the docker socket, nor
+can the allowlist rot with a stale phantom entry, without failing CI.
 """
 
 from __future__ import annotations
@@ -30,24 +35,18 @@ SERVICES_DIR = Path(__file__).resolve().parents[2] / "templates" / "services"
 
 # ---- C3: docker.sock mount allowlist ----
 SOCK = "/var/run/docker.sock"
-# 8 direct sock-mounters (verified 2026-06-02):
-# traefik.yaml:15, watchtower.yaml:11, dozzle.yaml:13, portainer.yaml:12,
-# homarr.yaml:13, netdata.yaml:21 — all mount the socket :ro (Task 1 baseline).
-# cadvisor now mounts /var/run/docker.sock:ro (hardened in Task 2) instead of /var/run:rw.
-# alloy added 2026-06-02: config.alloy uses discovery.docker + loki.source.docker
-# (host=unix:///var/run/docker.sock) for container log shipping — dead without the socket.
+# 3 real raw-socket mounters (verified this session by grep of every descriptor's
+# `volumes:` block — `grep -rln '^\s*-\s*/var/run/docker\.sock' templates/services/*.yaml`
+# returns exactly these 3 files): portainer.yaml, watchtower.yaml, docker-socket-proxy.yaml.
+# All other services that talk to the Docker API (traefik, dozzle, homarr, netdata,
+# cadvisor, alloy) reach it over tcp via the docker-socket-proxy below and carry an
+# explicit "NO raw /var/run/docker.sock" comment in their own descriptor.
 SOCK_ALLOW = {
-    "traefik",
     "watchtower",
-    "dozzle",
     "portainer",
-    "homarr",
-    "netdata",
-    "cadvisor",
-    "alloy",
     # Read-only Docker-API gateway: mounts the socket :ro and re-exposes ONLY the GET endpoints
-    # prometheus docker_sd needs (CONTAINERS/NETWORKS/INFO=1, all write/exec/create=0). Its whole
-    # purpose is to keep the raw root socket OFF prometheus (live-audit 2026-06-05).
+    # its consumers need (CONTAINERS/NETWORKS/INFO=1, all write/exec/create=0). Its whole
+    # purpose is to keep the raw root socket off every other container (live-audit 2026-06-05).
     "docker-socket-proxy",
 }
 
@@ -99,11 +98,12 @@ def test_docker_sock_mount_allowlist() -> None:
 
 
 def test_var_run_rw_mount_allowlist() -> None:
-    """Rw mount of /var/run is allowed only for cadvisor (sole exception today).
+    """Rw mount of /var/run would only ever be allowed for cadvisor (historical exception).
 
-    C3b from RESEARCH-ADVANCED-2026-05-31.md §2 — after Task 2 hardens cadvisor
-    to mount the socket :ro instead of /var/run:rw, this test will find zero rw
-    /var/run mounts (the assert on name == 'cadvisor' will no longer trigger).
+    C3b from RESEARCH-ADVANCED-2026-05-31.md §2 — cadvisor has since been hardened off
+    an rw /var/run mount onto the read-only docker-socket-proxy (tcp), so this test
+    currently finds zero rw /var/run mounts in the catalog; the name == "cadvisor"
+    branch is a dormant guard, not an active exception.
     """
     descriptors = _all_descriptors()
     for name, d in descriptors.items():
@@ -112,5 +112,5 @@ def test_var_run_rw_mount_allowlist() -> None:
             mode = rest[-1] if rest and rest[-1] in ("ro", "rw") else "rw"
             if src in ("/var/run", "/var/run/") and mode == "rw":
                 assert name == "cadvisor", (
-                    f"{name}: rw /var/run mount only allowed for cadvisor (pre-Task-2), got {v!r}"
+                    f"{name}: rw /var/run mount only allowed for cadvisor, got {v!r}"
                 )
