@@ -614,6 +614,57 @@ def test_render_to_string_explicit_services_ignore_unused_unknown_profiles() -> 
     assert "missing-profile" not in rendered
 
 
+# ---------- traefik_enabled selection-derive (P0.3 / 15-04, ratified local-default) ----------
+
+
+def _traefik_labels_of(parsed: dict, service: str) -> list[str]:
+    labels = parsed["services"][service].get("labels", {})
+    keys = labels.keys() if isinstance(labels, dict) else labels
+    return [k for k in keys if str(k).startswith("traefik.")]
+
+
+def test_render_to_string_no_traefik_in_selection_derives_local() -> None:
+    """Ratified 2026-07-17: default install is LOCAL. Without traefik in the selection,
+    render_to_string must not emit traefik labels (traefik_enabled derives to False)."""
+    rendered = render_to_string(services=["llama-llm"], domain="lab.example.com")
+    parsed = yaml.safe_load(rendered)
+    assert _traefik_labels_of(parsed, "llama-llm") == []
+
+
+def test_render_to_string_traefik_in_selection_derives_public() -> None:
+    """traefik selected → traefik_enabled derives to True → routed services carry labels.
+    authelia+redis included: chain-llm routes require authelia (P0.3 topology gate)."""
+    rendered = render_to_string(
+        services=["traefik", "llama-llm", "authelia", "redis"],
+        domain="lab.example.com",
+    )
+    parsed = yaml.safe_load(rendered)
+    assert _traefik_labels_of(parsed, "llama-llm")
+
+
+def test_render_to_string_explicit_false_wins_over_traefik_selection() -> None:
+    """An explicit traefik_enabled always beats the selection-derive sentinel."""
+    rendered = render_to_string(
+        services=["traefik", "llama-llm", "authelia", "redis"],
+        domain="lab.example.com",
+        traefik_enabled=False,
+    )
+    parsed = yaml.safe_load(rendered)
+    assert _traefik_labels_of(parsed, "llama-llm") == []
+
+
+def test_render_to_string_explicit_true_without_traefik_service() -> None:
+    """render_cmd contract: explicit --traefik keeps labels even if traefik itself is not
+    selected (authelia is chain-public, so the P0.3 gate does not apply to it)."""
+    rendered = render_to_string(
+        services=["authelia", "redis"],
+        domain="lab.example.com",
+        traefik_enabled=True,
+    )
+    parsed = yaml.safe_load(rendered)
+    assert _traefik_labels_of(parsed, "authelia")
+
+
 def test_to_yaml_includes_header() -> None:
     compose = {"version": "3.9", "services": {}}
     out = to_yaml(compose)

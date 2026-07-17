@@ -857,10 +857,11 @@ def _deploy_impl(
     _emit("render", f"rendering compose for {selection_label}, domain={domain}")
     log.info("rendering compose for %s, domain=%s", selection_label, domain)
     try:
+        # traefik_enabled selection-derived (P0.3 / 15-04): local selections deploy without
+        # routing labels; selecting traefik = public opt-in (authelia topology gate applies).
         new_compose = render_to_string(
             profiles=profiles,
             services=services,
-            traefik_enabled=True,
             domain=domain,
         )
     except Exception as exc:

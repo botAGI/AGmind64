@@ -731,7 +731,7 @@ def _replace_domain_placeholder(value: Any, domain: str) -> Any:
 def render_to_string(
     profiles: list[str] | None = None,
     services_dir: Path = DEFAULT_SERVICES_DIR,
-    traefik_enabled: bool = True,
+    traefik_enabled: bool | None = None,
     domain: str | None = None,
     services: list[str] | None = None,
     *,
@@ -745,7 +745,13 @@ def render_to_string(
         profiles: list profile names to include (high-level filter)
         services: explicit service names (per-service selection, takes precedence)
         services_dir: где искать service descriptors
-        traefik_enabled: добавлять Traefik routing labels из routing config
+        traefik_enabled: добавлять Traefik routing labels из routing config.
+            None (default) = selection-derived: True iff "traefik" is in the selected
+            set. Ratified 2026-07-17 (P0.3 / 15-04): the default install is LOCAL —
+            install/deploy/wizard paths must not force public routing labels onto a
+            selection that deploys no edge; public access = traefik explicitly selected
+            (and then the authelia topology gate applies). An explicit bool always wins
+            (render_cmd's --traefik/--no-traefik flag).
         domain: если задан — заменить `agmind.dev` placeholder на этот домен
         project_name/data_root/config_root: compose-project namespacing (defaults reproduce
             the historical single-stack output byte-for-byte)
@@ -762,6 +768,8 @@ def render_to_string(
     selected = select_services(descriptors, profiles=profiles, services=services)
     if not selected:
         raise ValueError(f"No services match: profiles={profiles}, services={services}")
+    if traefik_enabled is None:
+        traefik_enabled = "traefik" in selected
     missing_dependencies = check_missing_dependencies(selected, descriptors)
     if missing_dependencies:
         details = "; ".join(

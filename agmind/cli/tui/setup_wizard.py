@@ -133,9 +133,11 @@ MODEL_CUSTOM_OPTION = ("Custom HuggingFace…", MODEL_CUSTOM_ID)
 
 
 # Smart defaults — production set:
-# edge + inference + vector store + observability + operator consoles.
+# inference + vector store + observability + operator consoles.
+# LOCAL by default (ratified 2026-07-17, P0.3 / 15-04): no traefik → no public routes,
+# services bind 127.0.0.1. Public access = operator explicitly selects traefik (edge),
+# and the renderer's authelia topology gate then requires the security profile.
 _DEFAULT_SERVICES = {
-    "traefik",
     "llama-llm",
     "llama-embed",
     "llama-rerank",
@@ -1120,10 +1122,11 @@ class AgmindSetupApp(App[SetupState | None]):
         try:
             from agmind.services.renderer import render_to_string
 
+            # traefik_enabled selection-derived (P0.3 / 15-04): preview the exact posture
+            # the selection will deploy — local (no traefik) previews without route labels.
             preview = render_to_string(
                 services=state.services,
                 domain=state.domain,
-                traefik_enabled=True,
             )
         except Exception as exc:
             self.notify(str(exc), title="Render failed", severity="error", timeout=10.0)

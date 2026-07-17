@@ -27,7 +27,9 @@ def test_state_default() -> None:
     assert s.domain == ""
     assert s.backend == "auto"
     # Smart defaults: core inference + operator observability/console services.
-    assert "traefik" in s.services
+    # LOCAL by default (ratified 2026-07-17, P0.3 / 15-04): traefik is NOT in the
+    # default set — public edge is an explicit opt-in.
+    assert "traefik" not in s.services
     assert "llama-llm" in s.services
     assert "qdrant" in s.services
     assert "prometheus" in s.services

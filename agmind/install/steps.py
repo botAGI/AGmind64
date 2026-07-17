@@ -1540,10 +1540,11 @@ class ComposeConfigStep(InstallStep):
         from agmind.services.renderer import render_to_string
 
         try:
+            # traefik_enabled selection-derived (P0.3 / 15-04): validate the exact posture
+            # that will deploy — local set (no traefik) must not force routing labels.
             compose_text = render_to_string(
                 services=config.services if config.services else None,
                 domain=config.domain,
-                traefik_enabled=True,
             )
         except Exception as exc:
             return InstallStepResult(
@@ -1626,10 +1627,10 @@ class ImagePullStep(InstallStep):
         from agmind.services.renderer import render_to_string
 
         try:
+            # traefik_enabled selection-derived (P0.3 / 15-04) — same posture as deploy.
             compose_text = render_to_string(
                 services=config.services if config.services else None,
                 domain=config.domain,
-                traefik_enabled=True,
             )
         except Exception as exc:
             return InstallStepResult(

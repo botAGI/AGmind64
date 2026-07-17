@@ -55,6 +55,8 @@ class InstallVerifyScenario:
 
 
 DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
+    # Mirrors setup_wizard._DEFAULT_SERVICES: LOCAL by default (ratified 2026-07-17,
+    # P0.3 / 15-04) — no traefik, no public routes.
     InstallVerifyScenario(
         "setup-default",
         (
@@ -73,7 +75,6 @@ DEFAULT_SCENARIOS: tuple[InstallVerifyScenario, ...] = (
             "watchtower",
             "dozzle",
             "netdata",
-            "traefik",
         ),
     ),
     InstallVerifyScenario(
@@ -572,10 +573,11 @@ def _verify_scenario(
 
     changes = deploy_result.diff.total_changes if deploy_result.diff is not None else 0
     if include_compose:
+        # traefik_enabled selection-derived (P0.3 / 15-04): a local scenario (no traefik)
+        # renders without routing labels; a public one (traefik selected) requires authelia.
         compose_text = render_to_string(
             services=list(selected_names),
             domain=domain,
-            traefik_enabled=True,
         )
         compose_file = install_dir / "docker-compose.yml"
         try:
