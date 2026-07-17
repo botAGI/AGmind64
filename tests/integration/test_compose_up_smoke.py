@@ -219,9 +219,14 @@ def _render_compose(profile: str, output_path: Path, domain: str = "ci.example.c
     from agmind.services.renderer import render_to_string
 
     profiles = [p.strip() for p in profile.split(",")]
+    # traefik_enabled=False mirrors the 14 compose_profile_check isolation lanes: the
+    # smoke strips traefik/authelia (_INSTALL_SETUP_SERVICES) before `up`, so routing
+    # labels are dead weight here and a traefik-bearing profile without security would
+    # otherwise fail-close on the P0.3 authelia topology gate (15-04).
     composed = render_to_string(
         profiles=profiles,
         domain=domain,
+        traefik_enabled=False,
     )
     output_path.write_text(composed, encoding="utf-8")
 
