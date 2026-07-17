@@ -413,12 +413,103 @@ def _check_devices() -> CheckResult:
     )
 
 
+_MES_FW_DEBUGFS = "/sys/kernel/debug/dri/{index}/amdgpu_firmware_info"
+_MES_FEATURE_RE = re.compile(r"^MES feature version:\s*\d+,\s*firmware version:\s*(0x[0-9a-fA-F]+)")
+_MES_FW_KNOWN_BAD = 0x83  # zenn 9-mo report (web-sourced) — warn only, never auto-pin.
+
+
+def _read_mes_firmware_hex(card_index: int) -> str | None:
+    """Read the MES firmware version hex string from root-only debugfs.
+
+    `/sys/kernel/debug` is `drwx------ root root` — PermissionError/FileNotFoundError
+    propagate to the caller, which degrades to status="skip" (never auto-sudo).
+    """
+    text = Path(_MES_FW_DEBUGFS.format(index=card_index)).read_text()
+    for line in text.splitlines():
+        match = _MES_FEATURE_RE.match(line.strip())
+        if match:
+            return match.group(1)
+    return None
+
+
+def _check_mes_firmware() -> CheckResult:
+    """Best-effort MES firmware advisory — read-only, never auto-sudo (D-03).
+
+    `/sys/kernel/debug/dri/<N>/amdgpu_firmware_info` is root-only; a non-root
+    `agmind doctor` run almost always degrades to status="skip" here — that is
+    the designed, honest behaviour, not a bug.
+    """
+    host = detect_host()
+    if host.gpu is None or not host.gpu.is_strix_halo:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message="Not on Strix Halo",
+        )
+
+    match = re.search(r"(\d+)$", host.gpu.card_path)
+    if not match:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message=f"Cannot parse card index from {host.gpu.card_path!r}",
+        )
+    card_index = int(match.group(1))
+    manual_hint = "sudo cat /sys/kernel/debug/dri/*/amdgpu_firmware_info | grep '^MES '"
+
+    try:
+        hex_str = _read_mes_firmware_hex(card_index)
+    except PermissionError:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message="Could not read MES firmware version (debugfs is root-only)",
+            fix_hint=f"Run manually: {manual_hint}",
+        )
+    except FileNotFoundError:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message=f"MES firmware debugfs path not found for card{card_index}",
+        )
+
+    if hex_str is None:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message="Could not determine MES firmware version",
+        )
+
+    try:
+        version = int(hex_str, 16)
+    except ValueError:
+        return CheckResult(
+            name="mes-firmware",
+            status="skip",
+            message=f"Could not parse MES firmware version: {hex_str!r}",
+        )
+
+    if version == _MES_FW_KNOWN_BAD:
+        return CheckResult(
+            name="mes-firmware",
+            status="warn",
+            message=f"MES firmware 0x{version:02x} is known-buggy (GPU hangs under load)",
+            fix_hint="Pin MES firmware to 0x80; re-check after kernel/firmware updates",
+        )
+    return CheckResult(
+        name="mes-firmware",
+        status="ok",
+        message=f"MES firmware 0x{version:02x}",
+    )
+
+
 _CHECKS = (
     _check_strix_halo_gpu,
     _check_kernel,
     _check_bios_uma,
     _check_gtt_pool,
     _check_devices,
+    _check_mes_firmware,
     _check_user_groups,
     _check_amdvlk_absent,
     _check_vulkan_tooling,
