@@ -177,13 +177,13 @@ class SetupState:
     """HF repo id для LLM, e.g. 'TheBloke/Llama-2-7B-GGUF'. Filled из catalog или вручную."""
     model_file: str = ""
     """GGUF filename inside repo. Empty = skip LLM download step."""
-    ctx_size: int = 16384
+    ctx_size: int = 65536
     """llama-llm --ctx-size flag."""
     kv_cache_type: str = "q8_0"
     """LLM KV cache quant (passed как both --cache-type-k и --cache-type-v)."""
     threads: int = -1
     """llama-llm --threads. -1 = auto (server picks CPU count)."""
-    parallel_slots: int = 1
+    parallel_slots: int = 4
     """llama-llm --parallel. >1 enables continuous batching N concurrent requests."""
 
     # Phase M5.1: separate embed model selector + per-service inference settings.
@@ -902,9 +902,9 @@ class AgmindSetupApp(App[SetupState | None]):
 
         ctx_select = self.query_one("#ctx-size-select", Select)
         try:
-            ctx_size = int(str(ctx_select.value)) if ctx_select.value is not None else 16384
+            ctx_size = int(str(ctx_select.value)) if ctx_select.value is not None else 65536
         except ValueError:
-            ctx_size = 16384
+            ctx_size = 65536
 
         kv_select = self.query_one("#kv-cache-select", Select)
         kv_cache_type = str(kv_select.value) if kv_select.value is not None else "q8_0"
@@ -918,10 +918,10 @@ class AgmindSetupApp(App[SetupState | None]):
         parallel_select = self.query_one("#parallel-select", Select)
         try:
             parallel_slots = (
-                int(str(parallel_select.value)) if parallel_select.value is not None else 1
+                int(str(parallel_select.value)) if parallel_select.value is not None else 4
             )
         except ValueError:
-            parallel_slots = 1
+            parallel_slots = 4
 
         state = SetupState(
             domain=domain,

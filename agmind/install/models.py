@@ -31,9 +31,9 @@ CTX_SIZE_PRESETS: tuple[tuple[int, str], ...] = (
     (2048, "2K — rerank default"),
     (4096, "4K — minimal LLM (fast, low VRAM)"),
     (8192, "8K — chat / embed default"),
-    (16384, "16K — LLM default (recommended)"),
+    (16384, "16K — минимальный LLM ctx"),
     (32768, "32K — long documents"),
-    (65536, "64K — codebase / long ctx"),
+    (65536, "64K — LLM default (recommended, np4 slot ctx)"),
     (131072, "128K — long-form (~21 GB KV q8_0)"),
     (262144, "256K — Qwen3.6 native max (~43 GB KV q8_0 — fits Strix Halo)"),
     (524288, "512K — beyond-native (нужен RoPE+YaRN, q4_0 KV; quality risk)"),
@@ -62,10 +62,10 @@ THREADS_PRESETS: tuple[tuple[int, str], ...] = (
 # Parallel slots — для concurrent serving. >1 enables continuous batching
 # (llama-server multiplexes N requests). Trade-off: VRAM × N.
 PARALLEL_PRESETS: tuple[tuple[int, str], ...] = (
-    (1, "1 — serial (default, безопасно)"),
+    (1, "1 — serial (безопасно, минимум VRAM)"),
     (2, "2 — light concurrency"),
-    (4, "4 — moderate (нужно ~2× ctx VRAM)"),
-    (8, "8 — heavy multi-tenant (нужно ~4× ctx VRAM)"),
+    (4, "4 — moderate (default, нужно ~2× ctx VRAM)"),
+    (8, "8 — heavy multi-tenant (нужно ~4× ctx VRAM; np≤8 cap — cliff np9)"),
 )
 
 

@@ -106,10 +106,10 @@ class InstallConfig:
     sudo_password: str | None = None  # secret — очищается после bootstrap
     # Phase N.G: LLM inference settings passed to llama-llm via env vars
     # (compose template reads AGMIND_MODEL_FILE / AGMIND_LLM_CTX_SIZE / AGMIND_LLM_KV_CACHE).
-    ctx_size: int = 16384
+    ctx_size: int = 65536
     kv_cache_type: str = "q8_0"
     threads: int = -1
-    parallel_slots: int = 1
+    parallel_slots: int = 4
     # Phase M5.1: separate embed/rerank model + per-service settings.
     embed_repo: str | None = None
     embed_file: str | None = None

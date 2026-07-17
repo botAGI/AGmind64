@@ -428,7 +428,7 @@ def register(app: typer.Typer) -> None:
             model_id=model_id or "qwen36-a3b-q4km",
             model_repo=model_repo,
             model_file=model_file,
-            ctx_size=ctx_size or 16384,
+            ctx_size=ctx_size or 65536,
             kv_cache_type=kv_cache or "q8_0",
         )
         if from_state is not None:
