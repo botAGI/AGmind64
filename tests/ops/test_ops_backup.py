@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import stat
@@ -15,6 +16,7 @@ import pytest
 from agmind.ops.backup import (
     BACKUP_FORMAT_VERSION,
     METADATA_FILENAME,
+    BackupResult,
     BackupSource,
     create_backup,
     default_sources,
@@ -1473,3 +1475,103 @@ def test_data_backup_is_fresh_respects_custom_window_hours(tmp_path: Path) -> No
 
     assert data_backup_is_fresh(tmp_path, window_hours=1) is False
     assert data_backup_is_fresh(tmp_path, window_hours=3) is True
+
+
+# ---------- D-06: cmd_backup stamps marker after successful --include-data backup ----------
+
+
+def test_cmd_backup_include_data_success_writes_marker_with_matching_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME, read_data_backup_marker
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / ".env").write_text("POSTGRES_PASSWORD=pw\n", encoding="utf-8")
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["qdrant"])
+
+    out = tmp_path / "b.tar.gz"
+    archive_bytes = b"fake archive contents"
+
+    def fake_create_backup(
+        output_path: Path,
+        sudo_password: str | None = None,
+        data_sources: object = None,
+    ) -> BackupResult:
+        Path(output_path).write_bytes(archive_bytes)
+        return BackupResult(
+            output_path=Path(output_path),
+            bytes_written=len(archive_bytes),
+            sources_included=("compose", "env"),
+            sources_missing=(),
+        )
+
+    monkeypatch.setattr(ops_cmd, "create_backup", fake_create_backup)
+
+    rc = ops_cmd.cmd_backup(out, include_data=True, install_dir=install)
+    assert rc == 0
+
+    marker_path = install / DATA_BACKUP_MARKER_NAME
+    assert marker_path.exists()
+    marker = read_data_backup_marker(install)
+    assert marker is not None
+    assert marker["archive"] == str(out)
+    assert marker["sha256"] == hashlib.sha256(archive_bytes).hexdigest()
+
+
+def test_cmd_backup_no_include_data_writes_no_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    out = tmp_path / "b.tar.gz"
+
+    monkeypatch.setattr(
+        ops_cmd,
+        "create_backup",
+        lambda **kw: BackupResult(out, 10, ("compose",), ()),
+    )
+
+    rc = ops_cmd.cmd_backup(out, install_dir=install)  # include_data defaults False
+    assert rc == 0
+    assert not (install / DATA_BACKUP_MARKER_NAME).exists()
+
+
+def test_cmd_backup_include_data_failure_writes_no_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / ".env").write_text("POSTGRES_PASSWORD=pw\n", encoding="utf-8")
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["qdrant"])
+
+    def fake_create_backup(**_kw: object) -> BackupResult:
+        raise OSError("sudo command failed (cat): denied")
+
+    monkeypatch.setattr(ops_cmd, "create_backup", fake_create_backup)
+
+    rc = ops_cmd.cmd_backup(tmp_path / "b.tar.gz", include_data=True, install_dir=install)
+    assert rc == 1
+    assert not (install / DATA_BACKUP_MARKER_NAME).exists()
+
+
+def test_cmd_backup_include_data_no_services_writes_no_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agmind.cli import ops_cmd
+    from agmind.ops.backup import DATA_BACKUP_MARKER_NAME
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: [])
+
+    rc = ops_cmd.cmd_backup(tmp_path / "b.tar.gz", include_data=True, install_dir=install)
+    assert rc != 0
+    assert not (install / DATA_BACKUP_MARKER_NAME).exists()

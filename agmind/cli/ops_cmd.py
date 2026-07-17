@@ -32,6 +32,7 @@ from agmind.ops.backup import (
     restore_plan,
     verify_backup,
     volume_restore_target,
+    write_data_backup_marker,
 )
 from agmind.ops.exec import logs as do_logs
 from agmind.ops.exec import shell as do_shell
@@ -197,6 +198,24 @@ def cmd_backup(
     )
     if result.sources_missing:
         print(f"  missing  ({len(result.sources_missing)}): {', '.join(result.sources_missing)}")
+    if include_data:
+        # D-06: stamp the data-backup marker on the SUCCESS path only (after create_backup
+        # returned, before this function returns 0) — the deploy stateful-apply guard reads it
+        # to prove a recent --include-data backup exists. sha256 is chunked (models_cmd's
+        # _file_sha256) since the archive may be multi-GB with data sources included. Best
+        # effort: a marker-stamp failure (e.g. archive vanished) must not turn an already
+        # successful backup into a reported failure.
+        try:
+            from agmind.cli.models_cmd import _file_sha256
+
+            sha256 = _file_sha256(result.output_path)
+            write_data_backup_marker(install_dir, result.output_path, sha256)
+        except OSError as exc:
+            print(
+                f"agmind backup: could not stamp data-backup marker ({exc}) — backup itself "
+                "succeeded, but the stateful-apply guard will not see it as fresh.",
+                file=sys.stderr,
+            )
     if not include_data:
         # Make the config-only scope LOUD: this archive contains NO database dumps / volume
         # data, so a restore from it cannot recover any stateful store (live-audit 2026-06-05
