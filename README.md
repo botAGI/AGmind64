@@ -34,6 +34,13 @@ wired together and deployed by a single `make setup`.
 > **Status:** pre-1.0. Single-node Docker Compose on Ubuntu is the supported
 > lane; multi-node cluster discovery is experimental.
 
+**Honest single-box capacity:** one Strix Halo host serves up to ~8
+concurrently active generations (roughly 10–30 chat+RAG users under typical
+usage patterns). MoE models are the target model class on this hardware —
+dense 70B-class models are batch-only. Keep long-context RAG prompts short:
+prefill throughput is the platform's bottleneck at long context depths, not
+decode speed.
+
 ## How it compares
 
 | | AGmind | Manual Docker Compose | Cloud AI stack |
