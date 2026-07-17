@@ -10,10 +10,19 @@ fields written by a newer agmind version are dropped, not rejected).
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+from agmind.core.files import write_text_atomic
+from agmind.core.proc import sudo_argv, sudo_stdin_text
+
+DEPLOY_STATE_FILENAME = "deploy-state.json"
 
 
 class DeployState(BaseModel):
@@ -67,4 +76,68 @@ class DeployState(BaseModel):
         )
 
 
-__all__ = ["DeployState"]
+def write_deploy_state(
+    install_dir: Path,
+    state: DeployState,
+    sudo_password: str | None = None,
+) -> None:
+    """Write `deploy-state.json` atomically at 0644, with a sudo fallback.
+
+    Tries `write_text_atomic` (core.files) first — the same primitive every other
+    non-secret runtime file goes through. If `install_dir` is root-owned and the
+    direct write raises `PermissionError`, falls back to the
+    `sudo install -D -m 0644 <tmp> <path>` idiom (mirrors
+    `agmind.deploy.runner._write_text_maybe_sudo`) when a `sudo_password` is supplied;
+    otherwise the `PermissionError` is re-raised.
+    """
+    path = install_dir / DEPLOY_STATE_FILENAME
+    content = state.model_dump_json(indent=2) + "\n"
+    try:
+        write_text_atomic(path, content, mode=0o644)
+        return
+    except PermissionError:
+        if sudo_password is None:
+            raise
+
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", prefix=".agmind-deploy-state-", delete=False
+    ) as handle:
+        tmp_path = Path(handle.name)
+        handle.write(content)
+    try:
+        result = subprocess.run(
+            sudo_argv(["install", "-D", "-m", "0644", str(tmp_path), str(path)]),
+            capture_output=True,
+            text=True,
+            check=False,
+            input=sudo_stdin_text(sudo_password),
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "sudo install failed").strip()
+            raise OSError(f"cannot write {path} via sudo: {detail}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def load_deploy_state(install_dir: Path) -> DeployState | None:
+    """Best-effort load of `deploy-state.json`.
+
+    NEVER raises (mirrors `agmind.cli.install_state.load_prior_setup_state`): a missing
+    or corrupt file just means "no known deploy state" — day-2 commands fall back to
+    legacy state or an explicit `--profile`, they must not crash.
+    """
+    path = install_dir / DEPLOY_STATE_FILENAME
+    if not path.exists():
+        return None
+    try:
+        return DeployState.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 - never-raise contract (D-01)
+        print(
+            f"agmind: deploy state at {path} is unreadable ({exc}); proceeding without a "
+            "known prior deploy state.",
+            file=sys.stderr,
+        )
+        return None
+
+
+__all__ = ["DeployState", "load_deploy_state", "write_deploy_state"]

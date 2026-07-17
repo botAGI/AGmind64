@@ -35,6 +35,7 @@ from agmind.deploy.proxmox_inventory import (
 )
 from agmind.deploy.runner import DeployResult, deploy, rollback
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
+from agmind.deploy.state import DeployState, load_deploy_state, write_deploy_state
 from agmind.deploy.target_checks import (
     DeploymentCheckIssue,
     DeploymentCheckReport,
@@ -65,6 +66,7 @@ __all__ = [
     "DEFAULT_DEPLOY_TARGETS_DIR",
     "DEFAULT_INVENTORY_PATH",
     "DeployResult",
+    "DeployState",
     "DeploymentConfigurator",
     "DeploymentCheckIssue",
     "DeploymentCheckReport",
@@ -93,6 +95,7 @@ __all__ = [
     "gc_networks",
     "gc_volumes",
     "inventory_from_tofu_outputs",
+    "load_deploy_state",
     "load_deploy_targets",
     "load_tofu_output_json",
     "render_inventory_yaml",
@@ -100,5 +103,6 @@ __all__ = [
     "validate_deploy_targets",
     "validate_deploy_target_report",
     "validate_kubernetes_proof_workflow_report",
+    "write_deploy_state",
     "write_inventory_from_tofu_outputs",
 ]
