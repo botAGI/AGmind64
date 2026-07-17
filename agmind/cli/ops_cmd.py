@@ -644,6 +644,25 @@ def cmd_rotate_secrets(
                 f"{', '.join(rotated_db_servers)}"
             )
 
+        # authelia-secrets→FILE: a rotated authelia secret also lives in a 0600 secret FILE
+        # authelia reads via *_FILE (invisible to the ${VAR}-scanning secret_consumers walk) —
+        # exact parity with the DB_SECRET_FILES case above. Re-materialize the FILE and
+        # force-recreate authelia below, or it keeps reading the OLD secret while .env
+        # consumers move to the new one → auth desync. Closes the SEC-3 desync class for
+        # authelia (SPEC-15.4).
+        from agmind.install.secret_keys import AUTHELIA_SECRET_FILES
+
+        rotated_authelia_holders: set[str] = set()
+        for svc, fname, env_key in AUTHELIA_SECRET_FILES:
+            if env_key in plan.rotate:
+                write_private_text(secrets_dir / fname, new_env[env_key])
+                rotated_authelia_holders.add(svc)
+        if rotated_authelia_holders:
+            print(
+                f"✓ re-materialized {len(rotated_authelia_holders)} authelia secret file(s): "
+                f"{', '.join(sorted(rotated_authelia_holders))}"
+            )
+
         if not recreate:
             print(
                 "skipped recreate (--no-recreate). Run "
@@ -654,13 +673,14 @@ def cmd_rotate_secrets(
 
         from agmind.services.renderer import load_descriptors
 
-        # Union the consumers (from ${VAR} scan) with the DB SERVERS whose FILE we just
-        # rewrote — the servers reference the secret via *_PASSWORD_FILE so secret_consumers
-        # can't see them, but they MUST be recreated to re-read the file.
-        # live-audit 2026-06-07 (SEC-3).
+        # Union the consumers (from ${VAR} scan) with the DB SERVERS + authelia whose FILE(s)
+        # we just rewrote — those reference the secret via *_FILE so secret_consumers can't
+        # see them, but they MUST be recreated to re-read the file.
+        # live-audit 2026-06-07 (SEC-3); authelia parity SPEC-15.4.
         holders = sorted(
             set(holders_for(plan.rotate, secret_consumers(load_descriptors())))
             | set(rotated_db_servers)
+            | rotated_authelia_holders
         )
         running = set(_running_compose_services(install_dir))
         to_recreate = [h for h in holders if h in running]

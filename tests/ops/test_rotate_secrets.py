@@ -222,6 +222,76 @@ def test_rotate_resyncs_db_secret_file_and_recreates_server(tmp_path, monkeypatc
     assert "postgres" in " ".join(seen["cmd"])  # the server is force-recreated to re-read the file
 
 
+def test_rotate_resyncs_authelia_secret_file_and_recreates_authelia(tmp_path, monkeypatch) -> None:
+    """SPEC-15.4 (authelia _FILE rotate-parity, closes the SEC-3 desync class for authelia):
+    rotating AUTHELIA_SESSION_SECRET must re-materialize the 0600 secret FILE authelia reads
+    (*_FILE) AND force-recreate authelia — not just rewrite .env (which only ${VAR}-scanning
+    consumers read; authelia's own env references the secret via a literal *_FILE path)."""
+    import subprocess
+
+    from agmind.cli import ops_cmd
+    from agmind.core.env import parse_env_file
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / ".env").write_text("AUTHELIA_SESSION_SECRET=oldsess\n", encoding="utf-8")
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "authelia_session_secret").write_text("oldsess", encoding="utf-8")
+
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["authelia", "dify-api"])
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0)
+
+    rc = ops_cmd.cmd_rotate_secrets(
+        install_dir=install,
+        secrets_dir=secrets,
+        yes=True,
+        compose_run=fake_run,
+    )
+    assert rc == 0
+    new_sess = parse_env_file(install / ".env")["AUTHELIA_SESSION_SECRET"]
+    file_val = (secrets / "authelia_session_secret").read_text(encoding="utf-8")
+    assert file_val != "oldsess"  # FILE re-materialized, not left stale
+    assert file_val == new_sess  # FILE matches the rotated .env value (no skew)
+    assert "authelia" in " ".join(seen["cmd"])  # authelia is force-recreated to re-read the file
+
+
+def test_rotate_unrelated_secret_leaves_authelia_files_untouched(tmp_path, monkeypatch) -> None:
+    """A rotation that does not touch any of authelia's 4 secret keys must not rewrite any of
+    its secret files or schedule it for force-recreate."""
+    import subprocess
+
+    from agmind.cli import ops_cmd
+
+    install = tmp_path / "opt"
+    install.mkdir()
+    (install / ".env").write_text("DIFY_PLUGIN_DAEMON_KEY=olddaemon\n", encoding="utf-8")
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "authelia_session_secret").write_text("untouched", encoding="utf-8")
+
+    monkeypatch.setattr(ops_cmd, "_running_compose_services", lambda _d: ["dify-worker"])
+    seen: dict[str, object] = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0)
+
+    rc = ops_cmd.cmd_rotate_secrets(
+        install_dir=install,
+        secrets_dir=secrets,
+        yes=True,
+        compose_run=fake_run,
+    )
+    assert rc == 0
+    assert (secrets / "authelia_session_secret").read_text(encoding="utf-8") == "untouched"
+    assert "authelia" not in " ".join(seen.get("cmd", []))
+
+
 def test_rotate_secrets_refused_while_deploy_lock_held(
     tmp_path, monkeypatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
