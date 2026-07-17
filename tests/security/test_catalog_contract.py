@@ -63,26 +63,39 @@ def _all_descriptors() -> dict[str, ServiceDescriptor]:
 
 
 def test_docker_sock_mount_allowlist() -> None:
-    """Only SOCK_ALLOW services may mount /var/run/docker.sock, and only :ro.
+    """SOCK_ALLOW must equal the actual set of raw-socket mounters, in both directions.
 
-    C3 from RESEARCH-ADVANCED-2026-05-31.md §2 — fail-closed: any service outside
-    the allowlist that mounts the docker socket causes an immediate CI failure.
-    A 7th service silently gaining the socket fails this test.
+    C3 from RESEARCH-ADVANCED-2026-05-31.md §2, made bidirectional — a one-directional
+    `mounters ⊆ SOCK_ALLOW` gate lets the allowlist rot with phantom entries (services
+    that migrated off the raw socket) while still catching a new undeclared mounter.
+    Both directions are asserted:
+      - SOCK_ALLOW - ACTUAL_SOCK_MOUNTERS == set(): no phantom entries (a service listed
+        but not actually mounting the socket).
+      - ACTUAL_SOCK_MOUNTERS - SOCK_ALLOW == set(): no undeclared mounter (a service
+        mounting the socket without going through allowlist review).
     """
     descriptors = _all_descriptors()
+    actual_sock_mounters = {
+        name for name, d in descriptors.items() if any(v.split(":")[0] == SOCK for v in d.volumes)
+    }
+    phantoms = SOCK_ALLOW - actual_sock_mounters
+    assert not phantoms, (
+        f"SOCK_ALLOW lists {sorted(phantoms)!r} but they do not mount docker.sock — "
+        "remove the phantom entry (or fix the descriptor if the mount was dropped by mistake)"
+    )
+    undeclared = actual_sock_mounters - SOCK_ALLOW
+    assert not undeclared, (
+        f"{sorted(undeclared)!r} mount docker.sock but are not in SOCK_ALLOW "
+        f"({sorted(SOCK_ALLOW)!r}) — add to allowlist only after security review"
+    )
     for name, d in descriptors.items():
         mounts = [v for v in d.volumes if v.split(":")[0] == SOCK]
-        if mounts:
-            assert name in SOCK_ALLOW, (
-                f"{name}: mounts docker.sock but is not in SOCK_ALLOW "
-                f"({sorted(SOCK_ALLOW)!r}) — add to allowlist only after security review"
+        for m in mounts:
+            assert m.endswith(":ro"), (
+                f"{name}: docker.sock must be mounted read-only, got {m!r} "
+                "(NOTE: :ro on the socket does NOT make Docker API read-only — "
+                "POST /containers/create still works)"
             )
-            for m in mounts:
-                assert m.endswith(":ro"), (
-                    f"{name}: docker.sock must be mounted read-only, got {m!r} "
-                    "(NOTE: :ro on the socket does NOT make Docker API read-only — "
-                    "POST /containers/create still works)"
-                )
 
 
 def test_var_run_rw_mount_allowlist() -> None:
