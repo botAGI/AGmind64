@@ -1814,6 +1814,92 @@ def test_deploy_apply_non_destructive_diff_does_not_prompt(
     assert install_dir / "docker-compose.yml" in writes
 
 
+# ---------- D-05b: no-op apply still reconciles runtime (idempotent apply) ----------
+
+
+def test_deploy_apply_reconciles_runtime_when_no_config_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """apply=True + has_changes=False must still run compose up + health (no lying "no changes")."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+    monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
+    monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
+    monkeypatch.setattr(runner, "SnapshotManager", _NoopSnapshotManager)
+
+    stream_calls: list[list[str]] = []
+
+    def fake_stream_compose(
+        args: list[str],
+        cwd: Path,
+        sudo_password: str | None = None,
+        on_line: object = None,
+        cancel_event: object = None,
+    ) -> tuple[int, str]:
+        stream_calls.append(args)
+        return 0, ""
+
+    monkeypatch.setattr(runner, "_stream_compose", fake_stream_compose)
+
+    healthy_calls: list[object] = []
+
+    def fake_wait_healthy(*args: object, **kwargs: object) -> tuple[bool, list[str]]:
+        healthy_calls.append((args, kwargs))
+        return True, []
+
+    monkeypatch.setattr(runner, "_wait_healthy", fake_wait_healthy)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=True,
+        no_prompt=True,
+        services=["postgres"],
+    )
+
+    assert result.success
+    assert result.diff is not None
+    assert not result.diff.has_changes
+    up_calls = [c for c in stream_calls if c[:2] == ["up", "-d"]]
+    assert len(up_calls) == 1
+    assert healthy_calls
+    assert "reconciled" in result.message
+    assert "unchanged" in result.message
+
+
+def test_deploy_dry_run_no_changes_does_not_call_compose_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """apply=False (dry-run) with no changes still returns early — unchanged UX."""
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    rendered = "services:\n  postgres:\n    image: postgres:17.6-alpine\n"
+    (install_dir / "docker-compose.yml").write_text(rendered, encoding="utf-8")
+
+    monkeypatch.setattr(runner, "render_to_string", lambda **_kwargs: rendered)
+
+    def fail_stream_compose(*_a: object, **_k: object) -> tuple[int, str]:
+        raise AssertionError("compose up must not run on a dry-run no-op")
+
+    monkeypatch.setattr(runner, "_stream_compose", fail_stream_compose)
+
+    result = runner.deploy(
+        profiles=["core"],
+        install_dir=install_dir,
+        domain="ci.example.com",
+        apply=False,
+        services=["postgres"],
+    )
+
+    assert result.success
+    assert result.message == "no changes — current deployment matches rendered"
+
+
 def test_wait_healthy_accepts_compose_json_array(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

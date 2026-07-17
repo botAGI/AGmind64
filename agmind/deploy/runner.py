@@ -819,26 +819,38 @@ def _deploy_impl(
     _emit("diff", "computing diff vs current deployment")
     diff = compute_diff_from_files(compose_file, new_compose)
 
-    if not diff.has_changes:
-        _emit("success", "no changes — current matches rendered")
-        return DeployResult(
-            success=True,
-            diff=diff,
-            message="no changes — current deployment matches rendered",
-        )
-
-    _emit(
-        "diff",
-        f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}",
-    )
-
+    # D-05b: `not apply` (dry-run) is checked FIRST, and the no-changes fast-path
+    # short-circuits ONLY inside it. An apply=True call must always fall through to
+    # snapshot/write/pull/`compose up`/health below — even when has_changes is
+    # False — so a crashed-but-config-unchanged container gets idempotently
+    # re-upped and re-checked instead of a lying "no changes" (closes the runtime
+    # half of P0.8, the prometheus-255 class).
     if not apply:
+        if not diff.has_changes:
+            _emit("success", "no changes — current matches rendered")
+            return DeployResult(
+                success=True,
+                diff=diff,
+                message="no changes — current deployment matches rendered",
+            )
+        _emit(
+            "diff",
+            f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}",
+        )
         # Dry run mode — return diff for caller to display
         return DeployResult(
             success=True,
             diff=diff,
             message=f"{diff.total_changes} pending change(s) — re-run with --apply to deploy",
         )
+
+    if diff.has_changes:
+        _emit(
+            "diff",
+            f"{diff.total_changes} change(s): +{len(diff.added)} -{len(diff.removed)} ~{len(diff.image_changed) + len(diff.config_changed)}",
+        )
+    else:
+        _emit("diff", "no changes — reconciling runtime (idempotent apply)")
 
     # G.1: confirmation gate for destructive applies. Removals/recreations destroy
     # containers + connected resources, so prompt before any mutation UNLESS no_prompt
@@ -1098,12 +1110,20 @@ def _deploy_impl(
             rollback_performed=rolled_back,
         )
 
-    _emit("success", f"deployed {diff.total_changes} change(s) — all healthy")
+    if diff.has_changes:
+        message = f"deployed {diff.total_changes} change(s) — all healthy"
+    else:
+        message = (
+            f"configuration: unchanged; runtime: reconciled {len(service_names)} "
+            "services; health: passed"
+        )
+
+    _emit("success", message)
     return DeployResult(
         success=True,
         diff=diff,
         snapshot=snapshot,
-        message=f"deployed {diff.total_changes} change(s) — all healthy",
+        message=message,
     )
 
 
