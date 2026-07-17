@@ -18,17 +18,26 @@ ports:
 - 127.0.0.1:9091:9091
 # /config is WRITABLE: Authelia chowns it + writes db.sqlite3/notification.txt there.
 # A staged configuration.yml + users_database.yml live here (see templates/authelia/);
-# secrets come from the env below, not the file.
+# the 4 auth secrets come from mounted 0600 files below (_FILE convention), NOT plain env —
+# narrows the docker-inspect / /proc-environ-visible plaintext surface (SPEC-15.4).
 volumes:
 # /config (writable): staged configuration.yml + users_database.yml; Authelia chowns it.
 # /data (writable, persistent): sqlite DB + notifications — survives a config re-stage.
 - /etc/agmind/authelia:/config
 - /var/lib/agmind/authelia:/data
+# Secret files (0600, installer/rotate-secrets materialized — AUTHELIA_SECRET_FILES in
+# agmind/install/secret_keys.py). Authelia's native `_FILE` convention auto-loads any config
+# key ending in key|secret|password|token|certificate_chain from the file it points at
+# (authelia.com/configuration/methods/secrets/).
+- /var/lib/agmind/secrets/authelia_session_secret:/run/secrets/authelia_session_secret:ro
+- /var/lib/agmind/secrets/authelia_storage_encryption_key:/run/secrets/authelia_storage_encryption_key:ro
+- /var/lib/agmind/secrets/authelia_reset_jwt_secret:/run/secrets/authelia_reset_jwt_secret:ro
+- /var/lib/agmind/secrets/authelia_session_redis_password:/run/secrets/authelia_session_redis_password:ro
 env:
-  AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?AUTHELIA_SESSION_SECRET is required}
-  AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?AUTHELIA_STORAGE_ENCRYPTION_KEY is required}
-  AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET: ${AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET:?AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET is required}
-  AUTHELIA_SESSION_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+  AUTHELIA_SESSION_SECRET_FILE: /run/secrets/authelia_session_secret
+  AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /run/secrets/authelia_storage_encryption_key
+  AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /run/secrets/authelia_reset_jwt_secret
+  AUTHELIA_SESSION_REDIS_PASSWORD_FILE: /run/secrets/authelia_session_redis_password
 depends_on:
 - redis
 # Authelia's OWN login portal must be routed at auth.<domain> WITH a cert. Without this

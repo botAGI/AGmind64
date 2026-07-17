@@ -505,6 +505,14 @@ def _materialize_runtime_files(
                 reader_uid=DB_SECRET_FILE_READER_UID.get(fname),
             )
 
+    # Authelia (consumer, not a DB server) reads its 4 secrets via the native `_FILE` convention —
+    # same single-source registry consumed by rotate-secrets (SPEC-15.4, parity with DB_SECRET_FILES).
+    from agmind.install.secret_keys import AUTHELIA_SECRET_FILES
+
+    for svc, fname, env_key in AUTHELIA_SECRET_FILES:
+        if svc in selected and runtime_env.get(env_key):
+            _write_secret_file(data_dir / "secrets" / fname, runtime_env[env_key])
+
     if "traefik" in selected:
         if config.cf_api_token:
             _write_secret_file(data_dir / "secrets" / "cf_dns_api_token", config.cf_api_token)

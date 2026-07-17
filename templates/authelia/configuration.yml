@@ -1,10 +1,10 @@
 # Minimal Authelia 4.39 config — AGmind (security profile).
-# Secrets are NOT in this file — Authelia reads them from the runtime .env as env vars
-# (it merges AUTHELIA_<PATH> over the file at load):
-#   AUTHELIA_SESSION_SECRET                              -> session.secret
-#   AUTHELIA_STORAGE_ENCRYPTION_KEY                      -> storage.encryption_key
-#   AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET -> identity_validation.reset_password.jwt_secret
-#   AUTHELIA_SESSION_REDIS_PASSWORD (= REDIS_PASSWORD)   -> session.redis.password
+# Secrets are NOT in this file — Authelia reads them via its native `_FILE` convention from
+# 0600 files mounted at /run/secrets/ (installer/rotate-secrets materialized; SPEC-15.4):
+#   AUTHELIA_SESSION_SECRET_FILE                              -> session.secret
+#   AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE                      -> storage.encryption_key
+#   AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE -> identity_validation.reset_password.jwt_secret
+#   AUTHELIA_SESSION_REDIS_PASSWORD_FILE (= REDIS_PASSWORD)   -> session.redis.password
 # Manage users in users_database.yml. __AGMIND_DOMAIN__ is substituted at staging time.
 theme: light
 

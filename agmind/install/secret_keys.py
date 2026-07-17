@@ -112,6 +112,25 @@ DB_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
 # the catalog drops to a non-root uid before reading its password file.
 DB_SECRET_FILE_READER_UID: dict[str, int] = {}
 
+# CONSUMER (not DB-server) secrets read from a 0600 file via the image's native `_FILE`
+# convention. Authelia is a consumer of these secret values, not the server that owns them
+# (the session-redis entry reuses REDIS_PASSWORD; redis itself still gets it via --requirepass).
+# Single source of truth for: install materialization (_materialize_runtime_files) AND
+# rotate-secrets (which must re-write the FILE + force-recreate authelia, not just rewrite .env —
+# authelia references the secret via *_FILE, a literal path, invisible to the ${VAR}-scanning
+# secret_consumers walk) — exact parity with DB_SECRET_FILES, SPEC-15.4 (closes the SEC-3 desync
+# class for authelia). (service, secret_filename, env_key).
+AUTHELIA_SECRET_FILES: tuple[tuple[str, str, str], ...] = (
+    ("authelia", "authelia_session_secret", "AUTHELIA_SESSION_SECRET"),
+    ("authelia", "authelia_storage_encryption_key", "AUTHELIA_STORAGE_ENCRYPTION_KEY"),
+    (
+        "authelia",
+        "authelia_reset_jwt_secret",
+        "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET",
+    ),
+    ("authelia", "authelia_session_redis_password", "REDIS_PASSWORD"),
+)
+
 
 def generate_for(key: str) -> str:
     """Generate a fresh value for ``key`` using the installer's exact format."""

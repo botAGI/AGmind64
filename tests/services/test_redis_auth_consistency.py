@@ -62,6 +62,9 @@ def _service_carries_redis_credential(descriptor: dict) -> bool:
     Acceptable forms:
       - `REDIS_PASSWORD: ${...}` in env (explicit password var)
       - `AUTHELIA_SESSION_REDIS_PASSWORD: ${...}` in env (Authelia uses koanf env mapping)
+      - `AUTHELIA_SESSION_REDIS_PASSWORD_FILE: /run/secrets/...` (SPEC-15.4: Authelia now reads
+        the session-redis password via the native `_FILE` convention, mounted 0600 — same
+        credential, no longer plain env)
       - `CELERY_BROKER_URL: redis://:${...PASSWORD...}@redis...` (embedded in URL)
     """
     env = descriptor.get("env") or {}
@@ -70,6 +73,8 @@ def _service_carries_redis_credential(descriptor: dict) -> bool:
     # Authelia uses koanf env convention: session.redis.password →
     # AUTHELIA_SESSION_REDIS_PASSWORD (confirmed in 08-RESEARCH-B1 §2e)
     if "AUTHELIA_SESSION_REDIS_PASSWORD" in env:
+        return True
+    if "AUTHELIA_SESSION_REDIS_PASSWORD_FILE" in env:
         return True
     celery_url = env.get("CELERY_BROKER_URL", "")
     # Must embed a non-empty password in the URL: redis://:${...}@redis...
