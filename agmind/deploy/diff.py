@@ -29,27 +29,48 @@ class ComposeDiff:
     removed: list[str] = field(default_factory=list)
     image_changed: list[ServiceChange] = field(default_factory=list)
     config_changed: list[ServiceChange] = field(default_factory=list)
+    top_level_changed: list[str] = field(default_factory=list)
+    """Top-level compose keys (networks/volumes/secrets/configs/name) that differ (D-05a)."""
     raw_unified: str = ""
     """Full unified text diff для debugging."""
 
     @property
     def has_changes(self) -> bool:
-        return bool(self.added or self.removed or self.image_changed or self.config_changed)
+        return bool(
+            self.added
+            or self.removed
+            or self.image_changed
+            or self.config_changed
+            or self.top_level_changed
+        )
 
     @property
     def total_changes(self) -> int:
         return (
-            len(self.added) + len(self.removed) + len(self.image_changed) + len(self.config_changed)
+            len(self.added)
+            + len(self.removed)
+            + len(self.image_changed)
+            + len(self.config_changed)
+            + len(self.top_level_changed)
         )
 
 
-def _extract_services(yaml_text: str) -> dict[str, dict[str, object]]:
-    """Quick service extraction without full yaml parse cost (good enough для diff)."""
+_TOP_LEVEL_KEYS = ("networks", "volumes", "secrets", "configs", "name")
+"""D-05a: non-`services` keys compared structurally by compute_diff."""
+
+
+def _parse_compose(yaml_text: str) -> dict[str, object]:
+    """Parse compose YAML once; non-dict/empty content -> {}."""
     import yaml
 
     data = yaml.safe_load(yaml_text)
     if not isinstance(data, dict):
         return {}
+    return data
+
+
+def _extract_services(data: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Pull `services:` out of an already-parsed compose mapping."""
     services = data.get("services", {})
     if not isinstance(services, dict):
         return {}
@@ -63,8 +84,11 @@ def compute_diff(current_text: str, new_text: str) -> ComposeDiff:
         current_text: текущий /opt/agmind/docker-compose.yml content (или empty string)
         new_text: только что rendered compose
     """
-    current_services = _extract_services(current_text)
-    new_services = _extract_services(new_text)
+    current_data = _parse_compose(current_text)
+    new_data = _parse_compose(new_text)
+
+    current_services = _extract_services(current_data)
+    new_services = _extract_services(new_data)
 
     current_names = set(current_services.keys())
     new_names = set(new_services.keys())
@@ -96,7 +120,14 @@ def compute_diff(current_text: str, new_text: str) -> ComposeDiff:
         if cur != new:
             config_changed.append(ServiceChange(name=name, kind="config_changed", detail=""))
 
-    # Raw unified для verbose mode
+    # Top-level keys (D-05a): structural (parsed-dict) equality, NOT a text/difflib
+    # comparison — comment/whitespace/key-order-only churn in the rendered YAML must
+    # never flip has_changes.
+    top_level_changed = [
+        key for key in _TOP_LEVEL_KEYS if current_data.get(key) != new_data.get(key)
+    ]
+
+    # Raw unified для verbose mode — display-only, never consulted for has_changes.
     raw_unified = "".join(
         difflib.unified_diff(
             current_text.splitlines(keepends=True),
@@ -112,6 +143,7 @@ def compute_diff(current_text: str, new_text: str) -> ComposeDiff:
         removed=removed,
         image_changed=image_changed,
         config_changed=config_changed,
+        top_level_changed=top_level_changed,
         raw_unified=raw_unified,
     )
 

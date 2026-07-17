@@ -26,9 +26,7 @@ def test_top_level_network_added_flips_has_changes() -> None:
 
 def test_top_level_volumes_and_name_changed() -> None:
     current = (
-        "name: agmind\n"
-        "services:\n  foo:\n    image: foo:1\n"
-        "volumes:\n  data:\n    driver: local\n"
+        "name: agmind\nservices:\n  foo:\n    image: foo:1\nvolumes:\n  data:\n    driver: local\n"
     )
     new = (
         "name: agmind-v2\n"
@@ -52,14 +50,7 @@ def test_top_level_secrets_and_configs_detected() -> None:
 
 
 def test_cosmetic_only_change_does_not_flip_has_changes() -> None:
-    current = (
-        "# a comment\n"
-        "services:\n"
-        "  foo:\n"
-        "    image: foo:1\n"
-        "networks:\n"
-        "  agmind: {}\n"
-    )
+    current = "# a comment\nservices:\n  foo:\n    image: foo:1\nnetworks:\n  agmind: {}\n"
     new = (
         "# a DIFFERENT comment, plus trailing whitespace   \n"
         "\n"
