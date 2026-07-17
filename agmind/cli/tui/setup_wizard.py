@@ -290,6 +290,36 @@ class SetupState:
             return entry.repo, entry.file
         return raw_repo, raw_file
 
+    def resolve_model_revision_sha256(self) -> tuple[str | None, str | None]:
+        """Resolve (revision, sha256) for the LLM from the curated catalog entry."""
+        return self._resolve_repo_provenance(self.model_id)
+
+    def resolve_embed_revision_sha256(self) -> tuple[str | None, str | None]:
+        """Resolve (revision, sha256) for the embed model from the curated catalog entry."""
+        return self._resolve_repo_provenance(self.embed_model_id)
+
+    def resolve_rerank_revision_sha256(self) -> tuple[str | None, str | None]:
+        """Resolve (revision, sha256) for the rerank model from the curated catalog entry."""
+        return self._resolve_repo_provenance(self.rerank_model_id)
+
+    @staticmethod
+    def _resolve_repo_provenance(model_id: str) -> tuple[str | None, str | None]:
+        """Curated-catalog (revision, sha256) for model_id, or (None, None) otherwise.
+
+        Mirrors ``_resolve_repo_file``'s id handling, but unlike repo/file there is no
+        "raw" fallback for provenance: a custom/manually-entered repo carries no known
+        HF pin, and 'skip'/an unknown id has nothing to pin either — all three cases
+        return (None, None) rather than guessing.
+        """
+        if model_id in (MODEL_SKIP_ID, MODEL_CUSTOM_ID):
+            return None, None
+        from agmind.install.models import find_by_id
+
+        entry = find_by_id(model_id)
+        if entry is None:
+            return None, None
+        return (entry.revision or None), (entry.sha256 or None)
+
 
 @dataclass(frozen=True)
 class DetectedHardware:
@@ -1196,6 +1226,11 @@ class AgmindSetupApp(App[SetupState | None]):
             final_repo, final_file = state.resolve_model_repo_file()
             embed_repo, embed_file = state.resolve_embed_repo_file()
             rerank_repo, rerank_file = state.resolve_rerank_repo_file()
+            # D-02: reconnect the previously-dead model_revision wiring — pull the
+            # curated catalog's HF provenance (revision/sha256) alongside repo/file.
+            model_revision, model_sha256 = state.resolve_model_revision_sha256()
+            embed_revision, embed_sha256 = state.resolve_embed_revision_sha256()
+            rerank_revision, rerank_sha256 = state.resolve_rerank_revision_sha256()
             config = InstallConfig(
                 domain=state.domain,
                 cf_api_token=state.cf_api_token,
@@ -1203,6 +1238,8 @@ class AgmindSetupApp(App[SetupState | None]):
                 backend=state.backend,
                 model_repo=final_repo if final_file else None,
                 model_file=final_file if final_file else None,
+                model_revision=model_revision if final_file else None,
+                model_sha256=model_sha256 if final_file else None,
                 install_dir=Path(state.install_dir),
                 ctx_size=state.ctx_size,
                 kv_cache_type=state.kv_cache_type,
@@ -1210,11 +1247,15 @@ class AgmindSetupApp(App[SetupState | None]):
                 parallel_slots=state.parallel_slots,
                 embed_repo=embed_repo if embed_file else None,
                 embed_file=embed_file if embed_file else None,
+                embed_revision=embed_revision if embed_file else None,
+                embed_sha256=embed_sha256 if embed_file else None,
                 embed_ctx_size=state.embed_ctx_size,
                 embed_kv_cache=state.embed_kv_cache,
                 embed_parallel=state.embed_parallel,
                 rerank_repo=rerank_repo if rerank_file else None,
                 rerank_file=rerank_file if rerank_file else None,
+                rerank_revision=rerank_revision if rerank_file else None,
+                rerank_sha256=rerank_sha256 if rerank_file else None,
                 rerank_ctx_size=state.rerank_ctx_size,
                 sudo_password=state.sudo_password,
             )

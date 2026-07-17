@@ -549,27 +549,45 @@ def register(app: typer.Typer) -> None:
         resolved_repo, resolved_file = wizard_state.resolve_model_repo_file()
         final_repo: str | None = resolved_repo
         final_file: str | None = resolved_file
-        # CLI flags override wizard LLM values if provided (kept legacy semantics).
+        # D-02: reconnect the previously-dead model_revision wiring — resolved alongside
+        # repo/file from the same curated catalog entry (find_by_id(wizard_state.model_id)).
+        final_model_revision, final_model_sha256 = wizard_state.resolve_model_revision_sha256()
+        # CLI flags override wizard LLM values if provided (kept legacy semantics). A
+        # CLI-supplied repo/file has no known catalog provenance — clear any resolved
+        # revision/sha256 so a stale pin from a DIFFERENT model never attaches to an
+        # operator-overridden download.
         if model_repo:
             final_repo = model_repo
+            final_model_revision = None
+            final_model_sha256 = None
         if model_file:
             final_file = model_file
+            final_model_revision = None
+            final_model_sha256 = None
         resolved_embed_repo, resolved_embed_file = wizard_state.resolve_embed_repo_file()
         embed_repo: str | None = resolved_embed_repo
         embed_file: str | None = resolved_embed_file
+        embed_revision, embed_sha256 = wizard_state.resolve_embed_revision_sha256()
         resolved_rerank_repo, resolved_rerank_file = wizard_state.resolve_rerank_repo_file()
         rerank_repo: str | None = resolved_rerank_repo
         rerank_file: str | None = resolved_rerank_file
+        rerank_revision, rerank_sha256 = wizard_state.resolve_rerank_revision_sha256()
         selected_services = set(wizard_state.services)
         if "llama-llm" not in selected_services:
             final_repo = None
             final_file = None
+            final_model_revision = None
+            final_model_sha256 = None
         if "llama-embed" not in selected_services:
             embed_repo = None
             embed_file = None
+            embed_revision = None
+            embed_sha256 = None
         if "llama-rerank" not in selected_services:
             rerank_repo = None
             rerank_file = None
+            rerank_revision = None
+            rerank_sha256 = None
 
         config = InstallConfig(
             domain=wizard_state.domain,
@@ -579,17 +597,23 @@ def register(app: typer.Typer) -> None:
             install_dir=Path(wizard_state.install_dir),
             model_repo=final_repo if final_file else None,
             model_file=final_file if final_file else None,
+            model_revision=final_model_revision if final_file else None,
+            model_sha256=final_model_sha256 if final_file else None,
             ctx_size=ctx_size or wizard_state.ctx_size,
             kv_cache_type=kv_cache or wizard_state.kv_cache_type,
             threads=wizard_state.threads,
             parallel_slots=wizard_state.parallel_slots,
             embed_repo=embed_repo if embed_file else None,
             embed_file=embed_file if embed_file else None,
+            embed_revision=embed_revision if embed_file else None,
+            embed_sha256=embed_sha256 if embed_file else None,
             embed_ctx_size=wizard_state.embed_ctx_size,
             embed_kv_cache=wizard_state.embed_kv_cache,
             embed_parallel=wizard_state.embed_parallel,
             rerank_repo=rerank_repo if rerank_file else None,
             rerank_file=rerank_file if rerank_file else None,
+            rerank_revision=rerank_revision if rerank_file else None,
+            rerank_sha256=rerank_sha256 if rerank_file else None,
             rerank_ctx_size=wizard_state.rerank_ctx_size,
             sudo_password=wizard_state.sudo_password,
         )

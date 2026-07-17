@@ -580,6 +580,158 @@ def test_resolve_model_repo_file_skip_clears_repo_and_file() -> None:
     assert s.resolve_model_repo_file() == ("", "")
 
 
+# ---------- D-02: resolve_*_revision_sha256 (dead InstallConfig wiring reconnect) ----------
+
+
+def test_resolve_model_revision_sha256_curated_known_id() -> None:
+    """A curated id with revision+sha256 in the catalog surfaces both values."""
+    s = SetupState(model_id="qwen36-a3b-q4km")
+    revision, sha256 = s.resolve_model_revision_sha256()
+    assert revision == "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+    assert sha256 == "1d8eda2b6616d1b163d3b8cf9e0ba2cb627b98fe8553190e3183e1553ec82130"
+
+
+def test_resolve_model_revision_sha256_custom_is_empty() -> None:
+    """A custom/manual selection carries no known catalog provenance."""
+    s = SetupState(model_id="custom", model_repo="my/repo", model_file="x.gguf")
+    assert s.resolve_model_revision_sha256() == (None, None)
+
+
+def test_resolve_model_revision_sha256_skip_is_empty() -> None:
+    s = SetupState(model_id="skip")
+    assert s.resolve_model_revision_sha256() == (None, None)
+
+
+def test_resolve_model_revision_sha256_unknown_id_is_empty() -> None:
+    s = SetupState(model_id="bogus-id", model_repo="alt/repo", model_file="alt.gguf")
+    assert s.resolve_model_revision_sha256() == (None, None)
+
+
+def test_resolve_embed_revision_sha256_curated_known_id() -> None:
+    s = SetupState(embed_model_id="bge-m3-q8")
+    revision, sha256 = s.resolve_embed_revision_sha256()
+    assert revision == "9379ce497e8814b200f2dc0d18eb4045426dcb8c"
+    assert sha256 == "c98c7c907bb3ab8c3be4c8ad827cc934c7c1a7e014d1c999e0c45c8027c158bb"
+
+
+def test_resolve_rerank_revision_sha256_curated_known_id() -> None:
+    s = SetupState(rerank_model_id="bge-reranker-v2-m3-q8")
+    revision, sha256 = s.resolve_rerank_revision_sha256()
+    assert revision == "3093af03b1a635e67b084b1d8c03c5f5e020fd05"
+    assert sha256 == "a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
+
+
+def test_no_tui_install_config_carries_model_revision_sha256(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D-02: reconnect the dead InstallConfig.model_revision/model_sha256 wiring — a curated
+    wizard selection (llm/embed/rerank) must populate all three roles' revision+sha256 on
+    the InstallConfig actually built by `agmind install --no-tui`."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.install.orchestrator import InstallResult
+
+    monkeypatch.setattr(
+        "agmind.cli.install_state.load_prior_setup_state",
+        lambda _path: SetupState(
+            domain="lab.example.com",
+            services=["llama-llm", "llama-embed", "llama-rerank"],
+        ),
+    )
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(self) -> InstallResult:
+            return InstallResult(success=True, steps=(), message="install ok")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    result = CliRunner().invoke(_make_app(), ["install", "--no-tui"])
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert config.model_repo == "0xSero/Qwen3.6-35B-GGUF"  # type: ignore[attr-defined]
+    assert (
+        config.model_revision  # type: ignore[attr-defined]
+        == "019acc27cdb00919f5a442bfbe1606c1771d3bff"
+    )
+    assert (
+        config.model_sha256  # type: ignore[attr-defined]
+        == "1d8eda2b6616d1b163d3b8cf9e0ba2cb627b98fe8553190e3183e1553ec82130"
+    )
+    assert (
+        config.embed_revision  # type: ignore[attr-defined]
+        == "9379ce497e8814b200f2dc0d18eb4045426dcb8c"
+    )
+    assert (
+        config.embed_sha256  # type: ignore[attr-defined]
+        == "c98c7c907bb3ab8c3be4c8ad827cc934c7c1a7e014d1c999e0c45c8027c158bb"
+    )
+    assert (
+        config.rerank_revision  # type: ignore[attr-defined]
+        == "3093af03b1a635e67b084b1d8c03c5f5e020fd05"
+    )
+    assert (
+        config.rerank_sha256  # type: ignore[attr-defined]
+        == "a43c7c9b11a4c1517e5bf95151960e1621d1b72f7a493364b01e386cf1aaa1d3"
+    )
+
+
+def test_no_tui_install_config_custom_repo_clears_revision_sha256(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A CLI-supplied --model-repo/--model-file override has no catalog provenance — must
+    NOT inherit a curated pin from a stale/default model_id (would mismatch the actual file)."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+    from agmind.install.orchestrator import InstallResult
+
+    monkeypatch.setattr(
+        "agmind.cli.install_state.load_prior_setup_state",
+        lambda _path: SetupState(domain="lab.example.com", services=["llama-llm"]),
+    )
+    monkeypatch.setattr("agmind.cli.install_cmd._sudo_nopasswd_available", lambda: True)
+    monkeypatch.setattr("agmind.install.steps.default_steps", lambda: [])
+
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(self) -> InstallResult:
+            return InstallResult(success=True, steps=(), message="install ok")
+
+    monkeypatch.setattr("agmind.install.orchestrator.InstallOrchestrator", FakeOrchestrator)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "install",
+            "--no-tui",
+            "--model-repo",
+            "my-org/custom-repo",
+            "--model-file",
+            "custom.gguf",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    config = captured["config"]
+    assert config.model_repo == "my-org/custom-repo"  # type: ignore[attr-defined]
+    assert config.model_file == "custom.gguf"  # type: ignore[attr-defined]
+    assert config.model_revision is None  # type: ignore[attr-defined]
+    assert config.model_sha256 is None  # type: ignore[attr-defined]
+
+
 def test_state_for_submit_prunes_llm_service_when_main_llm_skipped() -> None:
     """Skip main LLM must survive service dependency expansion."""
     detected = DetectedHardware(
