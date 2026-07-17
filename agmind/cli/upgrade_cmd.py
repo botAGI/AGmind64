@@ -439,22 +439,66 @@ def cmd_component(
 
 
 def cmd_apply(
-    install_dir: Path = Path("/opt/agmind"), healthcheck_timeout: int | None = None
+    install_dir: Path = Path("/opt/agmind"),
+    healthcheck_timeout: int | None = None,
+    skip_data_backup: bool = False,
 ) -> int:
-    """Re-run deploy after bump. Reuses Phase L.B runner для snapshot+rollback."""
+    """Re-run deploy after bump. Reuses Phase L.B runner для snapshot+rollback.
+
+    D-03 (P0.1 landing): the applied selection is READ from `deploy-state.json`
+    instead of the historical `profiles=["core","rag","observability"]` hardcode —
+    a re-apply can no longer silently ``--remove-orphans`` a service that was never
+    part of the recorded baseline. Falls back to the legacy `setup-state.json`
+    (best-effort — see `agmind.cli.install_state.load_prior_setup_state`) with a
+    loud stderr WARNING when no deploy-state exists yet; refuses outright (no
+    silent hardcoded last resort) when NEITHER is found.
+    """
     from agmind.deploy.runner import deploy
+    from agmind.deploy.state import load_deploy_state
 
     print(f"Re-deploying from {install_dir}")
-    # Upgrade apply uses the supported Compose baseline. Custom profile sets
-    # should be redeployed explicitly through `agmind deploy --apply`.
+
+    state = load_deploy_state(install_dir)
+    if state is not None:
+        profiles = state.profiles
+        services = state.resolved_services or None
+        domain = state.domain
+    else:
+        from agmind.cli.install_state import load_prior_setup_state
+        from agmind.cli.tui.setup_wizard import STATE_PATH
+
+        legacy = load_prior_setup_state(STATE_PATH)
+        if legacy is None:
+            print(
+                f"ERROR: no deploy-state.json at {install_dir} and no legacy setup "
+                f"state at {STATE_PATH}; refusing to guess what was previously "
+                "applied. Run `agmind deploy --apply --profile <profiles>` "
+                "explicitly, or `agmind install` first to establish a deploy state.",
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            f"WARNING: no deploy-state.json at {install_dir} yet; falling back to "
+            f"legacy setup state at {STATE_PATH} (profiles={legacy.profiles}, "
+            f"services={legacy.services}, domain={legacy.domain!r}) — "
+            "deploy-state.json будет записан этим apply.",
+            file=sys.stderr,
+        )
+        profiles = legacy.profiles
+        services = legacy.services or None
+        domain = legacy.domain or None
+
     try:
         result = deploy(
-            profiles=["core", "rag", "observability"],
+            profiles=profiles,
+            services=services,
             install_dir=install_dir,
-            domain=None,
+            domain=domain,
             apply=True,
             no_prompt=True,
             healthcheck_timeout=healthcheck_timeout,
+            allow_removal=False,
+            skip_data_backup=skip_data_backup,
         )
     except Exception as exc:
         print(f"ERROR: deploy crashed: {exc}", file=sys.stderr)
@@ -636,6 +680,13 @@ def register(app: typer.Typer) -> None:
             help="Seconds to wait for healthy state on --apply (default: sized "
             "from the redeployed services' slowest start_period)",
         ),
+        skip_data_backup: bool = typer.Option(
+            False,
+            "--skip-data-backup",
+            help="Bypass the fresh-data-backup guard when --apply recreates a "
+            "stateful service (default: refuse without a fresh "
+            "`agmind backup --include-data` marker; P1-3).",
+        ),
     ) -> None:
         """Upgrade lifecycle: bump a pinned image and safely redeploy with rollback."""
         if ctx.invoked_subcommand is not None:
@@ -646,7 +697,12 @@ def register(app: typer.Typer) -> None:
         if rollback:
             raise typer.Exit(code=cmd_rollback())
         if apply and not component:
-            raise typer.Exit(code=cmd_apply(healthcheck_timeout=healthcheck_timeout))
+            raise typer.Exit(
+                code=cmd_apply(
+                    healthcheck_timeout=healthcheck_timeout,
+                    skip_data_backup=skip_data_backup,
+                )
+            )
         if component:
             if version is None:
                 typer.echo("ERROR: --component requires --version", err=True)
@@ -660,7 +716,12 @@ def register(app: typer.Typer) -> None:
             )
             if rc != 0 or not apply or plan:
                 raise typer.Exit(code=rc)
-            raise typer.Exit(code=cmd_apply(healthcheck_timeout=healthcheck_timeout))
+            raise typer.Exit(
+                code=cmd_apply(
+                    healthcheck_timeout=healthcheck_timeout,
+                    skip_data_backup=skip_data_backup,
+                )
+            )
 
         typer.echo(
             "Usage: agmind upgrade [--check | --component X --version Y "

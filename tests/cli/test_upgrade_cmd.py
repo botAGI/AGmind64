@@ -787,10 +787,26 @@ def test_grouped_rollback_refuses_legacy_state_against_digest_pinned_descriptor(
 # ---------- cmd_apply ----------
 
 
-def test_apply_redeploys_supported_compose_baseline(
+def test_apply_reads_profiles_services_domain_from_deploy_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """P0.1/D-03: `cmd_apply` no longer hardcodes `profiles=["core","rag",
+    "observability"]`/`domain=None` — it reads the previously-applied selection
+    from `deploy-state.json` (flips the historical RED assertion)."""
     from agmind.deploy.runner import DeployResult
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    write_deploy_state(
+        tmp_path,
+        DeployState.new(
+            agmind_version="9.9.9",
+            profiles=["core", "ui"],
+            requested_services=[],
+            resolved_services=["postgres", "traefik", "openwebui"],
+            domain="lab.example.com",
+            edge_mode="lan",
+        ),
+    )
 
     calls: dict[str, object] = {}
 
@@ -803,9 +819,104 @@ def test_apply_redeploys_supported_compose_baseline(
     rc = upgrade_cmd.cmd_apply(install_dir=tmp_path, healthcheck_timeout=7)
 
     assert rc == 0
-    assert calls["profiles"] == ["core", "rag", "observability"]
+    assert calls["profiles"] == ["core", "ui"]
+    assert calls["services"] == ["postgres", "traefik", "openwebui"]
+    assert calls["domain"] == "lab.example.com"
     assert calls["install_dir"] == tmp_path
     assert calls["healthcheck_timeout"] == 7
+    assert calls["allow_removal"] is False
+
+
+def test_apply_legacy_state_fallback_warns_and_deploys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No deploy-state.json yet, but a legacy setup-state.json exists → cmd_apply
+    derives the selection from it and prints a loud WARNING (D-03 legacy fallback,
+    never silent)."""
+    from agmind.cli.tui.setup_wizard import SetupState
+    from agmind.deploy.runner import DeployResult
+
+    legacy_path = tmp_path / "legacy-setup-state.json"
+    SetupState(domain="legacy.example.com", services=["postgres", "qdrant"]).to_json(legacy_path)
+    monkeypatch.setattr("agmind.cli.tui.setup_wizard.STATE_PATH", legacy_path)
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+
+    rc = upgrade_cmd.cmd_apply(install_dir=tmp_path)
+
+    assert rc == 0
+    assert calls["services"] == ["postgres", "qdrant"]
+    assert calls["domain"] == "legacy.example.com"
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "legacy" in err.lower()
+
+
+def test_apply_hard_refuses_with_no_deploy_state_and_no_legacy_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Neither deploy-state.json nor a legacy setup-state.json exists → refuse
+    rather than fall back to the old hardcoded profile list (D-03 closes P0.1 with
+    no silent fallback)."""
+    monkeypatch.setattr(
+        "agmind.cli.tui.setup_wizard.STATE_PATH", tmp_path / "nonexistent-setup-state.json"
+    )
+
+    def must_not_deploy(**_kwargs: object) -> object:
+        raise AssertionError("runner.deploy must not be called when no state is known")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", must_not_deploy)
+
+    rc = upgrade_cmd.cmd_apply(install_dir=tmp_path)
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--profile" in err or "agmind install" in err
+
+
+def test_apply_threads_skip_data_backup_to_deploy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stateful upgrade can pass `--skip-data-backup` through to `deploy(...)`
+    (P1-3 satisfiability for the no_prompt upgrade path)."""
+    from agmind.deploy.runner import DeployResult
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    write_deploy_state(
+        tmp_path,
+        DeployState.new(
+            agmind_version="9.9.9",
+            profiles=["core"],
+            requested_services=[],
+            resolved_services=["postgres"],
+            domain=None,
+            edge_mode="local",
+        ),
+    )
+
+    calls: dict[str, object] = {}
+
+    def fake_deploy(**kwargs: object) -> DeployResult:
+        calls.update(kwargs)
+        return DeployResult(success=True, message="ok")
+
+    monkeypatch.setattr("agmind.deploy.runner.deploy", fake_deploy)
+
+    rc = upgrade_cmd.cmd_apply(install_dir=tmp_path, skip_data_backup=True)
+
+    assert rc == 0
+    assert calls["skip_data_backup"] is True
+    assert calls["allow_removal"] is False
 
 
 def test_apply_bare_forwards_none_healthcheck_timeout(
@@ -814,6 +925,19 @@ def test_apply_bare_forwards_none_healthcheck_timeout(
     """A bare `cmd_apply()` (no explicit timeout) forwards None so the runner sizes
     the wait budget from the actual selection instead of a flat 300s (BREA02)."""
     from agmind.deploy.runner import DeployResult
+    from agmind.deploy.state import DeployState, write_deploy_state
+
+    write_deploy_state(
+        tmp_path,
+        DeployState.new(
+            agmind_version="9.9.9",
+            profiles=["core"],
+            requested_services=[],
+            resolved_services=["postgres"],
+            domain=None,
+            edge_mode="local",
+        ),
+    )
 
     calls: dict[str, object] = {}
 
@@ -874,6 +998,54 @@ def test_upgrade_apply_cli_omitting_healthcheck_timeout_forwards_none(
 
     assert result.exit_code == 0
     assert captured["healthcheck_timeout"] is None
+
+
+def test_upgrade_apply_cli_skip_data_backup_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`agmind upgrade --apply --skip-data-backup` reaches cmd_apply as True."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_cmd_apply(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(upgrade_cmd, "cmd_apply", fake_cmd_apply)
+
+    result = CliRunner().invoke(
+        _make_app(),
+        ["upgrade", "--apply", "--skip-data-backup"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["skip_data_backup"] is True
+
+
+def test_upgrade_apply_cli_omitting_skip_data_backup_defaults_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitting --skip-data-backup on `agmind upgrade --apply` defaults to False,
+    keeping the D-06 stateful-backup guard armed."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app
+
+    captured: dict[str, object] = {}
+
+    def fake_cmd_apply(**kwargs: object) -> int:
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(upgrade_cmd, "cmd_apply", fake_cmd_apply)
+
+    result = CliRunner().invoke(_make_app(), ["upgrade", "--apply"])
+
+    assert result.exit_code == 0
+    assert captured["skip_data_backup"] is False
 
 
 # ---------- cmd_rollback ----------
