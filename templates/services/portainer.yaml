@@ -13,13 +13,16 @@ ports:
 # by minio / minio-console). Edge TLS is terminated by traefik.
 - 127.0.0.1:9444:9000
 volumes:
-# Docker socket mounted READ-ONLY (SEC-1, security-live H1). A RW socket is root-equivalent:
-# anyone who authenticates to Portainer (or any RCE in it — its CVE history is non-trivial) could
-# `docker run -v /:/host --privileged` = root on the host. With `:ro` Portainer degrades to
-# READ-ONLY management — it can list/inspect containers, images and stacks but can NOT
-# start/stop/exec/create/delete them or mutate the host. That is the conscious tradeoff: full
-# container control would require routing Portainer through a scoped docker-socket-proxy (TCP),
-# never the raw host socket. Until then, read-only is the safe default.
+# Docker socket mounted :ro (SEC-1, security-live H1) as defense-in-depth on the file inode
+# (blocks e.g. an unrelated container/process from opening the socket for writing). `:ro` does
+# NOT make the Docker API read-only: the socket is a Unix stream to dockerd, and dockerd applies
+# no permission model of its own to whoever can connect to it — anyone who authenticates to
+# Portainer (or exploits an RCE in it — its CVE history is non-trivial) can still issue
+# `POST /containers/create` (and start/exec/delete) over this read-only-mounted socket, which is
+# root-equivalent on the host (`docker run -v /:/host --privileged`). The genuinely-scoped
+# mitigation is routing Portainer through a TCP docker-socket-proxy (read-only GET allowlist,
+# already used by traefik/cadvisor/alloy/netdata/dozzle/homarr) — the intended future direction.
+# Until then, the `:ro` mount is retained only as inode-level hardening, not an API restriction.
 - /var/run/docker.sock:/var/run/docker.sock:ro
 - /var/lib/agmind/portainer:/data
 # Holds the (read-only) docker socket — still block in-container privilege escalation via
