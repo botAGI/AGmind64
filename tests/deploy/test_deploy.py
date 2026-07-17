@@ -2002,9 +2002,7 @@ def test_deploy_apply_health_fail_does_not_write_deploy_state(
     monkeypatch.setattr(runner, "_validate_compose_config", lambda *_a, **_k: (0, ""))
     monkeypatch.setattr(runner, "_write_text_maybe_sudo", lambda *_a, **_k: None)
     monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
-    monkeypatch.setattr(
-        runner, "_wait_healthy", lambda *_a, **_k: (False, ["postgres (starting)"])
-    )
+    monkeypatch.setattr(runner, "_wait_healthy", lambda *_a, **_k: (False, ["postgres (starting)"]))
 
     def fail_write_deploy_state(*_a: object, **_k: object) -> None:
         raise AssertionError("write_deploy_state must not be called on a failed health check")
@@ -2088,9 +2086,7 @@ def test_deploy_snapshot_captures_deploy_state_when_present(
     install_dir.mkdir()
     # postgres-exporter has no data_sources() hits (no /var/lib/agmind volume bind), so
     # this test exercises the snapshot capture wiring without tripping the D-06 guard.
-    current_compose = (
-        "services:\n  postgres-exporter:\n    image: postgres-exporter:v0.19.0\n"
-    )
+    current_compose = "services:\n  postgres-exporter:\n    image: postgres-exporter:v0.19.0\n"
     rendered = "services:\n  postgres-exporter:\n    image: postgres-exporter:v0.19.1\n"
     (install_dir / "docker-compose.yml").write_text(current_compose, encoding="utf-8")
     (install_dir / "deploy-state.json").write_text('{"schema_version": 1}\n', encoding="utf-8")

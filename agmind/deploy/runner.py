@@ -957,9 +957,7 @@ def _deploy_impl(
     )
     if changed_names:
         env = parse_env_file_or_empty(install_dir / ".env")
-        stateful_hits = [
-            name for name in changed_names if data_sources([name], descriptors, env)
-        ]
+        stateful_hits = [name for name in changed_names if data_sources([name], descriptors, env)]
         if stateful_hits and not data_backup_is_fresh(install_dir):
             hits_label = ", ".join(stateful_hits)
             if skip_data_backup:
