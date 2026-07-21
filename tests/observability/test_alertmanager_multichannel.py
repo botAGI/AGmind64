@@ -20,7 +20,7 @@ pytestmark = pytest.mark.backend_any
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ALERTMANAGER = _REPO_ROOT / "templates" / "observability" / "alertmanager.yml"
-_AM_IMAGE = "prom/alertmanager:v0.32.1"
+_AM_IMAGE = "prom/alertmanager:v0.33.1"
 
 
 def _base_text() -> str:

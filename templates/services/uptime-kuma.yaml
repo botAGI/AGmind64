@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: uptime-kuma
-image: louislam/uptime-kuma:2.3.2
-digest: 9aeb4e51d038047f414309c77a1af553281ca535723cb88907d907269d0a908e
+image: louislam/uptime-kuma:2.4.0
+digest: 91e963bfda569ba115206e843febb446f473ab525add4e08b2b9e3beffa16985
 tier: ops
 purpose: Service uptime and synthetic health dashboard — Uptime Kuma 2.3.2 (2026-05-03)
 owner: observability-stack

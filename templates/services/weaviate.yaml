@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: weaviate
-image: semitechnologies/weaviate:1.37.4
-digest: fcd0d4dfe70ed38feb2c12df58f991f3437bdf34ac022d978a48844c3ac86ea0
+image: semitechnologies/weaviate:1.38.6
+digest: 6ea713f8085dd0ba5c7714271d85f6c7d5ba951ac4b1a9d97ba735918cca3450
 tier: storage
 purpose: Alternative vector store — 2026-05-14
 profiles:

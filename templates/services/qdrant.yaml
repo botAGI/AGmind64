@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: qdrant
-image: qdrant/qdrant:v1.18.0
-digest: b3063c673f3973877c038eeecc392bad5011f072ee7892b56c9a8e204a3bdea9
+image: qdrant/qdrant:v1.18.3
+digest: 0bd98fa7977f1e75694779359ca4e212822e5a71334e28421182f72f209d5286
 tier: storage
 purpose: Vector store (primary per R11) — 2026-05-11 release
 profiles:

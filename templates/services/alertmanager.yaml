@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: alertmanager
-image: prom/alertmanager:v0.32.1
-digest: 51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+image: prom/alertmanager:v0.33.1
+digest: 9e082985f56f4c8c9f724e18f2288c6708f472e56a5286b8863d080434ea065d
 tier: ops
 purpose: Alert routing для Prometheus
 profiles:

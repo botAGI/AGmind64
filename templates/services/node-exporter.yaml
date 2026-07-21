@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: node-exporter
-image: prom/node-exporter:v1.11.1
-digest: e9cff4fc67b1818f8c97adb115b9f12c9a54b533de86765d4a0effc01b357205
+image: prom/node-exporter:v1.12.1
+digest: 1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
 tier: ops
 purpose: Host metrics (CPU/disk/memory/network)
 profiles:

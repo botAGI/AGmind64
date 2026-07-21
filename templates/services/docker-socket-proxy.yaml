@@ -4,8 +4,8 @@ name: docker-socket-proxy
 # prometheus docker_sd can discover scrape targets WITHOUT mounting the raw root socket
 # (live-audit HIGH: prometheus had no docker.sock → 0 targets → empty Grafana; and the raw
 # socket is root-equivalent host control). Only the GET endpoints docker_sd needs are allowed.
-image: tecnativa/docker-socket-proxy:0.3.0
-digest: 9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+image: tecnativa/docker-socket-proxy:v0.4.2
+digest: 1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
 tier: ops
 purpose: Read-only Docker API gateway for prometheus/traefik/cadvisor/alloy
 # Must be present wherever a consumer is: core/full (traefik docker provider) + observability

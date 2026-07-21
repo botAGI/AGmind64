@@ -312,11 +312,11 @@ def test_service_selection_includes_operator_console_runtime_services() -> None:
         services=sorted([*services, "traefik", "authelia", "redis"]),
         domain="lab.example.com",
     )
-    assert "image: louislam/uptime-kuma:2.3.2@sha256:" in rendered
+    assert "image: louislam/uptime-kuma:2.4.0@sha256:" in rendered
     assert "image: ghcr.io/homarr-labs/homarr:v1.62.0@sha256:" in rendered
     assert "image: containrrr/watchtower:1.7.1@sha256:" in rendered
-    assert "image: amir20/dozzle:v10.6.1@sha256:" in rendered
-    assert "image: netdata/netdata:v2.10.3@sha256:" in rendered
+    assert "image: amir20/dozzle:v10.6.11@sha256:" in rendered
+    assert "image: netdata/netdata:v2.10.4@sha256:" in rendered
     assert "image: louislam/uptime-kuma:latest" not in rendered
     assert "image: ghcr.io/homarr-labs/homarr:latest" not in rendered
     assert "WATCHTOWER_MONITOR_ONLY: 'true'" in rendered

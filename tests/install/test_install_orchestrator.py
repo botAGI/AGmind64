@@ -1089,11 +1089,11 @@ def test_env_write_step_version_manifest_tracks_selected_operator_services(
 
     assert result.success
     version_text = (cfg.install_dir / "version.env").read_text(encoding="utf-8")
-    assert "UPTIME_KUMA_VERSION=2.3.2" in version_text
+    assert "UPTIME_KUMA_VERSION=2.4.0" in version_text
     assert "HOMARR_VERSION=v1.62.0" in version_text
     assert "WATCHTOWER_VERSION=1.7.1" in version_text
-    assert "DOZZLE_VERSION=v10.6.1" in version_text
-    assert "NETDATA_VERSION=v2.10.3" in version_text
+    assert "DOZZLE_VERSION=v10.6.11" in version_text
+    assert "NETDATA_VERSION=v2.10.4" in version_text
     assert "LLAMA_LLM_VERSION=" not in version_text
 
 

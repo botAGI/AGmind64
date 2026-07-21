@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: postgres-exporter
-image: prometheuscommunity/postgres-exporter:v0.19.1
-digest: e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f
+image: prometheuscommunity/postgres-exporter:v0.20.1
+digest: ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
 tier: ops
 purpose: Postgres metrics для Prometheus
 profiles:

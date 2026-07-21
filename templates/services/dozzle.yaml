@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: dozzle
-image: amir20/dozzle:v10.6.1
-digest: 4a5e45a15120807294d0a896ec9f89e63d8d43da4e97480fe245454e2b00403e
+image: amir20/dozzle:v10.6.11
+digest: bc1ee4ba8d66c7fc0d03823a78486165fb219809f79eaf54cecf3114d647ab14
 tier: ops
 purpose: Container log viewer — Dozzle v10.6.1 (2026-05-24)
 owner: observability-stack

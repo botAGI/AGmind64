@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: netdata
-image: netdata/netdata:v2.10.3
-digest: bcc822ec685dd7ee488e9f99b957f479b66301be04f13f346df692ad7de94151
+image: netdata/netdata:v2.10.4
+digest: 689145f603fed0ca341b4d8a0fb9910cd9d8c0590b0530cd24ae1912a9c7f8f3
 tier: ops
 purpose: Real-time host and container health dashboard — Netdata v2.10.3 (2026-04-27)
 owner: observability-stack

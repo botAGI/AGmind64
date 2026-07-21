@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: openwebui
 # digest must be the top-level OCI index digest, not the amd64 leaf (the old ef3eaeb6… was the leaf).
-image: ghcr.io/open-webui/open-webui:v0.9.5
-digest: e045bde3b004cc7f8c319412345eb56c87ea6ac57031534a31ca37ad5424beb3
+image: ghcr.io/open-webui/open-webui:v0.10.2
+digest: 9fcea9c6e32ab60b0498f3986c6cdf651ddbe61db48d2213a3d28048ddd673d4
 tier: app
 purpose: Optional chat UI на OpenAI-compat llama-server — 2026-05-10
 profiles:

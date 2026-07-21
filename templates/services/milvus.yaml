@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: milvus
-image: milvusdb/milvus:v2.6.17
-digest: 37ce939f2afdb6df217c33765c8468c963e42ac76433bf5a6be073d63d78caab
+image: milvusdb/milvus:v2.6.20
+digest: e5420c36bac36a605c1ea6e04114f5d7923f114e87bbb774bd0669b9f3e41d27
 tier: storage
 purpose: Billion-scale vector store (opt-in profile) — 2026-05-16
 profiles:

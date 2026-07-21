@@ -71,7 +71,7 @@ _KNOWN_PRESENT_TOOLS: dict[str, frozenset[str]] = {
     # authelia/homarr/weaviate ship wget only (no curl); dify-plugin-daemon ships curl + bash.
     "authelia/authelia:4.39.20": frozenset({"wget"}),
     "ghcr.io/homarr-labs/homarr:v1.62.0": frozenset({"wget"}),
-    "semitechnologies/weaviate:1.37.4": frozenset({"wget"}),
+    "semitechnologies/weaviate:1.38.6": frozenset({"wget"}),
     "langgenius/dify-plugin-daemon:0.6.1-local": frozenset({"curl"}),
 }
 
