@@ -151,6 +151,30 @@ jobs:
           tags: |
             ${{ env.IMAGE_NS }}-base:${{ needs.meta.outputs.version }}
             ${{ env.IMAGE_NS }}-base:latest
+
+      - name: Generate SPDX SBOM for base
+        # SHA-pinned (review LOW ci-actions-mutable-tag-pins); Dependabot bumps via the # v0.22.0.
+        uses: anchore/sbom-action@62ad5284b8ced813296287a0b63906cb364b73ee # v0.22.0
+        with:
+          image: ${{ env.IMAGE_NS }}-base@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-base.spdx.json
+          upload-artifact: false
+
+      - name: Grype vuln-scan base from SBOM (evidence gate)
+        id: scan
+        # Evidence gate, NOT a merge gate: fail-build:false + severity-cutoff:critical means the
+        # scan SURFACES CVEs (SARIF + Release artifact) without bricking a release on an unfixable
+        # transitive critical CVE. Tightening to fail-build later is a deliberate follow-up, not a
+        # silent default.
+        # SHA-pinned (review LOW ci-actions-mutable-tag-pins); Dependabot bumps via the # v7.4.0.
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: sbom-base.spdx.json
+          fail-build: false
+          severity-cutoff: critical
+          output-format: sarif
+
       - name: Attest base image provenance (SLSA)
         if: vars.PUBLISH == 'true'
         uses: actions/attest-build-provenance@v3
@@ -158,6 +182,17 @@ jobs:
           subject-name: ${{ env.IMAGE_NS }}-base
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      - name: Persist base SBOM + grype SARIF for publish job
+        run: |
+          mkdir -p out
+          cp sbom-base.spdx.json out/
+          cp "${{ steps.scan.outputs.sarif }}" out/grype-base.sarif
+      - uses: actions/upload-artifact@v7
+        with:
+          name: base
+          path: out/
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # 2. Build cpu/vulkan/rocm backends from base@digest; SBOM + attest each.
@@ -208,6 +243,20 @@ jobs:
           output-file: sbom-${{ matrix.backend }}.spdx.json
           upload-artifact: false
 
+      - name: Grype vuln-scan ${{ matrix.backend }} from SBOM (evidence gate)
+        id: scan
+        # Evidence gate, NOT a merge gate: fail-build:false + severity-cutoff:critical means the
+        # scan SURFACES CVEs (SARIF + Release artifact) without bricking a release on an unfixable
+        # transitive critical CVE. Tightening to fail-build later is a deliberate follow-up, not a
+        # silent default.
+        # SHA-pinned (review LOW ci-actions-mutable-tag-pins); Dependabot bumps via the # v7.4.0.
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: sbom-${{ matrix.backend }}.spdx.json
+          fail-build: false
+          severity-cutoff: critical
+          output-format: sarif
+
       - name: Attest ${{ matrix.backend }} image provenance (SLSA)
         if: vars.PUBLISH == 'true'
         uses: actions/attest-build-provenance@v3
@@ -221,6 +270,7 @@ jobs:
           mkdir -p out
           printf '%s' "${{ steps.build.outputs.digest }}" > "out/${{ matrix.backend }}.digest"
           cp "sbom-${{ matrix.backend }}.spdx.json" out/
+          cp "${{ steps.scan.outputs.sarif }}" out/grype-${{ matrix.backend }}.sarif
       - uses: actions/upload-artifact@v7
         with:
           name: backend-${{ matrix.backend }}
@@ -354,6 +404,11 @@ jobs:
             all/catalog/docker-compose.full-*.yml
             all/catalog/catalog-*.json
             all/catalog/checksums-*.txt
+            all/base/sbom-base.spdx.json
             all/backend-cpu/sbom-cpu.spdx.json
             all/backend-vulkan/sbom-vulkan.spdx.json
             all/backend-rocm/sbom-rocm.spdx.json
+            all/base/grype-base.sarif
+            all/backend-cpu/grype-cpu.sarif
+            all/backend-vulkan/grype-vulkan.sarif
+            all/backend-rocm/grype-rocm.sarif
