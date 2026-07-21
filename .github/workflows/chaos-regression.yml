@@ -1,0 +1,45 @@
+# chaos-regression.yml — LIVE reboot/chaos regression gate (SPEC-16.3).
+#
+# THIS IS A LIVE OPERATOR GATE, NOT a GitHub-hosted CI check. It requires a
+# self-hosted runner that also hosts a DEPLOYED agmind stack (containers carrying
+# label com.docker.compose.project=agmind) plus the enabled agmind-stack.service
+# boot unit. On a GitHub-hosted runner there is no deployed stack, so the probe
+# fail-fasts with a readable message — it will not (and must not) run there.
+#
+# What it proves: after chaos (docker daemon bounce by default), the
+# previously-healthy container set self-heals back to `healthy` via
+# restart=unless-stopped + the ordered-boot agmind-stack.service, WITHOUT any
+# manual `compose up`. This is the recovery the stack must survive after an
+# unclean power-loss (live-audit 2026-06-13: prometheus Exited(255) → Grafana
+# lost every datasource; BootUnitStep + the boot unit close that gap).
+#
+# Fork-guarded IDENTICALLY to compose-up-smoke / test-strix-halo in ci.yml: fork
+# PR code must NEVER run on the box that holds the secrets + docker group. The
+# `schedule` clause is added on top because scheduled runs only ever fire on the
+# base repo (there is no fork context for cron), so they are safe to admit.
+
+name: chaos-regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sunday 04:00 UTC — weekly reboot-survivability regression against the live stack.
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  chaos-probe:
+    runs-on: [self-hosted, linux, x64]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Reboot/chaos self-heal regression probe
+        run: bash scripts/ops/chaos_probe.sh
