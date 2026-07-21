@@ -89,6 +89,20 @@ docs(readme): rewrite front page
 
 Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`.
 
+## Language policy
+
+- **Code, identifiers, and commit messages: English.** Symbol names, log
+  strings, and Conventional-Commit subjects/bodies are always English so the
+  history and API read consistently for every contributor.
+- **Code comments and docstrings: Russian is fine** — it is an established
+  project convention. Keep them accurate: an out-of-date comment is worse than
+  none, so update the comment whenever you change the code it describes.
+- **User-facing docs ship EN + RU.** `README.md` (English) and `README.ru.md`
+  (Russian) are meaning-mirrors: the prose may diverge to read naturally in each
+  language, but their code blocks must stay byte-identical and their heading
+  topology must match. `scripts/checks/docs_mirror_check.py` (wired into
+  pre-commit) gates this — edit one file and its mirror in the same change.
+
 ## Branch & release flow
 
 - **`develop`** is the working branch — open PRs and push fix-on-top commits here.
