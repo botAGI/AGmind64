@@ -30,6 +30,9 @@ wired together and deployed by a single `make setup`.
   diagnostics, and a built-in TUI.
 - **Reproducible** — every service image is pinned by digest; governance checks
   block mutable tags and a hardware-mismatch audit forbids NVIDIA/CUDA paths.
+  The shipped GPU and CPU images target the `x86-64-v3` microarchitecture
+  baseline (AVX2 — Zen 4 / Zen 5 / Ice Lake / Sapphire Rapids), matching
+  `docker/Dockerfile.base`; see [`docs/HARDWARE.md`](docs/HARDWARE.md).
 
 > **Status:** pre-1.0. Single-node Docker Compose on Ubuntu is the supported
 > lane; multi-node cluster discovery is experimental.
@@ -65,7 +68,10 @@ make setup
 or installs Docker if needed, then launches the TUI install wizard. **This
 checkout is the bootstrap entry point** — there is no global `agmind` binary
 until the install writes one, so before the first install always go through
-`make setup` (or `.venv/bin/agmind …`).
+`make setup` (or `.venv/bin/agmind …`). The packaged `agmind` wheel is the
+operator CLI only — the supported install runs from this git checkout and its
+local `.venv` (`make setup`), never a bare `pip install` into an arbitrary
+environment.
 
 Non-interactive install (Strix Halo defaults):
 

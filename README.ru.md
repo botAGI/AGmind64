@@ -31,7 +31,10 @@ OpenAI-совместимым API, embeddings и reranking, RAG-приложен
   backup/restore, диагностики, со встроенным TUI.
 - **Воспроизводимость** — каждый образ сервиса закреплён по digest; governance-
   проверки блокируют изменяемые теги, а аудит несоответствия железа запрещает
-  пути NVIDIA/CUDA.
+  пути NVIDIA/CUDA. Поставляемые GPU- и CPU-образы собраны под
+  микроархитектурный baseline `x86-64-v3` (AVX2 — Zen 4 / Zen 5 / Ice Lake /
+  Sapphire Rapids), как в `docker/Dockerfile.base`; см.
+  [`docs/HARDWARE.md`](docs/HARDWARE.md).
 
 > **Статус:** pre-1.0. Поддерживаемый путь — одноузловой Docker Compose на Ubuntu;
 > обнаружение многоузлового кластера экспериментально.
@@ -67,7 +70,10 @@ make setup
 или ставит Docker при необходимости, затем запускает TUI-мастер установки. **Этот
 checkout и есть точка входа bootstrap** — глобального бинарника `agmind` нет, пока
 установка его не создаст, поэтому до первой установки всегда идите через
-`make setup` (или `.venv/bin/agmind …`).
+`make setup` (или `.venv/bin/agmind …`). Пакетный wheel `agmind` — это только
+операторский CLI: поддерживаемая установка идёт из этого git-checkout и его
+локального `.venv` (`make setup`), а не через голый `pip install` в произвольное
+окружение.
 
 Неинтерактивная установка (дефолты Strix Halo):
 
