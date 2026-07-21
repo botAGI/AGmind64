@@ -279,6 +279,21 @@ def cmd_backup(
             )
             return 1
         print(f"✓ pushed off-host: {target}")
+        if not encrypt:
+            # live-run 2026-07-21: rclone does NOT carry the local 0600 mode across — a
+            # config-only archive written 0600 landed 0644 on a local remote, i.e.
+            # world-readable secrets (.env) at rest. We cannot fix this generically:
+            # every backend has its own permission model (S3/B2 ACLs, SFTP umask,
+            # gdrive none), and rclone exposes no portable chmod. So say it plainly
+            # instead of pretending the local mode protects the copy.
+            print(
+                "  NOTE: the off-host copy does NOT inherit the local 0600 mode — rclone "
+                "applies the remote's own permission model (a local/SFTP remote typically "
+                "lands 0644, i.e. readable by other users on that host). This archive is "
+                "UNENCRYPTED: re-run with --encrypt --age-recipient <age1...> so the copy "
+                "at rest is safe regardless of remote permissions.",
+                file=sys.stderr,
+            )
     if not include_data:
         # Make the config-only scope LOUD: this archive contains NO database dumps / volume
         # data, so a restore from it cannot recover any stateful store (live-audit 2026-06-05

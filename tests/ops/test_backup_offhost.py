@@ -1,8 +1,10 @@
 """SPEC-16.5: off-host backup push via rclone (agmind.ops.offhost).
 
-Hermetic: rclone is NOT on this host, so every test mocks shutil.which (binary
-resolution) and subprocess.run (the invocation) — the real rclone binary is
-never touched, exactly as the k6 load-test wrapper tests never touch k6.
+Hermetic by construction: every test mocks shutil.which (binary resolution) and
+subprocess.run (the invocation), so the real rclone binary is never touched even
+on a host that happens to have it — exactly as the k6 load-test wrapper tests
+never touch k6. Do not relax this into calling the real binary; the unit tier
+must stay green on a machine without rclone.
 """
 
 from __future__ import annotations
@@ -123,3 +125,76 @@ def test_resolve_remote_from_dotenv_file(tmp_path: Path) -> None:
 def test_resolve_remote_none_when_unset() -> None:
     assert resolve_remote(None, env={}) is None
     assert resolve_remote("   ", env={}) is None
+
+
+def _fake_backup_result(output_path: Path) -> object:
+    from agmind.ops.backup import BackupResult
+
+    return BackupResult(
+        output_path=Path(output_path),
+        bytes_written=64,
+        sources_included=("compose", "env"),
+        sources_missing=(),
+    )
+
+
+def test_cmd_backup_warns_remote_perms_when_pushing_unencrypted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live-run 2026-07-21: a 0600 local archive landed 0644 on the remote — rclone applies
+    the remote's permission model, not the local mode. An UNENCRYPTED push must say so."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app, ops_cmd
+
+    out = tmp_path / "backup.tar.gz"
+    monkeypatch.setattr(
+        ops_cmd,
+        "create_backup",
+        lambda output_path, sudo_password=None, **_k: _fake_backup_result(output_path),
+    )
+    monkeypatch.setattr(ops_cmd, "push_backup", lambda _archive, remote: f"{remote}/backup.tar.gz")
+
+    result = CliRunner().invoke(
+        _make_app(), ["backup", "-o", str(out), "--remote", "offsite:bucket"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "does NOT inherit the local 0600 mode" in result.output
+    assert "--encrypt" in result.output
+
+
+def test_cmd_backup_no_remote_perms_warning_when_encrypted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An age-encrypted archive is safe at rest regardless of remote permissions — no warning."""
+    from typer.testing import CliRunner
+
+    from agmind.cli import _make_app, ops_cmd
+
+    out = tmp_path / "backup.tar.gz"
+    monkeypatch.setattr(
+        ops_cmd,
+        "create_backup",
+        lambda output_path, sudo_password=None, **_k: _fake_backup_result(
+            Path(str(output_path) + ".age")
+        ),
+    )
+    monkeypatch.setattr(ops_cmd, "push_backup", lambda _archive, remote: f"{remote}/backup.tar.gz")
+
+    result = CliRunner().invoke(
+        _make_app(),
+        [
+            "backup",
+            "-o",
+            str(out),
+            "--remote",
+            "offsite:bucket",
+            "--encrypt",
+            "--age-recipient",
+            "age1xyz",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "does NOT inherit the local 0600 mode" not in result.output
