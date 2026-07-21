@@ -88,6 +88,7 @@ class LoadTestMetrics:
     requests_per_sec: float
     total_requests: int
     error_rate: float  # 0.0–1.0 fraction (http_req_failed rate)
+    tokens_per_sec: float = 0.0  # generated completion tokens/sec (0.0 if summary omits it)
 
     @property
     def error_pct(self) -> float:
@@ -130,6 +131,9 @@ def parse_summary(data: dict[str, object]) -> LoadTestMetrics:
         requests_per_sec=_metric_value(data, "http_reqs", "rate", 0.0),
         total_requests=int(_metric_value(data, "http_reqs", "count", 0.0)),
         error_rate=_metric_value(data, "http_req_failed", "rate", 0.0),
+        # chat.js (SPEC-16.4) injects tokens_per_second into the summary; older summaries
+        # (pre-token-metric) lack it and default to 0.0 so they still parse.
+        tokens_per_sec=_metric_value(data, "tokens_per_second", "rate", 0.0),
     )
 
 

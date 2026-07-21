@@ -17,6 +17,12 @@
 
 import http from 'k6/http';
 import { check } from 'k6';
+import { Counter } from 'k6/metrics';
+
+// Total completion tokens generated across the run (usage.completion_tokens summed
+// over every non-stream response). k6 also derives its per-second rate, but the perf
+// gate reads the explicit tokens_per_second we compute in handleSummary below.
+const completionTokens = new Counter('completion_tokens');
 
 export const options = {
   vus: Number(__ENV.VUS) || 5,
@@ -38,12 +44,36 @@ export default function () {
   };
   const res = http.post(url, payload, params);
   check(res, { 'status is 200': (r) => r.status === 200 });
+  // Non-stream OpenAI-compatible responses carry usage.completion_tokens; accumulate it
+  // (guarded so a malformed / non-200 body never aborts the VU iteration).
+  if (res.status === 200) {
+    let body = null;
+    try {
+      body = res.json();
+    } catch (e) {
+      body = null;
+    }
+    const usage = body && body.usage;
+    if (usage && typeof usage.completion_tokens === 'number') {
+      completionTokens.add(usage.completion_tokens);
+    }
+  }
 }
 
 // handleSummary returns a map of {path|'stdout': content}. Writing the parsed
 // summary object as JSON to a file is format-stable across k6 versions (unlike
 // the deprecated --summary-export flag), which is what the Python wrapper reads.
+// We inject total completion tokens + tokens_per_second (total / wall-clock test
+// seconds) as a k6-metric-shaped entry so the wrapper's generic metric reader lifts
+// them; existing latency/throughput/error metrics are left untouched.
 export function handleSummary(data) {
+  const tokensValues =
+    (data.metrics && data.metrics.completion_tokens && data.metrics.completion_tokens.values) || {};
+  const totalTokens = tokensValues.count || 0;
+  const durationSeconds =
+    ((data.state && data.state.testRunDurationMs) || 0) / 1000;
+  const tokensPerSecond = durationSeconds > 0 ? totalTokens / durationSeconds : 0;
+  data.metrics.tokens_per_second = { values: { rate: tokensPerSecond, count: totalTokens } };
   const out = {};
   out[__ENV.SUMMARY || 'summary.json'] = JSON.stringify(data);
   return out;

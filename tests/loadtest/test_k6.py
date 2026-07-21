@@ -73,6 +73,21 @@ def test_parse_summary_tolerates_missing_metrics() -> None:
     assert m.error_rate == 0.0
 
 
+def test_parse_summary_reads_tokens_per_sec_when_present() -> None:
+    # SPEC-16.4: chat.js emits token throughput into the summary; the wrapper lifts it.
+    data = {"metrics": {"tokens_per_second": {"values": {"rate": 73.5}}}}
+    m = k6.parse_summary(data)
+    assert m.tokens_per_sec == pytest.approx(73.5)
+
+
+def test_parse_summary_defaults_tokens_per_sec_to_zero_when_absent() -> None:
+    # Old (pre-token-metric) summaries must still parse — tokens_per_sec defaults to 0.0.
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert "tokens_per_second" not in data["metrics"]  # fixture predates the metric
+    m = k6.parse_summary(data)
+    assert m.tokens_per_sec == 0.0
+
+
 def test_format_metrics_table_is_renderable_text() -> None:
     data = json.loads(FIXTURE.read_text(encoding="utf-8"))
     m = k6.parse_summary(data)
