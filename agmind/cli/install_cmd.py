@@ -382,6 +382,17 @@ def register(app: typer.Typer) -> None:
         only needed for the bootstrap step. In `--no-tui` mode it is requested via a normal
         terminal prompt.
         """
+        from agmind.core.paths import WheelInstallRefused, refuse_if_wheel_install
+
+        # SPEC-17.2: a wheel install (site-packages, no repo-root templates/ sibling) is the
+        # operator CLI only — it cannot drive install, which needs the full checkout tree.
+        # `setup` routes through here too, so this single call-site guards both entrypoints.
+        try:
+            refuse_if_wheel_install()
+        except WheelInstallRefused as exc:
+            typer.echo(f"ERROR: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+
         import getpass
 
         from agmind.cli.tui.setup_wizard import (
