@@ -57,3 +57,31 @@ langgenius/dify-sandbox:
 # not an actionable bump — hold so the report stops flagging it ⚠️ major every week.
 mysql:
   reason: "Dify requires MySQL 8.x (verified); do not bump to 9.x until Dify re-verify."
+
+# --- Bump review 2026-07-21 (issue #12): held after per-component research ---
+
+# homarr: v1.67.0 replaced Umami with server-side PostHog analytics (posthog-node cron
+# POST to hog.homarr.dev). Our egress_telemetry_check exemption ("v1.62 Umami opt-out via
+# UI only") is now WRONG. Bump blocked until a spike confirms NO_EXTERNAL_CONNECTION=true
+# suppresses the cron POST (verify empirically, not by doc), then move homarr from
+# _EGRESS_EXEMPT to _REQUIRED_EGRESS_ENV. v1.62→v1.71 drizzle migration is also one-way.
+ghcr.io/homarr-labs/homarr:
+  reason: "v1.67+ adds server-side PostHog egress (hog.homarr.dev); NO_EXTERNAL_CONNECTION suppression unverified — zero-egress spike required before bump."
+  hold_until: 2026-09-01
+
+# docling: v1.27.0 bakes 745MB of models under .cache/docling/models, but our mount is the
+# whole .cache — so the new image would mask the baked models and re-download from HF on
+# first boot (zero-egress break + slow start). The fix (narrow mount to .cache/huggingface +
+# HF_HUB_OFFLINE) changes the live mount geometry (506MB already staged) and needs a live
+# offline-boot + `agmind docling bench` re-verify. Held until that spike lands.
+quay.io/docling-project/docling-serve-cpu:
+  reason: "v1.27.0 bakes models under .cache; current whole-.cache mount masks them → HF re-download. Mount-narrow + HF_HUB_OFFLINE fix needs live offline-boot verify."
+  hold_until: 2026-09-01
+
+# portainer: 2.43.0 image bump is safe, but the initial-admin flow changed (setup token in
+# container logs, or --admin-password-file). Our access.note still says "restart + create
+# admin", which is wrong under 2.43. Bump lands together with the access.note rewrite +
+# CredentialsStep wiring — a doc/UX change, not a bare image swap.
+portainer/portainer-ce:
+  reason: "2.43 changed initial-admin setup (log token / --admin-password-file); bump lands with the access.note rewrite + CredentialsStep wiring, not as a bare image swap."
+  hold_until: 2026-09-01
