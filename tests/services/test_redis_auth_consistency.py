@@ -27,7 +27,9 @@ pytestmark = pytest.mark.backend_any
 
 SERVICES_DIR = Path(__file__).resolve().parent.parent.parent / "templates" / "services"
 CI_YML = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "ci.yml"
-STEPS_PY = Path(__file__).resolve().parent.parent.parent / "agmind" / "install" / "steps.py"
+STEPS_PY = (
+    Path(__file__).resolve().parent.parent.parent / "agmind" / "install" / "steps" / "__init__.py"
+)
 
 # Services that do NOT need redis credentials even though they may be on the same network.
 # dify-sandbox: confirmed no redis env, no depends_on redis.

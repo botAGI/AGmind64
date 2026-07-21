@@ -18,7 +18,7 @@ import yaml
 pytestmark = pytest.mark.backend_any
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
-_STEPS = _ROOT / "agmind" / "install" / "steps.py"
+_STEPS = _ROOT / "agmind" / "install" / "steps" / "__init__.py"
 _INSTALL_YML = _ROOT / "ansible" / "install.yml"
 
 

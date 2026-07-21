@@ -117,6 +117,7 @@ packages = [
   "agmind.governance",
   "agmind.i18n",
   "agmind.install",
+  "agmind.install.steps",
   "agmind.loadtest",
   "agmind.migrations",
   "agmind.migrations.versions",
