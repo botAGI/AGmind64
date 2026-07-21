@@ -121,6 +121,9 @@ def test_observability_service_mounts_match_template_layout() -> None:
     assert "/var/lib/agmind/alloy:/var/lib/alloy/data" in alloy.volumes
     assert alloy.command == [
         "run",
+        # zero-egress: Alloy POSTs an anonymous usage report to stats.grafana.org every 4h
+        # unless --disable-reporting is passed (defaults to false). See alloy.yaml (2026-07-21).
+        "--disable-reporting",
         "--server.http.listen-addr=0.0.0.0:12345",
         "--storage.path=/var/lib/alloy/data",
         "/etc/alloy/config.alloy",
