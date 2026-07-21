@@ -1,0 +1,16 @@
+# Managed by AGmind (`agmind ops backup-timer --install`) — do not edit by hand.
+# One-shot backup of the AGmind deployment: the config tier plus the optional
+# data tier (--include-data) and an optional off-host push (--remote). Triggered
+# by agmind-backup.timer. Runs as root (systemd system unit) so the root-owned
+# /opt/agmind/.env and /var/lib/agmind/* data dirs are readable without an
+# interactive sudo prompt — the timer path deliberately passes NO
+# --ask-sudo-password. __AGMIND_BACKUP_EXECSTART__ is filled in at install time.
+[Unit]
+Description=AGmind deployment backup (config + optional data/off-host)
+Documentation=man:agmind(1)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=__AGMIND_BACKUP_EXECSTART__

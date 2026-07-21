@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,6 +37,25 @@ from agmind.ops.backup import (
 )
 from agmind.ops.exec import logs as do_logs
 from agmind.ops.exec import shell as do_shell
+from agmind.ops.offhost import OffHostPushError, push_backup, resolve_remote, which_rclone
+
+# ---- opt-in backup systemd timer (SPEC-16.5) --------------------------------
+# The scheduled backup writes into /var/lib/agmind/backups (matching the image
+# default data root; a *_stack gc never touches a real path there). The unit
+# files ship as filled templates under templates/systemd/ and land in the system
+# unit dir; only `agmind ops backup-timer --install/--uninstall` provisions them —
+# they are NEVER part of default_steps() (opt-in, per SPEC-16.5).
+SYSTEMD_UNIT_DIR = Path("/etc/systemd/system")
+BACKUP_SERVICE_UNIT = "agmind-backup.service"
+BACKUP_TIMER_UNIT = "agmind-backup.timer"
+DEFAULT_BACKUP_OUTPUT_DIR = DEFAULT_SYSTEM_DIR / "backups"
+_SERVICE_EXECSTART_TOKEN = "__AGMIND_BACKUP_EXECSTART__"
+_TIMER_ONCALENDAR_TOKEN = "__AGMIND_BACKUP_ONCALENDAR__"
+# systemd calendar shorthands passed through verbatim; anything else is treated
+# as a raw OnCalendar expression (e.g. "*-*-* 03:00:00").
+_ONCALENDAR_ALIASES = frozenset(
+    {"minutely", "hourly", "daily", "weekly", "monthly", "quarterly", "semiannually", "yearly"}
+)
 
 
 def _prompt_sudo_password(ask_sudo_password: bool) -> str | None:
@@ -136,6 +156,7 @@ def cmd_backup(
     *,
     include_data: bool = False,
     install_dir: Path = BACKUP_INSTALL_DIR,
+    remote: str | None = None,
 ) -> int:
     output = Path(output)
     if output.exists():
@@ -216,6 +237,21 @@ def cmd_backup(
                 "succeeded, but the stateful-apply guard will not see it as fresh.",
                 file=sys.stderr,
             )
+    if remote:
+        # SPEC-16.5 off-host push: only on an EXPLICIT --remote (predictable manual
+        # behaviour — a plain `agmind backup` never silently ships the archive
+        # off-host). The scheduled path bakes the resolved remote into the timer's
+        # ExecStart at install time, so it reaches here as an explicit value too.
+        try:
+            target = push_backup(result.output_path, remote)
+        except OffHostPushError as exc:
+            print(
+                f"agmind backup: off-host push FAILED ({exc}) — the LOCAL backup at "
+                f"{result.output_path} is intact.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"✓ pushed off-host: {target}")
     if not include_data:
         # Make the config-only scope LOUD: this archive contains NO database dumps / volume
         # data, so a restore from it cannot recover any stateful store (live-audit 2026-06-05
@@ -225,6 +261,258 @@ def cmd_backup(
             "--include-data (and --ask-sudo-password) to protect the stateful stores.",
             file=sys.stderr,
         )
+    return 0
+
+
+def _systemd_template(name: str) -> str:
+    """Read a shipped systemd unit template (templates/systemd/<name>) via data_root()."""
+    from agmind.core.paths import data_root
+
+    return (data_root() / "templates" / "systemd" / name).read_text(encoding="utf-8")
+
+
+def _resolve_agmind_bin() -> str:
+    """Absolute command that invokes the SAME agmind the operator ran.
+
+    Prefer the running console-script (``sys.argv[0]`` when it is ``agmind``) so a
+    repo-.venv install is used (a global shim rots post-wipe — feedback
+    install-from-repo-venv), then the ``agmind`` on PATH, then a module invocation
+    via the current interpreter. The result is embedded in the timer's ExecStart,
+    which runs with systemd's minimal PATH, so an absolute path matters.
+    """
+    argv0 = Path(sys.argv[0])
+    if argv0.name == "agmind" and argv0.exists():
+        return str(argv0.resolve())
+    found = shutil.which("agmind")
+    if found:
+        return found
+    return f"{sys.executable} -m agmind"
+
+
+def _resolve_oncalendar(schedule: str) -> str:
+    """Map ``--schedule`` to an ``OnCalendar=`` value (alias verbatim, else raw)."""
+    text = schedule.strip()
+    if not text:
+        return "daily"
+    if text.lower() in _ONCALENDAR_ALIASES:
+        return text.lower()
+    return text
+
+
+def _backup_timer_execstart(
+    agmind_bin: str,
+    *,
+    include_data: bool,
+    remote: str | None,
+    output_dir: Path,
+) -> str:
+    """Build the timer service ExecStart line.
+
+    Wrapped in ``/bin/sh -c`` so the shell timestamps the output filename at run
+    time — successive runs write a unique archive and never hit ``cmd_backup``'s
+    refuse-to-overwrite guard. The ``%`` in the ``date`` format is doubled so
+    systemd does not treat it as a unit specifier.
+
+    NB: the backup subcommand is registered on the TOP-LEVEL app (``agmind
+    backup``), NOT under ``agmind ops`` — only the timer/rotate/dr-drill helpers
+    live under ``ops``. Emitting ``ops backup`` here would make every scheduled
+    fire die with "No such command 'backup'"; the ExecStart mirrors the command
+    that actually resolves.
+    """
+    parts = [agmind_bin, "backup"]
+    if include_data:
+        parts.append("--include-data")
+    if remote:
+        parts += ["--remote", remote]
+    out = f"{output_dir}/agmind-backup-$(date -u +%%Y%%m%%dT%%H%%M%%SZ).tar.gz"
+    parts += ["-o", out]
+    return "/bin/sh -c '" + " ".join(parts) + "'"
+
+
+def _run_maybe_sudo(args: list[str], sudo_password: str | None) -> subprocess.CompletedProcess[str]:
+    """Run ``args`` directly (sudo_password is None → already root / writable dir) or via
+    non-interactive ``sudo -S``. Captures text output; never raises on non-zero rc.
+
+    Calls the module-level ``subprocess.run`` (monkeypatchable in tests — the same seam
+    the k6 wrapper uses)."""
+    if sudo_password is None:
+        return subprocess.run(args, capture_output=True, text=True, check=False)
+    from agmind.core.proc import sudo_argv, sudo_stdin_text
+
+    return subprocess.run(
+        sudo_argv(args),
+        capture_output=True,
+        text=True,
+        check=False,
+        input=sudo_stdin_text(sudo_password),
+    )
+
+
+def _write_unit_file(dest: Path, content: str, sudo_password: str | None) -> None:
+    """Place a unit body at ``dest`` (root:root 0644).
+
+    Without a sudo password: a plain atomic local write — works when the operator
+    can write the unit dir directly (root, or a test tmp dir); a non-root operator
+    against /etc raises PermissionError, which the caller turns into a
+    --ask-sudo-password hint. With a sudo password: stage to a user temp, then
+    ``install`` it root:root 0644 (the GpuMetricsStep pattern).
+    """
+    if sudo_password is None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(f".{dest.name}.tmp")
+        tmp.write_text(content, encoding="utf-8")
+        os.chmod(tmp, 0o644)
+        tmp.replace(dest)
+        return
+    fd, tmp_name = tempfile.mkstemp(prefix=".agmind-backup-unit-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(tmp_name, 0o644)
+        result = _run_maybe_sudo(
+            ["install", "-m", "0644", "-o", "root", "-g", "root", tmp_name, str(dest)],
+            sudo_password,
+        )
+        if result.returncode != 0:
+            raise OSError(
+                f"install of {dest} failed (rc={result.returncode}): "
+                f"{(result.stderr or '').strip() or 'no output'}"
+            )
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+
+
+def cmd_backup_timer(
+    *,
+    install: bool = False,
+    uninstall: bool = False,
+    schedule: str = "daily",
+    remote: str | None = None,
+    include_data: bool = True,
+    ask_sudo_password: bool = False,
+    install_dir: Path = BACKUP_INSTALL_DIR,
+    output_dir: Path = DEFAULT_BACKUP_OUTPUT_DIR,
+    unit_dir: Path = SYSTEMD_UNIT_DIR,
+) -> int:
+    """Install / uninstall the opt-in scheduled-backup systemd timer (SPEC-16.5).
+
+    ``--install`` materializes ``agmind-backup.{service,timer}`` (filling the
+    schedule + off-host remote), reloads systemd, and enables+starts the timer.
+    ``--uninstall`` disables it and removes both units. This is OPT-IN — it is
+    never part of the default install pipeline.
+    """
+    if install == uninstall:
+        print(
+            "agmind backup-timer: choose exactly one of --install / --uninstall",
+            file=sys.stderr,
+        )
+        return 2
+
+    sudo_password = _prompt_sudo_password(ask_sudo_password)
+    unit_dir = Path(unit_dir)
+    service_path = unit_dir / BACKUP_SERVICE_UNIT
+    timer_path = unit_dir / BACKUP_TIMER_UNIT
+
+    if uninstall:
+        # disable --now stops + un-schedules; best-effort so a partially-installed
+        # timer still cleans up. Then remove both unit files and reload systemd.
+        _run_maybe_sudo(["systemctl", "disable", "--now", BACKUP_TIMER_UNIT], sudo_password)
+        removed: list[str] = []
+        try:
+            for path in (timer_path, service_path):
+                if sudo_password is None:
+                    if path.exists():
+                        path.unlink()
+                        removed.append(path.name)
+                else:
+                    result = _run_maybe_sudo(["rm", "-f", str(path)], sudo_password)
+                    if result.returncode != 0:
+                        print(
+                            f"agmind backup-timer: could not remove {path} "
+                            f"(rc={result.returncode})",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    removed.append(path.name)
+        except PermissionError as exc:
+            hint = "" if ask_sudo_password else " — re-run with --ask-sudo-password"
+            print(
+                f"agmind backup-timer: cannot remove unit files ({exc}){hint}",
+                file=sys.stderr,
+            )
+            return 1
+        _run_maybe_sudo(["systemctl", "daemon-reload"], sudo_password)
+        print(f"✓ backup timer removed ({', '.join(removed) or 'nothing to remove'})")
+        return 0
+
+    # ---- install ----
+    resolved_remote = resolve_remote(remote, install_dir=install_dir)
+    if resolved_remote and which_rclone() is None:
+        # Not fatal — rclone can be installed before the first scheduled run; but a
+        # missing binary means the 3am push fails silently, so warn loudly now.
+        print(
+            "agmind backup-timer: WARNING off-host remote is set but rclone is not on PATH; "
+            "install + configure it (https://rclone.org/install/ then `rclone config`) before "
+            "the timer fires, or the off-host push will fail.",
+            file=sys.stderr,
+        )
+    oncalendar = _resolve_oncalendar(schedule)
+    execstart = _backup_timer_execstart(
+        _resolve_agmind_bin(),
+        include_data=include_data,
+        remote=resolved_remote,
+        output_dir=output_dir,
+    )
+    service_content = _systemd_template(BACKUP_SERVICE_UNIT).replace(
+        _SERVICE_EXECSTART_TOKEN, execstart
+    )
+    timer_content = _systemd_template(BACKUP_TIMER_UNIT).replace(
+        _TIMER_ONCALENDAR_TOKEN, oncalendar
+    )
+
+    # Ensure the backup output dir exists (root-owned 0700 — archives are 0600 but
+    # the dir itself may hold .env-bearing tarballs, so keep it private).
+    _run_maybe_sudo(["install", "-d", "-m", "0700", str(output_dir)], sudo_password)
+
+    try:
+        _write_unit_file(service_path, service_content, sudo_password)
+        _write_unit_file(timer_path, timer_content, sudo_password)
+    except PermissionError as exc:
+        hint = "" if ask_sudo_password else " — re-run with --ask-sudo-password"
+        print(
+            f"agmind backup-timer: cannot write unit files to {unit_dir} ({exc}){hint}",
+            file=sys.stderr,
+        )
+        return 1
+    except OSError as exc:
+        print(f"agmind backup-timer: {exc}", file=sys.stderr)
+        return 1
+
+    reload_result = _run_maybe_sudo(["systemctl", "daemon-reload"], sudo_password)
+    if reload_result.returncode != 0:
+        print(
+            f"agmind backup-timer: systemctl daemon-reload failed (rc={reload_result.returncode})",
+            file=sys.stderr,
+        )
+        return 1
+    enable_result = _run_maybe_sudo(
+        ["systemctl", "enable", "--now", BACKUP_TIMER_UNIT], sudo_password
+    )
+    if enable_result.returncode != 0:
+        print(
+            f"agmind backup-timer: systemctl enable --now {BACKUP_TIMER_UNIT} failed "
+            f"(rc={enable_result.returncode})",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"✓ backup timer installed: {timer_path} (OnCalendar={oncalendar})")
+    print(f"  service: {service_path}")
+    off = f"  → off-host: {resolved_remote}" if resolved_remote else ""
+    print(f"  backups: {output_dir}{off}")
     return 0
 
 
@@ -892,10 +1180,21 @@ def register(app: typer.Typer) -> None:
             "/var/lib/agmind/* volume dirs of the running services (needs --ask-sudo-password "
             "for root-owned data dirs).",
         ),
+        remote: str | None = typer.Option(
+            None,
+            "--remote",
+            help="After a successful backup, push the archive off-host via rclone to this "
+            "remote (e.g. `s3:agmind-backups/host1`). Requires the rclone binary + config.",
+        ),
     ) -> None:
         """Create tar.gz backup of compose / .env / state / snapshots."""
         raise typer.Exit(
-            code=cmd_backup(output, ask_sudo_password=ask_sudo_password, include_data=include_data)
+            code=cmd_backup(
+                output,
+                ask_sudo_password=ask_sudo_password,
+                include_data=include_data,
+                remote=remote,
+            )
         )
 
     @app.command("backup-list")
@@ -1043,6 +1342,60 @@ def register(app: typer.Typer) -> None:
             )
         )
 
+    @ops_app.command("backup-timer")
+    def ops_backup_timer(
+        install: bool = typer.Option(
+            False, "--install", help="Install + enable the scheduled-backup systemd timer."
+        ),
+        uninstall: bool = typer.Option(
+            False, "--uninstall", help="Disable + remove the scheduled-backup timer."
+        ),
+        schedule: str = typer.Option(
+            "daily",
+            "--schedule",
+            help="Backup cadence: daily / weekly / a raw systemd OnCalendar expression.",
+        ),
+        remote: str | None = typer.Option(
+            None,
+            "--remote",
+            help="rclone remote to push each backup off-host (e.g. `s3:agmind-backups/host1`). "
+            "Defaults to AGMIND_BACKUP_RCLONE_REMOTE in the deployment .env when unset.",
+        ),
+        include_data: bool = typer.Option(
+            True,
+            "--include-data/--no-include-data",
+            help="Back up the DATA tier (DB dumps + volume dirs), not just config. Default on.",
+        ),
+        install_dir: Path = typer.Option(
+            BACKUP_INSTALL_DIR, "--install-dir", help="Deployment dir (for .env remote lookup)."
+        ),
+        output_dir: Path = typer.Option(
+            DEFAULT_BACKUP_OUTPUT_DIR, "--output-dir", help="Where scheduled backups are written."
+        ),
+        unit_dir: Path = typer.Option(
+            SYSTEMD_UNIT_DIR, "--unit-dir", help="systemd unit dir.", hidden=True
+        ),
+        ask_sudo_password: bool = typer.Option(
+            False,
+            "--ask-sudo-password",
+            help="Prompt for sudo password to write root-owned systemd unit files.",
+        ),
+    ) -> None:
+        """Manage the opt-in scheduled-backup systemd timer (--include-data + off-host push)."""
+        raise typer.Exit(
+            code=cmd_backup_timer(
+                install=install,
+                uninstall=uninstall,
+                schedule=schedule,
+                remote=remote,
+                include_data=include_data,
+                ask_sudo_password=ask_sudo_password,
+                install_dir=install_dir,
+                output_dir=output_dir,
+                unit_dir=unit_dir,
+            )
+        )
+
     @ops_smoke_app.command("backup-root-owned")
     def ops_smoke_backup_root_owned(
         root: Path = typer.Option(
@@ -1074,6 +1427,7 @@ __all__ = [
     "BACKUP_INSTALL_DIR",  # re-export для backwards compat / tests
     "cmd_backup",
     "cmd_backup_list",
+    "cmd_backup_timer",
     "cmd_logs",
     "cmd_restore",
     "cmd_root_owned_backup_smoke",

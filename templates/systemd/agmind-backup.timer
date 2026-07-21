@@ -1,0 +1,14 @@
+# Managed by AGmind (`agmind ops backup-timer --install`) — do not edit by hand.
+# Persistent=true catches up a missed run after downtime (host was off at the
+# scheduled time). __AGMIND_BACKUP_ONCALENDAR__ is filled in at install time
+# from --schedule (daily / weekly / a raw OnCalendar expression).
+[Unit]
+Description=Scheduled AGmind deployment backup
+
+[Timer]
+OnCalendar=__AGMIND_BACKUP_ONCALENDAR__
+Persistent=true
+Unit=agmind-backup.service
+
+[Install]
+WantedBy=timers.target
