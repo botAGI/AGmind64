@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: grafana
-image: grafana/grafana:13.0.1+security-01
-digest: 0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a
+image: grafana/grafana:13.1.1
+digest: 1c1bd67c54c5fcf6e759897852b5a584191bd6796e8d328a5ace457799801261
 tier: ops
-purpose: Metrics + logs visualization — Grafana 13 (2026-05-12)
+purpose: Metrics + logs visualization — Grafana 13.1 (2026-07-21)
 profiles:
 - observability
 ports:
@@ -20,7 +20,8 @@ env:
   GF_PATHS_PROVISIONING: /etc/grafana/provisioning
   # zero-egress: [analytics] reporting_enabled alone is NOT enough — check_for_updates still
   # GETs stats.grafana.org and check_for_plugin_updates hits grafana.com on a timer. All four
-  # are needed for a true no-phone-home. verified 2026-06-09 against grafana 13.0.1 docs
+  # are needed for a true no-phone-home. re-verified 2026-07-21 for grafana 13.1: these four
+  # [analytics] keys are unchanged in 13.1 and still kill all four egress paths (docs below)
   # https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#analytics
   GF_ANALYTICS_REPORTING_ENABLED: 'false'
   GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
