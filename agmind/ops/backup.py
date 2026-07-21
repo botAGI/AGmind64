@@ -59,6 +59,32 @@ BACKUP_FORMAT_VERSION = 1
 # backup happened before recreating a stateful service. Non-secret (0644), atomic write.
 DATA_BACKUP_MARKER_NAME = ".agmind-last-data-backup.json"
 
+# SPEC-17.4: optional at-rest encryption of the finished archive with `age`. age is a small Go
+# binary the operator installs (https://github.com/FiloSottile/age) — intentionally NOT a Python
+# dependency, exactly like rclone (off-host push) and k6 (load test). A missing binary raises a
+# managed BackupEncryptError with an actionable message, never a traceback.
+_AGE_MISSING_MSG = (
+    "age not found — install age (https://github.com/FiloSottile/age) or drop --encrypt."
+)
+
+
+class BackupEncryptError(RuntimeError):
+    """A managed at-rest-encryption failure (age missing / no recipient / age run failed).
+
+    The CLI turns this into an actionable message + non-zero exit, never a traceback
+    (mirrors ``agmind.ops.offhost.OffHostPushError``).
+    """
+
+
+def which_age() -> str | None:
+    """Absolute path to the ``age`` binary, or ``None`` if it is not on PATH.
+
+    Seam (monkeypatchable in tests) — age is intentionally NOT a Python dependency
+    (it is a Go binary the operator installs), so the encrypt path fail-fasts when
+    it is absent, mirroring ``agmind.ops.offhost.which_rclone``.
+    """
+    return shutil.which("age")
+
 
 @dataclass(frozen=True)
 class BackupSource:
@@ -315,6 +341,41 @@ def _add_sudo_directory(
             tar.addfile(member, extracted)
 
 
+def _encrypt_with_age(archive: Path, recipient: str) -> Path:
+    """Wrap a finalized backup archive with ``age -r <recipient>`` (SPEC-17.4).
+
+    Produces ``<archive>.age`` (0600) and removes the plaintext archive so an encrypt run never
+    leaves the secrets-bearing .tar.gz on disk. age writes to a temp sibling which is then
+    atomically replaced into place — same atomic-artifact contract as the plaintext path. A
+    missing ``age`` binary (TOCTOU vs. the caller's fail-fast check) or a non-zero age exit
+    raises :class:`BackupEncryptError`, never a traceback. age is a Go binary the operator
+    installs — never a Python dependency.
+    """
+    age_bin = which_age()
+    if age_bin is None:
+        raise BackupEncryptError(_AGE_MISSING_MSG)
+    encrypted = archive.with_name(archive.name + ".age")
+    tmp = archive.with_name(f".{archive.name}.age.tmp")
+    _cleanup_path(tmp)
+    argv = [age_bin, "-r", recipient, "-o", str(tmp), str(archive)]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:  # age vanished between which_age() and run()
+        _cleanup_path(tmp)
+        raise BackupEncryptError(f"failed to execute age: {exc}") from exc
+    if proc.returncode != 0:
+        _cleanup_path(tmp)
+        detail = (proc.stderr or proc.stdout or "").strip()[-400:]
+        raise BackupEncryptError(
+            f"age exited non-zero (rc={proc.returncode}): {detail or 'no output'}"
+        )
+    tmp.chmod(0o600)
+    tmp.replace(encrypted)
+    # Only drop the plaintext once the encrypted artifact is safely in place.
+    archive.unlink(missing_ok=True)
+    return encrypted
+
+
 def create_backup(
     output_path: Path,
     sources: list[BackupSource] | None = None,
@@ -322,15 +383,34 @@ def create_backup(
     *,
     data_sources: list[DataVolumeSource | DbDumpSource] | None = None,
     data_run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
+    encrypt: bool = False,
+    age_recipient: str | None = None,
 ) -> BackupResult:
     """Create tar.gz backup at output_path. Returns BackupResult.
 
     ``data_sources`` (from ``agmind.ops.backup_data.data_sources``) add a *data tier*: DB logical
     dumps (stored gzipped as ``<label>.sql.gz`` members) and ``/var/lib/agmind/*`` volume dirs.
     Each is recorded in metadata ``data`` with its kind (+ sha256 for dumps) for verify/restore.
+
+    ``encrypt`` (SPEC-17.4): after the plaintext archive is finalized, wrap it with
+    ``age -r <age_recipient>`` so the artifact becomes ``<output_path>.age`` (0600) and the
+    plaintext is removed. Requires ``age_recipient`` and the ``age`` binary — both are checked
+    UP FRONT so a missing recipient/binary fails before any (possibly multi-GB) archive is
+    written, raising :class:`BackupEncryptError` rather than a traceback.
     """
     if sources is None:
         sources = default_sources()
+
+    recipient = (age_recipient or "").strip()
+    if encrypt:
+        # Fail fast BEFORE building the archive: never write a plaintext .tar.gz we then cannot
+        # encrypt (the whole point of --encrypt is to not leave secrets in the clear on disk).
+        if not recipient:
+            raise BackupEncryptError(
+                "--encrypt requires an age recipient (--age-recipient age1...)."
+            )
+        if which_age() is None:
+            raise BackupEncryptError(_AGE_MISSING_MSG)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +510,19 @@ def create_backup(
     except Exception:
         _cleanup_path(tmp_path)
         raise
+
+    if encrypt:
+        # Plaintext archive is finalized (0600) — wrap it at rest with age, yielding
+        # <output_path>.age (0600) and dropping the plaintext. output_path now points at the
+        # encrypted artifact so BackupResult / off-host push / marker all reference the .age file.
+        # Fail-closed: if age fails (vanished binary / bad recipient), remove the plaintext too —
+        # an encrypt run must NEVER leave the secrets-bearing .tar.gz behind for the caller to
+        # mistake for an encrypted artifact.
+        try:
+            output_path = _encrypt_with_age(output_path, recipient)
+        except BackupEncryptError:
+            _cleanup_path(output_path)
+            raise
 
     size = output_path.stat().st_size
     return BackupResult(

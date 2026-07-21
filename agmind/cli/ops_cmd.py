@@ -14,6 +14,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -24,6 +25,7 @@ from agmind.ops.backup import (
 from agmind.ops.backup import (
     DEFAULT_SYSTEM_DIR,
     DEFAULT_USER_DIR,
+    BackupEncryptError,
     BackupResult,
     create_backup,
     default_sources,
@@ -157,6 +159,8 @@ def cmd_backup(
     include_data: bool = False,
     install_dir: Path = BACKUP_INSTALL_DIR,
     remote: str | None = None,
+    encrypt: bool = False,
+    age_recipient: str | None = None,
 ) -> int:
     output = Path(output)
     if output.exists():
@@ -197,12 +201,23 @@ def cmd_backup(
             "data dirs may abort the backup — re-run with --ask-sudo-password if it fails.",
             file=sys.stderr,
         )
+    # Pass the encryption knobs only when --encrypt is set so a plain backup keeps the exact same
+    # create_backup call surface (age params are inert defaults otherwise).
+    encrypt_kwargs: dict[str, Any] = (
+        {"encrypt": True, "age_recipient": age_recipient} if encrypt else {}
+    )
     try:
         result: BackupResult = create_backup(
             output_path=output,
             sudo_password=sudo_password,
             data_sources=data_sources,
+            **encrypt_kwargs,
         )
+    except BackupEncryptError as exc:
+        # age missing / no recipient / age run failed — actionable message, never a traceback
+        # (mirrors the off-host push error path below).
+        print(f"agmind backup: {exc}", file=sys.stderr)
+        return 1
     except PermissionError as exc:
         # /opt/agmind/.env and other artifacts are root-owned (0600); backing them up needs
         # sudo. Guide the operator instead of just echoing the raw errno.
@@ -219,6 +234,18 @@ def cmd_backup(
     )
     if result.sources_missing:
         print(f"  missing  ({len(result.sources_missing)}): {', '.join(result.sources_missing)}")
+    if not encrypt and "env" in result.sources_included:
+        # SPEC-17.4: the archive embeds /opt/agmind/.env — runtime env + generated service
+        # secrets — in PLAINTEXT (gzip only, no encryption). Anyone who can read the .tar.gz
+        # reads every secret. Warn loudly so the operator either encrypts at rest (--encrypt) or
+        # keeps the archive on trusted storage / pushes only to a trusted off-host remote.
+        print(
+            "  NOTE: this archive contains /opt/agmind/.env (runtime secrets) in PLAINTEXT "
+            "(gzip only, NOT encrypted). Re-run with --encrypt --age-recipient <age1...> to "
+            "encrypt it at rest, or keep it on trusted storage / push only to a trusted "
+            "off-host remote.",
+            file=sys.stderr,
+        )
     if include_data:
         # D-06: stamp the data-backup marker on the SUCCESS path only (after create_backup
         # returned, before this function returns 0) — the deploy stateful-apply guard reads it
@@ -1186,6 +1213,18 @@ def register(app: typer.Typer) -> None:
             help="After a successful backup, push the archive off-host via rclone to this "
             "remote (e.g. `s3:agmind-backups/host1`). Requires the rclone binary + config.",
         ),
+        encrypt: bool = typer.Option(
+            False,
+            "--encrypt/--no-encrypt",
+            help="Encrypt the finished archive at rest with age, producing <output>.age and "
+            "removing the plaintext. Requires --age-recipient and the age binary.",
+        ),
+        age_recipient: str | None = typer.Option(
+            None,
+            "--age-recipient",
+            help="age recipient the encrypted backup is sealed to (e.g. `age1...`). Required "
+            "with --encrypt.",
+        ),
     ) -> None:
         """Create tar.gz backup of compose / .env / state / snapshots."""
         raise typer.Exit(
@@ -1194,6 +1233,8 @@ def register(app: typer.Typer) -> None:
                 ask_sudo_password=ask_sudo_password,
                 include_data=include_data,
                 remote=remote,
+                encrypt=encrypt,
+                age_recipient=age_recipient,
             )
         )
 
