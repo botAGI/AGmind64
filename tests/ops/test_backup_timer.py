@@ -183,10 +183,16 @@ def test_backup_timer_requires_exactly_one_action(
     assert both.exit_code == 2, both.output
 
 
-def test_backup_timer_help_lists_flags() -> None:
-    result = CliRunner().invoke(_make_app(), ["ops", "backup-timer", "--help"])
-    assert result.exit_code == 0, result.output
-    out = result.output
+def test_backup_timer_exposes_flags() -> None:
+    """backup-timer must expose its operator flags. Introspect the click params rather than
+    parsing rendered --help text: typer 0.26 rich-wraps option names by terminal width, so a
+    substring check on help output is CI-terminal-dependent (same trap as
+    test_uninstall_force_help_distinct_from_upgrade_force, c9b642f — see CLAUDE.md journal)."""
+    import typer
+
+    group = typer.main.get_command(_make_app())
+    timer_cmd = group.commands["ops"].commands["backup-timer"]  # type: ignore[attr-defined]
+    declared = {opt for param in timer_cmd.params for opt in param.opts}
     for flag in (
         "--install",
         "--uninstall",
@@ -195,4 +201,4 @@ def test_backup_timer_help_lists_flags() -> None:
         "--include-data",
         "--ask-sudo-password",
     ):
-        assert flag in out, f"missing {flag} in help"
+        assert flag in declared, f"missing {flag} among backup-timer options: {sorted(declared)}"
