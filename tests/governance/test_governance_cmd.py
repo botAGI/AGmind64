@@ -435,6 +435,16 @@ def test_governance_structured_check_fails_when_json_payload_is_invalid(
 
 def test_governance_console_entrypoint_runs() -> None:
     agmind = Path(sys.executable).with_name("agmind")
+    if not agmind.exists():
+        # Resolve the console script as the venv-sibling of the running
+        # interpreter, NOT via shutil.which: a stale global /usr/local/bin/agmind
+        # shim survives wipes and would green-light a DIFFERENT install than the
+        # one under test. Skip when that sibling is absent (system-Python layout
+        # where the package isn't installed into the interpreter's dir).
+        pytest.skip(
+            "venv-sibling agmind console script absent (system-Python layout); "
+            "this test asserts the installed-venv entrypoint"
+        )
     result = subprocess.run(
         [str(agmind), "governance", "validate"],
         cwd=REPO_ROOT,
