@@ -65,9 +65,13 @@ jobs:
           TITLE="Upstream version report ($(date -u +%Y-%m-%d))"
           BODY="$(cat report.md)"
 
-          # Найти existing open issue с label upstream-update
-          EXISTING_ISSUE=$(gh issue list --label upstream-update --state open --limit 1 \
-            --json number --jq '.[0].number // empty')
+          # Найти ПРЕДЫДУЩИЙ weekly-report issue — по TITLE-префиксу, НЕ по label alone.
+          # Другие issue (task-issue, ссылающиеся на этот отчёт) могут нести label
+          # `upstream-update`; слепой `--limit 1` по одному лейблу однажды затёр такой
+          # task-issue своим отчётом. Матчим только настоящий weekly report по заголовку.
+          EXISTING_ISSUE=$(gh issue list --label upstream-update --state open --limit 50 \
+            --json number,title \
+            --jq 'map(select(.title | startswith("Upstream version report"))) | .[0].number // empty')
 
           if [ -n "$EXISTING_ISSUE" ]; then
             echo "Updating existing issue #$EXISTING_ISSUE"
