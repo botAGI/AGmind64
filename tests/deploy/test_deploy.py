@@ -894,7 +894,9 @@ def test_deploy_explicit_services_ignore_unused_unknown_profiles(
     assert result.success is True
     assert result.message == "1 pending change(s) — re-run with --apply to deploy"
     assert render_kwargs["profiles"] == ["missing-profile"]
-    assert render_kwargs["services"] == ["traefik"]
+    # #21: an explicit --service selection is closure-expanded, so traefik (consumes docker_api)
+    # co-pulls its provider docker-socket-proxy — the render sees the expanded set, not just traefik.
+    assert render_kwargs["services"] == ["docker-socket-proxy", "traefik"]
     assert not (install_dir / "docker-compose.yml").exists()
 
 
@@ -918,9 +920,43 @@ def test_deploy_progress_describes_explicit_service_selection(
     )
 
     assert result.success is True
-    assert ("render", "rendering compose for services=['traefik'], domain=ci.example.com") in events
+    # #21: the label reflects the closure-expanded selection (traefik pulls docker-socket-proxy).
+    assert (
+        "render",
+        "rendering compose for services=['docker-socket-proxy', 'traefik'], domain=ci.example.com",
+    ) in events
     assert not any(
         step == "render" and "profiles=['stale-profile']" in message for step, message in events
+    )
+
+
+def test_deploy_service_closure_pulls_docker_api_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#21: `deploy --service <docker_api consumer>` must co-deploy docker-socket-proxy — the
+    exact select_services does not pull it, so a fresh single-service deploy of prometheus would
+    otherwise come up with its docker service discovery pointed at a proxy that was never
+    deployed. The render must see the expanded set."""
+    render_kwargs: dict[str, object] = {}
+
+    def fake_render_to_string(**kwargs: object) -> str:
+        render_kwargs.update(kwargs)
+        return "services:\n  prometheus:\n    image: prom/prometheus:v3.13.1\n"
+
+    monkeypatch.setattr(runner, "render_to_string", fake_render_to_string)
+
+    result = runner.deploy(
+        profiles=[],
+        install_dir=tmp_path / "install",
+        domain="ci.example.com",
+        apply=False,
+        services=["prometheus"],
+    )
+
+    assert result.success is True
+    assert "docker-socket-proxy" in (render_kwargs["services"] or []), (
+        f"deploy --service prometheus must pull docker-socket-proxy; render saw "
+        f"{render_kwargs['services']}"
     )
 
 

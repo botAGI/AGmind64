@@ -834,6 +834,24 @@ def _deploy_impl(
                 msg = "unknown selected services for deploy: " + ", ".join(missing)
                 _emit("error", msg)
                 return DeployResult(success=False, message=msg)
+            # #21: expand an explicit --service selection through the SAME closure the install
+            # path uses (resolve_service_selection), so a docker_api consumer (prometheus /
+            # traefik / cadvisor / dozzle / netdata) co-deploys its sole provider
+            # docker-socket-proxy. The exact select_services does NOT pull it (that closure is
+            # what the fail-closed consumes guard's CLOSURE_PULLED_CAPABILITIES exemption assumes),
+            # so a fresh `deploy --service prometheus` otherwise renders + ups prometheus alone
+            # with its docker service discovery pointed at a proxy that was never deployed.
+            # Profile-based deploys are unaffected — the proxy rides its own profile.
+            from agmind.components import load_component_contracts
+            from agmind.services.selection import resolve_service_selection
+
+            services = sorted(
+                resolve_service_selection(
+                    descriptors,
+                    services=services,
+                    component_contracts=load_component_contracts(),
+                )
+            )
         if services is None:
             missing_profiles = unknown_profiles(descriptors, profiles)
             if missing_profiles:
