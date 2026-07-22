@@ -51,8 +51,14 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          # Check out at the target SHA so git history is available.
-          ref: ${{ github.event.inputs.sha }}
+          # Do NOT set `ref:` to the input SHA. actions/checkout@v6 resolves `ref` as a
+          # branch/tag and a raw commit SHA (esp. an abbreviated one like `07d0b89`) is
+          # neither, so it fails with "a branch or tag with the name '<sha>' could not be
+          # found" before any of our git logic runs (hit 2026-07-22). We check out the
+          # default branch with full history instead; every later step does its own
+          # `git fetch origin develop|main` and resolves the target SHA locally (git
+          # resolves abbreviated SHAs against fetched objects), so the SHA form no longer
+          # matters and the promote works with a short OR full SHA.
           # Use a token that can push to the protected main branch.
           # The default GITHUB_TOKEN is sufficient when branch protection allows
           # Actions to push (Settings → Branches → main → Allow GitHub Actions).
