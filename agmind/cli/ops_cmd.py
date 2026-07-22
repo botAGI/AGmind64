@@ -656,8 +656,7 @@ def _blocked_volume_consumers(
             if not str(host).startswith(_DATA_PREFIX):
                 continue
             if any(
-                host == vp or host.is_relative_to(vp) or vp.is_relative_to(host)
-                for vp in vol_paths
+                host == vp or host.is_relative_to(vp) or vp.is_relative_to(host) for vp in vol_paths
             ):
                 blocked.add(svc)
                 break
