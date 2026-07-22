@@ -3,6 +3,22 @@
 Thanks for your interest. This document covers the dev environment, the quality
 gates that CI enforces, and the branch/commit conventions.
 
+## Where to start
+
+- **Get oriented:** [`docs/CODEBASE.md`](docs/CODEBASE.md) is the responsibility map —
+  which directory owns what (the `agmind` Python package, `templates/services/*.yaml`
+  descriptors, Ansible bootstrap, the renderers). Read it before your first change.
+- **Pick something:** issues labelled
+  [`good first issue`](https://github.com/botAGI/AGmind64/issues?q=is%3Aopen+label%3A%22good+first+issue%22)
+  are small and self-contained;
+  [`help wanted`](https://github.com/botAGI/AGmind64/issues?q=is%3Aopen+label%3A%22help+wanted%22)
+  are larger, well-scoped pieces of real roadmap work. Comment on one to claim it — no
+  need to ask permission first.
+- **Adding or bumping a service?** `templates/services/*.yaml` are digest-pinned and
+  guarded by an authoring checklist (permissions, zero-egress, healthchecks). The PR
+  template and the descriptor gates will walk you through it; open a draft PR early if
+  you want feedback.
+
 ## Dev setup
 
 AGmind targets **Python 3.12+**. Use [`uv`](https://github.com/astral-sh/uv) if
