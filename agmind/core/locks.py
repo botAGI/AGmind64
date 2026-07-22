@@ -66,8 +66,26 @@ def deploy_lock(install_dir: Path) -> Iterator[bool]:
     try:
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        except PermissionError as exc:
+            # EACCES: the lock file exists but we can't open it — almost always a stale lock left
+            # root:root by a prior `sudo -E` op (rotate-secrets/restore run elevated), since our
+            # own runs create it 0600 as the invoking uid. Proceeding (yield True) would silently
+            # disable single-flight and let two concurrent deploys race the same container names
+            # (#24). Fail CLOSED — treat it as held — and log how to clear it, rather than turn a
+            # data-corrupting race into a "no lock" no-op.
+            log.warning(
+                "deploy lock at %s is not accessible (%s) — likely a stale lock from a prior "
+                "`sudo` op; refusing rather than deploy without single-flight. Clear it and "
+                "retry: sudo rm -f %s",
+                lock_path,
+                exc.strerror,
+                lock_path,
+            )
+            yield False
+            return
         except OSError as exc:
-            # Cannot create the lock file — do not block the deploy on lock infra.
+            # Other errors (missing runtime dir, ENOSPC, …) are lock-infra failures, not
+            # contention — do not block the deploy on lock infra.
             log.debug("deploy lock unavailable (%s); proceeding without it", exc)
             yield True
             return
