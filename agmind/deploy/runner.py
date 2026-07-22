@@ -33,7 +33,12 @@ from agmind.core.logging import logger
 from agmind.core.proc import sudo_argv, sudo_stdin_text
 from agmind.deploy.diff import ComposeDiff, compute_diff_from_files
 from agmind.deploy.snapshot import Snapshot, SnapshotManager
-from agmind.deploy.state import DeployState, load_deploy_state, write_deploy_state
+from agmind.deploy.state import (
+    DEPLOY_STATE_FILENAME,
+    DeployState,
+    load_deploy_state,
+    write_deploy_state,
+)
 from agmind.ops.backup import data_backup_is_fresh
 from agmind.ops.backup_data import data_sources
 from agmind.services.renderer import (
@@ -1354,6 +1359,23 @@ def _rollback_to_snapshot(
             )
         else:
             _remove_file_maybe_sudo(version_env_file, sudo_password=sudo_password)
+
+        # Restore the deploy-state passport (D-02, Phase 13). The snapshot deliberately captures
+        # deploy-state.json.snapshot, but the restore leg was missing: a manual rollback of a
+        # SUCCEEDED deploy left the passport claiming the just-removed service is still deployed,
+        # so the next `upgrade`/`deploy --from-state` re-selected it (undoing the rollback), the
+        # D-04 narrowing guard hard-refused a correct selection, and `status` reported drift.
+        # Mirror the version.env restore-or-remove so the passport matches the restored compose.
+        deploy_state_file = install_dir / DEPLOY_STATE_FILENAME
+        if snapshot.deploy_state_file.exists():
+            _write_text_maybe_sudo(
+                deploy_state_file,
+                snapshot.deploy_state_file.read_text(encoding="utf-8"),
+                sudo_password=sudo_password,
+                mode="0644",
+            )
+        else:
+            _remove_file_maybe_sudo(deploy_state_file, sudo_password=sudo_password)
 
         # Restore descriptors (optional — sometimes not present)
         if snapshot.descriptors_dir.exists():

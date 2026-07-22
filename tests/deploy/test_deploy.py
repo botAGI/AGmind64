@@ -1355,6 +1355,56 @@ def test_rollback_removes_stale_version_env_when_snapshot_has_none(
     assert not version_env.exists()
 
 
+def test_rollback_restores_deploy_state_from_snapshot(
+    tmp_path: Path,
+    snapshot_mgr: SnapshotManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#18-sibling bug: the passport was snapshotted but never restored, so a rollback left
+    deploy-state.json claiming the removed service is still deployed."""
+    pre_state = tmp_path / "deploy-state.json"
+    pre_state.write_text('{"resolved_services": ["a", "b", "c"]}\n', encoding="utf-8")
+    snap = snapshot_mgr.save(
+        compose_text="services: {}\n",
+        profile="core",
+        deploy_state_file=pre_state,
+    )
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    # simulate the post-deploy passport that added service d
+    (install_dir / "deploy-state.json").write_text(
+        '{"resolved_services": ["a", "b", "c", "d"]}\n', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+
+    assert runner._rollback_to_snapshot(snap, install_dir)
+    restored = (install_dir / "deploy-state.json").read_text(encoding="utf-8")
+    assert '"resolved_services": ["a", "b", "c"]' in restored
+    assert '"d"' not in restored
+
+
+def test_rollback_removes_stale_deploy_state_when_snapshot_has_none(
+    tmp_path: Path,
+    snapshot_mgr: SnapshotManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No passport at snapshot time (pre-Phase-13 stack) → a stale one must be removed, not left
+    behind, so the passport never outlives the compose it described."""
+    snap = snapshot_mgr.save(compose_text="services: {}\n", profile="legacy")
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    stale = install_dir / "deploy-state.json"
+    stale.write_text('{"resolved_services": ["d"]}\n', encoding="utf-8")
+
+    monkeypatch.setattr(runner, "_run_compose", lambda *_args, **_kwargs: (0, "", ""))
+    monkeypatch.setattr(runner, "_stream_compose", lambda *_a, **_k: (0, ""))
+
+    assert runner._rollback_to_snapshot(snap, install_dir)
+    assert not stale.exists()
+
+
 def test_rollback_uses_snapshot_compose_after_sudo_write(
     tmp_path: Path, snapshot_mgr: SnapshotManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
