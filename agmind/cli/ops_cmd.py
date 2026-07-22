@@ -618,6 +618,52 @@ def cmd_verify_backup(backup_path: Path) -> int:
     return 0
 
 
+def _blocked_volume_consumers(
+    volume_members: list[dict[str, Any]],
+    running: list[str],
+    descriptors: dict[str, Any] | None = None,
+) -> set[str]:
+    """Running services whose on-disk /var/lib/agmind bind overlaps a volume archive member.
+
+    The volume label's FIRST path segment is NOT the consuming service name: dify's data dir is
+    /var/lib/agmind/dify/storage (label ``volume/dify/storage``) but the live consumers are
+    dify-api/dify-worker; docling's is /var/lib/agmind/docling-cache, consumed by ``docling``. A
+    label-first-segment match silently missed both, letting ``restore`` overwrite a live service's
+    dir and corrupt it (#18). Resolve real ownership by comparing bind host paths instead: a
+    running service is blocked if any of its /var/lib/agmind binds is equal to, or nested with, a
+    volume member's host path (either direction — restoring a parent dir clobbers a child bind and
+    vice-versa).
+    """
+    from agmind.ops.backup_data import _DATA_PREFIX
+
+    if descriptors is None:
+        from agmind.services.renderer import load_descriptors
+
+        descriptors = load_descriptors()
+
+    vol_paths = [
+        Path(_DATA_PREFIX) / str(m["label"]).removeprefix("volume/")
+        for m in volume_members
+        if m.get("label")
+    ]
+    blocked: set[str] = set()
+    for svc in running:
+        desc = descriptors.get(svc)
+        if desc is None:
+            continue
+        for vol in getattr(desc, "volumes", []):
+            host = Path(str(vol).split(":", 1)[0])
+            if not str(host).startswith(_DATA_PREFIX):
+                continue
+            if any(
+                host == vp or host.is_relative_to(vp) or vp.is_relative_to(host)
+                for vp in vol_paths
+            ):
+                blocked.add(svc)
+                break
+    return blocked
+
+
 def cmd_restore(
     backup_path: Path,
     yes: bool = False,
@@ -689,23 +735,19 @@ def cmd_restore(
         running = _running_compose_services(install_dir)
 
         # F2/D-03: volume-kind members overwrite a service's /var/lib/agmind/<svc> dir on disk
-        # (mv/rm -rf) — doing that while the SAME service's container is live can corrupt its
-        # on-disk state. Derive the consuming service per volume member from its label
-        # (`volume/<rel>`, set by agmind.ops.backup_data.data_sources — the FIRST path segment
-        # of `rel` is the owning service) and intersect with the running set. dbdump members are
-        # the OPPOSITE: their restore execs into the live container (`docker exec ... psql`), so
-        # they are excluded from both the hard-fail and the advice below.
+        # (mv/rm -rf) — doing that while a consuming container is live can corrupt its on-disk
+        # state. Resolve the consuming service(s) per volume member by BIND PATH, not the label's
+        # first segment: the label's first segment is the data DIR name, which is not always the
+        # service name (#18 — dify's /var/lib/agmind/dify/storage is consumed by dify-api/
+        # dify-worker; docling's /var/lib/agmind/docling-cache by docling). dbdump members are the
+        # OPPOSITE: their restore execs into the live container (`docker exec ... psql`), so they
+        # are excluded from both the hard-fail and the advice below.
         raw_data_members = metadata.get("data", [])
         data_members = raw_data_members if isinstance(raw_data_members, list) else []
         volume_members = [
             m for m in data_members if isinstance(m, dict) and m.get("kind") == "volume"
         ]
-        volume_consumers = {
-            str(m["label"]).removeprefix("volume/").split("/")[0]
-            for m in volume_members
-            if m.get("label")
-        }
-        blocked = volume_consumers & set(running)
+        blocked = _blocked_volume_consumers(volume_members, running)
 
         if running:
             print(f"\nWARNING: deployment at {install_dir} has {len(running)} running services:")

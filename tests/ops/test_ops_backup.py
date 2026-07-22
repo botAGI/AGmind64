@@ -1575,3 +1575,79 @@ def test_cmd_backup_include_data_no_services_writes_no_marker(
     rc = ops_cmd.cmd_backup(tmp_path / "b.tar.gz", include_data=True, install_dir=install)
     assert rc != 0
     assert not (install / DATA_BACKUP_MARKER_NAME).exists()
+
+
+# ---------- restore live-consumer guard (#18: resolve by bind path, not label segment) ----------
+
+
+def test_blocked_volume_consumers_resolves_dify_by_bind_path() -> None:
+    """dify's dir /var/lib/agmind/dify/storage (label volume/dify/storage) is consumed by
+    dify-api/dify-worker, not a service named 'dify' — the guard must block BOTH (#18)."""
+    from agmind.cli.ops_cmd import _blocked_volume_consumers
+
+    members = [{"kind": "volume", "label": "volume/dify/storage"}]
+    blocked = _blocked_volume_consumers(members, ["dify-api", "dify-worker", "qdrant"])
+    assert blocked == {"dify-api", "dify-worker"}
+
+
+def test_blocked_volume_consumers_resolves_docling_by_bind_path() -> None:
+    """docling's dir is /var/lib/agmind/docling-cache (label volume/docling-cache), not
+    /var/lib/agmind/docling — a label-first-segment match missed it entirely (#18)."""
+    from agmind.cli.ops_cmd import _blocked_volume_consumers
+
+    blocked = _blocked_volume_consumers(
+        [{"kind": "volume", "label": "volume/docling-cache"}], ["docling"]
+    )
+    assert blocked == {"docling"}
+
+
+def test_blocked_volume_consumers_still_blocks_when_dir_equals_service() -> None:
+    """dify-plugin-daemon's dir == its service name — the case that accidentally worked before
+    must keep working under the bind-path resolution."""
+    from agmind.cli.ops_cmd import _blocked_volume_consumers
+
+    blocked = _blocked_volume_consumers(
+        [{"kind": "volume", "label": "volume/dify-plugin-daemon"}], ["dify-plugin-daemon"]
+    )
+    assert blocked == {"dify-plugin-daemon"}
+
+
+def test_blocked_volume_consumers_empty_when_consumer_not_running() -> None:
+    from agmind.cli.ops_cmd import _blocked_volume_consumers
+
+    assert (
+        _blocked_volume_consumers([{"kind": "volume", "label": "volume/dify/storage"}], ["qdrant"])
+        == set()
+    )
+
+
+def test_blocked_volume_consumers_blocks_nested_bind_either_direction() -> None:
+    """Overlap in either direction is data loss: restoring a parent dir clobbers a child bind,
+    and restoring a child clobbers under a service that binds the parent. Synthetic descriptors
+    so the assertion is decoupled from the catalog."""
+    from agmind.cli.ops_cmd import _blocked_volume_consumers
+    from agmind.schemas import ServiceDescriptor
+
+    def _desc(name: str, host_bind: str) -> ServiceDescriptor:
+        return ServiceDescriptor.model_validate(
+            {
+                "name": name,
+                "image": f"example/{name}:1.0.0",
+                "tier": "app",
+                "purpose": "synthetic",
+                "ports": [],
+                "volumes": [f"{host_bind}:/data"],
+            }
+        )
+
+    descriptors = {
+        "parent-svc": _desc("parent-svc", "/var/lib/agmind/shared"),
+        "child-svc": _desc("child-svc", "/var/lib/agmind/shared/sub"),
+    }
+    # member is the child dir; parent-svc binds the parent → still overlaps → blocked
+    blocked = _blocked_volume_consumers(
+        [{"kind": "volume", "label": "volume/shared/sub"}],
+        ["parent-svc", "child-svc"],
+        descriptors=descriptors,
+    )
+    assert blocked == {"parent-svc", "child-svc"}
