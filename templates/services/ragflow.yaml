@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: ragflow
-image: infiniflow/ragflow:v0.26.4
-digest: 16d24d1968ab59e2715a85d2590f1569c9539e0362344a42f3a23e8be06a655b
+image: infiniflow/ragflow:v0.25.5
+digest: 1025603bd79a373ab0f65e8ee3730710a1bccfb2ba88fd443d57078ebbf24724
 tier: app
 purpose: RAGFlow deep parsing — coexists с Dify (см. marketplace.dify.ai/plugin/witmeng/ragflow-api)
 profiles:

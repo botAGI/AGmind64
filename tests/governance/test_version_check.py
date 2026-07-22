@@ -83,7 +83,7 @@ def test_scan_extracts_correct_tag() -> None:
 
     pins = vc.scan_compose_pins(REPO_ROOT / "templates" / "services")
     by_image = {p[0]: p[1] for p in pins}
-    assert by_image["infiniflow/ragflow"] == "v0.26.4"
+    assert by_image["infiniflow/ragflow"] == "v0.25.5"
 
 
 def test_scan_compose_skips_on_host_build_services() -> None:
@@ -430,8 +430,9 @@ def test_minio_calendar_tag_reports_non_semver_not_error() -> None:
     reports = vc.build_reports(probe_fn=lambda _img: None)
     by_image = {r.image: r for r in reports}
     assert by_image["quay.io/minio/minio"].status == "non_semver"
-    # ragflow's current pin IS semver (v0.26.4); a None probe is a real error, not non_semver
-    assert by_image["infiniflow/ragflow"].status == "error"
+    # qdrant's pin IS semver and is NOT held; a None probe is a real error, not non_semver.
+    # (ragflow used to be this example but is now on the version hold list, so its status is HOLD.)
+    assert by_image["qdrant/qdrant"].status == "error"
 
 
 def test_non_semver_status_has_glyph_and_legend() -> None:

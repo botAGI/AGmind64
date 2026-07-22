@@ -77,14 +77,8 @@ ghcr.io/homarr-labs/homarr:
   reason: "v1.67+ server-side PostHog (hog.homarr.dev) is DB-gated (analytics.enableGeneral, default true), NO env kill-switch; NO_EXTERNAL_CONNECTION does NOT suppress it (verified 2026-07-22). Bump needs a seed-enableGeneral-false mechanism."
   hold_until: 2026-09-01
 
-# docling: v1.27.0 bakes 745MB of models under .cache/docling/models, but our mount is the
-# whole .cache — so the new image would mask the baked models and re-download from HF on
-# first boot (zero-egress break + slow start). The fix (narrow mount to .cache/huggingface +
-# HF_HUB_OFFLINE) changes the live mount geometry (506MB already staged) and needs a live
-# offline-boot + `agmind docling bench` re-verify. Held until that spike lands.
-quay.io/docling-project/docling-serve-cpu:
-  reason: "v1.27.0 bakes models under .cache; current whole-.cache mount masks them → HF re-download. Mount-narrow + HF_HUB_OFFLINE fix needs live offline-boot verify."
-  hold_until: 2026-09-01
+# (docling hold removed 2026-07-22: v1.27 bump landed in #15 — mount narrowed to .cache/huggingface
+# + HF_HUB_OFFLINE, live offline-boot verified. No longer held.)
 
 # portainer: 2.43.0 image bump is safe, but the initial-admin flow changed (setup token in
 # container logs, or --admin-password-file). Our access.note still says "restart + create
@@ -92,4 +86,15 @@ quay.io/docling-project/docling-serve-cpu:
 # CredentialsStep wiring — a doc/UX change, not a bare image swap.
 portainer/portainer-ce:
   reason: "2.43 changed initial-admin setup (log token / --admin-password-file); bump lands with the access.note rewrite + CredentialsStep wiring, not as a bare image swap."
+  hold_until: 2026-09-01
+
+# ragflow: the weekly report's "v1.0" is a phantom (project is on 0.x; latest real tag v0.26.4).
+# Tried the real minor bump v0.25.5->v0.26.4 but the ragflow container never reaches `healthy` in
+# compose-up-smoke — verified twice locally (300s AND 600s waits) and on CI, with every data-tier
+# dep (mysql/es/minio/redis) healthy and the container stuck `Starting`. The healthz path
+# (/api/v1/system/healthz) is unchanged in v0.26.4 and our env surface matches, so the failure is
+# a slower/changed init we don't yet understand — held pending root-cause diagnosis on the live
+# stack. v0.25.5 stays pinned (it boots healthy).
+infiniflow/ragflow:
+  reason: "v0.26.4 never reaches healthy in compose-up-smoke (deps healthy, container stuck Starting >600s; healthz path + env unchanged) — root cause TBD. v1.0 in the report is a phantom (no such tag)."
   hold_until: 2026-09-01

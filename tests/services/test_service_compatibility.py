@@ -577,7 +577,7 @@ def test_real_catalog_ragflow_pin_is_explicit_baseline() -> None:
     from agmind.services.renderer import load_descriptors
 
     all_d = load_descriptors()
-    assert all_d["ragflow"].image == "infiniflow/ragflow:v0.26.4"
+    assert all_d["ragflow"].image == "infiniflow/ragflow:v0.25.5"
 
 
 # ---------- B7: observability-profile co-deploy (08-06) ----------
