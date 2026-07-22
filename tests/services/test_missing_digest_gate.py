@@ -146,6 +146,36 @@ def test_mutation_verified_red_when_digest_stripped(tmp_services_dir: Path) -> N
     )
 
 
+def test_inline_image_at_sha256_form_is_accepted_as_pinned(tmp_services_dir: Path) -> None:
+    """#23: the schema blesses two digest-pin forms — a `digest:` field OR an inline
+    `image: repo:tag@sha256:<hex>` with no field (service.py _check_single_digest_source). The
+    field-only gate false-failed `make audit` on the inline form. Convert traefik to the inline
+    form and confirm the gate treats it as pinned (no issue)."""
+    import re
+
+    from scripts.checks.digest_check import check_digest_pins
+
+    traefik_path = tmp_services_dir / "traefik.yaml"
+    text = traefik_path.read_text(encoding="utf-8")
+    digest = next(
+        line.split(":", 1)[1].strip() for line in text.splitlines() if line.startswith("digest:")
+    )
+    # fold the digest into the image tag and drop the standalone field
+    text = re.sub(
+        r"(?m)^image:\s*(\S+)\s*$", lambda m: f"image: {m.group(1)}@sha256:{digest}", text
+    )
+    text = "".join(
+        line for line in text.splitlines(keepends=True) if not line.startswith("digest:")
+    )
+    traefik_path.write_text(text, encoding="utf-8")
+
+    issues, _service_count, _exempt = check_digest_pins(services_dir=tmp_services_dir)
+    assert [i["service"] for i in issues] == [], (
+        f"inline image@sha256: form should count as pinned, but gate flagged: "
+        f"{[i['service'] for i in issues]}"
+    )
+
+
 def test_mutation_digest_check_main_returns_nonzero_on_unpinned(
     tmp_services_dir: Path,
 ) -> None:

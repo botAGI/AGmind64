@@ -73,7 +73,11 @@ def check_digest_pins(
         if desc.build is not None:
             exempt_build_count += 1
             continue
-        if not desc.digest:
+        # A descriptor is digest-pinned two schema-blessed ways (service.py _check_image /
+        # _check_single_digest_source): the `digest:` field, OR an inline `image: repo:tag@sha256:
+        # <hex>` with no field. The field-only check false-failed `make audit` on the inline form
+        # (#23) — a schema-valid, genuinely pinned descriptor. Accept either.
+        if not desc.digest and "@sha256:" not in desc.image:
             issues.append(_issue(name, desc.image))
     return issues, len(descriptors), exempt_build_count
 
