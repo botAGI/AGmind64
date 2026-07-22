@@ -153,6 +153,44 @@ def test_stage_bearer_secret_files_are_0600(tmp_path: Path) -> None:
         assert mode == 0o600, f"{secret} mode is {oct(mode)}, expected 0o600 (bearer secret)"
 
 
+def test_stage_chowns_bearer_secrets_to_alertmanager_uid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#20: the container runs as nobody (65534) and reads these *_file secrets at notify-time,
+    so a root:root 0600 file is unreadable → the alert is silently dropped. They must be chowned
+    to 65534 (keeping 0600). Real install runs as root; here os.chown is mocked so the assertion
+    is hermetic and does not depend on the test running as root."""
+    import os
+
+    from agmind.install.steps import _stage_alertmanager_config
+
+    chowned: dict[str, tuple[int, int]] = {}
+    monkeypatch.setattr(os, "chown", lambda p, uid, gid: chowned.update({Path(p).name: (uid, gid)}))
+
+    obs = tmp_path / "observability"
+    obs.mkdir()
+    (obs / "alertmanager.yml").write_text(_base_text(), encoding="utf-8")
+    target = tmp_path / "etc" / "alertmanager"
+    _stage_alertmanager_config(
+        obs,
+        target,
+        chat_id="123456",
+        bot_token="bot:tok",
+        webhook_url="https://hooks.example/x",
+        smtp_smarthost="smtp.example:587",
+        smtp_to="ops@example",
+        smtp_auth_username="alerts@example",
+        smtp_auth_password="s3cret",
+    )
+
+    assert chowned.get("tg_bot_token") == (65534, 65534)
+    assert chowned.get("webhook_url") == (65534, 65534)
+    assert chowned.get("smtp_password") == (65534, 65534)
+    # chat_id / alertmanager.yml must NOT be chowned — they stay 0644 so the config still loads
+    assert "tg_chat_id" not in chowned
+    assert "alertmanager.yml" not in chowned
+
+
 def test_stage_omits_channel_files_when_unconfigured(tmp_path: Path) -> None:
     from agmind.install.steps import _stage_alertmanager_config
 

@@ -211,6 +211,24 @@ def _stage_single_file_config(source: Path, target_dir: Path, target_name: str) 
 _WEBHOOK_URL_FILE = "/etc/alertmanager/webhook_url"
 _SMTP_PASSWORD_FILE = "/etc/alertmanager/smtp_password"
 
+# prom/alertmanager runs as nobody (uid 65534) and reads its bearer *_file secrets at
+# notify-time when the process is already that uid, so a root:root 0600 file is unreadable
+# (EACCES → the alert is silently dropped, #20). chown them to 65534 keeping 0600.
+_ALERTMANAGER_UID = 65534
+_ALERTMANAGER_SECRET_FILES = ("tg_bot_token", "webhook_url", "smtp_password")
+
+
+def _chown_alertmanager_secret(path: Path) -> None:
+    """chown an alertmanager bearer secret to uid 65534, keeping its 0600 mode (#20).
+
+    Best-effort: the real install runs as root (chown works); a non-root context (tests,
+    non-sudo) cannot chown to another uid — skip rather than fail the secret write.
+    """
+    try:
+        os.chown(path, _ALERTMANAGER_UID, _ALERTMANAGER_UID)
+    except (PermissionError, OSError):
+        pass
+
 
 def build_alertmanager_config(
     base_text: str,
@@ -301,13 +319,22 @@ def _stage_alertmanager_config(
         # Bearer secrets → 0600 via write_private_text (not plain write_text's umask 0644):
         # the sudo `cp --no-preserve=ownership` preserves the source mode, so these stay
         # 0600 at rest instead of relying solely on the /etc/agmind 0750 parent bit.
+        # ...and chown to the alertmanager image uid (#20): prom/alertmanager runs as nobody
+        # (65534) and reads these bearer *_file secrets at notify-time, AFTER the process is
+        # already 65534 — a root:root 0600 file is then unreadable (EACCES → the alert is
+        # silently dropped, stack still `/-/healthy`). chown keeps 0600 (only 65534 + root read);
+        # chat_id/alertmanager.yml stay 0644 so the config still loads. The sudo cp path resets
+        # ownership, so _write_runtime_payload_sudo re-applies this chown at the final location.
         _steps.write_private_text(staged / "tg_bot_token", bot_token)
+        _chown_alertmanager_secret(staged / "tg_bot_token")
         # Only materialize a channel's secret file when that channel is configured,
         # matching the conditional injection in the rendered config above.
         if webhook_url:
             _steps.write_private_text(staged / "webhook_url", webhook_url)
+            _chown_alertmanager_secret(staged / "webhook_url")
         if smtp_auth_password:
             _steps.write_private_text(staged / "smtp_password", smtp_auth_password)
+            _chown_alertmanager_secret(staged / "smtp_password")
         _steps._replace_path_atomic(staged, target_dir)
     except Exception:
         _cleanup_path(staged)
@@ -770,3 +797,19 @@ def _write_runtime_payload_sudo(
                 callback,
                 step_id,
             )
+        # #20: the sudo `cp --no-preserve=ownership` above reset the alertmanager bearer secrets
+        # to root:root, so re-apply the chown to uid 65534 at the final /etc/agmind location
+        # (mode already 0600 from cp) — otherwise the container (nobody) can't read them and
+        # every configured alert channel silently drops at notify-time.
+        for secret_name in _ALERTMANAGER_SECRET_FILES:
+            if (staged_config / "alertmanager" / secret_name).exists():
+                _steps._run_sudo_runtime_command(
+                    config,
+                    [
+                        "chown",
+                        f"{_ALERTMANAGER_UID}:{_ALERTMANAGER_UID}",
+                        str(config.config_dir / "alertmanager" / secret_name),
+                    ],
+                    callback,
+                    step_id,
+                )
