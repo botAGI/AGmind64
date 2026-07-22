@@ -66,7 +66,15 @@ mysql:
 # suppresses the cron POST (verify empirically, not by doc), then move homarr from
 # _EGRESS_EXEMPT to _REQUIRED_EGRESS_ENV. v1.62→v1.71 drizzle migration is also one-way.
 ghcr.io/homarr-labs/homarr:
-  reason: "v1.67+ adds server-side PostHog egress (hog.homarr.dev); NO_EXTERNAL_CONNECTION suppression unverified — zero-egress spike required before bump."
+  # Spike done 2026-07-22 (empirical, v1.71.0 image): NO_EXTERNAL_CONNECTION does NOT gate the
+  # PostHog egress. Both the client (posthog-js) and server (posthog-node, POST to
+  # https://hog.homarr.dev flushAt:10) captures are guarded ONLY by the DB serverSetting
+  # `analytics.enableGeneral`, whose default is TRUE (analytics:{enableGeneral:!0}) — there is NO
+  # env kill-switch (only DISABLE_REDIS_LOGS etc.) and no config/env seed at first boot. So a bump
+  # is a zero-egress regression vs the current v1.62 Umami unless we pre-seed the serverSettings
+  # row (enableGeneral:false, superJSON) into /appdata db before first boot, or contain
+  # hog.homarr.dev at the network layer. Held until that seed mechanism exists.
+  reason: "v1.67+ server-side PostHog (hog.homarr.dev) is DB-gated (analytics.enableGeneral, default true), NO env kill-switch; NO_EXTERNAL_CONNECTION does NOT suppress it (verified 2026-07-22). Bump needs a seed-enableGeneral-false mechanism."
   hold_until: 2026-09-01
 
 # docling: v1.27.0 bakes 745MB of models under .cache/docling/models, but our mount is the
