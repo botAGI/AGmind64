@@ -302,7 +302,35 @@ def test_restore_db_command_postgres_pipes_sql_into_psql() -> None:
 
     src = DbDumpSource("dbdump/postgres", "agmind-postgres", "postgres", "dify", "dify")
     cmd = restore_db_command(src)
-    assert cmd == ["docker", "exec", "-i", "agmind-postgres", "psql", "-U", "dify", "-d", "dify"]
+    # per-db restore fails closed on a real SQL error (#22): psql defaults to continuing past
+    # errors and exiting 0, which would report a partial load as a successful restore.
+    assert cmd == [
+        "docker",
+        "exec",
+        "-i",
+        "agmind-postgres",
+        "psql",
+        "-U",
+        "dify",
+        "-d",
+        "dify",
+        "-v",
+        "ON_ERROR_STOP=1",
+    ]
+
+
+def test_restore_db_command_postgres_globals_stay_tolerant() -> None:
+    """#22: pg_dumpall globals are NOT idempotent (restoring into a cluster that already holds the
+    postgres superuser raises a benign 'role already exists'), so the globals leg must NOT carry
+    ON_ERROR_STOP — that would abort an otherwise-fine restore."""
+    from agmind.ops.backup_data import restore_db_command
+
+    src = DbDumpSource(
+        "dbdump/postgres-globals", "agmind-postgres", "postgres", "postgres", "", globals_only=True
+    )
+    cmd = restore_db_command(src)
+    assert cmd == ["docker", "exec", "-i", "agmind-postgres", "psql", "-U", "postgres"]
+    assert "ON_ERROR_STOP=1" not in cmd
 
 
 def test_restore_db_command_mysql_uses_env_password() -> None:

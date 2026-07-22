@@ -188,8 +188,16 @@ def restore_db_command(source: DbDumpSource) -> list[str]:
     """Return the ``docker exec -i`` argv that loads a (gunzipped) dump on stdin into the DB."""
     if source.engine == "postgres":
         if source.globals_only:
-            # cluster-level SQL (CREATE ROLE / ALTER ROLE / tablespaces) — no -d database
+            # cluster-level SQL (CREATE ROLE / ALTER ROLE / tablespaces) — no -d database.
+            # Deliberately NO `ON_ERROR_STOP` here (#22): pg_dumpall globals are not idempotent —
+            # restoring them into a cluster that already holds the `postgres` superuser raises a
+            # benign "role already exists", which under ON_ERROR_STOP would abort the whole restore.
             return ["docker", "exec", "-i", source.container, "psql", "-U", source.user]
+        # Per-db restore MUST fail-closed on a real load error (#22): psql defaults to continuing
+        # past per-statement SQL errors and exiting 0, so restore_backup (which decides success
+        # from the return code) would report a partially-failed load as a successful restore.
+        # `-v ON_ERROR_STOP=1` makes psql exit 3 on the first error. mysql (below) already aborts
+        # on error by default, so it needs no equivalent flag.
         return [
             "docker",
             "exec",
@@ -200,6 +208,8 @@ def restore_db_command(source: DbDumpSource) -> list[str]:
             source.user,
             "-d",
             source.database,
+            "-v",
+            "ON_ERROR_STOP=1",
         ]
     if source.engine == "mysql":
         cmd = ["docker", "exec", "-i"]
