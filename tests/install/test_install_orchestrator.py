@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from agmind.core.env import parse_env_file
+from agmind.core.env import parse_env_file, parse_env_text
 from agmind.install.orchestrator import (
     InstallConfig,
     InstallOrchestrator,
@@ -1089,12 +1089,16 @@ def test_env_write_step_version_manifest_tracks_selected_operator_services(
 
     assert result.success
     version_text = (cfg.install_dir / "version.env").read_text(encoding="utf-8")
-    assert "UPTIME_KUMA_VERSION=2.4.0" in version_text
-    assert "HOMARR_VERSION=v1.62.0" in version_text
-    assert "WATCHTOWER_VERSION=1.7.1" in version_text
-    assert "DOZZLE_VERSION=v10.6.11" in version_text
-    assert "NETDATA_VERSION=v2.10.4" in version_text
-    assert "LLAMA_LLM_VERSION=" not in version_text
+    # Exact per-key match (issue #13): a substring check like "DOZZLE_VERSION=v10.6.1" in
+    # version_text also matches v10.6.11, so a pin that drifted to a prefix-sharing version
+    # would pass unnoticed. Parse the manifest and compare full values.
+    manifest = parse_env_text(version_text)
+    assert manifest["UPTIME_KUMA_VERSION"] == "2.4.0"
+    assert manifest["HOMARR_VERSION"] == "v1.62.0"
+    assert manifest["WATCHTOWER_VERSION"] == "1.7.1"
+    assert manifest["DOZZLE_VERSION"] == "v10.6.11"
+    assert manifest["NETDATA_VERSION"] == "v2.10.4"
+    assert "LLAMA_LLM_VERSION" not in manifest
 
 
 def test_runtime_version_env_example_tracks_operator_service_pins() -> None:
@@ -1107,12 +1111,15 @@ def test_runtime_version_env_example_tracks_operator_service_pins() -> None:
     descriptors = load_descriptors()
 
     assert "/opt/agmind/version.env" in text
+    # Exact per-key match (issue #13) — a substring assert would let a prefix-sharing pin
+    # (v10.6.1 vs v10.6.11) slip through the example ↔ descriptor parity check.
+    manifest = parse_env_text(text)
     for service_name in ("uptime-kuma", "homarr", "watchtower", "dozzle", "netdata"):
         descriptor = descriptors[service_name]
         key = _version_key(service_name)
-        assert f"{key}={_image_tag(descriptor.image)}" in text
-        assert f"{key}_IMAGE={descriptor.image}" in text
-        assert f"{key}_DIGEST=sha256:{descriptor.digest}" in text
+        assert manifest[key] == _image_tag(descriptor.image)
+        assert manifest[f"{key}_IMAGE"] == descriptor.image
+        assert manifest[f"{key}_DIGEST"] == f"sha256:{descriptor.digest}"
 
 
 def test_runtime_version_image_tag_parses_registry_ports_and_inline_digests() -> None:
