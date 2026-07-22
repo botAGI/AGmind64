@@ -40,6 +40,9 @@ sys.path.insert(0, str(REPO_ROOT))
 _REQUIRED_EGRESS_ENV: dict[str, dict[str, str]] = {
     # qdrant POSTs anonymized usage stats to telemetry.qdrant.io unless disabled.
     "qdrant": {"QDRANT__TELEMETRY_DISABLED": "true"},
+    # phoenix: PHOENIX_TELEMETRY_ENABLED defaults true (browser product analytics); pinned false
+    # here at the v19 bump (was a pre-existing gap since 17.2.0).
+    "phoenix": {"PHOENIX_TELEMETRY_ENABLED": "false"},
     # weaviate POSTs anonymous telemetry to a hosted endpoint on a timer unless disabled.
     "weaviate": {"DISABLE_TELEMETRY": "true"},
     # grafana: all four — reporting_enabled alone still lets check_for_updates hit

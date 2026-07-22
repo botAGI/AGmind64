@@ -1,14 +1,14 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: phoenix
-image: arizephoenix/phoenix:version-17.2.0-nonroot
+image: arizephoenix/phoenix:version-19.3.0-nonroot
 # Arize Phoenix — self-hosted LLM-observability backend for Dify's native OpenInference exporter.
 # INDEX digest (amd64/linux verified via `docker buildx imagetools inspect`). Chosen over MLflow in
 # the 2026-06-07 head-to-head (.planning/night/DIFY-TRACING-RESEARCH.md): the whole UI IS the nested
 # LLM-trace waterfall (prompts/completions/tokens/latency + RAG docs with scores), lighter (SQLite,
 # no minio), and its ELv2 license is already an accepted class here (elasticsearch ships ELv2).
-digest: dadeca6d3999e1cdfaf3dba6039f420434216cc084f8b64d6ad8fa1341f53fc6
+digest: 0b9f4a9037d4e1fce3eadb1a90f20761032855123da05d56e9f8152f2a83ae33
 tier: ops
-purpose: LLM trace observability for Dify — Arize Phoenix 17.2.0 (2026-06-07)
+purpose: LLM trace observability for Dify — Arize Phoenix 19.3.0 (2026-07-22)
 owner: observability-stack
 profiles:
 - tracing
@@ -29,6 +29,13 @@ env:
   PHOENIX_WORKING_DIR: /var/lib/agmind/phoenix
   # Cap trace growth so the SQLite store doesn't bloat unbounded.
   PHOENIX_DEFAULT_RETENTION_POLICY_DAYS: '30'
+  # Zero-egress (Карпатый чек-лист п.15, 2026-07-22): PHOENIX_TELEMETRY_ENABLED defaults TRUE —
+  # browser-side product analytics (page views / UI interactions). Pre-existing gap (default-on
+  # since 17.2.0); closed here with the v19 bump. Registered in the A8 egress gate.
+  PHOENIX_TELEMETRY_ENABLED: 'false'
+  # Defense-in-depth: the in-app PXI agent-assistant (default-on since v17) is dormant without an
+  # API key, but disable it explicitly so a future wired credential can't turn it into egress.
+  PHOENIX_DISABLE_AGENT_ASSISTANT: 'true'
 resources:
   cpus: 2.0
   mem_limit: 1g
