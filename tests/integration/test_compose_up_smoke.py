@@ -434,7 +434,7 @@ def test_filter_excludes_docling_slow_model_loader(tmp_path: Path) -> None:
             {
                 "services": {
                     "qdrant": {"image": "qdrant/qdrant:v1.18.0"},
-                    "docling": {"image": "quay.io/docling-project/docling-serve-cpu:v1.18.0"},
+                    "docling": {"image": "quay.io/docling-project/docling-serve-cpu:v1.27.0"},
                 },
             },
             sort_keys=False,

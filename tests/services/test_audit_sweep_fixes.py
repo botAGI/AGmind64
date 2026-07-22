@@ -16,9 +16,17 @@ from agmind.services.renderer import load_descriptors
 pytestmark = pytest.mark.backend_any
 
 
-def test_docling_cache_mount_targets_image_cache_path() -> None:
+def test_docling_cache_mount_targets_hf_subdir_not_whole_cache() -> None:
+    """The mount must target the huggingface SUBDIR, not the whole .cache (#15): v1.27+ bakes
+    745MB of models at .cache/docling/models, and mounting the whole .cache masks them → docling
+    re-downloads from HuggingFace on first boot (zero-egress break). Mounting only .cache/hugging
+    face keeps the baked docling/models visible while still persisting the hf cache."""
     d = load_descriptors()["docling"]
-    assert "/var/lib/agmind/docling-cache:/opt/app-root/src/.cache" in d.volumes
+    assert "/var/lib/agmind/docling-cache:/opt/app-root/src/.cache/huggingface" in d.volumes
+    # must NOT mount the whole .cache (would shadow the baked docling/models)
+    assert not any(v.endswith(":/opt/app-root/src/.cache") for v in d.volumes), (
+        "mounting the whole .cache masks the baked docling/models → forced HF re-download"
+    )
     assert not any(v.endswith(":/root/.cache") for v in d.volumes), (
         "docling image HOME is /opt/app-root/src, not /root — /root/.cache persists nothing"
     )

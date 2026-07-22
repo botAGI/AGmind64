@@ -1,24 +1,32 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: docling
-image: quay.io/docling-project/docling-serve-cpu:v1.18.0
-digest: fa1b087efcad34fe10f9f7dc3ce7e9913849a2836c9572c68e1d59074bd3228d
+image: quay.io/docling-project/docling-serve-cpu:v1.27.0
+digest: a70cd391c5d9e7ad23e8d76adffa5e5f03c536b4d1ea007f512c94e0b435ba45
 tier: app
-purpose: Document parsing CPU-only (per R7); RapidOcr regression fixed
+purpose: Document parsing CPU-only (per R7); PP-OCRv6 — 2026-07-22
 profiles:
 - rag
 ports:
 - 127.0.0.1:5002:5001
 volumes:
-# Image runs as uid 1001 with HOME=/opt/app-root/src and DOCLING_SERVE_ARTIFACTS_PATH
-# under .cache there — mount the real cache path (not /root/.cache, which persists
-# nothing). Host dir pre-created 1001:1001 in bootstrap so the non-root user can write.
-- /var/lib/agmind/docling-cache:/opt/app-root/src/.cache
+# Image runs as uid 1001 with HOME=/opt/app-root/src and BAKES 745MB of models at
+# DOCLING_SERVE_ARTIFACTS_PATH=/opt/app-root/src/.cache/docling/models (v1.27+). Mounting the
+# whole .cache would MASK the baked models → docling re-downloads them from HuggingFace on first
+# boot (zero-egress break + slow start), so we mount only the huggingface subdir BELOW it. The
+# baked docling/models survive; the hf cache persists. Host dir pre-created 1001:1001 in bootstrap.
+# Verified live 2026-07-22: v1.27 boots healthy with egress blocked ("No model weights will be
+# downloaded at runtime") under this mount + HF_HUB_OFFLINE.
+- /var/lib/agmind/docling-cache:/opt/app-root/src/.cache/huggingface
 run_as_uid: 1001
 # run_as_gid defaults to run_as_uid (1001)
 writable_mounts:
 - /var/lib/agmind/docling-cache
 env:
   DOCLING_SERVE_ALLOW_CUSTOM_OCR_CONFIG: 'true'
+  # Zero-egress (Карпатый чек-лист п.15): the models are baked, so forbid any runtime HF fetch
+  # and its telemetry. Fail-closed — a masked/missing model must error, not silently phone home.
+  HF_HUB_OFFLINE: '1'
+  HF_HUB_DISABLE_TELEMETRY: '1'
 resources:
   cpus: 12.0
   mem_limit: 16g
