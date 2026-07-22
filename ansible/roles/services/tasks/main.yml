@@ -34,6 +34,29 @@
   loop:
     - { src: ".postgres_password", dest: "postgres_password" }
     - { src: ".mysql_root_password", dest: "mysql_root_password" }
+    - { src: ".agent_db_password", dest: "agent_db_password" }
+  no_log: true
+
+# Authelia reads its 4 secrets via the native `_FILE` convention (SPEC-15.4). The Python
+# installer's _materialize_runtime_files and `agmind ops rotate-secrets` both write these from the
+# single-source AUTHELIA_SECRET_FILES registry; the ansible `-t services` path had no equivalent,
+# so an ansible install of authelia rendered `_FILE` env pointing at files nothing wrote → the
+# container fails `session: option 'secret' is required` at boot. Same lookup files env.j2
+# generates (64-char secrets; the redis password is the shared 32-char .redis_password), so these
+# are byte-identical to the values baked into .env. Parity is gated by
+# tests/ansible/test_secret_file_registry_parity.py.
+- name: Save authelia secret files
+  ansible.builtin.copy:
+    content: "{{ lookup('password', agmind_install_dir + '/' + item.src + ' length=' + item.length | string + ' chars=ascii_letters,digits') }}"
+    dest: "/var/lib/agmind/secrets/{{ item.dest }}"
+    owner: root
+    group: docker
+    mode: "0640"  # readable by docker daemon for the secret mount
+  loop:
+    - { src: ".authelia_session_secret", dest: "authelia_session_secret", length: 64 }
+    - { src: ".authelia_storage_encryption_key", dest: "authelia_storage_encryption_key", length: 64 }
+    - { src: ".authelia_jwt_secret", dest: "authelia_reset_jwt_secret", length: 64 }
+    - { src: ".redis_password", dest: "authelia_session_redis_password", length: 32 }
   no_log: true
 
 - name: Validate Proxmox exporter token settings
