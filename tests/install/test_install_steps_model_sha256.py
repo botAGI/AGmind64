@@ -56,11 +56,12 @@ def _mock_curl_writes_blob(monkeypatch: pytest.MonkeyPatch, payload: bytes) -> N
     monkeypatch.setattr("agmind.install.steps._stream_subprocess", fake_stream)
 
 
-def test_sha256_mismatch_fails_and_unlinks_poisoned_target(
+def test_sha256_mismatch_discards_download_before_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A downloaded file whose bytes don't match the catalog sha256 is rejected — the
-    poisoned target is removed and the step fails, before any container could load it."""
+    """A freshly-downloaded file whose bytes don't match the catalog sha256 is rejected —
+    the download is discarded as a partial and never becomes the target, so poisoned bytes
+    never reach a container. (No pre-existing model here → target must not exist after.)"""
     cfg = _cfg(tmp_path)
     _mock_curl_writes_blob(monkeypatch, _KNOWN_BYTES)
 
@@ -71,7 +72,62 @@ def test_sha256_mismatch_fails_and_unlinks_poisoned_target(
     assert ok is False
     assert "sha256" in msg.lower()
     target = cfg.models_dir / cfg.embed_file
-    assert not target.exists(), "mismatched model must not survive on disk"
+    assert not target.exists(), "mismatched download must not survive as the model"
+
+
+def test_existing_mismatch_offline_preserves_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Footgun regression: a pre-existing, full-size model whose bytes don't match the pinned
+    sha256 must NOT be deleted when no verified replacement can be secured (air-gap). A live
+    host running a differently-sourced-but-valid model must never be left with NO model just
+    because an ``agmind install`` re-ran against a hash the pin didn't anticipate."""
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.embed_file
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_KNOWN_BYTES)  # valid working model, but a different source than the pin
+
+    # air-gap: no download may run to replace it
+    monkeypatch.setattr("agmind.install.steps._offline_install_enabled", lambda: True)
+
+    def _no_curl(*_a: object, **_k: object) -> tuple[int, list[str]]:
+        raise AssertionError("must not attempt a download while offline")
+
+    monkeypatch.setattr("agmind.install.steps._stream_subprocess", _no_curl)
+
+    ok, msg = ModelDownloadStep()._download_one(
+        "embed", cfg.embed_repo, cfg.embed_file, cfg, lambda _e: None, sha256=_WRONG_SHA256
+    )
+
+    assert ok is False
+    assert target.exists(), "existing model must be preserved, not deleted, with no replacement"
+    assert target.read_bytes() == _KNOWN_BYTES
+    assert "kept" in msg.lower()
+
+
+def test_existing_mismatch_bad_redownload_preserves_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pre-existing model that fails the pin triggers a re-download; if that download ALSO
+    fails verification, the original file must survive — a bad download never clobbers the
+    working model (the partial is verified BEFORE it may replace the target)."""
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.embed_file
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_KNOWN_BYTES)  # working model, but pinned sha below won't match it
+
+    # online: curl writes a DIFFERENT full-size blob that also mismatches the pin
+    bad_blob = b"y" * _PAYLOAD_SIZE
+    assert hashlib.sha256(bad_blob).hexdigest() != _WRONG_SHA256
+    _mock_curl_writes_blob(monkeypatch, bad_blob)
+
+    ok, msg = ModelDownloadStep()._download_one(
+        "embed", cfg.embed_repo, cfg.embed_file, cfg, lambda _e: None, sha256=_WRONG_SHA256
+    )
+
+    assert ok is False
+    assert target.exists(), "a failed re-download must not clobber the working model"
+    assert target.read_bytes() == _KNOWN_BYTES
 
 
 def test_sha256_match_keeps_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

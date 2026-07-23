@@ -156,17 +156,44 @@ class ModelDownloadStep(InstallStep):
     def _verify_marker_path(target: Path) -> Path:
         return target.with_name(f".{target.name}.sha256-verified.json")
 
-    def _verify_sha256_or_mark(
+    @staticmethod
+    def _sha256_matches(path: Path, sha256: str | None) -> tuple[bool, str | None]:
+        """Pure content check against a pinned sha256 — NEVER deletes.
+
+        Empty/unset sha256 → (True, None) (back-compat: unpinned catalog entries accept any
+        bytes). Match → (True, None); mismatch → (False, actual_hex); read error → (False, msg).
+        Used to gate a freshly-downloaded PARTIAL *before* it may replace an in-place model, so
+        a bad download can never clobber a working file.
+        """
+        if not sha256:
+            return True, None
+        try:
+            actual = ModelDownloadStep._file_sha256(path)
+        except OSError as exc:
+            return False, f"cannot read {path} for sha256 verify: {exc}"
+        return (True, None) if actual == sha256 else (False, actual)
+
+    @classmethod
+    def _write_verify_marker(cls, target: Path, sha256: str, size: int) -> None:
+        """Record a verify-once marker so a later reuse of the SAME file skips re-hashing."""
+        write_text_atomic(
+            cls._verify_marker_path(target), json.dumps({"sha256": sha256, "size": size})
+        )
+
+    def _verify_inplace_or_mark(
         self, role: str, target: Path, sha256: str | None
     ) -> tuple[bool, str | None]:
-        """Post-download/reuse integrity gate (T-15.2-04, T-15.2-05).
+        """Verify an ALREADY-IN-PLACE model against sha256, with a verify-once marker cache.
 
-        Empty/unset sha256 → no verification (back-compat: unpinned catalog entries
-        download/reuse exactly as before — e.g. the 3 unfetchable filename-mismatch
-        models from plan 15-05). A mismatch removes the poisoned file so it can never
-        reach a container. A match writes a small marker recording the verified
-        (sha256, size) so a later reuse of the SAME file does not re-hash a 20-100 GiB
-        model on every install — only a missing/stale marker triggers a re-hash.
+        Non-destructive by design. The T-15.2-04/05 contract — poisoned bytes must never reach
+        a container — is kept (a mismatch fails the step, so the file is never *blessed*), but a
+        mismatch here must NOT delete ``target``: deleting a pre-existing model was a footgun —
+        a live host running a differently-sourced but valid model (a hash the pin didn't
+        anticipate) would be left with NO model the instant an ``agmind install`` re-ran, before
+        any replacement was secured. Callers treat a mismatch as "re-download to a verified
+        partial and swap", so the working file survives until its replacement lands (or the step
+        fails with the file preserved). A match writes a marker recording the verified
+        (sha256, size) so a later reuse of the SAME file does not re-hash a 20-100 GiB model.
         """
         if not sha256:
             return True, None
@@ -185,17 +212,17 @@ class ModelDownloadStep(InstallStep):
             and recorded.get("size") == size
         ):
             return True, None  # verify-once: already verified for this exact file+hash
-        actual = self._file_sha256(target)
-        if actual != sha256:
-            target.unlink(missing_ok=True)
+        matched, detail = self._sha256_matches(target, sha256)
+        if not matched:
+            # A now-stale marker (recorded a different verified hash) must not linger, but the
+            # FILE stays — the caller re-downloads a verified replacement before anything is lost.
             with contextlib.suppress(OSError):
                 marker.unlink()
             return (
                 False,
-                f"{role}: sha256 mismatch for {target.name} — expected {sha256}, "
-                f"got {actual} (removed {target})",
+                f"{role}: sha256 mismatch for {target.name} — expected {sha256}, got {detail}",
             )
-        write_text_atomic(marker, json.dumps({"sha256": sha256, "size": size}))
+        self._write_verify_marker(target, sha256, size)
         return True, None
 
     def _download_one(
@@ -227,41 +254,73 @@ class ModelDownloadStep(InstallStep):
         if existing is not None:
             size_mb = existing.stat().st_size // (1024 * 1024)
             if existing == target:
-                ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
-                if not ok:
-                    return False, verify_err or f"{role}: sha256 verify failed"
+                ok, verify_err = self._verify_inplace_or_mark(role, target, sha256)
+                if ok:
+                    callback(
+                        _make_event(
+                            self.step_id,
+                            ProgressKind.LOG,
+                            f"{role}: skip download {existing} ({size_mb} MiB) — {status}",
+                        )
+                    )
+                    return True, f"{role}: reused {size_mb} MiB"
+                # Hash mismatch on the EXISTING model: do NOT delete it. Re-download to a
+                # verified partial and swap only on success, so the current (working) file
+                # survives if the replacement can't be secured (offline / bad download).
                 callback(
                     _make_event(
                         self.step_id,
                         ProgressKind.LOG,
-                        f"{role}: skip download {existing} ({size_mb} MiB) — {status}",
+                        f"{role}: {verify_err}; re-downloading "
+                        "(keeping the current file until the replacement verifies)",
                     )
                 )
-                return True, f"{role}: reused {size_mb} MiB"
-            callback(
-                _make_event(
-                    self.step_id,
-                    ProgressKind.LOG,
-                    f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
+                # fall through to the download path below
+            else:
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.LOG,
+                        f"{role}: moving {existing} → {target} (saves re-download {size_mb} MiB)",
+                    )
                 )
-            )
-            try:
-                shutil.move(str(existing), str(target))
-            except OSError as exc:
                 try:
-                    _steps._copy_file_atomic(existing, target)
-                    existing.unlink()
-                except OSError as exc2:
-                    return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
-            ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
-            if not ok:
-                return False, verify_err or f"{role}: sha256 verify failed"
-            return True, f"{role}: relocated {size_mb} MiB"
+                    shutil.move(str(existing), str(target))
+                except OSError as exc:
+                    try:
+                        _steps._copy_file_atomic(existing, target)
+                        existing.unlink()
+                    except OSError as exc2:
+                        return False, f"{role}: cannot relocate model: {exc2} (initial: {exc})"
+                ok, verify_err = self._verify_inplace_or_mark(role, target, sha256)
+                if ok:
+                    return True, f"{role}: relocated {size_mb} MiB"
+                # The relocated file mismatches. Leave it in place (do NOT delete) — a verified
+                # re-download swaps it via a partial, and if that can't be secured the operator's
+                # staged file is preserved rather than destroyed (same contract as the in-place
+                # path above).
+                callback(
+                    _make_event(
+                        self.step_id,
+                        ProgressKind.LOG,
+                        f"{role}: {verify_err}; re-downloading a verified copy",
+                    )
+                )
+                # fall through to the download path below
 
-        # Not present anywhere. In air-gap (AGMIND_OFFLINE) the curl download below cannot run —
-        # fast-fail with the exact path the operator must pre-stage, rather than a confusing
-        # curl network error after a long hang (review MEDIUM model-download-no-offline-fastfail).
+        # Reached when the model is absent, OR when an in-place/relocated file failed its pinned
+        # sha256 (fall-through above). In air-gap (AGMIND_OFFLINE) no download can run — fast-fail
+        # rather than hang on a curl network error (review MEDIUM model-download-no-offline-fastfail).
         if _steps._offline_install_enabled():
+            if target.is_file():
+                # A pre-existing file is on disk but fails the pin; we did NOT delete it — a
+                # working (if differently-sourced) model must survive with no replacement to hand.
+                return (
+                    False,
+                    f"{role}: AGMIND_OFFLINE and on-disk '{file_name}' fails the pinned sha256 "
+                    f"(expected {sha256}); kept the existing file — pre-stage a matching model "
+                    "or re-pin.",
+                )
             return (
                 False,
                 f"{role}: AGMIND_OFFLINE and model not present — pre-stage '{file_name}' at "
@@ -387,10 +446,22 @@ class ModelDownloadStep(InstallStep):
                         )
                     )
                 continue
-            partial.replace(target)
-            ok, verify_err = self._verify_sha256_or_mark(role, target, sha256)
+            # Verify the DOWNLOADED PARTIAL before it may replace an in-place model — a bad
+            # download must never clobber a working file. On mismatch, discard the partial and
+            # fail; any existing target is left untouched.
+            ok, verify_err = self._sha256_matches(partial, sha256)
             if not ok:
-                return False, verify_err or f"{role}: sha256 verify failed"
+                with contextlib.suppress(OSError):
+                    partial.unlink()
+                return False, (
+                    f"{role}: downloaded {file_name} failed sha256 verify — expected "
+                    f"{sha256}, got {verify_err} (discarded the download; any existing "
+                    "file was kept)"
+                )
+            partial.replace(target)
+            if sha256:
+                with contextlib.suppress(OSError):
+                    self._write_verify_marker(target, sha256, target.stat().st_size)
             size_mb = target.stat().st_size // (1024 * 1024)
             return True, f"{role}: downloaded {size_mb} MiB → {target.name}"
         return False, f"{last_err}; gave up after {attempts} clean attempts"
