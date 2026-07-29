@@ -1124,3 +1124,48 @@ def test_verify_install_cli_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert payload["ok"] is True
     assert payload["summary"]["scenario_count"] == 1
     assert payload["scenarios"][0]["name"] == "setup-default"
+
+
+def _write_authelia_secret_dir(tmp_path: Path, redis_pw_file: str) -> Path:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    (secret_dir / "authelia_session_secret").write_text("sess", encoding="utf-8")
+    (secret_dir / "authelia_storage_encryption_key").write_text("store", encoding="utf-8")
+    (secret_dir / "authelia_reset_jwt_secret").write_text("jwt", encoding="utf-8")
+    (secret_dir / "authelia_session_redis_password").write_text(redis_pw_file, encoding="utf-8")
+    return secret_dir
+
+
+_PARSED_ENV = {
+    "AUTHELIA_SESSION_SECRET": "sess",
+    "AUTHELIA_STORAGE_ENCRYPTION_KEY": "store",
+    "AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET": "jwt",
+    "REDIS_PASSWORD": "redispw",
+}
+
+
+def test_authelia_secret_parity_flags_stale_redis_password(tmp_path: Path) -> None:
+    """P1 (secrets-authelia): a deploy / manual compose-up after a REDIS_PASSWORD change leaves the
+    authelia_session_redis_password FILE stale vs .env → authelia WRONGPASS / stack-wide auth
+    outage. `verify install` must flag the file↔.env desync so it is caught before a deploy."""
+    from agmind.install.verify import _authelia_secret_parity_errors
+
+    secret_dir = _write_authelia_secret_dir(tmp_path, "OLD_REDIS_PW")  # .env rotated to "redispw"
+    errors = _authelia_secret_parity_errors(secret_dir, ("authelia", "traefik"), _PARSED_ENV)
+    assert any("authelia_session_redis_password" in e and "REDIS_PASSWORD" in e for e in errors), (
+        errors
+    )
+
+
+def test_authelia_secret_parity_passes_when_in_sync(tmp_path: Path) -> None:
+    from agmind.install.verify import _authelia_secret_parity_errors
+
+    secret_dir = _write_authelia_secret_dir(tmp_path, "redispw\n")  # trailing newline tolerated
+    assert _authelia_secret_parity_errors(secret_dir, ("authelia", "traefik"), _PARSED_ENV) == []
+
+
+def test_authelia_secret_parity_skipped_without_authelia(tmp_path: Path) -> None:
+    from agmind.install.verify import _authelia_secret_parity_errors
+
+    # no authelia in the selection (local install) → no check, no false errors on absent files
+    assert _authelia_secret_parity_errors(tmp_path, ("openwebui",), {"REDIS_PASSWORD": "x"}) == []

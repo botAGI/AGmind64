@@ -534,7 +534,7 @@ def _verify_scenario(
             selected_services=selected_names,
         )
 
-    runtime_secret_errors = _validate_runtime_secret_files(cfg, selected_names)
+    runtime_secret_errors = _validate_runtime_secret_files(cfg, selected_names, parsed)
     if runtime_secret_errors:
         return InstallVerifyScenarioResult(
             name=scenario.name,
@@ -717,12 +717,51 @@ def _validate_runtime_env_values(parsed: dict[str, str], config: InstallConfig) 
     return errors
 
 
+def _authelia_secret_parity_errors(
+    secret_dir: Path,
+    selected_names: tuple[str, ...],
+    parsed: dict[str, str],
+) -> list[str]:
+    """Flag any authelia ``_FILE`` secret that has drifted from its .env source (P1 secrets-authelia).
+
+    authelia reads these secrets from 0600 FILES materialized from .env; only ``agmind install`` and
+    ``agmind ops rotate-secrets`` re-materialize them. A ``deploy`` / manual ``docker compose up``
+    after a .env change (especially REDIS_PASSWORD) leaves the file stale, so authelia keeps sending
+    the old redis password → WRONGPASS → authelia FATAL → stack-wide auth outage. Verify each file
+    still matches its .env value so the desync is caught by ``agmind verify install`` before a deploy.
+    """
+    if "authelia" not in selected_names:
+        return []
+    from agmind.install.secret_keys import AUTHELIA_SECRET_FILES
+
+    errors: list[str] = []
+    for _svc, filename, env_key in AUTHELIA_SECRET_FILES:
+        want = parsed.get(env_key)
+        if not want:
+            continue  # unset in .env → the env-value check covers it; nothing to reconcile here
+        sfile = secret_dir / filename
+        try:
+            got: str | None = sfile.read_text(encoding="utf-8") if sfile.is_file() else None
+        except OSError:
+            got = None
+        if got is None:
+            errors.append(f"authelia secret file {filename} missing or unreadable")
+        elif got.rstrip("\n") != want.rstrip("\n"):
+            errors.append(
+                f"authelia secret file {filename} is out of sync with .env {env_key} — re-run "
+                f"`agmind install` or `agmind ops rotate-secrets` to reconcile (a stale file causes "
+                f"authelia WRONGPASS / stack-wide auth outage)"
+            )
+    return errors
+
+
 def _validate_runtime_secret_files(
     config: InstallConfig,
     selected_names: tuple[str, ...],
+    parsed: dict[str, str],
 ) -> list[str]:
     try:
-        return _validate_runtime_secret_files_unchecked(config, selected_names)
+        return _validate_runtime_secret_files_unchecked(config, selected_names, parsed)
     except OSError as exc:
         return [f"runtime secret access failed: {exc}"]
 
@@ -730,6 +769,7 @@ def _validate_runtime_secret_files(
 def _validate_runtime_secret_files_unchecked(
     config: InstallConfig,
     selected_names: tuple[str, ...],
+    parsed: dict[str, str],
 ) -> list[str]:
     if "traefik" not in selected_names:
         return []
@@ -745,6 +785,8 @@ def _validate_runtime_secret_files_unchecked(
     mode = secret_dir.stat().st_mode & 0o777
     if mode != 0o700:
         errors.append(f"runtime secret directory {secret_dir.name} mode must be 0700, got {mode:o}")
+
+    errors.extend(_authelia_secret_parity_errors(secret_dir, selected_names, parsed))
 
     secret_file = secret_dir / "cf_dns_api_token"
     if not secret_file.exists():
