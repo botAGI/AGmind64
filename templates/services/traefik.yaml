@@ -51,6 +51,12 @@ command:
 - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=30
 - --log.level=INFO
 - --accesslog=true
+# zero-egress (A8 / Карпатый #15): traefik's global.checkNewVersion defaults ON and GETs
+# update.traefik.io (version + public IP) from the internet-facing edge on a timer;
+# sendAnonymousUsage opt-out is belt-and-suspenders. Both are CLI flags (no env knob), so they
+# are pinned in egress_telemetry_check._REQUIRED_EGRESS_CMD — dropping them reds the A8 gate.
+- --global.checknewversion=false
+- --global.sendanonymoususage=false
 resources:
   cpus: 1.0
   mem_limit: 512m

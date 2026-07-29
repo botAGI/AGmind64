@@ -72,6 +72,21 @@ _REQUIRED_EGRESS_ENV: dict[str, dict[str, str]] = {
     "n8n": {"N8N_DIAGNOSTICS_ENABLED": "false"},
 }
 
+# Services whose telemetry kill-switch is a COMMAND-LINE FLAG, not an env var, so the env-only
+# scan above is structurally blind to it (traefik's global.checkNewVersion → update.traefik.io;
+# alloy's usage reporting → stats.grafana.org). Each maps service -> {required command-list item:
+# reason}; check_egress asserts the exact flag is present in descriptor.command.
+_REQUIRED_EGRESS_CMD: dict[str, dict[str, str]] = {
+    "traefik": {
+        "--global.checknewversion=false": "checkNewVersion defaults ON → GET update.traefik.io "
+        "(running version + public IP) from the internet-facing edge.",
+        "--global.sendanonymoususage=false": "explicit opt-out of anonymous usage stats.",
+    },
+    "alloy": {
+        "--disable-reporting": "Grafana Alloy usage reporting POSTs to stats.grafana.org every 4h.",
+    },
+}
+
 # UI-only opt-out services: their telemetry has NO env/CLI knob in the pinned version, so it can
 # only be contained at the network layer (or unchecked in the UI on first login). Listing them
 # keeps the gate honest — they are KNOWN to phone home, just not declaratively fixable here. A
@@ -89,6 +104,11 @@ _EGRESS_EXEMPT: dict[str, str] = {
 def _service_env(descriptor: Any) -> dict[str, str]:
     env = getattr(descriptor, "env", None)
     return dict(env) if isinstance(env, dict) else {}
+
+
+def _service_command(descriptor: Any) -> list[str]:
+    cmd = getattr(descriptor, "command", None)
+    return [str(x) for x in cmd] if isinstance(cmd, (list, tuple)) else []
 
 
 def _issue(service: str, kind: str, message: str) -> dict[str, str]:
@@ -143,6 +163,23 @@ def check_egress(
                     )
                 )
 
+    # Required-command-flag services: telemetry killed via a CLI flag, invisible to the env scan.
+    for name, required_flags in sorted(_REQUIRED_EGRESS_CMD.items()):
+        descriptor = descriptors.get(name)
+        if descriptor is None:
+            continue
+        cmd = _service_command(descriptor)
+        for flag, reason in required_flags.items():
+            if flag not in cmd:
+                issues.append(
+                    _issue(
+                        name,
+                        "egress_flag_missing",
+                        f"Service '{name}' must pass '{flag}' in its command for zero-egress but "
+                        f"it is absent. {reason}",
+                    )
+                )
+
     # Stale exemption: a UI-only service that gained a required key (move it to required).
     for name in sorted(_EGRESS_EXEMPT):
         descriptor = descriptors.get(name)
@@ -166,7 +203,9 @@ def check_egress(
     # Stale rule: a required/exempt service that is no longer in the catalog.
     if full_catalog:
         catalog = set(descriptors)
-        for name in sorted(set(_REQUIRED_EGRESS_ENV) | set(_EGRESS_EXEMPT)):
+        for name in sorted(
+            set(_REQUIRED_EGRESS_ENV) | set(_REQUIRED_EGRESS_CMD) | set(_EGRESS_EXEMPT)
+        ):
             if name not in catalog:
                 issues.append(
                     _issue(
@@ -180,10 +219,13 @@ def check_egress(
 
 def _payload(issues: list[dict[str, str]]) -> dict[str, Any]:
     required_keys = sum(len(keys) for keys in _REQUIRED_EGRESS_ENV.values())
+    required_flags = sum(len(flags) for flags in _REQUIRED_EGRESS_CMD.values())
     return {
         "ok": len(issues) == 0,
         "required_count": len(_REQUIRED_EGRESS_ENV),
         "required_key_count": required_keys,
+        "required_cmd_count": len(_REQUIRED_EGRESS_CMD),
+        "required_flag_count": required_flags,
         "exempt_count": len(_EGRESS_EXEMPT),
         "error_count": len(issues),
         "issues": issues,
@@ -203,7 +245,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if ok:
         print(
-            f"A8 OK: zero-egress satisfied for {len(_REQUIRED_EGRESS_ENV)} services "
+            f"A8 OK: zero-egress satisfied for {len(_REQUIRED_EGRESS_ENV)} env-gated + "
+            f"{len(_REQUIRED_EGRESS_CMD)} command-gated services "
             f"({len(_EGRESS_EXEMPT)} UI-only exempt)."
         )
         return 0

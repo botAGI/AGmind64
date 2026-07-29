@@ -63,6 +63,29 @@ def test_correct_value_passes() -> None:
     assert issues == []
 
 
+def test_missing_required_command_flag_is_flagged() -> None:
+    """A8 must scan COMMAND flags, not only env: traefik's checkNewVersion egress (and alloy's
+    usage reporting) is killed via a CLI flag, so an env-only gate was structurally blind to it."""
+    gate = _load_gate()
+    fake = {"traefik": SimpleNamespace(command=["--ping=true"])}
+    issues = gate.check_egress(fake)  # type: ignore[attr-defined]
+    assert any(
+        i["service"] == "traefik" and "--global.checknewversion=false" in i["message"]
+        for i in issues
+    )
+
+
+def test_correct_command_flag_passes() -> None:
+    gate = _load_gate()
+    fake = {
+        "traefik": SimpleNamespace(
+            command=["--global.checknewversion=false", "--global.sendanonymoususage=false"]
+        )
+    }
+    issues = gate.check_egress(fake)  # type: ignore[attr-defined]
+    assert issues == []
+
+
 def test_stale_exempt_service_that_gained_the_env_knob_is_flagged() -> None:
     """An exempt (UI-only) service that picks up a required key must be moved out of exempt."""
     gate = _load_gate()
