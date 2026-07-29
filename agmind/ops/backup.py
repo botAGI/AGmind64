@@ -296,21 +296,33 @@ def _metadata_string_list(
     return list(value)
 
 
-def _add_local_directory(tar: tarfile.TarFile, src_path: Path, arcname: str) -> None:
+def _add_local_directory(tar: tarfile.TarFile, src_path: Path, arcname: str) -> list[str]:
+    """Add a directory tree to the archive; return the member names of any SKIPPED symlinks.
+
+    Symlinks are skipped (not stored), not aborted on: the produced archive stays symlink-free —
+    identical restore safety to the old hard reject (a restore can never be escaped via a stored
+    symlink) — but a single link (e.g. the dify-plugin-daemon uv-cache symlinks) no longer aborts
+    the whole ``--include-data`` backup, which made it unusable on a real live stack. Genuine
+    non-file/non-dir members (device/fifo) still raise — they cannot be backed up meaningfully and
+    should never appear under a data dir.
+    """
     if src_path.is_symlink() or not src_path.is_dir():
         _raise_unsupported_backup_member(str(src_path))
     tar.add(src_path, arcname=arcname, recursive=False)
+    skipped: list[str] = []
     for item in sorted(src_path.rglob("*")):
         rel = item.relative_to(src_path).as_posix()
         member_name = f"{arcname}/{rel}"
         if item.is_symlink():
-            _raise_unsupported_backup_member(member_name)
+            skipped.append(member_name)
+            continue
         if item.is_dir():
             tar.add(item, arcname=member_name, recursive=False)
         elif item.is_file():
             tar.add(item, arcname=member_name, recursive=False)
         else:
             _raise_unsupported_backup_member(member_name)
+    return skipped
 
 
 def _add_sudo_directory(
@@ -318,27 +330,51 @@ def _add_sudo_directory(
     src_path: Path,
     arcname: str,
     sudo_password: str,
-) -> None:
-    payload = _run_sudo_capture_bytes(
-        ["tar", "-C", str(src_path), "-cf", "-", "."],
-        sudo_password,
-    )
+) -> list[str]:
+    """Add a root-owned directory (via ``sudo tar``) to the archive; return skipped symlinks.
+
+    Spools the ``sudo tar -cf -`` output to a temp FILE on disk instead of buffering the entire
+    dir tar in memory: a multi-GB minio/elasticsearch/milvus volume held whole in RAM
+    (capture_output + BytesIO) risks OOM on a unified-memory host. Symlinks are skipped (same
+    contract as :func:`_add_local_directory`); genuine device/fifo members still raise.
+    """
     top = tarfile.TarInfo(name=arcname)
     top.type = tarfile.DIRTYPE
     top.mode = 0o755
     top.mtime = int(datetime.now(UTC).timestamp())
     tar.addfile(top)
 
-    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as src_tar:
-        for member in src_tar.getmembers():
-            if member.name in {".", "./"}:
-                continue
-            rel = _safe_tar_relpath(member.name)
-            if not (member.isdir() or member.isfile()):
-                _raise_unsupported_backup_member(f"{arcname}/{rel}")
-            member.name = f"{arcname}/{rel}"
-            extracted = src_tar.extractfile(member) if member.isfile() else None
-            tar.addfile(member, extracted)
+    skipped: list[str] = []
+    # sudo tar runs as root but writes to the user-owned spool fd (fd 1), so the spool file stays
+    # user-owned; the password goes in on stdin via communicate (no pipe deadlock — stdout is the
+    # file, not a pipe we must drain concurrently).
+    with tempfile.NamedTemporaryFile(prefix=".agmind-backup-spool-", suffix=".tar") as spool:
+        proc = subprocess.Popen(
+            sudo_argv(["tar", "-C", str(src_path), "-cf", "-", "."]),
+            stdin=subprocess.PIPE,
+            stdout=spool,
+            stderr=subprocess.PIPE,
+        )
+        _, stderr = proc.communicate(input=sudo_stdin_bytes(sudo_password))
+        if proc.returncode != 0:
+            detail = (stderr or b"").decode(errors="replace").strip()
+            raise OSError(f"sudo command failed (tar {src_path}): {detail or proc.returncode}")
+        spool.flush()
+        spool.seek(0)
+        with tarfile.open(fileobj=spool, mode="r:") as src_tar:
+            for member in src_tar.getmembers():
+                if member.name in {".", "./"}:
+                    continue
+                rel = _safe_tar_relpath(member.name)
+                if member.issym() or member.islnk():
+                    skipped.append(f"{arcname}/{rel}")
+                    continue
+                if not (member.isdir() or member.isfile()):
+                    _raise_unsupported_backup_member(f"{arcname}/{rel}")
+                member.name = f"{arcname}/{rel}"
+                extracted = src_tar.extractfile(member) if member.isfile() else None
+                tar.addfile(member, extracted)
+    return skipped
 
 
 def _encrypt_with_age(archive: Path, recipient: str) -> Path:
@@ -417,6 +453,7 @@ def create_backup(
 
     included: list[str] = []
     missing: list[str] = []
+    skipped_symlinks: list[str] = []
     tmp_path = output_path.with_name(f".{output_path.name}.tmp")
     _cleanup_path(tmp_path)
 
@@ -443,9 +480,11 @@ def create_backup(
                         mode=_sensitive_member_mode(src.label, src.path),
                     )
                 elif sudo_password is not None and src.path.is_dir():
-                    _add_sudo_directory(tar, src.path, arcname, sudo_password)
+                    skipped_symlinks.extend(
+                        _add_sudo_directory(tar, src.path, arcname, sudo_password)
+                    )
                 elif src.path.is_dir():
-                    _add_local_directory(tar, src.path, arcname)
+                    skipped_symlinks.extend(_add_local_directory(tar, src.path, arcname))
                 elif src.path.is_file():
                     tar.add(src.path, arcname=arcname, recursive=False)
                 else:
@@ -476,9 +515,11 @@ def create_backup(
                     if ds.host_path.is_symlink() or not ds.host_path.is_dir():
                         _raise_unsupported_backup_member(str(ds.host_path))
                     if sudo_password is not None:
-                        _add_sudo_directory(tar, ds.host_path, arcname, sudo_password)
+                        skipped_symlinks.extend(
+                            _add_sudo_directory(tar, ds.host_path, arcname, sudo_password)
+                        )
                     else:
-                        _add_local_directory(tar, ds.host_path, arcname)
+                        skipped_symlinks.extend(_add_local_directory(tar, ds.host_path, arcname))
                     data_members.append(
                         {
                             "label": ds.label,
@@ -504,6 +545,15 @@ def create_backup(
             info.size = len(meta_bytes)
             info.mtime = int(datetime.now(UTC).timestamp())
             tar.addfile(info, io.BytesIO(meta_bytes))
+        if skipped_symlinks:
+            # Not silent (Правила / "No silent caps"): the archive intentionally omits these
+            # symlinks; the operator must know coverage was bounded.
+            log.warning(
+                "backup: skipped %d symlink(s) (not stored — archive stays symlink-safe): %s%s",
+                len(skipped_symlinks),
+                ", ".join(skipped_symlinks[:8]),
+                " ..." if len(skipped_symlinks) > 8 else "",
+            )
         tmp_path.chmod(0o600)
         tmp_path.replace(output_path)
         output_path.chmod(0o600)
@@ -615,7 +665,10 @@ def list_backups(directory: Path) -> list[dict[str, object]]:
         }
         try:
             metadata = read_metadata(path)
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, EOFError, tarfile.TarError) as exc:
+            # A truncated/corrupt gzip surfaces as EOFError / tarfile.ReadError (neither is an
+            # OSError), so without these one bad archive would crash the whole listing and hide
+            # every good backup instead of marking just the bad one [CORRUPT] (mirror verify_backup).
             entry.update(
                 {
                     "created_at": None,

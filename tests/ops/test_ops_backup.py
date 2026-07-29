@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import stat
 import subprocess
 import tarfile
@@ -20,6 +21,7 @@ from agmind.ops.backup import (
     BackupSource,
     create_backup,
     default_sources,
+    list_backups,
     read_metadata,
     restore_backup,
 )
@@ -233,23 +235,37 @@ def test_backup_failure_does_not_leave_partial_archive(
     assert not out.exists()
 
 
-def test_backup_rejects_directory_symlink_member(tmp_path: Path) -> None:
+def test_backup_skips_directory_symlink_member(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A symlink under a backed-up dir is SKIPPED (not stored), not aborted on: the backup
+    succeeds with a symlink-free archive (identical restore safety to the old hard reject), and
+    the skip is warned about. Prevents one link (e.g. dify-plugin-daemon uv-cache) from making
+    `--include-data` unusable on a live stack."""
     source = tmp_path / "descriptors"
     source.mkdir()
     (source / "qdrant.yaml").write_text("name: qdrant\n", encoding="utf-8")
     (source / "traefik.yaml").symlink_to(source / "qdrant.yaml")
     out = tmp_path / "backup.tar.gz"
 
-    with pytest.raises(ValueError, match="unsupported backup source member"):
-        create_backup(output_path=out, sources=[BackupSource("descriptors", source)])
+    with caplog.at_level(logging.WARNING):
+        result = create_backup(output_path=out, sources=[BackupSource("descriptors", source)])
 
-    assert not out.exists()
-    assert not out.with_name(f".{out.name}.tmp").exists()
+    assert isinstance(result, BackupResult)
+    assert out.exists()
+    with tarfile.open(out, "r:gz") as tf:
+        members = tf.getmembers()
+    assert any(m.name.endswith("qdrant.yaml") for m in members), "real file must be stored"
+    assert not any(m.name.endswith("traefik.yaml") for m in members), "symlink must be skipped"
+    assert not any(m.issym() or m.islnk() for m in members), "archive must stay symlink-free"
+    assert "skipped 1 symlink" in caplog.text
 
 
-def test_backup_rejects_sudo_directory_symlink_member(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_backup_skips_sudo_directory_symlink_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Same skip-not-abort contract on the sudo (root-owned dir) path, which spools the
+    `sudo tar` output to a temp file (streamed, not buffered whole in memory)."""
     source = tmp_path / "descriptors"
     source.mkdir()
     out = tmp_path / "backup.tar.gz"
@@ -269,25 +285,54 @@ def test_backup_rejects_sudo_directory_symlink_member(
         link.linkname = "./qdrant.yaml"
         tar.addfile(link)
 
-    def fake_run(
-        cmd: list[str],
-        capture_output: bool = True,
-        check: bool = False,
-        input: bytes | None = None,
-    ) -> subprocess.CompletedProcess[bytes]:
-        return subprocess.CompletedProcess(cmd, 0, stdout=payload.getvalue(), stderr=b"")
+    def fake_popen(*_args: object, stdout: object = None, **_kwargs: object) -> object:
+        class _P:
+            returncode = 0
 
-    monkeypatch.setattr("agmind.ops.backup.subprocess.run", fake_run)
+            def communicate(self, input: bytes | None = None) -> tuple[None, bytes]:
+                del input
+                stdout.write(payload.getvalue())  # type: ignore[union-attr]
+                return (None, b"")
 
-    with pytest.raises(ValueError, match="unsupported backup source member"):
-        create_backup(
+        return _P()
+
+    monkeypatch.setattr("agmind.ops.backup.subprocess.Popen", fake_popen)
+
+    with caplog.at_level(logging.WARNING):
+        result = create_backup(
             output_path=out,
             sources=[BackupSource("descriptors", source)],
             sudo_password="pw",
         )
 
-    assert not out.exists()
-    assert not out.with_name(f".{out.name}.tmp").exists()
+    assert isinstance(result, BackupResult)
+    assert out.exists()
+    with tarfile.open(out, "r:gz") as tf:
+        members = tf.getmembers()
+    assert any(m.name.endswith("qdrant.yaml") for m in members)
+    assert not any(m.name.endswith("traefik.yaml") for m in members)
+    assert not any(m.issym() or m.islnk() for m in members)
+    assert "skipped 1 symlink" in caplog.text
+
+
+def test_list_backups_marks_truncated_archive_corrupt_not_crash(tmp_path: Path) -> None:
+    """A truncated/corrupt archive raises EOFError / tarfile.ReadError (neither an OSError) on
+    metadata read. list_backups must mark just that one [not-ok] and still list the good ones,
+    never crash the whole listing (which would hide every healthy backup)."""
+    good = tmp_path / "good.tar.gz"
+    src = tmp_path / "descriptors"
+    src.mkdir()
+    (src / "qdrant.yaml").write_text("name: qdrant\n", encoding="utf-8")
+    create_backup(output_path=good, sources=[BackupSource("descriptors", src)])
+
+    bad = tmp_path / "bad.tar.gz"
+    bad.write_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 12)  # truncated gzip header, no body
+
+    entries = list_backups(tmp_path)  # must NOT raise
+
+    by_name = {e["name"]: e for e in entries}
+    assert by_name["good.tar.gz"]["ok"] is True
+    assert by_name["bad.tar.gz"]["ok"] is False
 
 
 def test_restore_writes_env_via_sudo_with_restrictive_mode(
