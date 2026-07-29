@@ -499,6 +499,9 @@ def cmd_apply(
             healthcheck_timeout=healthcheck_timeout,
             allow_removal=False,
             skip_data_backup=skip_data_backup,
+            # Services come from deploy-state.resolved_services (already closure-resolved +
+            # model-normalized); re-expanding would re-add a skipped llama-llm (P0).
+            expand_closure=False,
         )
     except Exception as exc:
         print(f"ERROR: deploy crashed: {exc}", file=sys.stderr)

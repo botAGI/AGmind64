@@ -901,6 +901,12 @@ class DeployStep(InstallStep):
                 no_prompt=True,
                 progress=deploy_progress,
                 services=config.services,
+                # config.services is ALREADY closure-resolved (expand_selected_services_for_setup)
+                # AND model-normalized (normalize_model_fields_and_services removed llama-llm for
+                # model_id='skip'). Re-expanding in the runner would re-pull llama-llm's
+                # llm_inference provider and re-add the skipped LLM → model-less llama-llm →
+                # unhealthy → install fails (P0 deploy-render-divergence).
+                expand_closure=False,
                 sudo_password=config.sudo_password,
                 # First-run deploy must outlast a multi-GB LLM load; the runner default
                 # (300s) false-rolls-back an otherwise-healthy stack (BREA02). Sized

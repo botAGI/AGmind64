@@ -960,6 +960,67 @@ def test_deploy_service_closure_pulls_docker_api_provider(
     )
 
 
+def test_deploy_resolved_selection_does_not_re_add_skipped_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P0 (deploy-render-divergence): install / `deploy --from deploy-state` pass an ALREADY
+    RESOLVED service list where model_id='skip' deliberately removed llama-llm (external LLM).
+    The runner must NOT re-run the #21 closure and re-add llama-llm — on an external-LLM host
+    that deploys a model-less llama-llm → unhealthy → whole deploy fails (on a fresh install
+    there is no snapshot to roll back). `expand_closure=False` preserves the caller's resolution."""
+    render_kwargs: dict[str, object] = {}
+
+    def fake_render_to_string(**kwargs: object) -> str:
+        render_kwargs.update(kwargs)
+        return "services:\n  openwebui:\n    image: ghcr.io/open-webui/open-webui:v0.10.2\n"
+
+    monkeypatch.setattr(runner, "render_to_string", fake_render_to_string)
+
+    result = runner.deploy(
+        profiles=[],
+        install_dir=tmp_path / "install",
+        domain="ci.example.com",
+        apply=False,
+        services=["openwebui"],  # openwebui consumes llm_inference (provider llama-llm)
+        expand_closure=False,
+    )
+
+    assert result.success is True
+    assert "llama-llm" not in (render_kwargs["services"] or []), (
+        "a caller-resolved selection must not be re-closure-expanded to re-add a skipped "
+        f"llama-llm; render saw {render_kwargs['services']}"
+    )
+
+
+def test_deploy_raw_service_still_expands_closure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Complement of the P0 fix: a RAW `deploy --service openwebui` (expand_closure defaults
+    True) still pulls its llm_inference provider llama-llm via the #21 closure — the resolved-list
+    opt-out must not change the raw single-service deploy behavior."""
+    render_kwargs: dict[str, object] = {}
+
+    def fake_render_to_string(**kwargs: object) -> str:
+        render_kwargs.update(kwargs)
+        return "services:\n  openwebui:\n    image: ghcr.io/open-webui/open-webui:v0.10.2\n"
+
+    monkeypatch.setattr(runner, "render_to_string", fake_render_to_string)
+
+    result = runner.deploy(
+        profiles=[],
+        install_dir=tmp_path / "install",
+        domain="ci.example.com",
+        apply=False,
+        services=["openwebui"],  # default expand_closure=True
+    )
+
+    assert result.success is True
+    assert "llama-llm" in (render_kwargs["services"] or []), (
+        f"raw deploy --service openwebui must still closure-pull llama-llm; render saw "
+        f"{render_kwargs['services']}"
+    )
+
+
 def test_validate_compose_config_uses_tempfile_outside_install_dir_when_sudo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

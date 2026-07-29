@@ -718,6 +718,7 @@ def deploy(
     cancel_event: threading.Event | None = None,
     allow_removal: bool = False,
     skip_data_backup: bool = False,
+    expand_closure: bool = True,
 ) -> DeployResult:
     """Single-flight wrapper around :func:`_deploy_impl`.
 
@@ -743,6 +744,7 @@ def deploy(
             cancel_event=cancel_event,
             allow_removal=allow_removal,
             skip_data_backup=skip_data_backup,
+            expand_closure=expand_closure,
         )
     with _deploy_lock(install_dir) as acquired:
         if not acquired:
@@ -766,6 +768,7 @@ def deploy(
             cancel_event=cancel_event,
             allow_removal=allow_removal,
             skip_data_backup=skip_data_backup,
+            expand_closure=expand_closure,
         )
 
 
@@ -783,6 +786,7 @@ def _deploy_impl(
     cancel_event: threading.Event | None = None,
     allow_removal: bool = False,
     skip_data_backup: bool = False,
+    expand_closure: bool = True,
 ) -> DeployResult:
     """Main deploy orchestrator.
 
@@ -834,24 +838,34 @@ def _deploy_impl(
                 msg = "unknown selected services for deploy: " + ", ".join(missing)
                 _emit("error", msg)
                 return DeployResult(success=False, message=msg)
-            # #21: expand an explicit --service selection through the SAME closure the install
-            # path uses (resolve_service_selection), so a docker_api consumer (prometheus /
-            # traefik / cadvisor / dozzle / netdata) co-deploys its sole provider
-            # docker-socket-proxy. The exact select_services does NOT pull it (that closure is
-            # what the fail-closed consumes guard's CLOSURE_PULLED_CAPABILITIES exemption assumes),
-            # so a fresh `deploy --service prometheus` otherwise renders + ups prometheus alone
-            # with its docker service discovery pointed at a proxy that was never deployed.
-            # Profile-based deploys are unaffected — the proxy rides its own profile.
-            from agmind.components import load_component_contracts
-            from agmind.services.selection import resolve_service_selection
+            if expand_closure:
+                # #21: expand a RAW `--service` selection through the SAME closure the install
+                # path uses (resolve_service_selection), so a docker_api consumer (prometheus /
+                # traefik / cadvisor / dozzle / netdata) co-deploys its sole provider
+                # docker-socket-proxy. The exact select_services does NOT pull it (that closure is
+                # what the fail-closed consumes guard's CLOSURE_PULLED_CAPABILITIES exemption
+                # assumes), so a fresh `deploy --service prometheus` otherwise renders + ups
+                # prometheus alone with its docker service discovery pointed at a proxy that was
+                # never deployed. Profile-based deploys are unaffected — the proxy rides its own
+                # profile.
+                #
+                # P0 (deploy-render-divergence): callers that pass an ALREADY-RESOLVED selection
+                # — install's DeployStep and `deploy`/`upgrade --apply` reading deploy-state,
+                # where `model_id='skip'` (external LLM) already removed llama-llm via
+                # normalize_model_fields_and_services — MUST pass expand_closure=False. Otherwise
+                # this closure re-pulls llama-llm's llm_inference provider and re-adds the skipped
+                # llama-llm, deploying a model-less LLM → unhealthy → whole deploy fails (fresh
+                # install has no snapshot to roll back). See tests/deploy/test_deploy.py.
+                from agmind.components import load_component_contracts
+                from agmind.services.selection import resolve_service_selection
 
-            services = sorted(
-                resolve_service_selection(
-                    descriptors,
-                    services=services,
-                    component_contracts=load_component_contracts(),
+                services = sorted(
+                    resolve_service_selection(
+                        descriptors,
+                        services=services,
+                        component_contracts=load_component_contracts(),
+                    )
                 )
-            )
         if services is None:
             missing_profiles = unknown_profiles(descriptors, profiles)
             if missing_profiles:

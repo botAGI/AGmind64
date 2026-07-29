@@ -138,6 +138,7 @@ def cmd_deploy(
     services: list[str] | None = None,
     allow_removal: bool = False,
     skip_data_backup: bool = False,
+    expand_closure: bool = True,
 ) -> int:
     """Idempotent deploy (Phase L.B): dry-run by default, --apply to commit.
 
@@ -162,6 +163,7 @@ def cmd_deploy(
         sudo_password=_prompt_sudo_password(ask_sudo_password),
         allow_removal=allow_removal,
         skip_data_backup=skip_data_backup,
+        expand_closure=expand_closure,
     )
 
     if result.diff is not None:
@@ -313,6 +315,11 @@ def register(app: typer.Typer) -> None:
         # instead of importing/comparing the enum type directly.
         profile_source = ctx.get_parameter_source("profile")
         profile_omitted = profile_source is not None and profile_source.name == "DEFAULT"
+        # Services read from deploy-state are ALREADY closure-resolved + model-normalized, so the
+        # runner must NOT re-expand them (a re-expand re-adds a skipped llama-llm — P0
+        # deploy-render-divergence). A RAW `--service` selection is unresolved and still needs
+        # the #21 closure (expand_closure defaults True).
+        services_from_state = False
         if profile_omitted and not service:
             from agmind.deploy.state import load_deploy_state
 
@@ -320,6 +327,7 @@ def register(app: typer.Typer) -> None:
             if state is not None:
                 profiles = state.profiles
                 services = state.resolved_services or None
+                services_from_state = True
                 if resolved_domain is None:
                     resolved_domain = state.domain
 
@@ -335,6 +343,7 @@ def register(app: typer.Typer) -> None:
             ask_sudo_password=ask_sudo_password,
             allow_removal=allow_removal,
             skip_data_backup=skip_data_backup,
+            expand_closure=not services_from_state,
         )
         raise typer.Exit(code=rc)
 
