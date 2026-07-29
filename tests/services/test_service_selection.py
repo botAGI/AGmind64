@@ -26,6 +26,22 @@ def test_selection_resolves_consumed_capability_provider() -> None:
     assert "llama-llm" in closure, "consumed llm_inference provider must be in the closure"
 
 
+def test_exact_select_services_does_not_pull_llm_provider() -> None:
+    """Complement of the closure test above and the guard behind the P0 `expand_closure` fix: the
+    EXACT select_services path (used by `render compose --service` and by a caller-resolved deploy)
+    must NOT closure-pull llama-llm for an llm_inference consumer. This is what lets a
+    model_id='skip' (external-LLM) render/deploy keep llama-llm out; if select_services silently
+    started expanding, a local install / `deploy --from deploy-state` would deploy an unwanted,
+    model-less llama-llm → unhealthy → failed deploy."""
+    from agmind.services.renderer import load_descriptors, select_services
+
+    descriptors = load_descriptors()
+    selected = select_services(descriptors, profiles=[], services=["openwebui"])
+    assert "llama-llm" not in selected, (
+        f"exact select_services must NOT closure-pull llama-llm; got {sorted(selected)}"
+    )
+
+
 def test_selecting_prometheus_pulls_docker_socket_proxy() -> None:
     """live-audit 2026-06-05 (grafana-empty): prometheus docker_sd discovers targets over
     tcp://docker-socket-proxy:2375; the proxy is otherwise observability-profile-only, so an

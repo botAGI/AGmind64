@@ -312,9 +312,13 @@ class ModelDownloadStep(InstallStep):
         # sha256 (fall-through above). In air-gap (AGMIND_OFFLINE) no download can run — fast-fail
         # rather than hang on a curl network error (review MEDIUM model-download-no-offline-fastfail).
         if _steps._offline_install_enabled():
-            if target.is_file():
-                # A pre-existing file is on disk but fails the pin; we did NOT delete it — a
-                # working (if differently-sourced) model must survive with no replacement to hand.
+            # Only report "on-disk file fails the pin, kept it" for the GENUINE fall-through: a
+            # PINNED role whose FULL-SIZE existing file mismatched (and was preserved, not deleted).
+            # A truncated leftover (< min_size, so _detect_existing returned None) or an unpinned
+            # role is simply "not present — pre-stage it"; without this guard an unpinned
+            # (sha256=None) truncated scrap printed the misleading "fails the pinned sha256
+            # (expected None)".
+            if sha256 and target.is_file() and target.stat().st_size >= min_size:
                 return (
                     False,
                     f"{role}: AGMIND_OFFLINE and on-disk '{file_name}' fails the pinned sha256 "

@@ -25,7 +25,8 @@ env:
   # ANONYMIZED_TELEMETRY=False; DO_NOT_TRACK/SCARF_NO_ANALYTICS suppress the same in bundled
   # deps (belt-and-suspenders, matches netdata DO_NOT_TRACK). OFFLINE_MODE disables the
   # version-check + auto model downloads AND sets HF_HUB_OFFLINE=1 internally (env.py), so no
-  # Hugging Face fetch happens at boot. verified 2026-06-09 against open-webui v0.9.5 source
+  # Hugging Face fetch happens at boot. These four env knobs are unchanged upstream through the
+  # v0.9.5 → v0.10.2 (2026-07) minor bump; last source-verified 2026-06-09 against v0.9.5
   # (config.py / env.py) + https://docs.openwebui.com/tutorials/maintenance/offline-mode/
   # NB: local embeddings are NOT hardcoded here — pointing RAG_OPENAI_API_BASE_URL at
   # llama-embed:8080 would dangle at a dead DNS when llama-embed is not deployed (same class

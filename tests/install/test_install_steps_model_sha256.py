@@ -75,6 +75,27 @@ def test_sha256_mismatch_discards_download_before_target(
     assert not target.exists(), "mismatched download must not survive as the model"
 
 
+def test_offline_unpinned_truncated_leftover_reports_not_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """735ac53 message regression: offline + UNPINNED (sha256=None) + a truncated leftover at
+    target (< min_size, so _detect_existing returns None) must report 'model not present —
+    pre-stage it', NOT the misleading 'fails the pinned sha256 (expected None)'."""
+    cfg = _cfg(tmp_path)
+    target = cfg.models_dir / cfg.embed_file
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"tiny-not-a-real-model")  # far below MIN_VALID_SIZE_SMALL
+    monkeypatch.setattr("agmind.install.steps._offline_install_enabled", lambda: True)
+
+    ok, msg = ModelDownloadStep()._download_one(
+        "embed", cfg.embed_repo, cfg.embed_file, cfg, lambda _e: None, sha256=None
+    )
+
+    assert ok is False
+    assert "not present" in msg
+    assert "expected None" not in msg
+
+
 def test_existing_mismatch_offline_preserves_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
