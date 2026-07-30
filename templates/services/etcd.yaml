@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: etcd
-image: quay.io/coreos/etcd:v3.5.18
-digest: d0a641d5fbcc89678c931a61b7de7b8a1cf097149f135c9c73bc81d076a1494b
+image: quay.io/coreos/etcd:v3.5.25
+digest: 52f17f7e56e4f7239f0320dbfcbcc24721163d7d78ae710b466af3254ccf6366
 tier: storage
 purpose: Metadata store for Milvus standalone (distributed backend) — opt-in rag-milvus
 owner: stateful-services

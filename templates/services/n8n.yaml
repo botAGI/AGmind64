@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: n8n
-image: n8nio/n8n:2.22.3
-digest: 75d18a9ecc588c32ece70d87bfd3319004601cf1d0d4fea5f4ba3640acb87f7b
+image: n8nio/n8n:2.32.6
+digest: 5f7856f4fc7cd935230f7596e39fdb3d5eda0e379c5b40b699b9c0eb35ebd0bf
 tier: app
 purpose: Local workflow automation for agent and integration flows — n8n 2.22.3 (2026-05-25)
 owner: automation-stack

@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: redis-exporter
-image: oliver006/redis_exporter:v1.87.0
-digest: 9ca6f929a8abc518d78158757922444f1cf807661a2238f44b28c3cd08a1b652
+image: oliver006/redis_exporter:v1.88.0
+digest: 2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
 tier: ops
 purpose: Redis metrics для Prometheus
 profiles:

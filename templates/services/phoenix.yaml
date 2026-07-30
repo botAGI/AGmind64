@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: phoenix
-image: arizephoenix/phoenix:version-19.3.0-nonroot
+image: arizephoenix/phoenix:version-19.10.0-nonroot
 # Arize Phoenix — self-hosted LLM-observability backend for Dify's native OpenInference exporter.
 # INDEX digest (amd64/linux verified via `docker buildx imagetools inspect`). Chosen over MLflow in
 # the 2026-06-07 head-to-head (.planning/night/DIFY-TRACING-RESEARCH.md): the whole UI IS the nested
 # LLM-trace waterfall (prompts/completions/tokens/latency + RAG docs with scores), lighter (SQLite,
 # no minio), and its ELv2 license is already an accepted class here (elasticsearch ships ELv2).
-digest: 0b9f4a9037d4e1fce3eadb1a90f20761032855123da05d56e9f8152f2a83ae33
+digest: 8f4035712973261de091e42ca469e9c07af69cc273f09c890aec5b11033987bb
 tier: ops
 purpose: LLM trace observability for Dify — Arize Phoenix 19.3.0 (2026-07-22)
 owner: observability-stack

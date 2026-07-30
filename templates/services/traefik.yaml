@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: traefik
-image: traefik:v3.7.8
-digest: 4299bbed850421258fc5448c2e0e6ad350981d4d335a68de11b92448aedbefe5
+image: traefik:v3.7.9
+digest: 652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8
 tier: edge
 purpose: Reverse proxy + TLS termination + middleware chains (ADR-0006)
 owner: agmind-core

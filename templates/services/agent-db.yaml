@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: agent-db
-image: pgvector/pgvector:pg17
+image: pgvector/pgvector:0.8.6-pg17
 # Postgres 17 + pgvector. INDEX digest (amd64/linux verified via docker image inspect).
-digest: feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+digest: 7ae6051efd0e60444282c27c7e141af07f322ce033300e727a49c3dd11075e38
 tier: storage
 purpose: Postgres+pgvector for agent session/memory + DBOS checkpoints — opt-in agents
 owner: agent-stack

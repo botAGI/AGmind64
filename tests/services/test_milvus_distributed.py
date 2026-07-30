@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def test_etcd_descriptor_present_and_internal() -> None:
     d = load_descriptors()["etcd"]
-    assert d.image == "quay.io/coreos/etcd:v3.5.18"
+    assert d.image == "quay.io/coreos/etcd:v3.5.25"
     assert d.profiles == ["rag-milvus"]
     assert d.command and d.command[0] == "etcd"
     assert any(v.endswith(":/etcd") for v in d.volumes)

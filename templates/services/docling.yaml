@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: docling
-image: quay.io/docling-project/docling-serve-cpu:v1.27.0
-digest: a70cd391c5d9e7ad23e8d76adffa5e5f03c536b4d1ea007f512c94e0b435ba45
+image: quay.io/docling-project/docling-serve-cpu:v1.28.0
+digest: cc207e1eb768878456ed98042c5d84fae56af3729a9c03d3e5c8fef393902956
 tier: app
 purpose: Document parsing CPU-only (per R7); PP-OCRv6 — 2026-07-22
 profiles:

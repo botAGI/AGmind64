@@ -293,7 +293,7 @@ def test_service_selection_n8n_is_isolated_automation_runtime() -> None:
         services=sorted([*selected, "traefik", "authelia", "redis"]),
         domain="lab.example.com",
     )
-    assert "image: n8nio/n8n:2.22.3@sha256:" in rendered
+    assert "image: n8nio/n8n:2.32.6@sha256:" in rendered
     assert "N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}" in rendered
     assert "N8N_DIAGNOSTICS_ENABLED: 'false'" in rendered
     assert "N8N_RUNNERS_ENABLED: 'true'" in rendered
@@ -331,7 +331,7 @@ def test_service_selection_includes_operator_console_runtime_services() -> None:
     assert "image: louislam/uptime-kuma:2.4.0@sha256:" in rendered
     assert "image: ghcr.io/homarr-labs/homarr:v1.62.0@sha256:" in rendered
     assert "image: containrrr/watchtower:1.7.1@sha256:" in rendered
-    assert "image: amir20/dozzle:v10.6.11@sha256:" in rendered
+    assert "image: amir20/dozzle:v10.6.13@sha256:" in rendered
     assert "image: netdata/netdata:v2.10.4@sha256:" in rendered
     assert "image: louislam/uptime-kuma:latest" not in rendered
     assert "image: ghcr.io/homarr-labs/homarr:latest" not in rendered

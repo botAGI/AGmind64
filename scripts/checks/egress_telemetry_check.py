@@ -70,6 +70,10 @@ _REQUIRED_EGRESS_ENV: dict[str, dict[str, str]] = {
     "netdata": {"DO_NOT_TRACK": "1"},
     # n8n: diagnostics/telemetry to n8n's PostHog — already shipped, pinned here.
     "n8n": {"N8N_DIAGNOSTICS_ENABLED": "false"},
+    # dozzle: anonymous beacon POSTs to https://b.dozzle.dev/event by default; kill-switch verified
+    # in v10.6.13 source (internal/support/cli/args.go). Gap found by the 2026-07-30 bump sweep —
+    # the beacon predates the bump (rule #15 catch, not a v10.6.13 regression).
+    "dozzle": {"DOZZLE_NO_ANALYTICS": "true"},
 }
 
 # Services whose telemetry kill-switch is a COMMAND-LINE FLAG, not an env var, so the env-only
