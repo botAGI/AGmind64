@@ -88,6 +88,38 @@ portainer/portainer-ce:
   reason: "2.43 changed initial-admin setup (log token / --admin-password-file); bump lands with the access.note rewrite + CredentialsStep wiring, not as a bare image swap."
   hold_until: 2026-09-01
 
+# --- Bump sweep 2026-07-30 (issue #25): held after per-component research ---
+
+# etcd: the report's "minor 3.5->3.7" label is WRONG two ways (verified 2026-07-30): (1) etcd
+# forbids skipping minors — v3.7 requires a running v3.6.11+ cluster, v3.6 requires all members
+# at 3.5.26+ first, so booting 3.7.x on our live 3.5-written /var/lib/agmind/etcd data dir skips
+# two mandatory upgrade gates; (2) milvus v2.6.x (our sole etcd consumer) pins etcd v3.5.25 in its
+# reference compose with no stated 3.7 support. We bumped to v3.5.25 (matches the milvus pin,
+# carries the 3.5.24+ upgrade-blocker fixes, keeps the 3.6/3.7 path open); hold anything above 3.5.
+quay.io/coreos/etcd:
+  reason: "3.6/3.7 need sequential minor upgrades from 3.5.26+ (live data dir is 3.5-written) AND milvus 2.6 officially pins etcd v3.5.25 — stay on 3.5.x until milvus moves."
+  max_version: "v3.5.x"
+
+# milvus: v3.0.0 is a real tag (verified — NOT a bot phantom this time) but a 1-day-old major GA:
+# Storage V3 columnar format is an explicitly non-rollbackable one-way transition on live vector
+# data, GA release notes were unpublished at review time (egress/breaking sweep incomplete), and
+# our Dify 1.14.2 bundles pymilvus ~=2.6.12 with no verified Milvus-3.0-server compatibility.
+# Stayed on the 2.6 line (bumped v2.6.20 -> v2.6.21 patch). Revisit after a 3.0.x patch lands,
+# GA notes are published, and Dify ships a pymilvus 3.x bump.
+milvusdb/milvus:
+  reason: "v3.0.0: one-way Storage V3 data transition on a LIVE vector DB, no GA release notes at review, Dify's pymilvus 2.6.12 unverified against 3.0 — hold the major; patches on 2.6.x OK."
+  max_version: "v2.6.x"
+  hold_until: 2026-10-01
+
+# node (agent-ui build image): Node 26 is "Current", NOT LTS until 2026-10-28 (nodejs/Release
+# verified 2026-07-30); Node 24 is the Active LTS. Additionally the bump is NOT a pure FROM swap:
+# corepack was removed from the node:25+ distribution (verified by running node:26.5.0-bookworm-slim
+# — `corepack` absent), so Dockerfile.agent-ui's `corepack enable && corepack prepare pnpm` line
+# fails command-not-found. Bump lands together with the pnpm-bootstrap rewrite after 26 hits LTS.
+node:
+  reason: "Node 26 not LTS until 2026-10-28 (stay on 24 LTS); node:26 image drops corepack so Dockerfile.agent-ui pnpm bootstrap needs a rewrite first — not a bare FROM swap."
+  hold_until: 2026-11-01
+
 # ragflow: the weekly report's "v1.0" is a phantom (project is on 0.x; latest real tag v0.26.4).
 # Tried the real minor bump v0.25.5->v0.26.4 but the ragflow container never reaches `healthy` in
 # compose-up-smoke — verified twice locally (300s AND 600s waits) and on CI, with every data-tier
