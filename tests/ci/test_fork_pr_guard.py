@@ -52,7 +52,35 @@ def _runs_on_self_hosted(job: dict[str, Any]) -> bool:
     return "self-hosted" in str(runs_on)
 
 
-@pytest.mark.parametrize("workflow_name", ["ci.yml", "kubernetes-proof.yml"])
+def _workflows_with_self_hosted_jobs() -> list[str]:
+    """Every workflow file that actually declares a self-hosted job.
+
+    DERIVED, never hard-coded: this test's docstring promises it fails closed when ANY
+    self-hosted job lacks the guard, but a hard-coded ["ci.yml", "kubernetes-proof.yml"] pair
+    silently exempted every other workflow — perf-nightly.yml ran an unguarded self-hosted job
+    for exactly that reason. That is the repo's documented "guard in code the real path never
+    calls = false coverage" class, so the parametrization is computed from the workflow dir.
+    """
+    names: list[str] = []
+    for path in sorted(_WF_DIR.glob("*.yml")):
+        try:
+            jobs = _jobs(path)
+        except (OSError, yaml.YAMLError):  # pragma: no cover - malformed workflow
+            continue
+        if any(_runs_on_self_hosted(job) for job in jobs.values()):
+            names.append(path.name)
+    return names
+
+
+def test_self_hosted_workflow_discovery_is_not_empty() -> None:
+    """Guard the guard: if discovery silently returned [], every parametrized case would
+    vanish and the suite would go green while checking nothing."""
+    discovered = _workflows_with_self_hosted_jobs()
+    assert discovered, "no workflow with a self-hosted job found — discovery is broken"
+    assert "ci.yml" in discovered, f"ci.yml must be discovered; got {discovered}"
+
+
+@pytest.mark.parametrize("workflow_name", _workflows_with_self_hosted_jobs())
 def test_every_self_hosted_job_is_fork_guarded(workflow_name: str) -> None:
     """Every self-hosted job must carry the fork-PR guard in its `if:` clause.
 

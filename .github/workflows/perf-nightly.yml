@@ -37,6 +37,17 @@ concurrency:
 jobs:
   token-throughput-gate:
     runs-on: [self-hosted, linux, x64, strix-halo]
+    # Fork-PR guard (defense-in-depth): this job runs verbatim repo code on the production
+    # Strix Halo box that holds every secret and the docker group. Today the triggers are only
+    # schedule/workflow_dispatch, so a fork PR cannot reach it — the guard is here so that
+    # ADDING `pull_request` to `on:` later cannot silently expose the runner. Same three-clause
+    # allow-list as ci.yml test-strix-halo and chaos-regression.yml chaos-probe.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
