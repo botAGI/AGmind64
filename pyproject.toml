@@ -31,7 +31,7 @@ dependencies = [
   # Phase N: `agmind install` orchestrator вызывает ansible-playbook для
   # bootstrap step (apt / usermod / mkdir). Без ansible-core install не запустится.
   "ansible-core>=2.16,<2.22",
-  "structlog>=24.0,<26",
+  "structlog>=24.0,<27",
   "textual>=0.80,<9",
   "pyfiglet>=1.0,<2",
   "PyYAML>=6.0,<7",
@@ -67,7 +67,7 @@ dev = [
   "pytest-asyncio>=1.0,<2",
   "pytest-cov>=5.0,<8",
   "pytest-benchmark>=4.0,<6",
-  "ruff==0.15.13",
+  "ruff==0.16.1",
   "mypy>=1.10,<3",
   "pre-commit>=4.0,<5",
   "types-PyYAML>=6.0,<7",
