@@ -8,7 +8,7 @@ image: arizephoenix/phoenix:version-19.10.0-nonroot
 # no minio), and its ELv2 license is already an accepted class here (elasticsearch ships ELv2).
 digest: 8f4035712973261de091e42ca469e9c07af69cc273f09c890aec5b11033987bb
 tier: ops
-purpose: LLM trace observability for Dify — Arize Phoenix 19.3.0 (2026-07-22)
+purpose: LLM trace observability for Dify — Arize Phoenix 19.10.0 (2026-07-30)
 owner: observability-stack
 profiles:
 - tracing

@@ -3,7 +3,7 @@ name: n8n
 image: n8nio/n8n:2.32.6
 digest: 5f7856f4fc7cd935230f7596e39fdb3d5eda0e379c5b40b699b9c0eb35ebd0bf
 tier: app
-purpose: Local workflow automation for agent and integration flows — n8n 2.22.3 (2026-05-25)
+purpose: Local workflow automation for agent and integration flows — n8n 2.32.6 (2026-07-30)
 owner: automation-stack
 profiles:
 - automation

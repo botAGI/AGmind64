@@ -3,7 +3,7 @@ name: netdata
 image: netdata/netdata:v2.10.4
 digest: 689145f603fed0ca341b4d8a0fb9910cd9d8c0590b0530cd24ae1912a9c7f8f3
 tier: ops
-purpose: Real-time host and container health dashboard — Netdata v2.10.3 (2026-04-27)
+purpose: Real-time host and container health dashboard — Netdata v2.10.4 (2026-07-30)
 owner: observability-stack
 profiles:
 - observability

@@ -22,7 +22,12 @@
 # Bumping без re-bench может изменить tps; держим до сравнения.
 ghcr.io/ggml-org/llama.cpp:
   reason: "Phase H bench reference build (b9049). Bump после re-bench на новой версии."
-  hold_until: 2026-08-01
+  # Reviewed 2026-08-03 (hold_until 2026-08-01 auto-cleared as designed): re-bench has NOT been
+  # run — llama-embed/llama-rerank still serve on server-vulkan-b9049, and the Phase H 73 t/s
+  # baseline that perf-nightly gates against was measured on that exact build. The release
+  # condition is an EVENT (a re-bench), not a date, so hold_until is deliberately dropped rather
+  # than pushed forward: the hold lifts when someone re-benches, and until then the weekly report
+  # should keep saying HOLD instead of silently flipping to "bump available" every review cycle.
 
 # Dify pin: plugin daemon co-bump required; verify against upstream releases
 # before changing any Dify image in isolation.

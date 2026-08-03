@@ -3,7 +3,7 @@ name: dozzle
 image: amir20/dozzle:v10.6.13
 digest: 9b13386276490c41faf41fbe7f477964d2a6ba95dd087e7d22a890a65e58c841
 tier: ops
-purpose: Container log viewer — Dozzle v10.6.1 (2026-05-24)
+purpose: Container log viewer — Dozzle v10.6.13 (2026-07-30)
 owner: observability-stack
 profiles:
 - observability

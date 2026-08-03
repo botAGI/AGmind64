@@ -264,15 +264,47 @@ def test_version_check_workflow_uses_runner_local_python() -> None:
 
 
 def test_holds_skip_probe() -> None:
-    """Образы из version_holds.yaml выходят как 'hold' даже в online mode."""
+    """Образы из version_holds.yaml выходят как 'hold' даже в online mode.
+
+    The expected set is DERIVED from the holds file (minus expired ``hold_until`` entries),
+    never hard-coded: pinning one example image made this a time bomb — it hard-failed the day
+    the llama.cpp ``hold_until`` auto-cleared (2026-08-01), reporting a "regression" in code
+    that was behaving exactly as designed. Deriving also makes the assertion strictly stronger
+    (every live hold must be honored, not just one).
+    """
+    import datetime as _dt
+
+    import yaml
+
     sys.path.insert(0, str(REPO_ROOT / "scripts" / "checks"))
     import version_check as vc
 
+    holds = yaml.safe_load((REPO_ROOT / "templates" / "version_holds.yaml").read_text("utf-8"))
+    today = _dt.date.today()
+
+    def _active(entry: object) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        until = entry.get("hold_until")
+        if until is None:
+            return True  # no expiry → always held
+        if isinstance(until, _dt.datetime):
+            until = until.date()
+        if isinstance(until, str):
+            until = _dt.date.fromisoformat(until)
+        return bool(until >= today)
+
+    expected = {image for image, entry in holds.items() if _active(entry)}
+    assert expected, "version_holds.yaml has no active holds — the fixture is degenerate"
+
     reports = vc.build_reports(probe_fn=lambda _img: "v999.999.999")
-    holds_in_report = [r for r in reports if r.status == "hold"]
-    images = {r.image for r in holds_in_report}
-    # ghcr.io/ggml-org/llama.cpp is held per templates/version_holds.yaml
-    assert "ghcr.io/ggml-org/llama.cpp" in images
+    held = {r.image for r in reports if r.status == "hold"}
+    catalog = {r.image for r in reports}
+
+    # Only assert about held images that the catalog actually still probes (a hold for an image
+    # that left the catalog is a separate staleness concern, not this test's subject).
+    missing = (expected & catalog) - held
+    assert not missing, f"active holds not honored by build_reports: {sorted(missing)}"
 
 
 def test_markdown_table_format() -> None:
