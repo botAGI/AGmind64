@@ -39,7 +39,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, strix-halo]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv (fresh — no dependency on a pre-provisioned runner)
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install agmind + dev deps
