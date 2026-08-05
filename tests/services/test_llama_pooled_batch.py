@@ -141,7 +141,9 @@ def test_generated_env_matches_the_descriptors() -> None:
     # And the shipped defaults must agree, or a no-.env render differs from a real install.
     assert _as_int(_flag_value(pooled["llama-embed"], "-ub")) == config.embed_batch
     assert _as_int(_flag_value(pooled["llama-rerank"], "-ub")) == config.rerank_batch
-    assert _as_int(_flag_value(pooled["llama-rerank"], "-c", "--ctx-size")) == config.rerank_ctx_size
+    assert (
+        _as_int(_flag_value(pooled["llama-rerank"], "-c", "--ctx-size")) == config.rerank_ctx_size
+    )
 
 
 @pytest.mark.parametrize(

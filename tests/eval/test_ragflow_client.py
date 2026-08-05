@@ -74,7 +74,9 @@ def test_disallowed_endpoint_is_refused() -> None:
 def test_dataset_ids_are_required() -> None:
     """Searching "whatever is indexed" produces a number nobody can attribute to a corpus."""
     with pytest.raises(RagflowError, match="dataset id"):
-        RagflowRetrievalClient(_verdict("http://127.0.0.1:9380/api/v1/retrieval"), "k", dataset_ids=[])
+        RagflowRetrievalClient(
+            _verdict("http://127.0.0.1:9380/api/v1/retrieval"), "k", dataset_ids=[]
+        )
 
 
 def test_api_key_is_read_from_a_file(tmp_path: Path) -> None:

@@ -119,7 +119,9 @@ threshold the product would have used.
 ## Current measurement on the reference installation
 
 Corpus: 30 tracked `docs/**/*.md` (this directory is excluded — see below), 643 chunks.
-Golden set: 15 cases. k=5. Corpus fingerprint `41b8631213c8`, all three rows measured against it.
+Golden set: 15 cases. k=5. Corpus fingerprint `59bb825e4cce`, all three rows measured against it.
+The fingerprint hashes document content only — a commit that leaves the corpus alone leaves it
+unchanged, which is what lets the regression gate compare two runs at all.
 
 | retriever | `anchor_ndcg@5` | `anchor_recall@5` | abstention | false abstention |
 |---|---|---|---|---|
