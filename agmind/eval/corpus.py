@@ -75,16 +75,29 @@ class CorpusManifest:
         return tuple(d.doc_key for d in self.docs)
 
     def fingerprint(self) -> str:
-        """Single hash over (ref, every doc_key, every sha) — the run-identity key.
+        """Single hash over every (doc_key, sha) — the run-identity key.
 
         Two runs are comparable only when their fingerprints match; that check is what stops a
         quietly re-indexed or extended corpus from being reported as a retrieval regression.
+
+        ``corpus_ref`` is deliberately NOT hashed. It is provenance — which commit was checked
+        out — and it is recorded separately in the manifest and in every report's scope block.
+        Hashing it made the fingerprint track the commit instead of the corpus, which defeated
+        ``gate._comparable_key``'s own deliberate exclusion of ``corpus_ref`` by carrying the
+        commit back in through the fingerprint field. The consequence was not subtle: after any
+        commit at all — including one touching only ``docs/eval/``, a directory excluded from the
+        corpus — the gate answered REFUSING TO COMPARE with every other key component identical.
+        A regression gate that refuses after every commit cannot catch a regression.
+
+        Fields are NUL-separated so no rearrangement of key and hash text can produce the same
+        byte stream from a different corpus.
         """
         digest = hashlib.sha256()
-        digest.update(self.corpus_ref.encode())
         for doc in self.docs:
             digest.update(doc.doc_key.encode())
+            digest.update(b"\0")
             digest.update(doc.sha256.encode())
+            digest.update(b"\0")
         return digest.hexdigest()
 
     def to_dict(self) -> dict[str, object]:
