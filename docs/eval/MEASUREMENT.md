@@ -99,15 +99,33 @@ retriever; it is the **floor**. A dense score is only interpretable next to it, 
 retriever failing to beat a bag-of-words baseline is a documented and common outcome, not an
 exotic one. Reporting a dense number alone hides that possibility.
 
+## Measuring the deployment itself
+
+`--retriever ragflow` is the only one of the three that scores the system an operator actually
+queries. `lexical` and `dense` re-chunk the corpus under the harness's own assumptions, which
+measures retrieval quality but not this installation; RAGFlow indexed the same documents with its
+own chunker, its own hybrid scoring and its own index. Both readings are useful and they are not
+interchangeable, which is why the report's scope block names which chunking produced the number.
+
+It talks to `/api/v1/retrieval` and **refuses** `/api/v1/dify/retrieval`. The Dify-shaped endpoint
+drops the chunk id, flattens the three similarity numbers into one and hard-codes the vector
+weight, so chunk-level ground truth cannot be expressed through it at all.
+
+The abstention threshold for this retriever is `0.2` because that is RAGFlow's own default for
+this endpoint, not a value chosen to make the table look good. The client asks the server for
+`0.0` so the harness sees the true ranking and makes the abstention decision itself — at the
+threshold the product would have used.
+
 ## Current measurement on the reference installation
 
-Corpus: 30 tracked `docs/**/*.md` (this directory is excluded — see below), 660 chunks.
-Golden set: 15 cases. k=5.
+Corpus: 30 tracked `docs/**/*.md` (this directory is excluded — see below), 643 chunks.
+Golden set: 15 cases. k=5. Corpus fingerprint `41b8631213c8`, all three rows measured against it.
 
 | retriever | `anchor_ndcg@5` | `anchor_recall@5` | abstention | false abstention |
 |---|---|---|---|---|
-| lexical (BM25) | 0.000 [0.000–0.000] n=11 | 0.000 [0.000–0.000] n=11 | 0.00 [0.00–0.49] n=4 | — |
+| lexical (BM25) | 0.000 [0.000–0.000] n=11 | 0.000 [0.000–0.000] n=11 | 0.00 [0.00–0.49] n=4 | 0.00 [0.00–0.26] n=11 |
 | dense (bge-m3) | 0.277 [0.056–0.518] n=11 | 0.318 [0.091–0.591] n=11 | 0.75 [0.30–0.95] n=4 | 0.36 [0.15–0.65] n=11 |
+| ragflow (deployed) | 0.200 [0.000–0.421] n=11 | 0.273 [0.000–0.545] n=11 | 0.00 [0.00–0.49] n=4 | 0.00 [0.00–0.26] n=11 |
 
 > **`docs/eval/` is excluded from the corpus on purpose.** This very file quotes golden-set
 > anchors verbatim as examples, so leaving it in would score the evaluation's own documentation
@@ -132,7 +150,24 @@ What this does and does not say:
   says the system knows when to stay quiet. Read with its counterpart, it says the threshold is
   simply high: the same setting also declines 36% of questions the corpus *can* answer. Neither
   number is wrong; quoting the first without the second would be.
+* **The deployed stack declines nothing.** All four unanswerable questions came back with chunks
+  above RAGFlow's own confidence floor. It pays nothing for that in false abstention — it never
+  wrongly declines an answerable question either — but a RAG that always answers cannot tell an
+  operator when it does not know, and that is a property worth knowing before trusting it.
 * n=11 is small. These intervals are wide on purpose. Do not quote the point estimate alone.
+
+## What made these numbers possible at all
+
+The corpus could not be indexed when this retriever was first pointed at the live stack: 26 of 30
+documents failed, because RAGFlow's chunker emits 545–574 token chunks and `llama-embed` rejected
+every input above 512 tokens with HTTP 500. Pooled embedding is non-causal, so llama.cpp needs the
+whole sequence in one *physical* batch (`-ub`), which defaults to 512 — while the service
+advertised 2048 tokens per slot. The descriptors now pass `-b`/`-ub` derived from
+`--ctx-size / --parallel`, and the same defect in `llama-rerank` was fixed with it.
+
+It is worth stating plainly why no gate caught this: every test embedded short strings. The
+capability was never exercised at the length real documents produce. Measuring the deployed
+system, rather than a reconstruction of it, is what surfaced it.
 
 ## Why there is no LLM judge yet
 
@@ -149,3 +184,31 @@ practice killed both halves for this deployment:
 So layer 1 gates, and the judged layer waits for a purpose-built verifier rather than shipping a
 number nobody should trust. This is recorded so the decision is revisited on evidence, not
 forgotten.
+
+## Why not an off-the-shelf evaluation framework
+
+A fair question, especially since this stack already deploys Arize Phoenix. The answer differs per
+candidate, and none of it is "not invented here".
+
+**Phoenix** is a *tracing* product, and it is kept for that. It records what a request did; it
+does not hold a versioned golden set, and its per-chunk annotation API needs chunk-level
+attributes that Dify does not emit — Dify puts the retrieved chunks in `output.value` as an opaque
+JSON string. That was confirmed by probe, not assumed: a structured span annotates with 200, a
+Dify-shaped one is rejected with 422, and spans are immutable, so it can only be fixed where the
+span is emitted. Phoenix answers "what happened on this request". This answers "is retrieval good,
+with what confidence, and has it got worse" — a different question that wants a frozen corpus, a
+frozen question set and an interval.
+
+**`arize-phoenix-evals`** is licensed Elastic-2.0. That is the disqualifier for a self-hosted
+product that ships to operators. An earlier draft of this section claimed it also pulled in 17
+transitive packages; that was checked and it is 9. The wrong reason is removed rather than left
+standing, because a correct decision resting on a false premise gets reversed by the next reviewer.
+
+**RAGAS and similar frameworks** score with an LLM judge, which is the layer deliberately not
+shipped yet — see the section above. Adopting one would import the judge decision along with the
+metrics, and the judge is the part the research argued against for this deployment.
+
+What is actually implemented here is roughly 600 lines of metric and statistics code with no
+runtime dependency outside the standard library. The metrics themselves are textbook — the value
+is not in inventing them but in binding them to a frozen corpus, an anchor set that cannot quote
+its own answer, and a report that has no code path capable of printing a bare point estimate.
