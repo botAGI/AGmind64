@@ -114,7 +114,7 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
 
         def search(case: EvalCase) -> list[RetrievedChunk]:
             return [
-                RetrievedChunk(h.chunk_id, h.text, h.score)
+                RetrievedChunk(h.chunk_id, h.text, h.score, h.doc_key)
                 for h in lexical_engine.search(case.question, top_k=k)
             ]
 
@@ -171,7 +171,7 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
 
         def search(case: EvalCase) -> list[RetrievedChunk]:
             return [
-                RetrievedChunk(h.chunk_id, h.text, h.score)
+                RetrievedChunk(h.chunk_id, h.text, h.score, h.doc_key)
                 for h in dense_engine.search(query_vectors[case.case_id], top_k=k)
             ]
 

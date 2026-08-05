@@ -33,6 +33,15 @@ from pathlib import Path
 #: Path globs handed to ``git ls-files``. Kept narrow and explicit.
 CORPUS_GLOBS: tuple[str, ...] = ("docs/*.md", "docs/**/*.md")
 
+#: Path prefixes excluded from the corpus AFTER the glob.
+#:
+#: ``docs/eval/`` documents this very subsystem and quotes golden-set anchors verbatim as
+#: examples. Left in, the evaluation's own documentation is scored as maximally-relevant ground
+#: truth: a retriever is rewarded for surfacing the page that merely *mentions*
+#: ``mem_info_gtt_total`` as an illustration, rather than the page that answers the question.
+#: Self-referential ground truth is the quietest way for a benchmark to measure itself.
+CORPUS_EXCLUDE_PREFIXES: tuple[str, ...] = ("docs/eval/",)
+
 
 class CorpusError(RuntimeError):
     """Raised when the corpus cannot be exported or verified (managed, never a traceback)."""
@@ -116,7 +125,13 @@ def _git(args: Sequence[str], repo_root: Path) -> str:
 def tracked_corpus_files(repo_root: Path) -> tuple[str, ...]:
     """The tracked corpus file list, from git — never a filesystem glob (see module docstring)."""
     out = _git(["ls-files", *CORPUS_GLOBS], repo_root)
-    files = tuple(sorted(line.strip() for line in out.splitlines() if line.strip()))
+    files = tuple(
+        sorted(
+            line.strip()
+            for line in out.splitlines()
+            if line.strip() and not line.strip().startswith(CORPUS_EXCLUDE_PREFIXES)
+        )
+    )
     if not files:
         raise CorpusError(
             f"no tracked corpus files matched {CORPUS_GLOBS} under {repo_root} — "

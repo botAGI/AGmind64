@@ -67,6 +67,38 @@ def anchors_covered(chunk_text: str, anchors: Iterable[str]) -> frozenset[str]:
     return frozenset(a for a in anchors if contains_anchor(chunk_text, a))
 
 
+def anchors_covered_scoped(
+    chunk_text: str,
+    chunk_doc_key: str,
+    anchors: Iterable[tuple[str, str]],
+) -> frozenset[str]:
+    """Anchors present in ``chunk_text`` AND declared to live in this chunk's document.
+
+    Document scoping is load-bearing, not pedantry. Four of the shipped golden cases name an
+    anchor that also occurs in other documents (``mem_info_gtt_total`` appears in four files),
+    and without scoping a retriever earns full credit for surfacing a passage from a document
+    the case never claimed answers the question. That silently guts the distractor class, whose
+    entire premise is that the tempting lexical match sits in the WRONG document.
+    """
+    return frozenset(
+        text
+        for text, doc_key in anchors
+        if doc_key == chunk_doc_key and contains_anchor(chunk_text, text)
+    )
+
+
+def coverage_map_scoped(
+    chunks: Mapping[str, tuple[str, str]],
+    anchors: Iterable[tuple[str, str]],
+) -> dict[str, frozenset[str]]:
+    """``chunk_id -> anchors covered``, where ``chunks`` maps id to ``(text, doc_key)``."""
+    anchor_list = list(anchors)
+    return {
+        chunk_id: anchors_covered_scoped(text, doc_key, anchor_list)
+        for chunk_id, (text, doc_key) in chunks.items()
+    }
+
+
 def coverage_map(
     chunks: Mapping[str, str],
     anchors: Iterable[str],
@@ -80,4 +112,11 @@ def coverage_map(
     return {cid: anchors_covered(text, anchor_list) for cid, text in chunks.items()}
 
 
-__all__ = ["anchors_covered", "contains_anchor", "coverage_map", "normalize"]
+__all__ = [
+    "anchors_covered",
+    "anchors_covered_scoped",
+    "contains_anchor",
+    "coverage_map",
+    "coverage_map_scoped",
+    "normalize",
+]

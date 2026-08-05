@@ -91,12 +91,23 @@ exotic one. Reporting a dense number alone hides that possibility.
 
 ## Current measurement on the reference installation
 
-Corpus: 30 tracked `docs/**/*.md`, 643 chunks. Golden set: 15 cases. k=5.
+Corpus: 30 tracked `docs/**/*.md` (this directory is excluded — see below), 660 chunks.
+Golden set: 15 cases. k=5.
 
 | retriever | `anchor_ndcg@5` | `anchor_recall@5` | abstention |
 |---|---|---|---|
 | lexical (BM25) | 0.000 [0.000–0.000] n=11 | 0.000 [0.000–0.000] n=11 | 0.00 [0.00–0.49] n=4 |
-| dense (bge-m3) | 0.185 [0.064–0.320] n=11 | 0.364 [0.136–0.636] n=11 | 0.75 [0.30–0.95] n=4 |
+| dense (bge-m3) | 0.277 [0.056–0.518] n=11 | 0.318 [0.091–0.591] n=11 | 0.75 [0.30–0.95] n=4 |
+
+> **`docs/eval/` is excluded from the corpus on purpose.** This very file quotes golden-set
+> anchors verbatim as examples, so leaving it in would score the evaluation's own documentation
+> as maximally-relevant ground truth. Self-referential ground truth is the quietest way for a
+> benchmark to end up measuring itself.
+>
+> **An anchor only counts in the document its case names.** Four cases use an anchor that also
+> appears elsewhere (`mem_info_gtt_total` is in four files); without document scoping a retriever
+> earned full credit for surfacing a passage from a document the case never claimed answers the
+> question, which silently gutted the distractor class.
 
 What this does and does not say:
 
