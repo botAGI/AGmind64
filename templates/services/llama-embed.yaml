@@ -21,6 +21,14 @@ env:
   AGMIND_EMBED_CTX_SIZE: ${AGMIND_EMBED_CTX_SIZE:-8192}
   AGMIND_EMBED_KV_CACHE: ${AGMIND_EMBED_KV_CACHE:-f16}
   AGMIND_EMBED_PARALLEL: ${AGMIND_EMBED_PARALLEL:-4}
+  # Physical batch. Pooled embedding is non-causal, so llama.cpp must hold the WHOLE sequence in
+  # one physical batch — `-ub` is therefore the real max input length, not `--ctx-size`. Left
+  # unset it defaults to 512 (verified in server-vulkan-b9049 `--help`), which rejected every
+  # input above 512 tokens with HTTP 500 while the service advertised 2048/slot: 26 of 30 corpus
+  # documents failed to index in RAGFlow on 2026-08-05 because its chunker emits 545-574 tokens.
+  # Matches per-slot context (CTX_SIZE / PARALLEL). Cost on Strix Halo, measured: 587 MiB GTT at
+  # 512 → 1406 MiB at 2048 (8192 would be 5044 MiB, hence not the default).
+  AGMIND_EMBED_BATCH: ${AGMIND_EMBED_BATCH:-2048}
 command:
 - --host
 - 0.0.0.0
@@ -43,6 +51,11 @@ command:
 - ${AGMIND_EMBED_KV_CACHE:-f16}
 - --parallel
 - ${AGMIND_EMBED_PARALLEL:-4}
+# -b (logical) must be >= -ub (physical); llama.cpp's own default -b is 2048.
+- -b
+- ${AGMIND_EMBED_BATCH:-2048}
+- -ub
+- ${AGMIND_EMBED_BATCH:-2048}
 devices:
 - /dev/dri
 group_add:

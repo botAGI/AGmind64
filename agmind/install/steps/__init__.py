@@ -1021,10 +1021,13 @@ class EnvWriteStep(InstallStep):
             _env_line("AGMIND_EMBED_CTX_SIZE", str(config.embed_ctx_size)),
             _env_line("AGMIND_EMBED_KV_CACHE", config.embed_kv_cache),
             _env_line("AGMIND_EMBED_PARALLEL", str(config.embed_parallel)),
+            # Derived from CTX_SIZE/PARALLEL, not chosen: see InstallConfig.embed_batch.
+            _env_line("AGMIND_EMBED_BATCH", str(config.embed_batch)),
             "",
             "# ---- Rerank (cross-encoder ordering) ----",
             _env_line("AGMIND_RERANK_FILE", config.rerank_file or ""),
             _env_line("AGMIND_RERANK_CTX_SIZE", str(config.rerank_ctx_size)),
+            _env_line("AGMIND_RERANK_BATCH", str(config.rerank_batch)),
             "",
             "# ---- Alerting (optional Telegram receiver) ----",
             _env_line(

@@ -1333,7 +1333,12 @@ def test_install_config_has_embed_rerank_defaults(tmp_path: object) -> None:
     assert cfg.embed_ctx_size == 8192
     assert cfg.embed_kv_cache == "f16"
     assert cfg.embed_parallel == 4
-    assert cfg.rerank_ctx_size == 2048
+    # 4096 over the descriptor's 2 rerank slots = 2048/slot, matching embed's per-slot budget.
+    assert cfg.rerank_ctx_size == 4096
+    # Physical batch is derived, never configured: a pooled server must be able to process any
+    # input that fits a slot (llama.cpp's -ub default of 512 silently capped it at a quarter).
+    assert cfg.embed_batch == 2048
+    assert cfg.rerank_batch == 2048
     # repo/file = None по дефолту = skip download
     assert cfg.embed_repo is None
     assert cfg.embed_file is None

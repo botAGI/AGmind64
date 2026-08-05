@@ -18,7 +18,16 @@ env:
   VK_DRIVER_FILES: /usr/share/vulkan/icd.d/radeon_icd.json
   # Phase M5.1: rerank model + per-service settings (separate from LLM / embed).
   AGMIND_RERANK_FILE: ${AGMIND_RERANK_FILE:-bge-reranker-v2-m3-Q8_0.gguf}
-  AGMIND_RERANK_CTX_SIZE: ${AGMIND_RERANK_CTX_SIZE:-2048}
+  # 4096 over 2 slots = 2048 per slot, matching llama-embed's per-slot budget: a reranker that
+  # cannot score a chunk the embedder was able to index breaks the pipeline one step later than
+  # the bug it hides. A rerank input is query + chunk, so 2048/slot covers every mainstream
+  # chunker default (RAGFlow 512, Dify 1024) with room for the query.
+  AGMIND_RERANK_CTX_SIZE: ${AGMIND_RERANK_CTX_SIZE:-4096}
+  # Physical batch — same non-causal constraint as llama-embed: pooled reranking needs the whole
+  # query+chunk pair in ONE physical batch, and llama.cpp defaults `-ub` to 512. Live proof
+  # 2026-08-05: this server returned HTTP 500 "input (802 tokens) is too large to process" on an
+  # 802-token pair while advertising 1024/slot.
+  AGMIND_RERANK_BATCH: ${AGMIND_RERANK_BATCH:-2048}
 command:
 - --host
 - 0.0.0.0
@@ -34,12 +43,17 @@ command:
 - -ngl
 - '999'
 - --ctx-size
-- ${AGMIND_RERANK_CTX_SIZE:-2048}
+- ${AGMIND_RERANK_CTX_SIZE:-4096}
 # Phase 14 (M9.C, D-01): rerank batches concurrent requests well (short inputs,
 # no per-request state) — 2 slots, matching llama-embed's env-driven np4 precedent
 # in spirit but hardcoded (no existing tunability infra for rerank; minimal diff).
 - --parallel
 - '2'
+# -b (logical) must be >= -ub (physical).
+- -b
+- ${AGMIND_RERANK_BATCH:-2048}
+- -ub
+- ${AGMIND_RERANK_BATCH:-2048}
 devices:
 - /dev/dri
 group_add:

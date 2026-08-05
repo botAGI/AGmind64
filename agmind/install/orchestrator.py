@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
 from pathlib import Path
+from typing import ClassVar
 
 from agmind.core.logging import logger
 from agmind.core.paths import data_root
@@ -124,7 +125,30 @@ class InstallConfig:
     rerank_file: str | None = None
     rerank_revision: str | None = None
     rerank_sha256: str | None = None
-    rerank_ctx_size: int = 2048
+    # 4096 over the descriptor's 2 slots = 2048 per slot, matching embed. A reranker that cannot
+    # score a chunk the embedder was able to index just moves the failure one step downstream.
+    rerank_ctx_size: int = 4096
+
+    #: llama-rerank.yaml hardcodes `--parallel 2`; the batch derivation below must agree with it,
+    #: which tests/services/test_llama_pooled_batch.py asserts against the descriptor itself.
+    RERANK_PARALLEL: ClassVar[int] = 2
+
+    @property
+    def embed_batch(self) -> int:
+        """Physical batch for llama-embed — DERIVED, never configured independently.
+
+        Pooled embedding is non-causal: llama.cpp must hold the whole sequence in one physical
+        batch, so `-ub` is the real maximum input length. Left to its 512 default it silently
+        caps the service at a quarter of the context it advertises (26 of 30 corpus documents
+        failed to index in RAGFlow on 2026-08-05 for exactly this reason). Deriving it from the
+        operator's own ctx/parallel choice means an incoherent pair cannot be expressed.
+        """
+        return max(1, self.embed_ctx_size // max(1, self.embed_parallel))
+
+    @property
+    def rerank_batch(self) -> int:
+        """Physical batch for llama-rerank — same non-causal constraint, same derivation."""
+        return max(1, self.rerank_ctx_size // self.RERANK_PARALLEL)
 
     def redact(self) -> dict[str, object]:
         """Safe dict for logging — secrets replaced with ***."""

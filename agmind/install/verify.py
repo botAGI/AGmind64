@@ -703,8 +703,10 @@ def _validate_runtime_env_values(parsed: dict[str, str], config: InstallConfig) 
         "AGMIND_EMBED_CTX_SIZE": str(config.embed_ctx_size),
         "AGMIND_EMBED_KV_CACHE": config.embed_kv_cache,
         "AGMIND_EMBED_PARALLEL": str(config.embed_parallel),
+        "AGMIND_EMBED_BATCH": str(config.embed_batch),
         "AGMIND_RERANK_FILE": config.rerank_file or "",
         "AGMIND_RERANK_CTX_SIZE": str(config.rerank_ctx_size),
+        "AGMIND_RERANK_BATCH": str(config.rerank_batch),
         "MINIO_ROOT_USER": "agmind",
         "N8N_TIMEZONE": "UTC",
     }

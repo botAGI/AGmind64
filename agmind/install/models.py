@@ -28,8 +28,8 @@ CURATED_MODELS: tuple[ModelEntry, ...] = load_curated_model_entries()
 # (Qwen3.6 supports 260K) но 16K-65K — sweet spot для production memory budget.
 CTX_SIZE_PRESETS: tuple[tuple[int, str], ...] = (
     (1024, "1K — minimal (rerank cross-encoder)"),
-    (2048, "2K — rerank default"),
-    (4096, "4K — minimal LLM (fast, low VRAM)"),
+    (2048, "2K — rerank, short chunks only"),
+    (4096, "4K — rerank default (2K/slot, matches embed) / minimal LLM"),
     (8192, "8K — chat / embed default"),
     (16384, "16K — минимальный LLM ctx"),
     (32768, "32K — long documents"),
