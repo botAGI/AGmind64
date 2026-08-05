@@ -85,6 +85,7 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
     golden: Path | None,
     embed_url: str,
     allow_lan: bool,
+    write_baseline: bool = False,
 ) -> int:
     """Run the evaluation and print a report."""
     from agmind.eval.cases import EvalCase, EvalCaseError, load_cases
@@ -201,6 +202,21 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
         aggregate_score=outcome.aggregate,
         latency_ms_p50=outcome.latency_p50,
     )
+    if write_baseline:
+        from datetime import UTC, datetime
+
+        from agmind.core.files import write_text_atomic
+        from agmind.eval.gate import baseline_from_report, default_baseline_path
+
+        baseline = baseline_from_report(
+            json.loads(format_report_json(report)),
+            recorded_at=datetime.now(UTC).isoformat(),
+        )
+        target = default_baseline_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_text_atomic(target, json.dumps(baseline.to_dict(), indent=2, ensure_ascii=False))
+        print(f"baseline written: {target}", file=sys.stderr)
+
     print(format_report_json(report) if as_json else format_report_text(report), end="")
     return 0
 
@@ -259,9 +275,16 @@ def register(app: typer.Typer) -> None:
             "--allow-lan",
             help="Permit an on-premises LAN endpoint. Loopback needs no opt-in.",
         ),
+        write_baseline: bool = typer.Option(
+            False,
+            "--write-baseline",
+            help="Record this run as the regression baseline for future comparisons.",
+        ),
     ) -> None:
         """Score the golden set and print a report with intervals and scope."""
-        raise typer.Exit(code=cmd_run(retriever, k, as_json, golden, embed_url, allow_lan))
+        raise typer.Exit(
+            code=cmd_run(retriever, k, as_json, golden, embed_url, allow_lan, write_baseline)
+        )
 
 
 __all__ = ["cmd_cases", "cmd_corpus", "cmd_run", "register"]
