@@ -112,6 +112,11 @@ class AggregateScore:
     per_case: Mapping[str, tuple[float, ...]]
     cases_negative: int = 0
     cases_abstained: int = 0
+    cases_abstention_unmeasured: int = 0
+    #: False abstention on ANSWERABLE cases — abstention without its paired false-positive rate
+    #: is half an ROC point and cannot be falsified in the over-declining direction.
+    cases_false_abstained: int = 0
+    cases_abstention_answerable: int = 0
 
     @property
     def abstention_rate(self) -> float | None:
@@ -121,9 +126,10 @@ class AggregateScore:
         a system can be excellent at finding passages and terrible at knowing when there is
         nothing to find, and one number would hide exactly that.
         """
-        if self.cases_negative == 0:
+        measured = self.cases_negative - self.cases_abstention_unmeasured
+        if measured <= 0:
             return None
-        return self.cases_abstained / self.cases_negative
+        return self.cases_abstained / measured
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -133,18 +139,32 @@ class AggregateScore:
             "cases_errored": self.cases_errored,
             "cases_negative": self.cases_negative,
             "cases_abstained": self.cases_abstained,
-            "abstention_rate": self.abstention_rate,
-            "metrics": {name: getattr(self, name) for name in METRIC_NAMES},
+            "cases_abstention_unmeasured": self.cases_abstention_unmeasured,
+            "cases_false_abstained": self.cases_false_abstained,
+            "cases_abstention_answerable": self.cases_abstention_answerable,
         }
+        # NOTE: no bare point estimates here. The intervalled `metrics` block of the report
+        # carries every mean with its n and interval; duplicating them as naked floats is how a
+        # number escapes its uncertainty on the way into a spreadsheet.
 
 
 def _dedup_preserving_order(chunk_ids: Sequence[str]) -> tuple[str, ...]:
+    return tuple(cid for cid, _pos in _dedup_with_positions(chunk_ids))
+
+
+def _dedup_with_positions(chunk_ids: Sequence[str]) -> tuple[tuple[str, int], ...]:
+    """Deduped ids paired with the ORIGINAL index of their first occurrence.
+
+    The positions matter: a parallel ``scores`` list is indexed by the pre-dedup rank, so slicing
+    it by the post-dedup length silently pairs a chunk with another chunk's score whenever the
+    retriever repeats an id.
+    """
     seen: set[str] = set()
-    out: list[str] = []
-    for cid in chunk_ids:
+    out: list[tuple[str, int]] = []
+    for index, cid in enumerate(chunk_ids):
         if cid not in seen:
             seen.add(cid)
-            out.append(cid)
+            out.append((cid, index))
     return tuple(out)
 
 
@@ -211,9 +231,18 @@ def score_case(
         # Abstention: on a deliberately unanswerable question the retriever is right when nothing
         # clears the threshold. Scored on its own axis so a failure here can never be averaged
         # away inside a healthy-looking recall number.
-        ranked = _dedup_preserving_order(case.ranked_chunk_ids)[:k]
-        top = max(case.scores[: len(ranked)], default=0.0) if case.scores else 0.0
-        abstained = True if abstain_threshold is None else bool(top < abstain_threshold)
+        deduped = _dedup_with_positions(case.ranked_chunk_ids)[:k]
+        ranked = [cid for cid, _ in deduped]
+        # Index the score list by the ORIGINAL rank of each surviving chunk, never by a slice of
+        # the deduped length — those are different chunks the moment an id repeats.
+        usable_scores = [case.scores[pos] for _cid, pos in deduped if pos < len(case.scores)]
+        if abstain_threshold is None or not usable_scores:
+            # Unmeasurable, NOT success. Defaulting to True made every negative case pass for a
+            # retriever that reports no scores at all — a perfect abstention rate earned by
+            # returning nothing measurable.
+            abstained: bool | None = None
+        else:
+            abstained = bool(max(usable_scores) < abstain_threshold)
         return CaseScore(
             case_id=case.case_id,
             k=k,
@@ -237,8 +266,19 @@ def score_case(
             considered=len(_dedup_preserving_order(case.ranked_chunk_ids)), skipped=True
         )
 
-    ranked = _dedup_preserving_order(case.ranked_chunk_ids)[:k]
+    deduped_pos = _dedup_with_positions(case.ranked_chunk_ids)[:k]
+    ranked = [cid for cid, _ in deduped_pos]
     considered = len(ranked)
+
+    # FALSE abstention: an ANSWERABLE question where nothing cleared the threshold. Measured so
+    # the abstention rate can be falsified — without it a retriever that declines everything
+    # would post a perfect abstention score and no metric would contradict it.
+    positive_scores = [case.scores[pos] for _cid, pos in deduped_pos if pos < len(case.scores)]
+    false_abstained: bool | None = (
+        None
+        if (abstain_threshold is None or not positive_scores)
+        else bool(max(positive_scores) < abstain_threshold)
+    )
 
     if considered == 0:
         # Returning nothing IS the failure we are trying to detect — a genuine zero.
@@ -253,6 +293,7 @@ def score_case(
             f1=0.0,
             retrieved_considered=0,
             empty_retrieval=True,
+            abstained=false_abstained,
         )
 
     covered_by: list[frozenset[str]] = [
@@ -295,6 +336,7 @@ def score_case(
         anchor_ndcg=ndcg,
         f1=f1,
         retrieved_considered=considered,
+        abstained=false_abstained,
     )
 
 
@@ -333,7 +375,12 @@ def aggregate(scores: Iterable[CaseScore]) -> AggregateScore:
         cases_errored=sum(1 for s in scores if s.errored),
         per_case=per_case,
         cases_negative=sum(1 for s in scores if s.negative),
-        cases_abstained=sum(1 for s in scores if s.negative and s.abstained),
+        cases_abstained=sum(1 for s in scores if s.negative and s.abstained is True),
+        cases_abstention_unmeasured=sum(1 for s in scores if s.negative and s.abstained is None),
+        cases_false_abstained=sum(1 for s in scores if not s.negative and s.abstained is True),
+        cases_abstention_answerable=sum(
+            1 for s in scores if not s.negative and s.abstained is not None
+        ),
     )
 
 

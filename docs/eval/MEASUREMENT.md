@@ -27,6 +27,7 @@ work is done and deliberately deferred; see "Why there is no LLM judge yet" belo
 | `anchor_hit@k` | did anything relevant appear at all |
 | `anchor_mrr@k` | reciprocal rank of the first relevant chunk |
 | `abstention` | on deliberately unanswerable questions: share where nothing cleared the retriever's confidence threshold |
+| `false abstention` | on ANSWERABLE questions: share wrongly declined. Printed with `abstention`, never without it |
 
 Only `anchor_ndcg@k` gates. The other five print under `exploratory`. The reason is arithmetic,
 not taste: nine of eleven answerable cases carry exactly one anchor, and at `|A| = 1` recall and
@@ -37,6 +38,15 @@ little.
 `abstention` is reported **separately and never blended** into a retrieval score. A system can be
 excellent at finding passages and terrible at knowing when there is nothing to find; a single
 composite would hide precisely that failure.
+
+It is also **never printed without its false-abstention counterpart**. A decline rate alone is
+half an ROC point and cannot be falsified in the over-refusing direction: a retriever that
+declined *everything* would post a perfect 1.00. The pair is what carries meaning — and on this
+installation it is exactly what the pair revealed (see the table below).
+
+An abstention that cannot be measured — no threshold configured, or a retriever that reports no
+scores — is reported as **unmeasured**, never as success. Defaulting it to "declined correctly"
+awarded a perfect score for returning nothing measurable.
 
 ## Two deliberate divergences from RAGFlow's own metrics
 
@@ -94,10 +104,10 @@ exotic one. Reporting a dense number alone hides that possibility.
 Corpus: 30 tracked `docs/**/*.md` (this directory is excluded — see below), 660 chunks.
 Golden set: 15 cases. k=5.
 
-| retriever | `anchor_ndcg@5` | `anchor_recall@5` | abstention |
-|---|---|---|---|
-| lexical (BM25) | 0.000 [0.000–0.000] n=11 | 0.000 [0.000–0.000] n=11 | 0.00 [0.00–0.49] n=4 |
-| dense (bge-m3) | 0.277 [0.056–0.518] n=11 | 0.318 [0.091–0.591] n=11 | 0.75 [0.30–0.95] n=4 |
+| retriever | `anchor_ndcg@5` | `anchor_recall@5` | abstention | false abstention |
+|---|---|---|---|---|
+| lexical (BM25) | 0.000 [0.000–0.000] n=11 | 0.000 [0.000–0.000] n=11 | 0.00 [0.00–0.49] n=4 | — |
+| dense (bge-m3) | 0.277 [0.056–0.518] n=11 | 0.318 [0.091–0.591] n=11 | 0.75 [0.30–0.95] n=4 | 0.36 [0.15–0.65] n=11 |
 
 > **`docs/eval/` is excluded from the corpus on purpose.** This very file quotes golden-set
 > anchors verbatim as examples, so leaving it in would score the evaluation's own documentation
@@ -118,6 +128,10 @@ What this does and does not say:
   zero, and it is deliberate: a question that quotes its own answer measures string matching.
 * Dense retrieval **fails all three distractor cases** — the class built so that the obvious
   lexical match sits in the wrong document. That is the most actionable line in the table.
+* **The abstention pair is the clearest lesson in the table.** Read alone, `abstention 0.75`
+  says the system knows when to stay quiet. Read with its counterpart, it says the threshold is
+  simply high: the same setting also declines 36% of questions the corpus *can* answer. Neither
+  number is wrong; quoting the first without the second would be.
 * n=11 is small. These intervals are wide on purpose. Do not quote the point estimate alone.
 
 ## Why there is no LLM judge yet

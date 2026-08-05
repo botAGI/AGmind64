@@ -327,3 +327,70 @@ def test_aggregate_reports_abstention_separately_from_recall() -> None:
     assert agg.cases_skipped_no_anchors == 0, "negatives must not land in the malformed bucket"
     assert agg.abstention_rate == pytest.approx(0.5)
     assert agg.anchor_recall == 1.0, "negatives must not dilute the retrieval metric"
+
+
+# --- abstention must be measurable, not assumed (adversarial review) -----------------------
+
+
+def test_abstention_is_unmeasured_not_success_without_a_threshold() -> None:
+    """REGRESSION: `abstained` defaulted to True whenever no threshold was given, so a run with
+    no threshold scored a perfect abstention rate without measuring anything."""
+    from agmind.eval.ir import CaseRetrieval, score_case
+
+    case = CaseRetrieval("n", (), ("c1",), scores=(0.9,), negative=True)
+    assert score_case(case, k=5, abstain_threshold=None).abstained is None
+
+
+def test_abstention_is_unmeasured_when_the_retriever_reports_no_scores() -> None:
+    """A retriever that returns chunks but no scores cannot be judged on abstention — claiming
+    success there rewards returning nothing measurable."""
+    from agmind.eval.ir import CaseRetrieval, score_case
+
+    case = CaseRetrieval("n", (), ("c1",), scores=(), negative=True)
+    assert score_case(case, k=5, abstain_threshold=0.5).abstained is None
+
+
+def test_unmeasured_negatives_are_excluded_from_the_abstention_denominator() -> None:
+    from agmind.eval.ir import CaseRetrieval, aggregate, score_case
+
+    good = score_case(
+        CaseRetrieval("n1", (), ("c",), scores=(0.1,), negative=True), k=5, abstain_threshold=0.5
+    )
+    unmeasured = score_case(
+        CaseRetrieval("n2", (), ("c",), scores=(), negative=True), k=5, abstain_threshold=0.5
+    )
+    agg = aggregate([good, unmeasured])
+
+    assert agg.cases_negative == 2
+    assert agg.cases_abstention_unmeasured == 1
+    assert agg.abstention_rate == 1.0, "1 of 1 MEASURABLE negative, not 1 of 2"
+
+
+def test_negative_scores_are_indexed_by_original_rank_not_a_dedup_slice() -> None:
+    """REGRESSION: scores were sliced by the post-dedup length against the pre-dedup list, so a
+    repeated chunk id silently paired a chunk with a different chunk's score."""
+    from agmind.eval.ir import CaseRetrieval, score_case
+
+    # raw ranks:  c1(0.1) c1(0.1) c9(0.95)  -> deduped ids [c1, c9], original positions [0, 2]
+    case = CaseRetrieval("n", (), ("c1", "c1", "c9"), scores=(0.1, 0.1, 0.95), negative=True)
+    score = score_case(case, k=5, abstain_threshold=0.5)
+    assert score.abstained is False, (
+        "c9 scores 0.95 and must be seen; a length-2 slice would only read 0.1, 0.1 and "
+        "wrongly report a correct abstention"
+    )
+
+
+def test_false_abstention_is_counted_on_answerable_cases() -> None:
+    """Abstention without its paired false-decline rate cannot be falsified: a retriever that
+    declines EVERYTHING would otherwise post a perfect score."""
+    from agmind.eval.ir import CaseRetrieval, aggregate, score_case
+
+    # answerable case where nothing clears the threshold => the retriever wrongly declined
+    shy = score_case(
+        CaseRetrieval("a1", ("x",), ("c",), {"c": frozenset()}, scores=(0.05,)),
+        k=5,
+        abstain_threshold=0.5,
+    )
+    agg = aggregate([shy])
+    assert agg.cases_abstention_answerable == 1
+    assert agg.cases_false_abstained == 1

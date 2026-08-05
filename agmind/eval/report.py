@@ -87,6 +87,7 @@ class EvalReport:
     aggregate: AggregateScore
     intervals: dict[str, Interval]
     abstention: Interval | None
+    false_abstention: Interval | None
     per_case: tuple[CaseScore, ...]
     latency_ms_p50: float | None = None
     raw_log_path: str | None = None
@@ -97,6 +98,9 @@ class EvalReport:
             "headline_metric": HEADLINE_METRIC,
             "metrics": {name: iv.to_dict() for name, iv in self.intervals.items()},
             "abstention": self.abstention.to_dict() if self.abstention else None,
+            "false_abstention": (
+                self.false_abstention.to_dict() if self.false_abstention else None
+            ),
             "counters": self.aggregate.to_dict(),
             "retrieval_latency_client_ms_p50": self.latency_ms_p50,
             "raw_log_path": self.raw_log_path,
@@ -119,19 +123,27 @@ def build_report(
         if values:
             intervals[name] = bootstrap_mean(values, seed=seed)
 
+    false_abstention: Interval | None = None
+    if aggregate_score.cases_abstention_answerable:
+        false_abstention = wilson_interval(
+            aggregate_score.cases_false_abstained, aggregate_score.cases_abstention_answerable
+        )
+
     abstention: Interval | None = None
-    if aggregate_score.cases_negative:
+    measurable_negatives = (
+        aggregate_score.cases_negative - aggregate_score.cases_abstention_unmeasured
+    )
+    if measurable_negatives > 0:
         # Wilson, not bootstrap: abstention is a genuinely binary rate, and Wilson stays inside
         # [0,1] and remains sensible at n=4 where a normal approximation would not.
-        abstention = wilson_interval(
-            aggregate_score.cases_abstained, aggregate_score.cases_negative
-        )
+        abstention = wilson_interval(aggregate_score.cases_abstained, measurable_negatives)
 
     return EvalReport(
         scope=scope,
         aggregate=aggregate_score,
         intervals=intervals,
         abstention=abstention,
+        false_abstention=false_abstention,
         per_case=tuple(scores),
         latency_ms_p50=latency_ms_p50,
         raw_log_path=raw_log_path,
@@ -166,8 +178,24 @@ def format_report_text(report: EvalReport) -> str:
         lines.append(
             f"  abstention (unanswerable questions declined)   {report.abstention.format()}"
         )
+        # Never printed alone: a decline rate without its false-decline counterpart is half an
+        # ROC point and cannot be falsified in the over-refusing direction — a retriever that
+        # declines EVERYTHING would otherwise score a perfect 1.00 here.
+        if report.false_abstention is not None:
+            lines.append(
+                f"  false abstention (answerable wrongly declined) {report.false_abstention.format()}"
+            )
+        else:
+            lines.append(
+                "  false abstention   not measurable — abstention alone cannot be falsified"
+            )
+        if agg.cases_abstention_unmeasured:
+            lines.append(
+                f"  NOTE: {agg.cases_abstention_unmeasured} negative case(s) had no usable score "
+                "— abstention is unmeasured there, not satisfied"
+            )
     else:
-        lines.append("  abstention   no negative cases in this set")
+        lines.append("  abstention   no measurable negative cases in this set")
 
     lines.append("")
     lines.append(

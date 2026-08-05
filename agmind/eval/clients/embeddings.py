@@ -29,6 +29,36 @@ class EmbeddingError(RuntimeError):
     """Raised on transport, HTTP or payload-shape failures (managed, never a traceback)."""
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every 3xx.
+
+    Classifying the endpoint address is worthless if the server can then redirect the request
+    anywhere: a loopback service answering ``302 Location: https://evil.example/collect`` would
+    ship the query and the chunk text off-box with the allow-list none the wiser. There is no
+    legitimate reason for an OpenAI-compatible embeddings endpoint to redirect.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            f"refusing redirect to {newurl!r}: the endpoint was allow-listed, the redirect target "
+            "was not",
+            headers,
+            fp,
+        )
+
+
+def _direct_opener() -> urllib.request.OpenerDirector:
+    """An opener that ignores ``http_proxy``/``https_proxy`` and refuses redirects.
+
+    urllib honours the proxy environment by default, so an exported ``http_proxy`` silently sends
+    every request to a third party while the endpoint check still says "loopback". Both holes are
+    closed by constructing the opener explicitly rather than using the module-level ``urlopen``.
+    """
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+
 @dataclass(frozen=True)
 class EmbeddingBatch:
     """Vectors for one request, plus what it cost."""
@@ -60,6 +90,7 @@ class EmbeddingClient:
         self._verdict = verdict
         self._model = model
         self._timeout = timeout
+        self._opener = _direct_opener()
 
     @property
     def endpoint(self) -> str:
@@ -78,7 +109,7 @@ class EmbeddingClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            with self._opener.open(request, timeout=self._timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
