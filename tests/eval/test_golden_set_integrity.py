@@ -136,11 +136,39 @@ def test_every_case_explains_why_it_exists() -> None:
         assert case.provenance.origin in {"seed", "promoted"}
 
 
-def test_corpus_ref_is_a_real_commit() -> None:
-    """The set is pinned to a corpus snapshot; a bogus ref makes 'verbatim' unverifiable."""
+def test_corpus_ref_is_well_formed_and_shared() -> None:
+    """Every case pins the SAME corpus snapshot, as a well-formed commit sha.
+
+    Shape only — deliberately hermetic. Asserting the object *resolves* is not portable: CI
+    checks out shallow (``fetch-depth: 1``), so a ref one commit behind HEAD genuinely does not
+    exist in that clone and ``git cat-file`` returns 128. That is an environment difference, not
+    a broken golden set, and a test that cannot tell them apart reports the wrong thing.
+    Resolution is asserted separately, and only where it is verifiable.
+    """
     refs = {c.corpus_ref for c in _load()}
     assert len(refs) == 1, f"cases pin different corpus refs: {refs}"
     ref = refs.pop()
+    assert len(ref) == 40 and all(ch in "0123456789abcdef" for ch in ref), (
+        f"corpus_ref {ref!r} is not a 40-hex commit sha"
+    )
+
+
+def test_corpus_ref_resolves_when_history_is_available() -> None:
+    """Where the full history IS present (a developer clone), the pin must resolve to a commit.
+
+    Skipped on a shallow clone rather than softened, so the assertion stays strong exactly where
+    it can be trusted instead of being weakened everywhere to accommodate CI.
+    """
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if shallow.returncode != 0 or shallow.stdout.strip() != "false":
+        pytest.skip("shallow clone — historical objects are absent by construction")
+
+    ref = next(iter({c.corpus_ref for c in _load()}))
     proof = subprocess.run(
         ["git", "cat-file", "-t", ref], cwd=_REPO_ROOT, capture_output=True, text=True
     )
