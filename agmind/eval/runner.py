@@ -32,7 +32,13 @@ from agmind.eval.ir import AggregateScore, CaseRetrieval, CaseScore, aggregate, 
 
 #: Retriever-specific score scales are not comparable, so the abstention threshold is per
 #: retriever. These are starting points, printed in the report scope so they are never implicit.
-DEFAULT_ABSTAIN_THRESHOLD = {"lexical": 3.0, "dense": 0.55}
+#:
+#: ``ragflow`` is not a number of ours: 0.2 is RAGFlow's OWN default ``similarity_threshold`` for
+#: ``/api/v1/retrieval`` (``api/apps/sdk/doc.py`` in the pinned image). The client asks the server
+#: for 0.0 so the harness sees the true ranking and makes the abstention call itself — but it
+#: makes it at the threshold the product would have used, so the abstention figure describes the
+#: deployed system rather than one tuned to score well on this golden set.
+DEFAULT_ABSTAIN_THRESHOLD = {"lexical": 3.0, "dense": 0.55, "ragflow": 0.2}
 
 
 class EvalRunError(RuntimeError):
