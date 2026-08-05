@@ -122,10 +122,11 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
 
     elif retriever == "dense":
         from agmind.eval.clients.embeddings import EmbeddingClient, EmbeddingError
+        from agmind.eval.clients.resolver import resolve_host
         from agmind.eval.dense import DenseRetriever, EmbeddingCache
         from agmind.eval.endpoints import classify_endpoint
 
-        verdict = classify_endpoint(embed_url, resolve=_resolve, allow_lan=allow_lan)
+        verdict = classify_endpoint(embed_url, resolve=resolve_host, allow_lan=allow_lan)
         if not verdict.allowed:
             print(
                 f"ERROR: refusing embedding endpoint {embed_url}: {verdict.reason}.\n"
@@ -219,17 +220,6 @@ def cmd_run(  # noqa: C901 - one branch per retriever; splitting hides the flow
 
     print(format_report_json(report) if as_json else format_report_text(report), end="")
     return 0
-
-
-def _resolve(host: str) -> tuple[str, ...]:
-    """DNS resolution seam — injected so the unit tier never touches the network."""
-    import socket
-
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
-        return ()
-    return tuple(sorted({str(info[4][0]) for info in infos}))
 
 
 def register(app: typer.Typer) -> None:

@@ -148,10 +148,13 @@ def run_cases(
         latencies.append((time.monotonic() - started) * 1000.0)
 
         # Scoped by document: an anchor only counts in the document the case named.
-        coverage = coverage_map_scoped(
-            {h.chunk_id: (h.text, h.doc_key) for h in hits},
-            [(a.text, a.doc_key) for a in case.anchors],
-        )
+        # First occurrence wins, matching the dedup rule in `ir.score_case`. A dict
+        # comprehension would keep the LAST text for a repeated id while ranking keeps the
+        # FIRST, so a relevant chunk could be scored against a different chunk's text.
+        by_id: dict[str, tuple[str, str]] = {}
+        for hit in hits:
+            by_id.setdefault(hit.chunk_id, (hit.text, hit.doc_key))
+        coverage = coverage_map_scoped(by_id, [(a.text, a.doc_key) for a in case.anchors])
         retrieval = CaseRetrieval(
             case_id=case.case_id,
             anchors=case.anchor_texts,

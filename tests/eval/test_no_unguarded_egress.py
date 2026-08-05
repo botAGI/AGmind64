@@ -35,8 +35,15 @@ _NETWORK_MODULES = frozenset({"socket", "http.client", "urllib.request", "ssl", 
 _NETWORK_CALLS = frozenset({"urlopen", "create_connection", "socket", "getaddrinfo"})
 
 
+#: The eval CLI is in scope too. It resolves DNS for the endpoint check, so it genuinely reaches
+#: the network — and a guard that stops at the package boundary while the command next door opens
+#: sockets is this repo's documented "guard in code the real path never calls" class.
+_CLI_DIR = Path(__file__).resolve().parents[2] / "agmind" / "cli"
+
+
 def _eval_modules() -> list[Path]:
-    return sorted(p for p in _EVAL_PKG.rglob("*.py") if _CLIENTS_DIR not in p.parents)
+    package = [p for p in _EVAL_PKG.rglob("*.py") if _CLIENTS_DIR not in p.parents]
+    return sorted(package + list(_CLI_DIR.glob("eval*.py")))
 
 
 def _offences(path: Path) -> list[str]:
