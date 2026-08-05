@@ -58,6 +58,7 @@ def _make_app() -> typer.Typer:
         deploy_cmd,
         docling_cmd,
         estimate_cmd,
+        eval_cmd,
         governance_cmd,
         install_cmd,
         loadtest_cmd,
@@ -96,6 +97,7 @@ def _make_app() -> typer.Typer:
     migrate_cmd.register(app)
     access_cmd.register(app)
     loadtest_cmd.register(app)
+    eval_cmd.register(app)
     return app
 
 

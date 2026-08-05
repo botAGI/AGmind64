@@ -43,6 +43,12 @@ class CaseRetrieval:
     ranked_chunk_ids: tuple[str, ...]
     anchors_by_chunk: Mapping[str, frozenset[str]] = field(default_factory=dict)
     errored: bool = False
+    #: Retriever scores parallel to ``ranked_chunk_ids``. Only needed for negative cases, where
+    #: the question is whether anything cleared the abstention threshold at all.
+    scores: tuple[float, ...] = ()
+    #: A deliberately unanswerable case. Distinct from "no anchors were authored", which is a
+    #: mistake; this is the abstention class and it is scored, not discarded.
+    negative: bool = False
 
 
 #: Metric names carried per case; the aggregate exposes each as a per-case vector so
@@ -73,10 +79,15 @@ class CaseScore:
     skipped_no_anchors: bool = False
     empty_retrieval: bool = False
     errored: bool = False
+    negative: bool = False
+    #: For a negative case: did the retriever correctly surface nothing above the threshold?
+    abstained: bool | None = None
 
     @property
     def scoreable(self) -> bool:
-        return not (self.errored or self.skipped_no_anchors)
+        """Contributes to the retrieval metrics. Negatives are scored, but on their own axis —
+        folding them into recall would let abstention failures hide inside a retrieval average."""
+        return not (self.errored or self.skipped_no_anchors or self.negative)
 
 
 @dataclass(frozen=True)
@@ -99,6 +110,20 @@ class AggregateScore:
     cases_empty_retrieval: int
     cases_errored: int
     per_case: Mapping[str, tuple[float, ...]]
+    cases_negative: int = 0
+    cases_abstained: int = 0
+
+    @property
+    def abstention_rate(self) -> float | None:
+        """Share of unanswerable cases the retriever correctly declined to answer.
+
+        Reported separately from every retrieval metric and never blended into a single score:
+        a system can be excellent at finding passages and terrible at knowing when there is
+        nothing to find, and one number would hide exactly that.
+        """
+        if self.cases_negative == 0:
+            return None
+        return self.cases_abstained / self.cases_negative
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -106,6 +131,9 @@ class AggregateScore:
             "cases_skipped_no_anchors": self.cases_skipped_no_anchors,
             "cases_empty_retrieval": self.cases_empty_retrieval,
             "cases_errored": self.cases_errored,
+            "cases_negative": self.cases_negative,
+            "cases_abstained": self.cases_abstained,
+            "abstention_rate": self.abstention_rate,
             "metrics": {name: getattr(self, name) for name in METRIC_NAMES},
         }
 
@@ -120,16 +148,39 @@ def _dedup_preserving_order(chunk_ids: Sequence[str]) -> tuple[str, ...]:
     return tuple(out)
 
 
-def _dcg(relevances: Sequence[bool]) -> float:
-    """Binary-gain DCG with a ``log2(rank + 1)`` discount, rank being 1-indexed."""
-    return sum(1.0 / math.log2(rank + 1) for rank, rel in enumerate(relevances, start=1) if rel)
+def _dcg(gains: Sequence[float]) -> float:
+    """DCG with a ``log2(rank + 1)`` discount, rank 1-indexed.
+
+    Gains are GRADED: a chunk's gain is the number of distinct case anchors it covers. Binary
+    gains were a units bug — the numerator counted *chunks* while the ideal normalised over
+    *anchors*, so any case whose anchor appeared in several retrieved chunks scored above 1.0
+    (measured 1.63 and 2.13 on real data; 6 of 13 golden anchors occur in multiple chunks).
+    Grading also matches how TREC 2025 RAG scores a segment — by how many sub-narratives it
+    covers, not by a yes/no.
+    """
+    return sum(g / math.log2(rank + 1) for rank, g in enumerate(gains, start=1) if g)
 
 
-def score_case(case: CaseRetrieval, *, k: int) -> CaseScore:
+def score_case(
+    case: CaseRetrieval,
+    *,
+    k: int,
+    ideal_gains: Sequence[int] | None = None,
+    abstain_threshold: float | None = None,
+) -> CaseScore:
     """Score one case at cutoff ``k``.
 
     Order of operations is load-bearing: dedup first, then truncate to ``k``. Doing it the other
     way lets a duplicated chunk eat a slot that a relevant chunk would otherwise have occupied.
+
+    ``ideal_gains`` is the per-chunk anchor-coverage vector over the WHOLE frozen corpus. Supplying
+    it makes nDCG measure finding *and* ordering against the exactly-known best ranking — possible
+    here precisely because the corpus is small and pinned by manifest, unlike a TREC-scale pool.
+    Omitting it falls back to the best ordering of what was actually retrieved, which is bounded
+    but only measures ordering.
+
+    ``abstain_threshold`` scores the negative class: the correct behaviour on an unanswerable
+    question is that nothing clears the retriever's confidence threshold.
     """
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}")
@@ -155,6 +206,27 @@ def score_case(case: CaseRetrieval, *, k: int) -> CaseScore:
 
     if case.errored:
         return _unmeasurable(considered=0, errored=True)
+
+    if case.negative:
+        # Abstention: on a deliberately unanswerable question the retriever is right when nothing
+        # clears the threshold. Scored on its own axis so a failure here can never be averaged
+        # away inside a healthy-looking recall number.
+        ranked = _dedup_preserving_order(case.ranked_chunk_ids)[:k]
+        top = max(case.scores[: len(ranked)], default=0.0) if case.scores else 0.0
+        abstained = True if abstain_threshold is None else bool(top < abstain_threshold)
+        return CaseScore(
+            case_id=case.case_id,
+            k=k,
+            anchor_recall=None,
+            anchor_precision=None,
+            anchor_hit=None,
+            anchor_mrr=None,
+            anchor_ndcg=None,
+            f1=None,
+            retrieved_considered=len(ranked),
+            negative=True,
+            abstained=abstained,
+        )
 
     anchors = frozenset(case.anchors)
     if not anchors:
@@ -198,11 +270,17 @@ def score_case(case: CaseRetrieval, *, k: int) -> CaseScore:
         0.0,
     )
 
-    # IDCG over min(k, |A|): using k would silently under-score every case that has fewer
-    # anchors than the cutoff, since no ranking could ever fill k relevant slots.
-    ideal_slots = min(k, len(anchors))
-    idcg = _dcg([True] * ideal_slots)
-    ndcg = (_dcg(relevant_flags) / idcg) if idcg > 0 else 0.0
+    # Graded gains keep numerator and denominator in the same unit (anchors covered per chunk).
+    gains = [float(len(cov)) for cov in covered_by]
+    if ideal_gains is not None:
+        ideal = sorted((float(g) for g in ideal_gains), reverse=True)[:k]
+    else:
+        # Fallback: the best possible ordering of what was actually retrieved. Bounded by
+        # construction, but measures ordering only — the caller is expected to pass the
+        # corpus-wide vector when it wants "did you find it AND rank it well".
+        ideal = sorted(gains, reverse=True)
+    idcg = _dcg(ideal)
+    ndcg = min(_dcg(gains) / idcg, 1.0) if idcg > 0 else 0.0
 
     denom = precision + recall
     f1 = (2 * precision * recall / denom) if denom > 0 else 0.0
@@ -254,6 +332,8 @@ def aggregate(scores: Iterable[CaseScore]) -> AggregateScore:
         cases_empty_retrieval=sum(1 for s in scores if s.empty_retrieval),
         cases_errored=sum(1 for s in scores if s.errored),
         per_case=per_case,
+        cases_negative=sum(1 for s in scores if s.negative),
+        cases_abstained=sum(1 for s in scores if s.negative and s.abstained),
     )
 
 

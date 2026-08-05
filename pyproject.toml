@@ -107,6 +107,7 @@ packages = [
   "agmind.cluster",
   "agmind.components",
   "agmind.eval",
+  "agmind.eval.clients",
   "agmind.compute",
   "agmind.compute.backends",
   "agmind.compute.backends._engines",

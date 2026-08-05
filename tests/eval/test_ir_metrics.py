@@ -231,3 +231,99 @@ def test_f1_is_harmonic_mean_and_zero_safe() -> None:
     assert zero.f1 == 0.0, "0/0 must be 0.0, not a ZeroDivisionError"
 
     assert aggregate([s, zero]).f1 == pytest.approx(0.25)
+
+
+# --- graded nDCG: units bug found by the 2026 research sweep --------------------------------
+
+
+def test_ndcg_never_exceeds_one_when_an_anchor_spans_several_chunks() -> None:
+    """REGRESSION (shipped bug): DCG counted CHUNKS while IDCG normalised over ANCHORS — two
+    different units — so any case whose anchor appears in more than one retrieved chunk scored
+    above 1.0 (measured 1.63 with 2 of 3 chunks, 2.13 with 3 of 3). On the real corpus 6 of 13
+    golden anchors occur in several chunks, so this fired constantly."""
+    from agmind.eval.ir import score_case
+
+    for hits in (2, 3):
+        covers = {f"c{i}": frozenset({"a1"}) for i in range(1, hits + 1)}
+        case = _case("multi", ["a1"], [f"c{i}" for i in range(1, 4)], covers)
+        score = score_case(case, k=5)
+        assert score.anchor_ndcg is not None
+        assert 0.0 <= score.anchor_ndcg <= 1.0, f"{hits} hits -> nDCG {score.anchor_ndcg}"
+
+
+def test_ndcg_uses_graded_gains_from_anchor_coverage() -> None:
+    """A chunk covering TWO anchors is worth more than one covering a single anchor — that is
+    what makes numerator and denominator the same unit (TREC 2025 RAG grades a segment by how
+    many sub-narratives it covers)."""
+    from agmind.eval.ir import score_case
+
+    # The corpus contains ONE chunk covering both anchors, so the ideal ranking has gain 2 at
+    # rank 1. Against that ideal, finding that chunk beats spreading the anchors over two chunks.
+    # (Without a corpus-wide ideal both orderings are optimal for what they retrieved and score
+    # 1.0 — correct for the fallback, which measures ordering only.)
+    ideal = (2,)
+    rich = _case("rich", ["a1", "a2"], ["c1", "c2"], {"c1": ["a1", "a2"]})
+    thin = _case("thin", ["a1", "a2"], ["c1", "c2"], {"c1": ["a1"], "c2": ["a2"]})
+    rich_score = score_case(rich, k=5, ideal_gains=ideal).anchor_ndcg
+    thin_score = score_case(thin, k=5, ideal_gains=ideal).anchor_ndcg
+    assert rich_score is not None and thin_score is not None
+    assert rich_score > thin_score, "front-loading both anchors must rank above spreading them"
+    assert rich_score == pytest.approx(1.0)
+    assert thin_score < 1.0
+
+
+def test_ndcg_with_corpus_wide_ideal_is_bounded_and_penalises_misses() -> None:
+    """With the frozen corpus we can compute the EXACT ideal ranking, so nDCG measures finding
+    AND ordering rather than only ordering what happened to be found."""
+    from agmind.eval.ir import score_case
+
+    # corpus knows 3 anchor-bearing chunks (gains 1,1,1) but retrieval surfaced one of them
+    case = _case("partial", ["a1", "a2", "a3"], ["c9", "c1"], {"c1": ["a1"]})
+    score = score_case(case, k=5, ideal_gains=(1, 1, 1))
+    assert score.anchor_ndcg is not None
+    assert 0.0 < score.anchor_ndcg < 1.0
+
+
+# --- negative cases are scored, not discarded ----------------------------------------------
+
+
+def test_negative_case_is_scored_not_skipped_as_malformed() -> None:
+    """The abstention class is the whole trust proposition of a self-hosted stack; it used to be
+    counted as 'malformed, the integrity gate should have rejected it' and contributed nothing."""
+    from agmind.eval.ir import CaseRetrieval, score_case
+
+    case = CaseRetrieval(
+        case_id="neg", anchors=(), ranked_chunk_ids=("c1",), scores=(0.11,), negative=True
+    )
+    score = score_case(case, k=5, abstain_threshold=0.5)
+
+    assert score.negative is True
+    assert score.skipped_no_anchors is False, "a deliberate negative is not an authoring mistake"
+    assert score.abstained is True, "top score below threshold == correctly abstained"
+
+
+def test_negative_case_fails_when_retriever_returns_confident_junk() -> None:
+    from agmind.eval.ir import CaseRetrieval, score_case
+
+    case = CaseRetrieval(
+        case_id="neg", anchors=(), ranked_chunk_ids=("c1",), scores=(0.93,), negative=True
+    )
+    assert score_case(case, k=5, abstain_threshold=0.5).abstained is False
+
+
+def test_aggregate_reports_abstention_separately_from_recall() -> None:
+    from agmind.eval.ir import CaseRetrieval, aggregate, score_case
+
+    positive = score_case(_case("p", ["a"], ["c"], {"c": ["a"]}), k=5)
+    good_neg = score_case(
+        CaseRetrieval("n1", (), ("c",), scores=(0.1,), negative=True), k=5, abstain_threshold=0.5
+    )
+    bad_neg = score_case(
+        CaseRetrieval("n2", (), ("c",), scores=(0.9,), negative=True), k=5, abstain_threshold=0.5
+    )
+    agg = aggregate([positive, good_neg, bad_neg])
+
+    assert agg.cases_negative == 2
+    assert agg.cases_skipped_no_anchors == 0, "negatives must not land in the malformed bucket"
+    assert agg.abstention_rate == pytest.approx(0.5)
+    assert agg.anchor_recall == 1.0, "negatives must not dilute the retrieval metric"
