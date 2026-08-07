@@ -1093,10 +1093,10 @@ def test_env_write_step_version_manifest_tracks_selected_operator_services(
     # version_text also matches v10.6.11, so a pin that drifted to a prefix-sharing version
     # would pass unnoticed. Parse the manifest and compare full values.
     manifest = parse_env_text(version_text)
-    assert manifest["UPTIME_KUMA_VERSION"] == "2.4.0"
+    assert manifest["UPTIME_KUMA_VERSION"] == "2.5.0"
     assert manifest["HOMARR_VERSION"] == "v1.62.0"
     assert manifest["WATCHTOWER_VERSION"] == "1.7.1"
-    assert manifest["DOZZLE_VERSION"] == "v10.6.13"
+    assert manifest["DOZZLE_VERSION"] == "v10.6.14"
     assert manifest["NETDATA_VERSION"] == "v2.10.4"
     assert "LLAMA_LLM_VERSION" not in manifest
 

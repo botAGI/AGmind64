@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: grafana
-image: grafana/grafana:13.1.1
-digest: 1c1bd67c54c5fcf6e759897852b5a584191bd6796e8d328a5ace457799801261
+image: grafana/grafana:13.1.2
+digest: d177053ab62253815f130d81504f77063baf5fd4ca93299d6048453bd31e047a
 tier: ops
-purpose: Metrics + logs visualization — Grafana 13.1 (2026-07-21)
+purpose: Metrics + logs visualization — Grafana 13.1.2 (2026-08-07)
 profiles:
 - observability
 ports:
@@ -20,8 +20,9 @@ env:
   GF_PATHS_PROVISIONING: /etc/grafana/provisioning
   # zero-egress: [analytics] reporting_enabled alone is NOT enough — check_for_updates still
   # GETs stats.grafana.org and check_for_plugin_updates hits grafana.com on a timer. All four
-  # are needed for a true no-phone-home. re-verified 2026-07-21 for grafana 13.1: these four
-  # [analytics] keys are unchanged in 13.1 and still kill all four egress paths (docs below)
+  # are needed for a true no-phone-home. re-verified 2026-08-07 for grafana 13.1.2 by diffing
+  # defaults.ini against the previous pin: the [analytics] section is byte-identical, so all
+  # four keys still bind and still default to the phone-home value (docs below)
   # https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#analytics
   GF_ANALYTICS_REPORTING_ENABLED: 'false'
   GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'

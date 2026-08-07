@@ -1,9 +1,14 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: loki
-image: grafana/loki:3.7.4
-digest: 87f0a067673756a3cede1bcbf0c74875f7df9b09fddb53e399d0c576f756cfcc
+# Docker tags for grafana/loki are BARE — the GitHub release is v3.7.6 but the registry tag is
+# 3.7.6, and `v3.7.6` resolves to nothing. The weekly version report copies the GitHub form and
+# has now proposed a non-existent tag twice (3.7.4 and 3.7.5 bumps). Because the renderer emits
+# image:tag@sha256:<digest> and Docker resolves BY DIGEST, a wrong tag string would still pull
+# correctly and silently — the descriptor would just advertise a version it is not running.
+image: grafana/loki:3.7.6
+digest: efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
 tier: ops
-purpose: Log aggregation — Loki 3.7 (2026-05-13, new tenancy schema)
+purpose: Log aggregation — Loki 3.7.6 (2026-08-06, new tenancy schema)
 profiles:
 - observability
 ports:

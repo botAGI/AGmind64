@@ -1,9 +1,11 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: weaviate
-image: semitechnologies/weaviate:1.38.8
-digest: 84e00a8e93b46f43c37d56ed97f7e6083415534bc471c8c179d69e1f43b2c5b8
+# Docker tags here are BARE — `v1.38.9` does not resolve, only `1.38.9`. Third service in this
+# catalogue with that asymmetry (see loki), and the weekly report keeps copying the GitHub form.
+image: semitechnologies/weaviate:1.38.9
+digest: d2a1b884d45844a012b4282081dfa896879a6ded7ea9d9e274e0b9e1d9920f86
 tier: storage
-purpose: Alternative vector store — 2026-05-14
+purpose: Alternative vector store — 1.38.9 (2026-08-06)
 profiles:
 - rag-weaviate
 ports:

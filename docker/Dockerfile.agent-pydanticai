@@ -5,7 +5,7 @@
 # only pydantic-ai + fastapi). Built LOCALLY on the operator's host at deploy time via the
 # compose `build:` block (no registry dependency → air-gap-friendly, nothing published).
 # Pinned base digest (amd64/linux verified).
-FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+FROM python:3.12-slim@sha256:646fb0bca3dd3ea1bcc6feb72c17ed16eed6e10cffc732fcc1478bd3e7f02d7b
 
 # curl: container healthcheck only. No other system deps (pydantic-core/openai ship wheels).
 RUN apt-get update \

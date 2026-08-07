@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: dozzle
-image: amir20/dozzle:v10.6.13
-digest: 9b13386276490c41faf41fbe7f477964d2a6ba95dd087e7d22a890a65e58c841
+image: amir20/dozzle:v10.6.14
+digest: 1c1060cfb5402093c4e0f03f3534d7deaffeb0a6f6dd034e7c5f244603f35fb3
 tier: ops
-purpose: Container log viewer — Dozzle v10.6.13 (2026-07-30)
+purpose: Container log viewer — Dozzle v10.6.14 (2026-08-07)
 owner: observability-stack
 profiles:
 - observability
@@ -21,7 +21,7 @@ ports:
 env:
   DOCKER_HOST: tcp://docker-socket-proxy:2375
   # zero-egress (A8 / rule #15): dozzle POSTs an anonymous beacon to https://b.dozzle.dev/event by
-  # default (verified 2026-07-30 in v10.6.13 source internal/support/cli/args.go +
+  # default (re-verified 2026-08-07 in v10.6.14 source internal/support/cli/args.go +
   # docs/guide/analytics.md); this env kill-switch is honored and pinned in _REQUIRED_EGRESS_ENV.
   DOZZLE_NO_ANALYTICS: 'true'
 resources:

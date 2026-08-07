@@ -1,9 +1,12 @@
 # yaml-language-server: $schema=../schemas/service.json
 name: qdrant
-image: qdrant/qdrant:v1.18.3
-digest: 0bd98fa7977f1e75694779359ca4e212822e5a71334e28421182f72f209d5286
+# Pin the FULL patch version, never the floating minor alias `v1.19` — that alias moves to the
+# next patch while the digest stays put, which is the tag/digest desync this repo already has a
+# journal entry for.
+image: qdrant/qdrant:v1.19.0
+digest: 057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
 tier: storage
-purpose: Vector store (primary per R11) — 2026-05-11 release
+purpose: Vector store (primary per R11) — 1.19.0 (2026-08-05 release)
 profiles:
 - core
 - rag
@@ -17,8 +20,12 @@ volumes:
 env:
   QDRANT__SERVICE__GRPC_PORT: '6334'
   # zero-egress: qdrant POSTs anonymized usage stats to telemetry.qdrant.io on a timer
-  # unless disabled (maps to config telemetry_disabled). verified 2026-06-09 against
-  # qdrant v1.18.0 docs https://qdrant.tech/documentation/guides/usage-statistics/
+  # unless disabled (maps to config telemetry_disabled). re-verified 2026-08-07 against
+  # v1.19.0 source: config/config.yaml still carries telemetry_disabled and src/main.rs still
+  # gates reporting on it. v1.19 enriches the telemetry PAYLOAD (cgroup CPU/RAM/disk) but the
+  # payload is never transmitted while reporting is off — confirmed live, the container logged
+  # "Telemetry reporting disabled" on boot with this env.
+  # https://qdrant.tech/documentation/guides/usage-statistics/
   QDRANT__TELEMETRY_DISABLED: 'true'
 resources:
   cpus: 4.0

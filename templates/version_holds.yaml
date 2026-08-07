@@ -93,6 +93,23 @@ portainer/portainer-ce:
   reason: "2.43 changed initial-admin setup (log token / --admin-password-file); bump lands with the access.note rewrite + CredentialsStep wiring, not as a bare image swap."
   hold_until: 2026-09-01
 
+# --- Bump sweep 2026-08-07: held after per-component research ---
+
+# weaviate: 1.39.0 (2026-08-04) is mechanically fine — verified GA (prerelease=false, "Breaking
+# Changes: none"), bare tag resolves, amd64 present, wget still shipped for our healthcheck, all
+# four env keys we set still read, DISABLE_TELEMETRY still suppresses both the push AND the new
+# persistent cluster-identity commit (PR 12296/12326), and BOTH an in-place upgrade and a rollback
+# were proven on our exact descriptor. It is held on MATURITY, not mechanics, and the decisive
+# evidence is upstream's own behaviour: v1.38.9 shipped 2026-08-06, i.e. TWO DAYS AFTER 1.39.0 —
+# upstream is still patching the 1.38 line, so 1.38.x is the settled line and 1.39.0 is the fresh
+# minor. Weaviate is also an opt-in profile (rag-weaviate) that is not deployed here, so there is
+# nothing to gain by taking a .0 on a tier that holds live vectors. We track 1.38.x patches
+# instead. Lift when a 1.39.x patch has landed and docs.weaviate.io documents 1.39 (three days
+# after release its release-notes page still listed only 1.30-1.38).
+semitechnologies/weaviate:
+  reason: "1.39.0 is a fresh minor on a live-vector storage tier; upstream shipped 1.38.9 two days AFTER it, so 1.38.x is still the maintained line. Patches on 1.38.x OK."
+  max_version: "1.38.x"
+
 # --- Bump sweep 2026-07-30 (issue #25): held after per-component research ---
 
 # etcd: the report's "minor 3.5->3.7" label is WRONG two ways (verified 2026-07-30): (1) etcd
